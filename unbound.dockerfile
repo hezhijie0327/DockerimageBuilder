@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM ubuntu:latest as build
 
@@ -12,9 +12,9 @@ FROM alpine:latest
 
 WORKDIR /etc
 
-COPY --from=build /etc/unbound/sbin /etc/unbound
+COPY --from=build /etc/unbound/sbin/* /usr/local/bin/*
 
-RUN /etc/unbound/unbound -V && wget -O "/etc/unbound/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" && wget -O "/etc/unbound/root.hints" "https://www.internic.net/domain/named.cache" && echo "#!/bin/sh" > "/etc/unbound/unbound.sh" && echo "/etc/unbound/unbound-anchor -a \"/etc/unbound/root.key\" -c \"/etc/unbound/icannbundle.pem\" -f \"/etc/resolv.conf\" -r \"/etc/unbound/root.hints\" -v -F" >> "/etc/unbound/unbound.sh" && echo "/etc/unbound/unbound-checkconf \"/etc/unbound/conf/unbound.conf\" > \"/etc/unbound/work/unbound-checkconf.log\"" >> "/etc/unbound/unbound.sh" && echo "/etc/unbound/unbound -c \"/etc/unbound/conf/unbound.conf\" -v" >> "/etc/unbound/unbound.sh" && mkdir "/etc/unbound/cert" "/etc/unbound/conf" "/etc/unbound/work" && ln -s "/etc/unbound" "/opt/unbound" && rm -rf /tmp/*
+RUN mkdir "/etc/unbound" "/etc/unbound/cert" "/etc/unbound/conf" "/etc/unbound/work" && ln -s "/etc/unbound" "/opt/unbound" && wget -O "/etc/unbound/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" && wget -O "/etc/unbound/root.hints" "https://www.internic.net/domain/named.cache" && echo "#!/bin/sh" > "/etc/unbound/unbound.sh" && echo "/usr/local/bin/unbound-anchor -a \"/etc/unbound/root.key\" -c \"/etc/unbound/icannbundle.pem\" -f \"/etc/resolv.conf\" -r \"/etc/unbound/root.hints\" -v -F" >> "/etc/unbound/unbound.sh" && echo "/usr/local/bin/unbound-checkconf \"/etc/unbound/conf/unbound.conf\" > \"/etc/unbound/work/unbound-checkconf.log\"" >> "/etc/unbound/unbound.sh" && echo "/usr/local/bin/unbound -c \"/etc/unbound/conf/unbound.conf\" -v" >> "/etc/unbound/unbound.sh" && /usr/local/bin/unbound -V && rm -rf /tmp/*
 
 WORKDIR /opt/unbound
 
