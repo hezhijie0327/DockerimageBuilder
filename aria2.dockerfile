@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM ubuntu:latest as build
 
@@ -12,9 +12,9 @@ FROM alpine:latest
 
 WORKDIR /etc
 
-COPY --from=build /usr/local/bin /etc/aria2
+COPY --from=build /usr/local/bin/aria2c /usr/local/bin/aria2c
 
-RUN /etc/aria2/aria2c --version && mkdir "/etc/aria2/cert" "/etc/aria2/conf" "/etc/aria2/data" "/etc/aria2/work" && ln -s "/etc/aria2" "/opt/aria2" && ln -s "/etc/aria2/aria2c" "/usr/local/bin/aria2c" && wget -P "/etc/aria2" "https://raw.githubusercontent.com/hezhijie0327/aria2.conf/source/aria2.sh" && rm -rf /tmp/*
+RUN mkdir "/etc/aria2/cert" "/etc/aria2/conf" "/etc/aria2/data" "/etc/aria2/work" && ln -s "/etc/aria2" "/opt/aria2" && wget -P "/etc/aria2" "https://raw.githubusercontent.com/hezhijie0327/aria2.conf/source/aria2.sh" && /usr/local/bin/aria2c --version && rm -rf /tmp/*
 
 WORKDIR /opt/aria2
 
