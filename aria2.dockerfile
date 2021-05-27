@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM ubuntu:latest as build
 
@@ -24,4 +24,4 @@ VOLUME ["/opt/aria2/cert", "/opt/aria2/conf", "/opt/aria2/data", "/opt/aria2/wor
 
 ENV CHECKALIVE=${CHECKALIVE} EXPIRATION=${EXPIRATION} MASQUERADE=${MASQUERADE} SYNCREMOTE=${SYNCREMOTE} SELFUPDATE=${SELFUPDATE}
 
-CMD [ "sh", "-c", "sh '/etc/aria2/aria2.sh' -c ${CHECKALIVE:-https://dns.alidns.com} -e ${EXPIRATION:-86400} -m ${MASQUERADE:-a2} -s ${SYNCREMOTE:-false} -u ${SELFUPDATE:-false}" ]
+CMD [ "sh", "-c", "sh '/etc/aria2/aria2.sh' -c ${CHECKALIVE:-https://alidns.com} -e ${EXPIRATION:-86400} -m ${MASQUERADE:-a2} -s ${SYNCREMOTE:-false} -u ${SELFUPDATE:-false}" ]
