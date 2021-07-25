@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM ubuntu:latest as build
 
@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND="noninteractive"
 
 WORKDIR /tmp
 
-RUN apt update && apt install -y libuv1-dev && sed -i "s/focal/impish/g" "/etc/apt/sources.list" && apt update && apt install -y autoconf automake autopoint autotools-dev binutils ca-certificates cpp g++ git libc-ares-dev libcppunit-dev libexpat1-dev libgoogle-perftools-dev libgpg-error-dev libsqlite3-dev libssh2-1-dev libssl-dev libtool make pkg-config wget zlib1g-dev && git clone -b master --depth=1 "https://github.com/aria2/aria2.git" && git clone -b master --depth=1 "https://github.com/P3TERX/Aria2-Pro-Core.git" && cd ./aria2 && git apply --reject ../Aria2-Pro-Core/patch/*.patch && autoreconf -i && ARIA2_STATIC=yes ./configure --with-ca-bundle="/etc/ssl/certs/ca-certificates.crt" --with-libcares --with-libexpat --with-libssh2 --with-libuv --with-libz --with-openssl --with-sqlite3 --with-tcmalloc --without-appletls --without-gnutls --without-jemalloc --without-libgcrypt --without-libgmp --without-libnettle --without-libxml2 --without-wintls && make -j 4 && make install && strip -s /usr/local/bin/*
+RUN apt update && apt install -y libuv1-dev && sed -i "s/focal/impish/g" "/etc/apt/sources.list" && apt update && apt install -y autoconf automake autopoint autotools-dev binutils ca-certificates cpp g++ git libc-ares-dev libcppunit-dev libexpat1-dev libgoogle-perftools-dev libgpg-error-dev libsqlite3-dev libssh2-1-dev libssl-dev libtool make pkg-config wget zlib1g-dev && git clone -b master --depth=1 "https://github.com/aria2/aria2.git" && git clone -b main --depth=1 "https://github.com/hezhijie0327/Patch.git" && cd ./aria2 && git apply --reject ../Patch/aria2/*.patch && autoreconf -i && ARIA2_STATIC=yes ./configure --with-ca-bundle="/etc/ssl/certs/ca-certificates.crt" --with-libcares --with-libexpat --with-libssh2 --with-libuv --with-libz --with-openssl --with-sqlite3 --with-tcmalloc --without-appletls --without-gnutls --without-jemalloc --without-libgcrypt --without-libgmp --without-libnettle --without-libxml2 --without-wintls && make -j 4 && make install && strip -s /usr/local/bin/*
 
 FROM alpine:latest
 
