@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 FROM ubuntu:latest as build
 
@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND="noninteractive"
 
 WORKDIR /tmp
 
-RUN sed -i "s/focal/impish/g" "/etc/apt/sources.list" && apt update && apt install -y curl gnupg gnupg1 gnupg2 && curl -s --connect-timeout 15 "http://dl.yarnpkg.com/debian/pubkey.gpg" | apt-key add - && echo "deb http://dl.yarnpkg.com/debian/ stable main" > "/etc/apt/sources.list.d/yarn.list" && apt update && apt install -y git golang make nodejs npm yarn && git clone -b master --depth=1 "https://github.com/AdguardTeam/AdGuardHome.git" && git clone -b main --depth=1 "https://github.com/hezhijie0327/AdGuardHomeLIP.git" && git clone -b main --depth=1 "https://github.com/hezhijie0327/Patch.git" && AGH_SHA=$(cd ./AdGuardHome && git rev-parse --short HEAD | cut -c 1-4) && AGH_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AdguardTeam/AdGuardHome/releases/latest" | grep "tag\_name" | tr -cd ".[:digit:]\nv") && LIP_SHA=$(cd ./AdGuardHomeLIP && git rev-parse --short HEAD | cut -c 1-4) && cd ./AdGuardHome && cp -r "../AdGuardHomeLIP/filters.json" "./client/src/helpers/filters/filters.json" && cp -r "../AdGuardHomeLIP/zh-cn.json" "./client/src/__locales/zh-cn.json" && git apply --reject ../Patch/adguardhome/*.patch && make -j 1 VERSION="${AGH_VERSION}-ZHIJIE-${AGH_SHA}${LIP_SHA}"
+RUN sed -i "s/focal/impish/g" "/etc/apt/sources.list" && apt update && apt install -qy curl gnupg gnupg1 gnupg2 && curl -s --connect-timeout 15 "http://dl.yarnpkg.com/debian/pubkey.gpg" | apt-key add - && echo "deb http://dl.yarnpkg.com/debian/ stable main" > "/etc/apt/sources.list.d/yarn.list" && apt update && apt install -qy git golang make nodejs npm yarn && git clone -b master --depth=1 "https://github.com/AdguardTeam/AdGuardHome.git" && git clone -b main --depth=1 "https://github.com/hezhijie0327/Patch.git" && AGH_SHA=$(cd ./AdGuardHome && git rev-parse --short HEAD | cut -c 1-4) && AGH_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AdguardTeam/AdGuardHome/releases/latest" | grep "tag\_name" | tr -cd ".[:digit:]\nv") && PATCH_SHA=$(cd ./Patch && git rev-parse --short HEAD | cut -c 1-4) && cd ./AdGuardHome && cp -r "../Patch/adguardhome/static/filters.json" "./client/src/helpers/filters/filters.json" && cp -r "../Patch/adguardhome/static/zh-cn.json" "./client/src/__locales/zh-cn.json" && git apply --reject ../Patch/adguardhome/*.patch && make -j 1 VERSION="${AGH_VERSION}-ZHIJIE-${AGH_SHA}${PATCH_SHA}"
 
 FROM alpine:latest
 
