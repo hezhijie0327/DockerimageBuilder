@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM ubuntu:latest as build
 
@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND="noninteractive"
 
 WORKDIR /tmp
 
-RUN apt update && apt install -y libuv1-dev && sed -i "s/focal/impish/g" "/etc/apt/sources.list" && apt update && apt install -y autoconf automake autopoint autotools-dev binutils ca-certificates cpp g++ git libc-ares-dev libcppunit-dev libexpat1-dev libgoogle-perftools-dev libgpg-error-dev libsqlite3-dev libssh2-1-dev libssl-dev libtool make pkg-config wget zlib1g-dev && git clone -b master --depth=1 "https://github.com/aria2/aria2.git" && git clone -b main --depth=1 "https://github.com/hezhijie0327/Patch.git" && cd ./aria2 && git apply --reject ../Patch/aria2/*.patch && autoreconf -i && ARIA2_STATIC=yes ./configure --with-ca-bundle="/etc/ssl/certs/ca-certificates.crt" --with-libcares --with-libexpat --with-libssh2 --with-libuv --with-libz --with-openssl --with-sqlite3 --with-tcmalloc --without-appletls --without-gnutls --without-jemalloc --without-libgcrypt --without-libgmp --without-libnettle --without-libxml2 --without-wintls && make -j 4 && make install && strip -s /usr/local/bin/*
+RUN apt update && apt install -qy libuv1-dev && sed -i "s/focal/impish/g" "/etc/apt/sources.list" && apt update && apt install -qy autoconf automake autopoint autotools-dev binutils ca-certificates cpp g++ git libc-ares-dev libcppunit-dev libexpat1-dev libgoogle-perftools-dev libgpg-error-dev libsqlite3-dev libssh2-1-dev libssl-dev libtool make pkg-config wget zlib1g-dev && git clone -b master --depth=1 "https://github.com/aria2/aria2.git" && git clone -b main --depth=1 "https://github.com/hezhijie0327/Patch.git" && ARIA2_SHA=$(cd ./aria2 && git rev-parse --short HEAD | cut -c 1-4) && ARIA2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/aria2/aria2/releases/latest" | grep "tag\_name" | tr -cd ".[:digit:]\nv") && PATCH_SHA=$(cd ./Patch && git rev-parse --short HEAD | cut -c 1-4) && ARIA2_CUSTOM_VERSION="${ARIA2_VERSION}-ZHIJIE-${ARIA2_SHA}${PATCH_SHA}" && cd ./aria2 && cat "./configure.ac" | sed "s/1\.35\.0/$ARIA2_CUSTOM_VERSION/g" > "./configure.ac.tmp" && mv "./configure.ac.tmp" "./configure.ac" && git apply --reject ../Patch/aria2/*.patch && autoreconf -i && ARIA2_STATIC=yes ./configure --with-ca-bundle="/etc/ssl/certs/ca-certificates.crt" --with-libcares --with-libexpat --with-libssh2 --with-libuv --with-libz --with-openssl --with-sqlite3 --with-tcmalloc --without-appletls --without-gnutls --without-jemalloc --without-libgcrypt --without-libgmp --without-libnettle --without-libxml2 --without-wintls && make -j 4 && make install && strip -s /usr/local/bin/*
 
 FROM alpine:latest
 
