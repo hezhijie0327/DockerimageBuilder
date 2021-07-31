@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM ubuntu:latest as build
 
@@ -12,7 +12,7 @@ FROM alpine:latest
 
 WORKDIR /etc
 
-COPY --from=build /etc/unbound/sbin /usr/local/bin
+COPY --from=build /etc/unbound/sbin/unbound /usr/local/bin/unbound
 
 RUN mkdir "/etc/unbound" "/etc/unbound/cert" "/etc/unbound/conf" "/etc/unbound/work" && ln -s "/etc/unbound" "/opt/unbound" && /usr/local/bin/unbound -V && rm -rf /tmp/*
 
