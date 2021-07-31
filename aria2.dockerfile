@@ -1,4 +1,4 @@
-# Current Version: 1.1.0
+# Current Version: 1.1.1
 
 FROM ubuntu:latest as build
 
@@ -14,14 +14,12 @@ WORKDIR /etc
 
 COPY --from=build /usr/local/bin/aria2c /usr/local/bin/aria2c
 
-RUN mkdir "/etc/aria2" "/etc/aria2/cert" "/etc/aria2/conf" "/etc/aria2/data" "/etc/aria2/work" && ln -s "/etc/aria2" "/opt/aria2" && /usr/local/bin/aria2c --version && rm -rf /tmp/*
+RUN mkdir "/etc/aria2" "/etc/aria2/cert" "/etc/aria2/conf" "/etc/aria2/data" "/etc/aria2/work" && /usr/local/bin/aria2c --version
 
-WORKDIR /opt/aria2
+WORKDIR /etc/aria2
 
 EXPOSE 51413/tcp 51413/udp 6800/tcp 6881-6889/tcp 6881-6889/udp
 
-VOLUME ["/opt/aria2/cert", "/opt/aria2/conf", "/opt/aria2/data", "/opt/aria2/work"]
+VOLUME ["/etc/aria2/cert", "/etc/aria2/conf", "/etc/aria2/data", "/etc/aria2/work"]
 
 ENTRYPOINT ["/usr/local/bin/aria2c"]
-
-CMD ["--conf-path='/etc/aria2/conf/aria2.conf'"]
