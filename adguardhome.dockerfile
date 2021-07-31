@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 FROM ubuntu:latest as build
 
@@ -12,16 +12,14 @@ FROM alpine:latest
 
 WORKDIR /etc
 
-COPY --from=build /tmp/AdGuardHome/AdGuardHome /usr/local/bin/AdGuardHome
+COPY --from=build /tmp/AdGuardHome/AdGuardHome /usr/local/bin/adguardhome
 
-RUN mkdir "/etc/AdGuardHome" "/etc/AdGuardHome/cert" "/etc/AdGuardHome/conf" "/etc/AdGuardHome/work" && ln -s "/etc/AdGuardHome" "/opt/adguardhome" && /usr/local/bin/AdGuardHome --version && rm -rf /tmp/*
+RUN mkdir "/etc/adguardhome" "/etc/adguardhome/cert" "/etc/adguardhome/conf" "/etc/adguardhome/work" && /usr/local/bin/adguardhome --version
 
-WORKDIR /opt/adguardhome
+WORKDIR /etc/adguardhome
 
 EXPOSE 3000/tcp 3001/tcp 443/tcp 443/udp 53/tcp 53/udp 5443/tcp 5443/udp 80/tcp 853/tcp 8853/udp
 
-VOLUME ["/opt/adguardhome/cert", "/opt/adguardhome/conf", "/opt/adguardhome/work"]
+VOLUME ["/etc/adguardhome/cert", "/etc/adguardhome/conf", "/etc/adguardhome/work"]
 
-ENTRYPOINT ["/usr/local/bin/AdGuardHome"]
-
-CMD ["--config", "/etc/AdGuardHome/conf/AdGuardHome.yaml", "--work-dir", "/etc/AdGuardHome/work", "--no-check-update"]
+ENTRYPOINT ["/usr/local/bin/adguardhome"]
