@@ -1,4 +1,4 @@
-# Current Version: 1.1.0
+# Current Version: 1.1.1
 
 FROM ubuntu:latest as build
 
@@ -24,4 +24,4 @@ VOLUME ["/opt/adguardhome/cert", "/opt/adguardhome/conf", "/opt/adguardhome/work
 
 ENTRYPOINT ["/usr/local/bin/AdGuardHome"]
 
-CMD ["-h", "0.0.0.0", "-c", "/etc/AdGuardHome/conf/AdGuardHome.yaml", "-w", "/etc/AdGuardHome/work", "--no-check-update"]
+CMD ["--config", "/etc/AdGuardHome/conf/AdGuardHome.yaml", "--work-dir", "/etc/AdGuardHome/work", "--no-check-update"]

@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM ubuntu:latest as build
 
@@ -14,7 +14,7 @@ WORKDIR /etc
 
 COPY --from=build /usr/local/bin/aria2c /usr/local/bin/aria2c
 
-RUN mkdir "/etc/aria2" "/etc/aria2/cert" "/etc/aria2/conf" "/etc/aria2/data" "/etc/aria2/work" && ln -s "/etc/aria2" "/opt/aria2" && wget -P "/etc/aria2" "https://raw.githubusercontent.com/hezhijie0327/aria2.conf/source/aria2.sh" && /usr/local/bin/aria2c --version && rm -rf /tmp/*
+RUN mkdir "/etc/aria2" "/etc/aria2/cert" "/etc/aria2/conf" "/etc/aria2/data" "/etc/aria2/work" && ln -s "/etc/aria2" "/opt/aria2" && /usr/local/bin/aria2c --version && rm -rf /tmp/*
 
 WORKDIR /opt/aria2
 
@@ -22,6 +22,6 @@ EXPOSE 51413/tcp 51413/udp 6800/tcp 6881-6889/tcp 6881-6889/udp
 
 VOLUME ["/opt/aria2/cert", "/opt/aria2/conf", "/opt/aria2/data", "/opt/aria2/work"]
 
-ENV CHECKALIVE=${CHECKALIVE} EXPIRATION=${EXPIRATION} MASQUERADE=${MASQUERADE} SYNCREMOTE=${SYNCREMOTE} SELFUPDATE=${SELFUPDATE}
+ENTRYPOINT ["/usr/local/bin/aria2c"]
 
-CMD [ "sh", "-c", "sh '/etc/aria2/aria2.sh' -c ${CHECKALIVE:-https://alidns.com} -e ${EXPIRATION:-86400} -m ${MASQUERADE:-a2} -s ${SYNCREMOTE:-false} -u ${SELFUPDATE:-false}" ]
+CMD ["--conf-path='/etc/aria2/conf/aria2.conf'"]
