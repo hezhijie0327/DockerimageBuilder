@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 FROM ubuntu:latest as build
 
@@ -14,14 +14,12 @@ WORKDIR /etc
 
 COPY --from=build /etc/unbound/sbin/unbound /usr/local/bin/unbound
 
-RUN mkdir "/etc/unbound" "/etc/unbound/cert" "/etc/unbound/conf" "/etc/unbound/work" && ln -s "/etc/unbound" "/opt/unbound" && /usr/local/bin/unbound -V && rm -rf /tmp/*
+RUN mkdir "/etc/unbound" "/etc/unbound/cert" "/etc/unbound/conf" "/etc/unbound/work" && /usr/local/bin/unbound -V
 
-WORKDIR /opt/unbound
+WORKDIR /etc/unbound
 
 EXPOSE 443/tcp 53/tcp 53/udp 853/tcp
 
-VOLUME ["/opt/unbound/cert", "/opt/unbound/conf", "/opt/unbound/work"]
+VOLUME ["/etc/unbound/cert", "/etc/unbound/conf", "/etc/unbound/work"]
 
 ENTRYPOINT ["/usr/local/bin/unbound"]
-
-CMD ["-c", "/etc/unbound/conf/unbound.conf"]
