@@ -1,6 +1,6 @@
-# Current Version: 1.2.8
+# Current Version: 1.2.9
 
-FROM ubuntu:devel as build
+FROM ubuntu:rolling as build
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
