@@ -1,4 +1,4 @@
-# Current Version: 1.3.3
+# Current Version: 1.3.4
 
 FROM ubuntu:devel as build
 
@@ -16,7 +16,7 @@ WORKDIR /tmp
 
 COPY --from=build /tmp/AdGuardHome/AdGuardHome /tmp/adguardhome
 
-RUN export WORKDIR=$(pwd) && cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "${WORKDIR}/apt.tmp" && cat "${WORKDIR}/apt.tmp" | sort | uniq > "/etc/apt/sources.list" && rm -rf ${WORKDIR}/*.tmp && apt update && apt install -qy upx-ucl && upx --ultra-brute ${WORKDIR}/adguardhome && ${WORKDIR}/adguardhome --version
+RUN export WORKDIR=$(pwd) && cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "${WORKDIR}/apt.tmp" && cat "${WORKDIR}/apt.tmp" | sort | uniq > "/etc/apt/sources.list" && rm -rf ${WORKDIR}/*.tmp && apt update && apt install -qy upx-ucl && upx --ultra-brute ${WORKDIR}/adguardhome
 
 FROM busybox:latest
 
