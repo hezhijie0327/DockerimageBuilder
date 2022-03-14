@@ -1,4 +1,4 @@
-# Current Version: 1.4.1
+# Current Version: 1.4.2
 
 FROM ubuntu:devel as build
 
@@ -18,7 +18,7 @@ COPY --from=build /usr/local/bin/aria2c /tmp/aria2c
 
 RUN export WORKDIR=$(pwd) && cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "${WORKDIR}/apt.tmp" && cat "${WORKDIR}/apt.tmp" | sort | uniq > "/etc/apt/sources.list" && rm -rf ${WORKDIR}/*.tmp && apt update && apt install -qy upx-ucl && upx --ultra-brute ${WORKDIR}/aria2c
 
-FROM busybox:latest
+FROM alpine:latest
 
 COPY --from=compress /tmp/aria2c /bin/aria2c
 
