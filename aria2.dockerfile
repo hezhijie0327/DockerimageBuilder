@@ -1,4 +1,4 @@
-# Current Version: 1.5.1
+# Current Version: 1.5.2
 
 FROM ubuntu:devel as build
 
@@ -12,6 +12,6 @@ FROM scratch
 
 COPY --from=build /tmp/build /
 
-EXPOSE 51413/tcp 51413/udp 6800/tcp 6881-6889/tcp 6881-6889/udp
+EXPOSE 51413/tcp 51413/udp 6800/tcp 6881-6889/tcp 6881-6889/udp 6969/tcp 6969/udp
 
 ENTRYPOINT ["/aria2c"]
