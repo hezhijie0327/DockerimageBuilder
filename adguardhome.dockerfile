@@ -1,4 +1,4 @@
-# Current Version: 1.4.5
+# Current Version: 1.4.6
 
 FROM ubuntu:devel as build
 
@@ -12,6 +12,6 @@ FROM scratch
 
 COPY --from=build /tmp/build /
 
-EXPOSE 3000/tcp 443/tcp 443/udp 53/tcp 53/udp 80/tcp 853/tcp 8853/udp
+EXPOSE 3000/tcp 3001/tcp 443/tcp 443/udp 53/tcp 53/udp 80/tcp 853/tcp 853/udp
 
 ENTRYPOINT ["/AdGuardHome"]
