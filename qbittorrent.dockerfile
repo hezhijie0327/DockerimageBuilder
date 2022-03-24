@@ -1,12 +1,10 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
-FROM ubuntu:latest as build
-
-ENV DEBIAN_FRONTEND="noninteractive"
+FROM alpine:edge as build
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "${WORKDIR}/apt.tmp" && cat "${WORKDIR}/apt.tmp" | sort | uniq > "/etc/apt/sources.list" && rm -rf ${WORKDIR}/*.tmp && apt update && apt install -yq curl && mkdir -p "${WORKDIR}/build" "${WORKDIR}/build/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/build/etc/ssl/certs/ca-certificates.crt" && curl -sL "https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh" | bash -s all --icu --qbittorrent-master --strip && cp -rf "${WORKDIR}/qbt-build/completed/qbittorrent-nox" "${WORKDIR}/build/qbittorrent-nox" && ${WORKDIR}/build/qbittorrent-nox --version
+RUN export WORKDIR=$(pwd) && apk update && apk add bash curl && mkdir -p "${WORKDIR}/build" "${WORKDIR}/build/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/build/etc/ssl/certs/ca-certificates.crt" && export qbt_build_tool=cmake && export qbt_qt_version=6.2 && curl -sL "https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh" | bash -s all --icu --libtorrent-master --qbittorrent-master --strip && cp -rf "${WORKDIR}/qbt-build/completed/qbittorrent-nox" "${WORKDIR}/build/qbittorrent-nox" && ${WORKDIR}/build/qbittorrent-nox --version
 
 FROM scratch
 
