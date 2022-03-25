@@ -1,6 +1,6 @@
-# Current Version: 1.4.7
+# Current Version: 1.4.8
 
-FROM ubuntu:latest as build
+FROM ubuntu:devel as build
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
