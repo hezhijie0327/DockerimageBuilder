@@ -1,12 +1,12 @@
-# Current Version: 1.5.0
+# Current Version: 1.5.1
 
-FROM alpine:latest AS GET_INFO
+FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && apk update && apk add curl jq && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".adguardhome" > "${WORKDIR}/adguardhome.json" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".binary.version" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".binary.source.golang" | sed "s/{GOLANG_ARCH}/$(uname -m)/g;s/aarch64/arm64/g;s/x86_64/amd64/g" > "${WORKDIR}/golang.autobuild" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".binary.source.nodejs" | sed "s/{NODEJS_ARCH}/$(uname -m)/g;s/aarch64/arm64/g;s/x86_64/x64/g" > "${WORKDIR}/nodejs.autobuild" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".source" > "${WORKDIR}/adguardhome.source.autobuild" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".patch" > "${WORKDIR}/adguardhome.patch.autobuild" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".version" > "${WORKDIR}/adguardhome.version.autobuild"
 
-FROM alpine:latest AS BUILD_GOLANG
+FROM hezhijie0327/base:alpine AS BUILD_GOLANG
 
 WORKDIR /tmp
 
@@ -14,7 +14,7 @@ COPY --from=GET_INFO /tmp/golang.autobuild /tmp/
 
 RUN export WORKDIR=$(pwd) && apk update && apk add curl && mkdir -p "${WORKDIR}/BUILDLIB/GOLANG" && cd "${WORKDIR}/BUILDLIB/GOLANG" && curl -Ls -o - $(cat "${WORKDIR}/golang.autobuild") | tar zxvf - --strip-components=1 && cd "${WORKDIR}"
 
-FROM alpine:latest AS BUILD_NODEJS
+FROM hezhijie0327/base:alpine AS BUILD_NODEJS
 
 WORKDIR /tmp
 
@@ -22,7 +22,7 @@ COPY --from=GET_INFO /tmp/nodejs.autobuild /tmp/
 
 RUN export WORKDIR=$(pwd) && apk update && apk add curl && mkdir -p "${WORKDIR}/BUILDLIB/NODEJS" && cd "${WORKDIR}/BUILDLIB/NODEJS" && curl -Ls -o - $(cat "${WORKDIR}/nodejs.autobuild") | tar zxvf - --strip-components=1 && cd "${WORKDIR}"
 
-FROM ubuntu:devel AS BUILD_ADGUARDHOME
+FROM hezhijie0327/base:ubuntu AS BUILD_ADGUARDHOME
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
