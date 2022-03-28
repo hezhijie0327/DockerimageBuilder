@@ -1,4 +1,4 @@
-# Current Version: 1.5.3
+# Current Version: 1.5.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -18,11 +18,11 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/adguardhome.*.autobuild /tmp/
 
-COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/GOLANG/
+COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
-COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/NODEJS/
+COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PATH="${WORKDIR}/BUILDLIB/GOLANG/bin:${WORKDIR}/BUILDLIB/NODEJS/bin:${PATH}" && npm install -g npm yarn && git clone -b master --depth=1 $(cat "${WORKDIR}/adguardhome.source.autobuild") "${WORKDIR}/BUILDTMP/ADGUARDHOME" && git clone -b main --depth=1 $(cat "${WORKDIR}/adguardhome.patch.autobuild") "${WORKDIR}/BUILDTMP/PATCH" && export AGH_SHA=$(cd "${WORKDIR}/BUILDTMP/ADGUARDHOME" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export AGH_VERSION=$(cat "${WORKDIR}/adguardhome.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/PATCH" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export AGH_CUSTOM_VERSION="${AGH_VERSION}-ZHIJIE-${AGH_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/ADGUARDHOME" && cp -r "${WORKDIR}/BUILDTMP/PATCH/adguardhome/static/filters.json" "${WORKDIR}/BUILDTMP/ADGUARDHOME/client/src/helpers/filters/filters.json" && cp -r "${WORKDIR}/BUILDTMP/PATCH/adguardhome/static/zh-cn.json" "${WORKDIR}/BUILDTMP/ADGUARDHOME/client/src/__locales/zh-cn.json" && git apply --reject ${WORKDIR}/BUILDTMP/PATCH/adguardhome/*.patch && make -j 1 VERSION="${AGH_CUSTOM_VERSION}" && cp -rf "${WORKDIR}/BUILDTMP/ADGUARDHOME/AdGuardHome" "${WORKDIR}/BUILDKIT/AdGuardHome" && "${WORKDIR}/BUILDKIT/AdGuardHome" --version
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PATH="${PREFIX}/bin:${PATH}" && npm install -g npm yarn && git clone -b master --depth=1 $(cat "${WORKDIR}/adguardhome.source.autobuild") "${WORKDIR}/BUILDTMP/ADGUARDHOME" && git clone -b main --depth=1 $(cat "${WORKDIR}/adguardhome.patch.autobuild") "${WORKDIR}/BUILDTMP/PATCH" && export AGH_SHA=$(cd "${WORKDIR}/BUILDTMP/ADGUARDHOME" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export AGH_VERSION=$(cat "${WORKDIR}/adguardhome.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/PATCH" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export AGH_CUSTOM_VERSION="${AGH_VERSION}-ZHIJIE-${AGH_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/ADGUARDHOME" && cp -r "${WORKDIR}/BUILDTMP/PATCH/adguardhome/static/filters.json" "${WORKDIR}/BUILDTMP/ADGUARDHOME/client/src/helpers/filters/filters.json" && cp -r "${WORKDIR}/BUILDTMP/PATCH/adguardhome/static/zh-cn.json" "${WORKDIR}/BUILDTMP/ADGUARDHOME/client/src/__locales/zh-cn.json" && git apply --reject ${WORKDIR}/BUILDTMP/PATCH/adguardhome/*.patch && make -j 1 VERSION="${AGH_CUSTOM_VERSION}" && cp -rf "${WORKDIR}/BUILDTMP/ADGUARDHOME/AdGuardHome" "${WORKDIR}/BUILDKIT/AdGuardHome" && "${WORKDIR}/BUILDKIT/AdGuardHome" --version
 
 FROM scratch
 
