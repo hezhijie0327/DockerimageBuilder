@@ -1,4 +1,4 @@
-# Current Version: 1.6.0
+# Current Version: 1.6.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -48,9 +48,15 @@ COPY --from=BUILD_ZLIB_NG / /tmp/BUILDLIB/
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" && export CPPFLAGS="-I${PREFIX}/include" && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" && ldconfig --verbose && git clone -b master --depth=1 $(cat "${WORKDIR}/aria2c.source.autobuild") "${WORKDIR}/BUILDTMP/ARIA2" && git clone -b main --depth=1 $(cat "${WORKDIR}/aria2c.patch.autobuild") "${WORKDIR}/BUILDTMP/PATCH" && export ARIA2_SHA=$(cd "${WORKDIR}/BUILDTMP/ARIA2" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export ARIA2_VERSION=$(cat "${WORKDIR}/aria2c.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/PATCH" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export ARIA2_CUSTOM_VERSION="${ARIA2_VERSION}-ZHIJIE-${ARIA2_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/ARIA2" && cat "./configure.ac" | sed "s/$ARIA2_VERSION/$ARIA2_CUSTOM_VERSION/g" > "./configure.ac.tmp" && mv "./configure.ac.tmp" "./configure.ac" && git apply --reject ${WORKDIR}/BUILDTMP/PATCH/aria2/*.patch && autoreconf -i && ARIA2_STATIC=yes ./configure --with-ca-bundle="/etc/ssl/certs/ca-certificates.crt" --with-libcares --with-libcares-prefix=${PREFIX} --with-libexpat --with-libexpat-prefix=${PREFIX} --with-libssh2 --with-libssh2-prefix=${PREFIX} --with-libuv --with-libuv-prefix=${PREFIX} --with-libz --with-libz-prefix=${PREFIX} --with-openssl --with-openssl-prefix=${PREFIX} --with-sqlite3 --with-sqlite3-prefix=${PREFIX} --with-tcmalloc --with-tcmalloc-prefix=${PREFIX} --without-appletls --without-gnutls --without-jemalloc --without-libgcrypt --without-libgmp --without-libnettle --without-libxml2 --without-wintls && make -j $(nproc) && make install && strip -s /usr/local/bin/aria2c && cp -rf "/usr/local/bin/aria2c" "${WORKDIR}/BUILDKIT/aria2c" && "${WORKDIR}/BUILDKIT/aria2c" --version
 
+FROM hezhijie0327/gpg:latest AS GPG_SIGN
+
+COPY --from=BUILD_ARIA2 /tmp/BUILDKIT /tmp/BUILDKIT/
+
+RUN gpg --detach-sign --passphrase "${GPG_PASSPHRASE}" --pinentry-mode "loopback" "/tmp/BUILDKIT/aria2c"
+
 FROM scratch
 
-COPY --from=BUILD_ARIA2 /tmp/BUILDKIT /
+COPY --from=GPG_SIGN /tmp/BUILDKIT /
 
 EXPOSE 51413/tcp 51413/udp 6800/tcp 6881-6889/tcp 6881-6889/udp 6969/tcp 6969/udp
 
