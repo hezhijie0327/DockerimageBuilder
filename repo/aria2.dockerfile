@@ -1,4 +1,4 @@
-# Current Version: 1.6.2
+# Current Version: 1.6.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -52,7 +52,7 @@ FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
 COPY --from=BUILD_ARIA2 /tmp/BUILDKIT /tmp/BUILDKIT/
 
-RUN gpg --detach-sign --passphrase "${GPG_PASSPHRASE}" --pinentry-mode "loopback" "/tmp/BUILDKIT/aria2c"
+RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/aria2c"
 
 FROM scratch
 
