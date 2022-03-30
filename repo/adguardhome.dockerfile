@@ -1,4 +1,4 @@
-# Current Version: 1.5.7
+# Current Version: 1.5.8
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -28,7 +28,7 @@ FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
 COPY --from=BUILD_ADGUARDHOME /tmp/BUILDKIT /tmp/BUILDKIT/
 
-RUN gpg --detach-sign --passphrase "${GPG_PASSPHRASE}" --pinentry-mode "loopback" "/tmp/BUILDKIT/AdGuardHome"
+RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/AdGuardHome"
 
 FROM scratch
 
