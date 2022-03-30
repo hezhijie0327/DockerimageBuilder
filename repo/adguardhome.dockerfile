@@ -1,4 +1,4 @@
-# Current Version: 1.5.6
+# Current Version: 1.5.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
