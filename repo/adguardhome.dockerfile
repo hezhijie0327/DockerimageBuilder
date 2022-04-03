@@ -1,4 +1,4 @@
-# Current Version: 1.5.8
+# Current Version: 1.5.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,13 +6,11 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.adguardhome" > "${WORKDIR}/adguardhome.json" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".version" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".source" > "${WORKDIR}/adguardhome.source.autobuild" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".patch" > "${WORKDIR}/adguardhome.patch.autobuild" && cat "${WORKDIR}/adguardhome.json" | jq -Sr ".version" > "${WORKDIR}/adguardhome.version.autobuild"
 
-FROM hezhijie0327/module:golang AS BUILD_GOLANG
+FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
-FROM hezhijie0327/module:nodejs AS BUILD_NODEJS
+FROM hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 
 FROM hezhijie0327/base:ubuntu AS BUILD_ADGUARDHOME
-
-ENV DEBIAN_FRONTEND="noninteractive"
 
 WORKDIR /tmp
 
