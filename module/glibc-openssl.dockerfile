@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -7,8 +7,6 @@ WORKDIR /tmp
 RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".module.openssl" > "${WORKDIR}/openssl.json" && cat "${WORKDIR}/openssl.json" | jq -Sr ".version" && cat "${WORKDIR}/openssl.json" | jq -Sr ".source" > "${WORKDIR}/openssl.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_OPENSSL
-
-ENV DEBIAN_FRONTEND="noninteractive"
 
 WORKDIR /tmp
 

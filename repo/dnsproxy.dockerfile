@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,11 +6,9 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.dnsproxy" > "${WORKDIR}/dnsproxy.json" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".source" > "${WORKDIR}/dnsproxy.source.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".patch" > "${WORKDIR}/dnsproxy.patch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" > "${WORKDIR}/dnsproxy.version.autobuild"
 
-FROM hezhijie0327/module:golang AS BUILD_GOLANG
+FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
 FROM hezhijie0327/base:ubuntu AS BUILD_DNSPROXY
-
-ENV DEBIAN_FRONTEND="noninteractive"
 
 WORKDIR /tmp
 
