@@ -1,4 +1,4 @@
-# Current Version: 1.6.3
+# Current Version: 1.6.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,25 +6,23 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.aria2c" > "${WORKDIR}/aria2c.json" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".version" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".source" > "${WORKDIR}/aria2c.source.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".patch" > "${WORKDIR}/aria2c.patch.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".version" > "${WORKDIR}/aria2c.version.autobuild"
 
-FROM hezhijie0327/module:cares AS BUILD_C_ARES
+FROM hezhijie0327/module:glibc-cares AS BUILD_C_ARES
 
-FROM hezhijie0327/module:expat AS BUILD_EXPAT
+FROM hezhijie0327/module:glibc-expat AS BUILD_EXPAT
 
-FROM hezhijie0327/module:gperftools AS BUILD_GPERFTOOLS
+FROM hezhijie0327/module:glibc-gperftools AS BUILD_GPERFTOOLS
 
-FROM hezhijie0327/module:libuv AS BUILD_LIBUV
+FROM hezhijie0327/module:glibc-libuv AS BUILD_LIBUV
 
-FROM hezhijie0327/module:libssh2 AS BUILD_LIBSSH2
+FROM hezhijie0327/module:glibc-libssh2 AS BUILD_LIBSSH2
 
-FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
 
-FROM hezhijie0327/module:sqlite AS BUILD_SQLITE
+FROM hezhijie0327/module:glibc-sqlite AS BUILD_SQLITE
 
-FROM hezhijie0327/module:zlibng AS BUILD_ZLIB_NG
+FROM hezhijie0327/module:glibc-zlibng AS BUILD_ZLIB_NG
 
 FROM hezhijie0327/base:ubuntu AS BUILD_ARIA2
-
-ENV DEBIAN_FRONTEND="noninteractive"
 
 WORKDIR /tmp
 
