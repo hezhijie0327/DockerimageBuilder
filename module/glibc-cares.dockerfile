@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -7,8 +7,6 @@ WORKDIR /tmp
 RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".module.c_ares" > "${WORKDIR}/c_ares.json" && cat "${WORKDIR}/c_ares.json" | jq -Sr ".version" && cat "${WORKDIR}/c_ares.json" | jq -Sr ".source" > "${WORKDIR}/c_ares.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_C_ARES
-
-ENV DEBIAN_FRONTEND="noninteractive"
 
 WORKDIR /tmp
 
