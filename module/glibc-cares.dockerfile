@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -12,8 +12,8 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/c_ares.autobuild /tmp/
 
-RUN export WORKDIR=$(pwd) && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" && export CPPFLAGS="-I${PREFIX}/include" && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" && mkdir -p "${WORKDIR}/BUILDTMP/C_ARES" && cd "${WORKDIR}/BUILDTMP/C_ARES" && curl -Ls -o - $(cat "${WORKDIR}/c_ares.autobuild") | tar zxvf - --strip-components=1 && ./configure --disable-tests --enable-static --prefix="${PREFIX}" && make -j $(nproc) && make install && ldconfig --verbose && cd "${WORKDIR}"
+RUN export WORKDIR=$(pwd) && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" && export CPPFLAGS="-I${PREFIX}/include" && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" && mkdir -p "${WORKDIR}/BUILDTMP/C_ARES" && cd "${WORKDIR}/BUILDTMP/C_ARES" && curl -Ls -o - $(cat "${WORKDIR}/c_ares.autobuild") | tar zxvf - --strip-components=1 && ./configure --disable-tests --enable-static --prefix="${PREFIX}/C_ARES" && make -j $(nproc) && make install && ldconfig --verbose && cd "${WORKDIR}"
 
 FROM scratch
 
-COPY --from=BUILD_C_ARES /tmp/BUILDLIB /
+COPY --from=BUILD_C_ARES /tmp/BUILDLIB/C_ARES /
