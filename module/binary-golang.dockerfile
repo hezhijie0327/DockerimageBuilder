@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -12,8 +12,8 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/golang.autobuild /tmp/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDLIB" && cd "${WORKDIR}/BUILDLIB" && curl -Ls -o - $(cat "${WORKDIR}/golang.autobuild") | tar zxvf - --strip-components=1 && cd "${WORKDIR}"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDLIB/GOLANG" && cd "${WORKDIR}/BUILDLIB/GOLANG" && curl -Ls -o - $(cat "${WORKDIR}/golang.autobuild") | tar zxvf - --strip-components=1 && cd "${WORKDIR}"
 
 FROM scratch
 
-COPY --from=BUILD_GOLANG /tmp/BUILDLIB /
+COPY --from=BUILD_GOLANG /tmp/BUILDLIB/GOLANG /
