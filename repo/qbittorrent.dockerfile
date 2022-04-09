@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -7,6 +7,8 @@ WORKDIR /tmp
 RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh" | sed "s/http\:\/\/dl\-cdn/https\:\/\/dl\-cdn/g;s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" > "${WORKDIR}/qbittorrent-nox-static.sh"
 
 FROM hezhijie0327/module:musl-boost AS BUILD_BOOST
+
+FROM hezhijie0327/module:musl-iconv AS BUILD_ICONV
 
 FROM hezhijie0327/module:musl-icu AS BUILD_ICU
 
@@ -31,6 +33,8 @@ WORKDIR /tmp
 COPY --from=GET_INFO /tmp/qbittorrent-nox-static.sh /tmp/
 
 COPY --from=BUILD_BOOST / /tmp/BUILDLIB/
+
+COPY --from=BUILD_ICONV / /tmp/BUILDLIB/
 
 COPY --from=BUILD_ICU / /tmp/BUILDLIB/
 
