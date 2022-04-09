@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -18,9 +18,7 @@ FROM hezhijie0327/module:musl-ninja AS BUILD_NINJA
 
 FROM hezhijie0327/module:musl-openssl AS BUILD_OPENSSL
 
-FROM hezhijie0327/module:musl-qtbase AS BUILD_QTBASE
-
-FROM hezhijie0327/module:musl-qttools AS BUILD_QTTOOLS
+FROM hezhijie0327/module:musl-qt AS BUILD_QT
 
 FROM hezhijie0327/module:musl-zlibng AS BUILD_ZLIBNG
 
@@ -44,9 +42,7 @@ COPY --from=BUILD_NINJA / /tmp/BUILDLIB/
 
 COPY --from=BUILD_OPENSSL / /tmp/BUILDLIB/
 
-COPY --from=BUILD_QTBASE / /tmp/BUILDLIB/
-
-COPY --from=BUILD_QTTOOLS / /tmp/BUILDLIB/
+COPY --from=BUILD_QT / /tmp/BUILDLIB/
 
 COPY --from=BUILD_ZLIBNG / /tmp/BUILDLIB/
 
