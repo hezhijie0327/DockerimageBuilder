@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -9,6 +9,8 @@ RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubuse
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
 FROM hezhijie0327/base:ubuntu AS BUILD_MOSDNS
+
+ENV CGO_ENABLED="0"
 
 WORKDIR /tmp
 
