@@ -1,10 +1,10 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.dnsproxy" > "${WORKDIR}/dnsproxy.json" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".source" > "${WORKDIR}/dnsproxy.source.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".patch" > "${WORKDIR}/dnsproxy.patch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" > "${WORKDIR}/dnsproxy.version.autobuild"
+RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.dnsproxy" > "${WORKDIR}/dnsproxy.json" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".source" > "${WORKDIR}/dnsproxy.source.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".source_branch" > "${WORKDIR}/dnsproxy.source_branch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".patch" > "${WORKDIR}/dnsproxy.patch.autobuild" && $(cat "${WORKDIR}/dnsproxy.patch_branch.autobuild") && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" > "${WORKDIR}/dnsproxy.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
@@ -16,7 +16,7 @@ COPY --from=GET_INFO /tmp/dnsproxy.*.autobuild /tmp/
 
 COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b master --depth=1 $(cat "${WORKDIR}/dnsproxy.source.autobuild") "${WORKDIR}/BUILDTMP/DNSPROXY" && git clone -b main --depth=1 $(cat "${WORKDIR}/dnsproxy.patch.autobuild") "${WORKDIR}/BUILDTMP/PATCH" && export DNSPROXY_SHA=$(cd "${WORKDIR}/BUILDTMP/DNSPROXY" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export DNSPROXY_VERSION=$(cat "${WORKDIR}/dnsproxy.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/PATCH" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export DNSPROXY_CUSTOM_VERSION="${DNSPROXY_VERSION}-ZHIJIE-${DNSPROXY_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/DNSPROXY" && make -j 1 VERSION="${DNSPROXY_CUSTOM_VERSION}" && cp -rf "${WORKDIR}/BUILDTMP/DNSPROXY/dnsproxy" "${WORKDIR}/BUILDKIT/dnsproxy" && "${WORKDIR}/BUILDKIT/dnsproxy" --version
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/dnsproxy.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/dnsproxy.source.autobuild") "${WORKDIR}/BUILDTMP/DNSPROXY" && git clone -b $(cat "${WORKDIR}/dnsproxy.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/dnsproxy.patch.autobuild") "${WORKDIR}/BUILDTMP/PATCH" && export DNSPROXY_SHA=$(cd "${WORKDIR}/BUILDTMP/DNSPROXY" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export DNSPROXY_VERSION=$(cat "${WORKDIR}/dnsproxy.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/PATCH" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export DNSPROXY_CUSTOM_VERSION="${DNSPROXY_VERSION}-ZHIJIE-${DNSPROXY_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/DNSPROXY" && make -j 1 VERSION="${DNSPROXY_CUSTOM_VERSION}" && cp -rf "${WORKDIR}/BUILDTMP/DNSPROXY/dnsproxy" "${WORKDIR}/BUILDKIT/dnsproxy" && "${WORKDIR}/BUILDKIT/dnsproxy" --version
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
