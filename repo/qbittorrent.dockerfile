@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -50,7 +50,7 @@ COPY --from=BUILD_QT / /tmp/BUILDLIB/
 
 COPY --from=BUILD_ZLIBNG / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDLIB" "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && cd "${WORKDIR}/BUILDLIB" && export qbt_cross_name=$(uname -m) && bash "${WORKDIR}/qbittorrent-nox-static.sh" qbittorrent --qbittorrent-master --strip -b "${WORKDIR}/BUILDLIB" && cd "${WORKDIR}" && cp -rf "${WORKDIR}/BUILDLIB/completed/qbittorrent-nox" "${WORKDIR}/BUILDKIT/qbittorrent-nox" && "${WORKDIR}/BUILDKIT/qbittorrent-nox" --version
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDLIB" "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && cd "${WORKDIR}/BUILDLIB" && export qbt_cross_name=$(uname -m) && bash "${WORKDIR}/qbittorrent-nox-static.sh" qbittorrent --qbittorrent-master --strip -b "${WORKDIR}/BUILDLIB" && cd "${WORKDIR}" && cp -rf "${WORKDIR}/BUILDLIB/completed/qbittorrent-nox" "${WORKDIR}/BUILDKIT/qbittorrent-nox"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
