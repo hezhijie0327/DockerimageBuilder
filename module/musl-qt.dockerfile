@@ -1,12 +1,10 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh" | sed "s/http\:\/\/dl\-cdn/https\:\/\/dl\-cdn/g;s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" > "${WORKDIR}/qbittorrent-nox-static.sh"
-
-FROM hezhijie0327/module:musl-doubleconversion AS BUILD_DOUBLECONVERSION
 
 FROM hezhijie0327/module:musl-icu AS BUILD_ICU
 
@@ -25,8 +23,6 @@ ENV qbt_build_tool="cmake" qbt_qt_version="6.2"
 WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/qbittorrent-nox-static.sh /tmp/
-
-COPY --from=BUILD_DOUBLECONVERSION / /tmp/BUILDLIB/
 
 COPY --from=BUILD_ICU / /tmp/BUILDLIB/
 
