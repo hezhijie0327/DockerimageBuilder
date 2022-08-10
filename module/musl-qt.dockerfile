@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -9,8 +9,6 @@ RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubuse
 FROM hezhijie0327/module:musl-icu AS BUILD_ICU
 
 FROM hezhijie0327/module:musl-iconv AS BUILD_ICONV
-
-FROM hezhijie0327/module:musl-libexecinfo AS BUILD_LIBEXECINFO
 
 FROM hezhijie0327/module:musl-ninja AS BUILD_NINJA
 
@@ -29,8 +27,6 @@ COPY --from=GET_INFO /tmp/qbittorrent-nox-static.sh /tmp/
 COPY --from=BUILD_ICU / /tmp/BUILDLIB/
 
 COPY --from=BUILD_ICONV / /tmp/BUILDLIB/
-
-COPY --from=BUILD_LIBEXECINFO / /tmp/BUILDLIB/
 
 COPY --from=BUILD_NINJA / /tmp/BUILDLIB/
 

@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.9
 
 name: Build & Push hezhijie0327/DockerimageBuilder/module
 
@@ -9,7 +9,52 @@ on:
         - cron: "0 0 * * *"
 
 jobs:
+    build-base-alpine:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Step 1 - Checkout
+              uses: actions/checkout@v3.0.0
+            - name: Step 2 - Set up QEMU
+              uses: docker/setup-qemu-action@v1.2.0
+            - name: Step 3 - Set up Docker Buildx
+              uses: docker/setup-buildx-action@v1.6.0
+            - name: Step 4 - Login to Docker Hub
+              uses: docker/login-action@v1.10.0
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+            - name: Step 5 - Build base:alpine
+              uses: docker/build-push-action@v2.10.0
+              with:
+                  file: ./module/base-alpine.dockerfile
+                  platforms: linux/amd64, linux/arm64
+                  push: true
+                  tags: |
+                      hezhijie0327/base:alpine
+    build-base-ubuntu:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Step 1 - Checkout
+              uses: actions/checkout@v3.0.0
+            - name: Step 2 - Set up QEMU
+              uses: docker/setup-qemu-action@v1.2.0
+            - name: Step 3 - Set up Docker Buildx
+              uses: docker/setup-buildx-action@v1.6.0
+            - name: Step 4 - Login to Docker Hub
+              uses: docker/login-action@v1.10.0
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+            - name: Step 5 - Build base:ubuntu
+              uses: docker/build-push-action@v2.10.0
+              with:
+                  file: ./module/base-ubuntu.dockerfile
+                  platforms: linux/amd64, linux/arm64
+                  push: true
+                  tags: |
+                      hezhijie0327/base:ubuntu
     build-binary-golang:
+        needs: [build-base-alpine]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -32,6 +77,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:binary-golang
     build-binary-nodejs:
+        needs: [build-base-alpine]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -54,6 +100,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:binary-nodejs
     build-glibc-cares:
+        needs: [build-base-alpine, build-base-ubuntu]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -76,6 +123,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:glibc-cares
     build-glibc-expat:
+        needs: [build-base-alpine, build-base-ubuntu]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -98,6 +146,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:glibc-expat
     build-glibc-gperftools:
+        needs: [build-base-alpine, build-base-ubuntu]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -120,7 +169,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:glibc-gperftools
     build-glibc-libssh2:
-        needs: [build-glibc-openssl]
+        needs: [build-base-alpine, build-base-ubuntu, build-glibc-openssl]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -143,6 +192,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:glibc-libssh2
     build-glibc-libuv:
+        needs: [build-base-alpine, build-base-ubuntu]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -165,6 +215,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:glibc-libuv
     build-glibc-openssl:
+        needs: [build-base-alpine, build-base-ubuntu]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -187,6 +238,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:glibc-openssl
     build-glibc-sqlite:
+        needs: [build-base-alpine, build-base-ubuntu]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -209,6 +261,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:glibc-sqlite
     build-glibc-zlibng:
+        needs: [build-base-alpine, build-base-ubuntu]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -231,7 +284,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:glibc-zlibng
     build-musl-boost:
-        needs: [build-musl-icu]
+        needs: [build-base-alpine, build-musl-icu]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -254,6 +307,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:musl-boost
     build-musl-iconv:
+        needs: [build-base-alpine]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -276,6 +330,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:musl-iconv
     build-musl-icu:
+        needs: [build-base-alpine]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -297,30 +352,8 @@ jobs:
                   push: true
                   tags: |
                       hezhijie0327/module:musl-icu
-    build-musl-libexecinfo:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Step 1 - Checkout
-              uses: actions/checkout@v3.0.0
-            - name: Step 2 - Set up QEMU
-              uses: docker/setup-qemu-action@v1.2.0
-            - name: Step 3 - Set up Docker Buildx
-              uses: docker/setup-buildx-action@v1.6.0
-            - name: Step 4 - Login to Docker Hub
-              uses: docker/login-action@v1.10.0
-              with:
-                  username: ${{ secrets.DOCKERHUB_USERNAME }}
-                  password: ${{ secrets.DOCKERHUB_TOKEN }}
-            - name: Step 5 - Build module:musl-libexecinfo
-              uses: docker/build-push-action@v2.10.0
-              with:
-                  file: ./module/musl-libexecinfo.dockerfile
-                  platforms: linux/amd64, linux/arm64
-                  push: true
-                  tags: |
-                      hezhijie0327/module:musl-libexecinfo
     build-musl-libtorrent:
-        needs: [build-musl-boost, build-musl-iconv, build-musl-ninja, build-musl-openssl]
+        needs: [build-base-alpine, build-musl-boost, build-musl-iconv, build-musl-ninja, build-musl-openssl]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -343,6 +376,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:musl-libtorrent
     build-musl-ninja:
+        needs: [build-base-alpine]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -365,6 +399,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:musl-ninja
     build-musl-openssl:
+        needs: [build-base-alpine]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -387,7 +422,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:musl-openssl
     build-musl-qt:
-        needs: [build-musl-icu, build-musl-iconv, build-musl-libexecinfo, build-musl-ninja, build-musl-openssl, build-musl-zlibng]
+        needs: [build-base-alpine, build-musl-icu, build-musl-iconv, build-musl-ninja, build-musl-openssl, build-musl-zlibng]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
@@ -410,7 +445,7 @@ jobs:
                   tags: |
                       hezhijie0327/module:musl-qt
     build-musl-zlibng:
-        needs: [build-musl-ninja]
+        needs: [build-base-alpine, build-musl-ninja]
         runs-on: ubuntu-latest
         steps:
             - name: Step 1 - Checkout
