@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -33,7 +33,8 @@ ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="compute,video,u
 COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
 
-RUN apt-get update \
+RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
+    && apt-get update \
     && apt-get install --no-install-recommends --no-install-suggests -y ca-certificates gnupg wget \
     && wget -O - https://repo.jellyfin.org/jellyfin_team.gpg.key | apt-key add - \
     && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
@@ -47,7 +48,8 @@ RUN apt-get update \
     && apt-get remove gnupg wget -y \
     && apt-get clean autoclean -y \
     && apt-get autoremove -y \
-    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
+    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* \
+    && sed -i "s/archive.ubuntu.com/mirrors.ustc.edu.cn/g;s/ports.ubuntu.com/mirrors.ustc.edu.cn/g;s/security.ubuntu.com/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list"
 
 EXPOSE 8096/tcp 8920/tcp
 
