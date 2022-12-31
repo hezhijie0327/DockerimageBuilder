@@ -1,10 +1,10 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN git clone --depth=1 https://github.com/jellyfin/jellyfin
+RUN git clone --depth=1 https://github.com/jellyfin/jellyfin && cd jellyfin && git submodule update --init
 
 FROM hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 
@@ -16,7 +16,7 @@ WORKDIR /tmp/BUILDTMP/jellyfin
 
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 
-RUN dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="/tmp/BUILDKIT/jellyfin" --self-contained --runtime linux-$(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") -p:DebugSymbols=false -p:DebugType=none
+RUN dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="/tmp/BUILDKIT/jellyfin" --self-contained --runtime linux-x64 -p:DebugSymbols=false -p:DebugType=none
 
 FROM hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 
@@ -38,13 +38,12 @@ RUN apt-get update \
     && wget -O - https://repo.jellyfin.org/jellyfin_team.gpg.key | apt-key add - \
     && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
     && apt-get update \
-    && if [ $(uname -m | sed "s/x86_64/amd64/g;s/x86-64/amd64/g;s/x64/amd64/g;s/aarch64/arm64/g") == "amd64" ]; then apt install --no-install-recommends --no-install-suggests -y mesa-va-drivers; fi \
-    && if [ $(uname -m | sed "s/x86_64/amd64/g;s/x86-64/amd64/g;s/x64/amd64/g;s/aarch64/arm64/g") == "arm64" ]; then apt install --no-install-recommends --no-install-suggests -y libomxil-bellagio0 libomxil-bellagio-bin libraspberrypi0; fi \
     && apt-get install --no-install-recommends --no-install-suggests -y \
     jellyfin-ffmpeg5 \
     libfontconfig1 \
     libfreetype6 \
     libssl3 \
+    mesa-va-drivers \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 EXPOSE 8096/tcp 8920/tcp
