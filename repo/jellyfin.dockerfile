@@ -4,7 +4,7 @@ FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN git clone https://github.com/jellyfin/jellyfin --depth=1
+RUN git clone --depth=1 https://github.com/jellyfin/jellyfin
 
 FROM hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 
