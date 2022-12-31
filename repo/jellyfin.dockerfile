@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -37,13 +37,19 @@ RUN apt-get update \
     && apt-get install --no-install-recommends --no-install-suggests -y ca-certificates gnupg wget \
     && wget -O - https://repo.jellyfin.org/jellyfin_team.gpg.key | apt-key add - \
     && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
+    && wget -O - https://repositories.intel.com/graphics/intel-graphics.key | apt-key add - \
+    && echo "deb [arch=$( dpkg --print-architecture )] https://repositories.intel.com/graphics/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/intel-graphics.list \
     && apt-get update \
     && apt-get install --no-install-recommends --no-install-suggests -y \
+    intel-opencl-icd intel-level-zero-gpu level-zero \
+    intel-media-va-driver-non-free libmfx1 libmfxgen1 libvpl2 \
+    libegl-mesa0 libegl1-mesa libegl1-mesa-dev libgbm1 libgl1-mesa-dev libgl1-mesa-dri \
+    libglapi-mesa libgles2-mesa-dev libglx-mesa0 libigdgmm12 libxatracker2 mesa-va-drivers \
+    mesa-vdpau-drivers mesa-vulkan-drivers va-driver-all \
     jellyfin-ffmpeg5 \
     libfontconfig1 \
     libfreetype6 \
     libssl3 \
-    mesa-va-drivers \
     && apt-get remove gnupg wget -y \
     && apt-get clean autoclean -y \
     && apt-get autoremove -y \
