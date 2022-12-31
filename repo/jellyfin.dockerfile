@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -34,7 +34,7 @@ COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends --no-install-suggests -y ca-certificates gnupg wget curl \
+    && apt-get install --no-install-recommends --no-install-suggests -y ca-certificates gnupg wget \
     && wget -O - https://repo.jellyfin.org/jellyfin_team.gpg.key | apt-key add - \
     && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
     && apt-get update \
@@ -44,6 +44,9 @@ RUN apt-get update \
     libfreetype6 \
     libssl3 \
     mesa-va-drivers \
+    && apt-get remove gnupg wget -y \
+    && apt-get clean autoclean -y \
+    && apt-get autoremove -y \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 EXPOSE 8096/tcp 8920/tcp
