@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -35,7 +35,6 @@ ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="compute,video,u
 
 COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
-COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
 
 RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
     && apt-get update \
@@ -48,7 +47,6 @@ RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/t
     libfontconfig1 \
     libfreetype6 \
     libssl3 \
-    && if [ $(cat "/tmp/BUILDTMP/arch") = "arm64" ]; then apt-get install --no-install-recommends --no-install-suggests -qy libomxil-bellagio0-bin libomxil-bellagio0 libraspberrypi0; else apt-get install --no-install-recommends --no-install-suggests -qy mesa-va-drivers; fi \
     && wget -O - "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
     && apt-get remove -qy gnupg wget \
     && apt-get -t $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release )-backports full-upgrade -qy > "/dev/null" 2>&1 \
