@@ -1,4 +1,4 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -55,6 +55,6 @@ RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/t
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* \
     && sed -i "s/archive.ubuntu.com/mirrors.ustc.edu.cn/g;s/ports.ubuntu.com/mirrors.ustc.edu.cn/g;s/security.ubuntu.com/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list"
 
-EXPOSE 8096/tcp 8920/tcp
+EXPOSE 1900/udp 7359/udp 8096/tcp 8920/tcp
 
 ENTRYPOINT ["/jellyfin/jellyfin", "--ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffmpeg"]
