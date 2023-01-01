@@ -1,22 +1,23 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN git clone --depth=1 https://github.com/jellyfin/jellyfin && cd jellyfin && git submodule update --init
+RUN git clone --depth=1 https://github.com/jellyfin/jellyfin && cd jellyfin && git submodule update --init && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "/tmp/arch"
 
 FROM hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 
-FROM mcr.microsoft.com/dotnet/sdk:7.0 as BUILD_JELLYFIN
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:7.0 as BUILD_JELLYFIN
 
+COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
 COPY --from=GET_INFO /tmp/jellyfin /tmp/BUILDTMP/jellyfin
 
 WORKDIR /tmp/BUILDTMP/jellyfin
 
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 
-RUN dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="/tmp/BUILDKIT/jellyfin" --self-contained --runtime linux-x64 -p:DebugSymbols=false -p:DebugType=none
+RUN if [ $(cat "/tmp/BUILDTMP/arch") = "arm64" ]; then find . -type d -name obj | xargs -r rm -r && dotnet publish Jellyfin.Server --configuration Release --output="/tmp/BUILDKIT/jellyfin" --self-contained --runtime linux-arm64 -p:DebugSymbols=false -p:DebugType=none; else dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="/tmp/BUILDKIT/jellyfin" --self-contained --runtime linux-x64 -p:DebugSymbols=false -p:DebugType=none; fi
 
 FROM hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 
