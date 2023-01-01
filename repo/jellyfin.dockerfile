@@ -1,10 +1,10 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN git clone --depth=1 https://github.com/jellyfin/jellyfin && cd jellyfin && git submodule update --init && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "/tmp/arch"
+RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.jellyfin" > "${WORKDIR}/jellyfin.json" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source" > "${WORKDIR}/jellyfin.source.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source_branch" > "${WORKDIR}/jellyfin.source_branch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch" > "${WORKDIR}/jellyfin.patch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch_branch" > "${WORKDIR}/jellyfin.patch_branch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" > "${WORKDIR}/jellyfin.version.autobuild" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") && cd jellyfin && git submodule update --init && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "/tmp/arch"
 
 FROM --platform=linux/amd64 hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 
@@ -12,6 +12,7 @@ FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:7.0 as BUILD_JELLYFIN
 
 COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
 COPY --from=GET_INFO /tmp/jellyfin /tmp/BUILDTMP/jellyfin
+COPY --from=GET_INFO /tmp/jellyfin.*.autobuild /tmp/
 
 WORKDIR /tmp/BUILDTMP/jellyfin
 
@@ -24,8 +25,9 @@ FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 WORKDIR /tmp
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
+COPY --from=GET_INFO /tmp/jellyfin.*.autobuild /tmp/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone --depth=1 "https://github.com/jellyfin/jellyfin-web" "${WORKDIR}/BUILDTMP/jellyfin-web" && cd "${WORKDIR}/BUILDTMP/jellyfin-web" && npm ci --no-audit --unsafe-perm && mv "${WORKDIR}/BUILDTMP/jellyfin-web/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild" | sed "s/\.git/-web\.git/g") "${WORKDIR}/BUILDTMP/jellyfin-web" && cd "${WORKDIR}/BUILDTMP/jellyfin-web" && npm ci --no-audit --unsafe-perm && mv "${WORKDIR}/BUILDTMP/jellyfin-web/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
 
 FROM ubuntu:latest
 
