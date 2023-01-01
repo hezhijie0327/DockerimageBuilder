@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -8,7 +8,7 @@ RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubuse
 
 FROM --platform=linux/amd64 hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:7.0 as BUILD_JELLYFIN
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:6.0 as BUILD_JELLYFIN
 
 COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
 COPY --from=GET_INFO /tmp/jellyfin /tmp/BUILDTMP/jellyfin
