@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -36,19 +36,23 @@ COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
 
 RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
     && apt-get update \
-    && apt-get install --no-install-recommends --no-install-suggests -y ca-certificates gnupg wget \
-    && wget -O - https://repo.jellyfin.org/jellyfin_team.gpg.key | apt-key add - \
+    && apt-get install --no-install-recommends --no-install-suggests -qy ca-certificates gnupg wget \
+    && wget -O - "https://repo.jellyfin.org/jellyfin_team.gpg.key" | apt-key add - \
     && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
     && apt-get update \
-    && apt-get install --no-install-recommends --no-install-suggests -y \
-    jellyfin-ffmpeg5 \
+    && apt-get install --no-install-recommends --no-install-suggests -qy \
+    fonts-noto-cjk-extra \
+    fonts-noto-cjk \
+    jellyfin-ffmpeg \
     libfontconfig1 \
     libfreetype6 \
     libssl3 \
-    mesa-va-drivers \
-    && apt-get remove gnupg wget -y \
-    && apt-get clean autoclean -y \
-    && apt-get autoremove -y \
+    && if [ $(cat "/tmp/BUILDTMP/arch") = "arm64" ]; then apt-get install --no-install-recommends --no-install-suggests -qy libomxil-bellagio0-bin libomxil-bellagio0 libraspberrypi0; else apt-get install --no-install-recommends --no-install-suggests -qy mesa-va-drivers; fi \
+    && wget -O - "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
+    && apt-get remove -qy gnupg wget \
+    && apt-get -t $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release )-backports full-upgrade -qy > "/dev/null" 2>&1 \
+    && apt-get clean autoclean -qy \
+    && apt-get autoremove -qy \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* \
     && sed -i "s/archive.ubuntu.com/mirrors.ustc.edu.cn/g;s/ports.ubuntu.com/mirrors.ustc.edu.cn/g;s/security.ubuntu.com/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list"
 
