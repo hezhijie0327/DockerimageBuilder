@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -24,7 +24,7 @@ FROM hezhijie0327/module:musl-zlibng AS BUILD_ZLIBNG
 
 FROM hezhijie0327/base:alpine AS BUILD_QBITTORRENT
 
-ENV qbt_build_tool="cmake" qbt_qt_version="6.2"
+ENV qbt_build_tool="cmake" qbt_qt_version="6"
 
 WORKDIR /tmp
 
