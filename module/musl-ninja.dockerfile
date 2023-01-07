@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -8,7 +8,7 @@ RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubuse
 
 FROM hezhijie0327/base:alpine AS BUILD_NINJA
 
-ENV qbt_build_tool="cmake" qbt_qt_version="6.2"
+ENV qbt_build_tool="cmake" qbt_qt_version="6"
 
 WORKDIR /tmp
 
