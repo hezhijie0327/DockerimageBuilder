@@ -1,4 +1,4 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -29,31 +29,34 @@ COPY --from=GET_INFO /tmp/jellyfin.*.autobuild /tmp/
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild" | sed "s/\.git/-web\.git/g") "${WORKDIR}/BUILDTMP/jellyfin-web" && cd "${WORKDIR}/BUILDTMP/jellyfin-web" && npm ci --no-audit --unsafe-perm && mv "${WORKDIR}/BUILDTMP/jellyfin-web/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
 
-FROM ubuntu:latest
+FROM ubuntu:latest AS REBASED_JELLYFIN
 
-ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
+ENV DEBIAN_FRONTEND="noninteractive"
 
+COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /tmp/ca-certificates.crt
 COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
 
 RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
-    && apt-get update \
-    && apt-get install --no-install-recommends --no-install-suggests -qy ca-certificates gnupg wget \
+    && apt update \
+    && apt install --no-install-recommends --no-install-suggests -qy ca-certificates gnupg openssl wget \
     && wget -O - "https://repo.jellyfin.org/jellyfin_team.gpg.key" | apt-key add - \
     && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
-    && apt-get update \
-    && apt-get install --no-install-recommends --no-install-suggests -qy \
-    jellyfin-ffmpeg5 \
-    libfontconfig1 \
-    libfreetype6 \
-    libssl3 \
-    && wget -O - "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
-    && apt-get remove -qy gnupg wget \
-    && apt-get -t $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release )-backports full-upgrade -qy > "/dev/null" 2>&1 \
-    && apt-get clean autoclean -qy \
-    && apt-get autoremove -qy \
-    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* \
-    && sed -i "s/archive.ubuntu.com/mirrors.ustc.edu.cn/g;s/ports.ubuntu.com/mirrors.ustc.edu.cn/g;s/security.ubuntu.com/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list"
+    && apt update \
+    && apt install --no-install-recommends --no-install-suggests -qy jellyfin-ffmpeg5 \
+    && apt-key del 49023CD01DE21A7B \
+    && apt purge -qy ca-certificates dbus-user-session dirmngr gnupg gnupg-l10n gnupg-utils gpg gpg-agent gpg-wks-client gpg-wks-server gpgconf gpgsm libassuan0 libksba8 libldap-2.5-0 libnpth0 libpam-systemd libpsl5 libreadline8 libsasl2-2 libsasl2-modules-db libsasl2-modules-gssapi-heimdal libsasl2-modules-gssapi-mit libsasl2-modules-ldap libsasl2-modules-otp libsasl2-modules-sql libsqlite3-0 parcimonie pinentry-curses pinentry-doc pinentry-gnome3 readline-common readline-doc scdaemon tor wget xloadimage \
+    && apt autoremove -qy \
+    && apt clean autoclean -qy \
+    && mkdir -p "/etc/ssl/certs" && mv /tmp/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt \
+    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /etc/apt/sources.list.d/jellyfin.list \
+    && sed -i "s/http:/https:/g;s/archive.ubuntu.com/mirrors.ustc.edu.cn/g;s/ports.ubuntu.com/mirrors.ustc.edu.cn/g;s/security.ubuntu.com/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list"
+
+FROM scratch
+
+ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
+
+COPY --from=REBASED_JELLYFIN / /
 
 EXPOSE 1900/udp 7359/udp 8096/tcp 8920/tcp
 
