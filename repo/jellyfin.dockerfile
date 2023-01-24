@@ -1,4 +1,4 @@
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -34,22 +34,22 @@ FROM ubuntu:latest AS REBASED_JELLYFIN
 ENV DEBIAN_FRONTEND="noninteractive"
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=GET_INFO /tmp/amd.gpg /usr/share/keyrings/amd.gpg
-COPY --from=GET_INFO /tmp/intel.gpg /usr/share/keyrings/intel.gpg
-COPY --from=GET_INFO /tmp/jellyfin.gpg /usr/share/keyrings/jellyfin.gpg
-COPY --from=GET_INFO /tmp/nvidia.gpg /usr/share/keyrings/nvidia.gpg
+COPY --from=GET_INFO /tmp/amd.gpg /usr/share/keyrings/amd-archive-keyring.gpg
+COPY --from=GET_INFO /tmp/intel.gpg /usr/share/keyrings/intel-archive-keyring.gpg
+COPY --from=GET_INFO /tmp/jellyfin.gpg /usr/share/keyrings/jellyfin-archive-keyring.gpg
+COPY --from=GET_INFO /tmp/nvidia.gpg /usr/share/keyrings/nvidia-archive-keyring.gpg
 COPY --from=GET_INFO /tmp/patch-fbc.sh /opt/nvidia-patch/patch-fbc.sh
 COPY --from=GET_INFO /tmp/patch.sh /opt/nvidia-patch/patch.sh
 COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
 
 RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
-    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" > "/etc/apt/sources.list.d/amd.list" \
-    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/rocm/apt/latest $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" \
-    && echo "# deb-src [arch=amd64 signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" \
-    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/intel.gpg] https://repositories.intel.com/graphics/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) arc legacy" > "/etc/apt/sources.list.d/intel.list" \
-    && echo "# deb [arch=$( dpkg --print-architecture ) signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" > "/etc/apt/sources.list.d/jellyfin.list" \
-    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/nvidia.gpg] https://developer.download.nvidia.com/compute/cuda/repos/$(. /etc/os-release;echo $ID$VERSION_ID | tr -d .)/x86_64/ /" > "/etc/apt/sources.list.d/nvidia.list" \
+    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" > "/etc/apt/sources.list.d/amd.list" \
+    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/rocm/apt/latest $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" \
+    && echo "# deb-src [arch=amd64 signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" \
+    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/graphics/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) arc legacy" > "/etc/apt/sources.list.d/intel.list" \
+    && echo "# deb [arch=$( dpkg --print-architecture ) signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" > "/etc/apt/sources.list.d/jellyfin.list" \
+    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/nvidia-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/$(. /etc/os-release;echo $ID$VERSION_ID | tr -d .)/x86_64/ /" > "/etc/apt/sources.list.d/nvidia.list" \
     && cat "/etc/apt/sources.list.d/jellyfin.list" | sed "s/# //g" > "/etc/apt/sources.list.d/jellyfin_build.list" \
     && apt update \
     && apt install --no-install-recommends --no-install-suggests -qy jellyfin-ffmpeg5 \
