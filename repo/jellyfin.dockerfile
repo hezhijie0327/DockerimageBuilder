@@ -1,4 +1,4 @@
-# Current Version: 1.1.9
+# Current Version: 1.2.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -44,14 +44,12 @@ COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
 
 RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
-    && apt update \
-    && apt install --no-install-recommends --no-install-suggests -qy openssl \
-    && echo "# deb [signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" > "/etc/apt/sources.list.d/amd.list" \
+    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" > "/etc/apt/sources.list.d/amd.list" \
     && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/rocm/apt/latest $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" \
-    && echo "# deb-src [signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" \
+    && echo "# deb-src [arch=amd64 signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" \
     && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/intel.gpg] https://repositories.intel.com/graphics/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) arc legacy" > "/etc/apt/sources.list.d/intel.list" \
     && echo "# deb [arch=$( dpkg --print-architecture ) signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" > "/etc/apt/sources.list.d/jellyfin.list" \
-    && echo "# deb [signed-by=/usr/share/keyrings/nvidia.gpg] https://developer.download.nvidia.com/compute/cuda/repos/$(. /etc/os-release;echo $ID$VERSION_ID | tr -d .)/x86_64/ /" > "/etc/apt/sources.list.d/nvidia.list" \
+    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/nvidia.gpg] https://developer.download.nvidia.com/compute/cuda/repos/$(. /etc/os-release;echo $ID$VERSION_ID | tr -d .)/x86_64/ /" > "/etc/apt/sources.list.d/nvidia.list" \
     && cat "/etc/apt/sources.list.d/jellyfin.list" | sed "s/# //g" > "/etc/apt/sources.list.d/jellyfin_build.list" \
     && apt update \
     && apt install --no-install-recommends --no-install-suggests -qy jellyfin-ffmpeg5 \
