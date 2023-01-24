@@ -1,4 +1,4 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -44,12 +44,11 @@ RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/t
     && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
     && apt update \
     && apt install --no-install-recommends --no-install-suggests -qy jellyfin-ffmpeg5 \
-    && apt-key del 49023CD01DE21A7B \
     && apt purge -qy ca-certificates dbus-user-session dirmngr gnupg gnupg-l10n gnupg-utils gpg gpg-agent gpg-wks-client gpg-wks-server gpgconf gpgsm libassuan0 libksba8 libldap-2.5-0 libnpth0 libpam-systemd libpsl5 libreadline8 libsasl2-2 libsasl2-modules-db libsasl2-modules-gssapi-heimdal libsasl2-modules-gssapi-mit libsasl2-modules-ldap libsasl2-modules-otp libsasl2-modules-sql libsqlite3-0 parcimonie pinentry-curses pinentry-doc pinentry-gnome3 readline-common readline-doc scdaemon tor wget xloadimage \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
     && mkdir -p "/etc/ssl/certs" && mv /tmp/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt \
-    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /etc/apt/sources.list.d/jellyfin.list \
+    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /etc/apt/sources.list.d/jellyfin.list /etc/apt/trusted.gpg \
     && sed -i "s/http:/https:/g;s/archive.ubuntu.com/mirrors.ustc.edu.cn/g;s/ports.ubuntu.com/mirrors.ustc.edu.cn/g;s/security.ubuntu.com/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list"
 
 FROM scratch
