@@ -1,10 +1,10 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.jellyfin" > "${WORKDIR}/jellyfin.json" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source" > "${WORKDIR}/jellyfin.source.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source_branch" > "${WORKDIR}/jellyfin.source_branch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch" > "${WORKDIR}/jellyfin.patch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch_branch" > "${WORKDIR}/jellyfin.patch_branch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" > "${WORKDIR}/jellyfin.version.autobuild" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") && cd jellyfin && git submodule update --init && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "/tmp/arch"
+RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.jellyfin" > "${WORKDIR}/jellyfin.json" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source" > "${WORKDIR}/jellyfin.source.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source_branch" > "${WORKDIR}/jellyfin.source_branch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch" > "${WORKDIR}/jellyfin.patch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch_branch" > "${WORKDIR}/jellyfin.patch_branch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" > "${WORKDIR}/jellyfin.version.autobuild" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") && cd jellyfin && git submodule update --init && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "${WORKDIR}/arch" && curl -s --connect-timeout 15 "https://repo.radeon.com/rocm/rocm.gpg.key" | gpg --dearmor > "${WORKDIR}/amd.gpg" && curl -s --connect-timeout 15 "https://repositories.intel.com/graphics/intel-graphics.key" | gpg --dearmor > "${WORKDIR}/intel.gpg" && curl -s --connect-timeout 15 "https://repo.jellyfin.org/jellyfin_team.gpg.key" | gpg --dearmor > "${WORKDIR}/jellyfin.gpg" && curl -s --connect-timeout 15 "https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/3bf863cc.pub" | gpg --dearmor > "${WORKDIR}/nvidia.gpg"
 
 FROM --platform=linux/amd64 hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 
@@ -33,27 +33,34 @@ FROM ubuntu:latest AS REBASED_JELLYFIN
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
-COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /tmp/ca-certificates.crt
+COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=GET_INFO /tmp/amd.gpg /usr/share/keyrings/amd.gpg
+COPY --from=GET_INFO /tmp/intel.gpg /usr/share/keyrings/intel.gpg
+COPY --from=GET_INFO /tmp/jellyfin.gpg /usr/share/keyrings/jellyfin.gpg
+COPY --from=GET_INFO /tmp/nvidia.gpg /usr/share/keyrings/nvidia.gpg
 COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
 
 RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
     && apt update \
-    && apt install --no-install-recommends --no-install-suggests -qy ca-certificates gnupg openssl wget \
-    && wget -O - "https://repo.jellyfin.org/jellyfin_team.gpg.key" | apt-key add - \
-    && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
+    && apt install --no-install-recommends --no-install-suggests -qy openssl \
+    && echo "# deb [signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" > "/etc/apt/sources.list.d/amd.list" \
+    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/rocm/apt/latest $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" >> "/etc/apt/sources.list.d/amd.list" \
+    && echo "# deb-src [signed-by=/usr/share/keyrings/amd.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" >> "/etc/apt/sources.list.d/amd.list" \
+    && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/intel.gpg] https://repositories.intel.com/graphics/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) arc legacy" > "/etc/apt/sources.list.d/intel.list" \
+    && echo "# deb [arch=$( dpkg --print-architecture ) signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" > "/etc/apt/sources.list.d/jellyfin.list" \
+    && echo "# deb [signed-by=/usr/share/keyrings/nvidia.gpg] https://developer.download.nvidia.com/compute/cuda/repos/$(. /etc/os-release;echo $ID$VERSION_ID | tr -d .)/x86_64/ /" > "/etc/apt/sources.list.d/nvidia.list" \
+    && cat "/etc/apt/sources.list.d/jellyfin.list" | sed "s/# //g" > "/etc/apt/sources.list.d/jellyfin_build.list" \
     && apt update \
     && apt install --no-install-recommends --no-install-suggests -qy jellyfin-ffmpeg5 \
-    && apt purge -qy ca-certificates dbus-user-session dirmngr gnupg gnupg-l10n gnupg-utils gpg gpg-agent gpg-wks-client gpg-wks-server gpgconf gpgsm libassuan0 libksba8 libldap-2.5-0 libnpth0 libpam-systemd libpsl5 libreadline8 libsasl2-2 libsasl2-modules-db libsasl2-modules-gssapi-heimdal libsasl2-modules-gssapi-mit libsasl2-modules-ldap libsasl2-modules-otp libsasl2-modules-sql libsqlite3-0 parcimonie pinentry-curses pinentry-doc pinentry-gnome3 readline-common readline-doc scdaemon tor wget xloadimage \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
-    && mkdir -p "/etc/ssl/certs" && mv /tmp/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt \
-    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /etc/apt/sources.list.d/jellyfin.list /etc/apt/trusted.gpg \
+    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /etc/apt/sources.list.d/jellyfin_build.list \
     && sed -i "s/http:/https:/g;s/archive.ubuntu.com/mirrors.ustc.edu.cn/g;s/ports.ubuntu.com/mirrors.ustc.edu.cn/g;s/security.ubuntu.com/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list"
 
 FROM scratch
 
-ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
+ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="compute,video,utility" NVIDIA_VISIBLE_DEVICES="all"
 
 COPY --from=REBASED_JELLYFIN / /
 
