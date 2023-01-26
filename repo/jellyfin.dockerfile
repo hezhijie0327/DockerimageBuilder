@@ -1,4 +1,4 @@
-# Current Version: 1.2.3
+# Current Version: 1.2.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -48,8 +48,8 @@ COPY --from=GET_INFO /tmp/jellyfin.gpg /usr/share/keyrings/jellyfin-archive-keyr
 COPY --from=GET_INFO /tmp/nvidia.gpg /usr/share/keyrings/nvidia-archive-keyring.gpg
 COPY --from=GET_INFO /tmp/patch-fbc.sh /opt/nvidia-patch/patch-fbc.sh
 COPY --from=GET_INFO /tmp/patch.sh /opt/nvidia-patch/patch.sh
-COPY --from=GPG_SIGN /tmp/BUILDKIT/jellyfin /jellyfin
-COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
+COPY --from=GPG_SIGN /tmp/BUILDKIT/jellyfin /opt/jellyfin
+COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /opt/jellyfin-web
 
 RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
     && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" > "/etc/apt/sources.list.d/amd.list" \
@@ -74,4 +74,4 @@ COPY --from=REBASED_JELLYFIN / /
 
 EXPOSE 1900/udp 7359/udp 8096/tcp 8920/tcp
 
-ENTRYPOINT ["/jellyfin/jellyfin", "--ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffmpeg"]
+ENTRYPOINT ["/opt/jellyfin/jellyfin", "--ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffmpeg", "--webdir", "/opt/jellyfin-web"]
