@@ -1,4 +1,4 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -29,6 +29,12 @@ COPY --from=GET_INFO /tmp/jellyfin.*.autobuild /tmp/
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild" | sed "s/\.git/-web\.git/g") "${WORKDIR}/BUILDTMP/jellyfin-web" && cd "${WORKDIR}/BUILDTMP/jellyfin-web" && npm ci --no-audit --unsafe-perm && mv "${WORKDIR}/BUILDTMP/jellyfin-web/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
 
+FROM hezhijie0327/gpg:latest AS GPG_SIGN
+
+COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /tmp/BUILDKIT/jellyfin
+
+RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/jellyfin/jellyfin"
+
 FROM ubuntu:latest AS REBASED_JELLYFIN
 
 ENV DEBIAN_FRONTEND="noninteractive"
@@ -40,7 +46,7 @@ COPY --from=GET_INFO /tmp/jellyfin.gpg /usr/share/keyrings/jellyfin-archive-keyr
 COPY --from=GET_INFO /tmp/nvidia.gpg /usr/share/keyrings/nvidia-archive-keyring.gpg
 COPY --from=GET_INFO /tmp/patch-fbc.sh /opt/nvidia-patch/patch-fbc.sh
 COPY --from=GET_INFO /tmp/patch.sh /opt/nvidia-patch/patch.sh
-COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /jellyfin
+COPY --from=GPG_SIGN /tmp/BUILDKIT/jellyfin /jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /jellyfin/jellyfin-web
 
 RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
