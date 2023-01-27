@@ -1,4 +1,4 @@
-# Current Version: 1.2.6
+# Current Version: 1.2.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -59,7 +59,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && if [ "${OSArchitecture}" = "amd64" ] || [ "${OSArchitecture}" = "arm64" ]; then echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) ${LSBCodename} main" > "/etc/apt/sources.list.d/jellyfin.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/nvidia-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${LSBVersion}/${NVIDIA_URL}/ /" > "/etc/apt/sources.list.d/nvidia.list" ; fi \
     && cat "/etc/apt/sources.list.d/jellyfin.list" | sed "s/# //g" > "/etc/apt/sources.list.d/jellyfin_build.list" \
     && apt update \
-    && apt install --no-install-recommends --no-install-suggests -qy jellyfin-ffmpeg5 \
+    && apt install -qy jellyfin-ffmpeg5 \
     && apt -t ${LSBCodename}-backports full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
