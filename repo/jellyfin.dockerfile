@@ -1,4 +1,4 @@
-# Current Version: 1.2.5
+# Current Version: 1.2.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -51,19 +51,33 @@ COPY --from=GET_INFO /tmp/patch.sh /opt/nvidia-patch/patch.sh
 COPY --from=GPG_SIGN /tmp/BUILDKIT/jellyfin /opt/jellyfin
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /opt/jellyfin-web
 
-RUN cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
-    && if [ $( dpkg --print-architecture ) = "amd64" ]; then echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" > "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/rocm/apt/latest $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb-src [arch=amd64 signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/graphics/ubuntu $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) arc legacy" > "/etc/apt/sources.list.d/intel.list" && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" > "/etc/apt/sources.list.d/jellyfin.list" && echo "# deb [arch=amd64 signed-by=/usr/share/keyrings/nvidia-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/$(. /etc/os-release;echo $ID$VERSION_ID | tr -d .)/x86_64/ /" > "/etc/apt/sources.list.d/nvidia.list" ; else echo "# deb [arch=arm64 signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" > "/etc/apt/sources.list.d/jellyfin.list" && echo "# deb [arch=arm64 signed-by=/usr/share/keyrings/nvidia-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/$(. /etc/os-release;echo $ID$VERSION_ID | tr -d .)/sbsa/ /" > "/etc/apt/sources.list.d/nvidia.list" ; fi \
+RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
+    && export LSBVersion=$( . /etc/os-release;echo $VERSION_ID | tr -d . ) \
+    && export OSArchitecture=$( dpkg --print-architecture ) \
+    && cat "/etc/apt/sources.list" | sed "s/\#\ //g" | grep "deb\ \|deb\-src" > "/tmp/apt.tmp" && cat "/tmp/apt.tmp" | sort | uniq > "/etc/apt/sources.list" \
+    && if [ "${OSArchitecture}" = "amd64" ]; then export MIRROR_URL="ubuntu" && export NVIDIA_URL="x86_64" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" > "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/rocm/apt/latest ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb-src [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/graphics/ubuntu ${LSBCodename} arc legacy" > "/etc/apt/sources.list.d/intel.list" ; else export MIRROR_URL="ubuntu-ports" && export NVIDIA_URL="sbsa" && rm -rf "/usr/share/keyrings/amd-archive-keyring.gpg" "/usr/share/keyrings/intel-archive-keyring.gpg" ; fi \
+    && if [ "${OSArchitecture}" = "amd64" ] || [ "${OSArchitecture}" = "arm64" ]; then echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) ${LSBCodename} main" > "/etc/apt/sources.list.d/jellyfin.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/nvidia-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${LSBVersion}/${NVIDIA_URL}/ /" > "/etc/apt/sources.list.d/nvidia.list" ; fi \
     && cat "/etc/apt/sources.list.d/jellyfin.list" | sed "s/# //g" > "/etc/apt/sources.list.d/jellyfin_build.list" \
     && apt update \
-    && apt install --no-install-recommends --no-install-suggests -qy jellyfin-ffmpeg5 \
+    && apt install -qy jellyfin-ffmpeg5 \
+    && apt -t ${LSBCodename}-backports full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /etc/apt/sources.list.d/jellyfin_build.list \
-    && sed -i "s/http:/https:/g;s/archive.ubuntu.com/mirrors.ustc.edu.cn/g;s/ports.ubuntu.com/mirrors.ustc.edu.cn/g;s/security.ubuntu.com/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list"
+    && echo "deb https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename} main multiverse restricted universe" > "/etc/apt/sources.list" \
+    && echo "deb https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-backports main multiverse restricted universe" >> "/etc/apt/sources.list" \
+    && echo "deb https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-proposed main multiverse restricted universe" >> "/etc/apt/sources.list" \
+    && echo "deb https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-security main multiverse restricted universe" >> "/etc/apt/sources.list" \
+    && echo "deb https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-updates main multiverse restricted universe" >> "/etc/apt/sources.list" \
+    && echo "deb-src https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename} main multiverse restricted universe" >> "/etc/apt/sources.list" \
+    && echo "deb-src https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-backports main multiverse restricted universe" >> "/etc/apt/sources.list" \
+    && echo "deb-src https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-proposed main multiverse restricted universe" >> "/etc/apt/sources.list" \
+    && echo "deb-src https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-security main multiverse restricted universe" >> "/etc/apt/sources.list" \
+    && echo "deb-src https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-updates main multiverse restricted universe" >> "/etc/apt/sources.list"
 
 FROM scratch
 
-ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="compute,video,utility" NVIDIA_VISIBLE_DEVICES="all"
+ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="all" NVIDIA_VISIBLE_DEVICES="all"
 
 COPY --from=REBASED_JELLYFIN / /
 
