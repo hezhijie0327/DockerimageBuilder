@@ -1,4 +1,4 @@
-# Current Version: 1.2.9
+# Current Version: 1.3.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -67,27 +67,25 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && echo "deb-src https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-proposed main multiverse restricted universe" >> "/etc/apt/sources.list" \
     && echo "deb-src https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-security main multiverse restricted universe" >> "/etc/apt/sources.list" \
     && echo "deb-src https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-updates main multiverse restricted universe" >> "/etc/apt/sources.list" \
-    && cat <<EOF > "/etc/apt/preferences"
-Package: *
-Pin: release a=${LSBCodename}-backports
-Pin-Priority: 990
-
-Package: *
-Pin: release a=${LSBCodename}-security
-Pin-Priority: 500
-
-Package: *
-Pin: release a=${LSBCodename}-updates
-Pin-Priority: 500
-
-Package: *
-Pin: release a=${LSBCodename}
-Pin-Priority: 500
-
-Package: *
-Pin: release a=${LSBCodename}-proposed
-Pin-Priority: 100
-EOF \
+    && echo "Package: *" > "/etc/apt/preferences" \
+    && echo "Pin: release a=${LSBCodename}-backports" >> "/etc/apt/preferences" \
+    && echo "Pin-Priority: 990" >> "/etc/apt/preferences" \
+    && echo "" >> "/etc/apt/preferences" \
+    && echo "Package: *" >> "/etc/apt/preferences" \
+    && echo "Pin: release a=${LSBCodename}-security" >> "/etc/apt/preferences" \
+    && echo "Pin-Priority: 500" >> "/etc/apt/preferences" \
+    && echo "" >> "/etc/apt/preferences" \
+    && echo "Package: *" >> "/etc/apt/preferences" \
+    && echo "Pin: release a=${LSBCodename}-updates" >> "/etc/apt/preferences" \
+    && echo "Pin-Priority: 500" >> "/etc/apt/preferences" \
+    && echo "" >> "/etc/apt/preferences" \
+    && echo "Package: *" >> "/etc/apt/preferences" \
+    && echo "Pin: release a=${LSBCodename}" >> "/etc/apt/preferences" \
+    && echo "Pin-Priority: 500" >> "/etc/apt/preferences" \
+    && echo "" >> "/etc/apt/preferences" \
+    && echo "Package: *" >> "/etc/apt/preferences" \
+    && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
+    && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
     && apt install -qy jellyfin-ffmpeg5 \
     && apt full-upgrade -qy \
