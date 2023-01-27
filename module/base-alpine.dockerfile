@@ -1,12 +1,12 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM alpine:latest AS REBASED_ALPINE
 
-RUN apk update \
+RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
+    && apk update \
     && apk add --no-cache autoconf automake bash bash-completion build-base cmake curl git gnupg graphviz jq libtool linux-headers perl pkgconf py3-numpy py3-numpy-dev python3 python3-dev re2c ttf-freefont wget \
     && apk upgrade --no-cache \
     && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
-    && sed -i "s/http:/https:/g;s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && rm -rf /tmp/* /var/cache/apk/*
 
 FROM scratch
