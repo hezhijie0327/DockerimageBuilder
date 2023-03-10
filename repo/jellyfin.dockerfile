@@ -1,6 +1,4 @@
-# Current Version: 1.3.7
-
-FROM hezhijie0327/gpg:latest AS GET_GITHUB
+# Current Version: 1.3.8
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -23,15 +21,6 @@ WORKDIR /tmp
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 RUN export WORKDIR=$(pwd) && export DOTNET_ROOT=${WORKDIR}/BUILDLIB/DOTNET && export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN" && cd "${WORKDIR}/BUILDTMP/JELLYFIN" && git submodule update --init && if [ $(cat "${WORKDIR}/BUILDTMP/arch") = "arm64" ]; then find . -type d -name obj | xargs -r rm -r && dotnet publish Jellyfin.Server --configuration Release --output="${WORKDIR}/BUILDKIT/jellyfin" --self-contained --runtime linux-arm64 -p:DebugSymbols=false -p:DebugType=none; else dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="${WORKDIR}/BUILDKIT/jellyfin" --self-contained --runtime linux-x64 -p:DebugSymbols=false -p:DebugType=none; fi
-
-FROM hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_FFMPEG
-
-WORKDIR /tmp
-
-COPY --from=GET_GITHUB /opt/github.api /tmp/BUILDTMP/github.api
-COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
-
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP" && if [ $(cat "${WORKDIR}/BUILDTMP/arch") = "arm64" ]; then wget --header="Authorization: Bearer $(cat ${WORKDIR}/BUILDTMP/github.api)" -O "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" $(curl -s --connect-timeout 15 https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/actions/artifacts | jq -r '.artifacts[] | select(.name == "linux-arm64-portable") | select(.workflow_run.head_branch == "jellyfin") | .archive_download_url'); else wget --header="Authorization: Bearer $(cat ${WORKDIR}/BUILDTMP/github.api)" -O "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" $(curl -s --connect-timeout 15 https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/actions/artifacts | jq -r '.artifacts[] | select(.name == "linux-amd64-portable") | select(.workflow_run.head_branch == "jellyfin") | .archive_download_url'); fi && unzip -d "${WORKDIR}/BUILDTMP/" "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" && tar -xvf ${WORKDIR}/BUILDTMP/jellyfin-ffmpeg*.tar.xz -C "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg"
 
 FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 
@@ -61,7 +50,6 @@ COPY --from=GET_INFO /tmp/nvidia.gpg /usr/share/keyrings/nvidia-archive-keyring.
 COPY --from=GET_INFO /tmp/patch-fbc.sh /opt/nvidia-patch/patch-fbc.sh
 COPY --from=GET_INFO /tmp/patch.sh /opt/nvidia-patch/patch.sh
 COPY --from=GPG_SIGN /tmp/BUILDKIT/jellyfin /opt/jellyfin
-COPY --from=BUILD_JELLYFIN_FFMPEG /tmp/BUILDKIT/jellyfin-ffmpeg /opt/jellyfin-ffmpeg
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /opt/jellyfin-web
 
 RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
@@ -104,7 +92,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
-    && rm -rf /tmp/* /usr/lib/jellyfin-ffmpeg* /usr/share/doc/jellyfin-ffmpeg* /var/lib/apt/lists/* /var/tmp/*
+    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* /etc/apt/sources.list.d/jellyfin_build.list
 
 FROM scratch
 
@@ -114,4 +102,4 @@ COPY --from=REBASED_JELLYFIN / /
 
 EXPOSE 1900/udp 7359/udp 8096/tcp 8920/tcp
 
-ENTRYPOINT ["/opt/jellyfin/jellyfin", "--ffmpeg", "/opt/jellyfin-ffmpeg/ffmpeg", "--webdir", "/opt/jellyfin-web"]
+ENTRYPOINT ["/opt/jellyfin/jellyfin", "--ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffmpeg", "--webdir", "/opt/jellyfin-web"]
