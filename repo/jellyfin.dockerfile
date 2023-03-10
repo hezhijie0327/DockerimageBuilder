@@ -1,4 +1,4 @@
-# Current Version: 1.3.9
+# Current Version: 1.4.0
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -99,7 +99,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
     && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
-    && dpkg -i /tmp/BUILDTMP/jellyfin-ffmpeg/*.deb \
+    && apt install -qy /tmp/BUILDTMP/jellyfin-ffmpeg/*.deb \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
