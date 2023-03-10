@@ -1,4 +1,4 @@
-# Current Version: 1.3.6
+# Current Version: 1.3.7
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -104,7 +104,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
-    && rm -rf /tmp/* /usr/lib/jellyfin-ffmpeg /var/lib/apt/lists/* /var/tmp/*
+    && rm -rf /tmp/* /usr/lib/jellyfin-ffmpeg* /usr/share/doc/jellyfin-ffmpeg* /var/lib/apt/lists/* /var/tmp/*
 
 FROM scratch
 
