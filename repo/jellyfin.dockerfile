@@ -1,4 +1,4 @@
-# Current Version: 1.4.0
+# Current Version: 1.4.1
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -31,7 +31,7 @@ WORKDIR /tmp
 COPY --from=GET_GITHUB /opt/github.api /tmp/BUILDTMP/github.api
 COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP" && if [ $(cat "${WORKDIR}/BUILDTMP/arch") = "arm64" ]; then wget --header="Authorization: Bearer $(cat ${WORKDIR}/BUILDTMP/github.api)" -O "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" $(curl -s --connect-timeout 15 https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/actions/artifacts | jq -r '.artifacts[] | select(.name == "ubuntu-jammy-arm64") | select(.workflow_run.head_branch == "jellyfin") | .archive_download_url'); else wget --header="Authorization: Bearer $(cat ${WORKDIR}/BUILDTMP/github.api)" -O "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" $(curl -s --connect-timeout 15 https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/actions/artifacts | jq -r '.artifacts[] | select(.name == "ubuntu-jammy-amd64") | select(.workflow_run.head_branch == "jellyfin") | .archive_download_url'); fi && unzip -d "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP" && wget --header="Authorization: Bearer $(cat ${WORKDIR}/BUILDTMP/github.api)" -O "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" $(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/actions/artifacts?name=ubuntu-$(cat '/etc/os-release' | grep 'UBUNTU_CODENAME=' | sed 's/UBUNTU_CODENAME=//g')-$(cat ${WORKDIR}/BUILDTMP/arch)&per_page=100" | jq -r '.artifacts[] | select(.workflow_run.head_branch == "jellyfin") | .archive_download_url') && unzip -d "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip"
 
 FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 
