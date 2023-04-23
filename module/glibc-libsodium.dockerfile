@@ -1,10 +1,12 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
+ADD ../patch/package.json /tmp/package.json
+
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".module.libsodium" > "${WORKDIR}/libsodium.json" && cat "${WORKDIR}/libsodium.json" | jq -Sr ".version" && cat "${WORKDIR}/libsodium.json" | jq -Sr ".source" > "${WORKDIR}/libsodium.autobuild"
+RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.libsodium" > "${WORKDIR}/libsodium.json" && cat "${WORKDIR}/libsodium.json" | jq -Sr ".version" && cat "${WORKDIR}/libsodium.json" | jq -Sr ".source" > "${WORKDIR}/libsodium.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_LIBSODIUM
 
