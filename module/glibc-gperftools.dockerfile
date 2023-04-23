@@ -1,10 +1,12 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
+ADD ../patch/package.json /tmp/package.json
+
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".module.gperftools" > "${WORKDIR}/gperftools.json" && cat "${WORKDIR}/gperftools.json" | jq -Sr ".version" && cat "${WORKDIR}/gperftools.json" | jq -Sr ".source" > "${WORKDIR}/gperftools.autobuild"
+RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.gperftools" > "${WORKDIR}/gperftools.json" && cat "${WORKDIR}/gperftools.json" | jq -Sr ".version" && cat "${WORKDIR}/gperftools.json" | jq -Sr ".source" > "${WORKDIR}/gperftools.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_GPERFTOOLS
 
