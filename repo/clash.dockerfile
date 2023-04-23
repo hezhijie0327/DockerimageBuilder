@@ -1,10 +1,12 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
+ADD ../patch/package.json /tmp/package.json
+
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".repo.clash" > "${WORKDIR}/clash.json" && cat "${WORKDIR}/clash.json" | jq -Sr ".version" && cat "${WORKDIR}/clash.json" | jq -Sr ".source" > "${WORKDIR}/clash.source.autobuild" && cat "${WORKDIR}/clash.json" | jq -Sr ".source_branch" > "${WORKDIR}/clash.source_branch.autobuild" && cat "${WORKDIR}/clash.json" | jq -Sr ".patch" > "${WORKDIR}/clash.patch.autobuild" && cat "${WORKDIR}/clash.json" | jq -Sr ".patch_branch" > "${WORKDIR}/clash.patch_branch.autobuild" && cat "${WORKDIR}/clash.json" | jq -Sr ".version" > "${WORKDIR}/clash.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.clash" > "${WORKDIR}/clash.json" && cat "${WORKDIR}/clash.json" | jq -Sr ".version" && cat "${WORKDIR}/clash.json" | jq -Sr ".source" > "${WORKDIR}/clash.source.autobuild" && cat "${WORKDIR}/clash.json" | jq -Sr ".source_branch" > "${WORKDIR}/clash.source_branch.autobuild" && cat "${WORKDIR}/clash.json" | jq -Sr ".patch" > "${WORKDIR}/clash.patch.autobuild" && cat "${WORKDIR}/clash.json" | jq -Sr ".patch_branch" > "${WORKDIR}/clash.patch_branch.autobuild" && cat "${WORKDIR}/clash.json" | jq -Sr ".version" > "${WORKDIR}/clash.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
