@@ -1,0 +1,48 @@
+From 71b1b4634fd5496a6ebdf2ec4ef38c420c56e202 Mon Sep 17 00:00:00 2001
+From: Arkadiusz Bokowy <arkadiusz.bokowy@gmail.com>
+Date: Sun, 6 Nov 2022 23:19:07 +0100
+Subject: [PATCH] Provide fallback implementation for getentropy()
+
+Commit ba3396f changed getRandomBytes() implementation from c++ std
+uniform distribution to getentropy(). The getentropy() function first
+appeared in glibc 2.25. In order to provide backward compatibility for
+older glibc (e.g. Android SDK <= 19) restore previous getRandomBytes()
+implementation as a fallback.
+---
+ src/SimpleRandomizer.cc | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/src/SimpleRandomizer.cc b/src/SimpleRandomizer.cc
+index 8dbef82fa..7748ba0d6 100644
+--- a/src/SimpleRandomizer.cc
++++ b/src/SimpleRandomizer.cc
+@@ -106,6 +106,20 @@ void SimpleRandomizer::getRandomBytes(unsigned char* buf, size_t len)
+   auto iter = len / blocklen;
+   auto p = buf;
+ 
++#if !HAVE_GETENTROPY
++  auto getentropy = [this](void *buffer, size_t length) {
++    auto buf = reinterpret_cast<unsigned int*>(buffer);
++    auto dis = std::uniform_int_distribution<unsigned int>();
++    for (size_t q = length / sizeof(unsigned int); q > 0; --q, ++buf) {
++      *buf = dis(gen_);
++    }
++    const size_t r = length % sizeof(unsigned int);
++    auto last = dis(gen_);
++    memcpy(buf, &last, r);
++    return 0;
++  };
++#endif // !HAVE_GETENTROPY
++
+   for (size_t i = 0; i < iter; ++i) {
+     auto rv = getentropy(p, blocklen);
+     if (rv != 0) {
+@@ -128,7 +142,7 @@ void SimpleRandomizer::getRandomBytes(unsigned char* buf, size_t len)
+     assert(0);
+     abort();
+   }
+-#endif // ! __MINGW32__
++#endif // !__MINGW32__ && !__APPLE__
+ }
+ 
+ } // namespace aria2

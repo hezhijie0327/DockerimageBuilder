@@ -1,0 +1,38 @@
+From 0b9fa1e1a7bb1e2abc5660e59795aaac044b9fcf Mon Sep 17 00:00:00 2001
+From: bapcyk <bapcyk@outlook.com>
+Date: Tue, 24 Nov 2020 13:53:47 +0200
+Subject: [PATCH] Fix a wait in the retry for HTTP 404 error
+
+---
+ src/AbstractCommand.cc | 5 ++++-
+ src/message.h          | 1 +
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/AbstractCommand.cc b/src/AbstractCommand.cc
+index 1502d570a..9f9f52c5d 100644
+--- a/src/AbstractCommand.cc
++++ b/src/AbstractCommand.cc
+@@ -386,7 +386,10 @@ bool AbstractCommand::execute()
+       return true;
+     }
+ 
+-    if (err.getErrorCode() == error_code::HTTP_SERVICE_UNAVAILABLE) {
++    if (err.getErrorCode() == error_code::HTTP_SERVICE_UNAVAILABLE ||
++        err.getErrorCode() == error_code::RESOURCE_NOT_FOUND) {
++      A2_LOG_DEBUG(fmt(MSG_RETRY_WAITING, getCuid(), getOption()->getAsInt(PREF_RETRY_WAIT),
++        req_->getUri().c_str()));
+       Timer wakeTime(global::wallclock());
+       wakeTime.advance(
+           std::chrono::seconds(getOption()->getAsInt(PREF_RETRY_WAIT)));
+diff --git a/src/message.h b/src/message.h
+index 4705d7fba..5b17ef271 100644
+--- a/src/message.h
++++ b/src/message.h
+@@ -47,6 +47,7 @@
+ #define MSG_SENDING_REQUEST "CUID#%" PRId64 " - Requesting:\n%s"
+ #define MSG_RECEIVE_RESPONSE "CUID#%" PRId64 " - Response received:\n%s"
+ #define MSG_DOWNLOAD_ABORTED "CUID#%" PRId64 " - Download aborted. URI=%s"
++#define MSG_RETRY_WAITING "CUID#%" PRId64 " - Waiting (%d sec) for retry of the download. URI=%s"
+ #define MSG_RESTARTING_DOWNLOAD "CUID#%" PRId64 " - Restarting the download. URI=%s"
+ #define MSG_TORRENT_DOWNLOAD_ABORTED "CUID#%" PRId64 " - Download aborted."
+ #define MSG_MAX_TRY                                                     \

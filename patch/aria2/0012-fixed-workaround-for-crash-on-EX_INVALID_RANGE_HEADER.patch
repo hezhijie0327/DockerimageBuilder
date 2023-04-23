@@ -1,0 +1,82 @@
+From 74370a764623d44e480466356915e19c51257d8b Mon Sep 17 00:00:00 2001
+From: Rostislav Kouznetsov <rostislav.kouznetsov@fmi.fi>
+Date: Wed, 5 Jan 2022 14:00:35 +0200
+Subject: [PATCH] Workaround for crash on EX_INVALID_RANGE_HEADER
+
+Seems to save the download in some cases
+---
+ src/HttpRequest.cc  |  3 ++-
+ src/HttpResponse.cc | 26 ++++++++++++++++++++------
+ src/message.h       |  1 +
+ 3 files changed, 23 insertions(+), 7 deletions(-)
+
+diff --git a/src/HttpRequest.cc b/src/HttpRequest.cc
+index b5fb4f863..191e0ed31 100644
+--- a/src/HttpRequest.cc
++++ b/src/HttpRequest.cc
+@@ -53,6 +53,7 @@
+ #include "Request.h"
+ #include "DownloadHandlerConstants.h"
+ #include "MessageDigest.h"
++#include "LogFactory.h"
+
+ namespace aria2 {
+
+@@ -124,7 +125,7 @@ bool HttpRequest::isRangeSatisfied(const Range& range) const
+     return true;
+   }
+   return getStartByte() == range.startByte &&
+-         (getEndByte() == 0 || getEndByte() == range.endByte) &&
++         (getEndByte() == 0 || getEndByte() <= range.endByte) &&
+          (fileEntry_->getLength() == 0 ||
+           fileEntry_->getLength() == range.entityLength);
+ }
+diff --git a/src/HttpResponse.cc b/src/HttpResponse.cc
+index 500cd64e8..37c0bd66a 100644
+--- a/src/HttpResponse.cc
++++ b/src/HttpResponse.cc
+@@ -78,12 +78,26 @@ void HttpResponse::validateResponse() const
+       // compare the received range against the requested range
+       auto responseRange = httpHeader_->getRange();
+       if (!httpRequest_->isRangeSatisfied(responseRange)) {
+-        throw DL_ABORT_EX2(
+-            fmt(EX_INVALID_RANGE_HEADER, httpRequest_->getStartByte(),
+-                httpRequest_->getEndByte(), httpRequest_->getEntityLength(),
+-                responseRange.startByte, responseRange.endByte,
+-                responseRange.entityLength),
+-            error_code::CANNOT_RESUME);
++        if (  httpRequest_->getEndByte() > 0 &&
++              httpRequest_->getEndByte() <= responseRange.endByte){
++          // Some servers return full length of file as endByte
++          // regardless of what was requested.
++          // If server offers more, ignore for a while and hope for the best.
++
++          A2_LOG_WARN( fmt(MSG_STRANGE_RANGE_HEADER, cuid_,
++                  httpRequest_->getStartByte(),
++                  httpRequest_->getEndByte(), httpRequest_->getEntityLength(),
++                  responseRange.startByte, responseRange.endByte,
++                  responseRange.entityLength));
++
++        } else {
++          throw DL_ABORT_EX2(
++              fmt(EX_INVALID_RANGE_HEADER, httpRequest_->getStartByte(),
++                  httpRequest_->getEndByte(), httpRequest_->getEntityLength(),
++                  responseRange.startByte, responseRange.endByte,
++                  responseRange.entityLength),
++              error_code::CANNOT_RESUME);
++        }
+       }
+     }
+     return;
+diff --git a/src/message.h b/src/message.h
+index 4705d7fba..13e5b9bd2 100644
+--- a/src/message.h
++++ b/src/message.h
+@@ -211,6 +211,7 @@
+ #define MSG_REMOVING_UNSELECTED_FILE _("GID#%s - Removing unselected file.")
+ #define MSG_FILE_REMOVED _("File %s removed.")
+ #define MSG_FILE_COULD_NOT_REMOVED _("File %s could not be removed.")
++#define MSG_STRANGE_RANGE_HEADER "CUID#%" PRId64 " Strange range header. Request: %" PRId64 "-%" PRId64 "/%" PRId64 ", Response: %" PRId64 "-%" PRId64 "/%" PRId64 ""
+
+ #define EX_TIME_OUT _("Timeout.")
+ #define EX_INVALID_CHUNK_SIZE _("Invalid chunk size.")

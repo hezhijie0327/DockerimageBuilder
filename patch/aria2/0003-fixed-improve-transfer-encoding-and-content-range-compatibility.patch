@@ -1,0 +1,412 @@
+From dd7ed38c90f05547d698a7984e71c32dfe5fff2a Mon Sep 17 00:00:00 2001
+From: Ali MJ Al-Nasrawy <alimjalnasrawy@gmail.com>
+Date: Mon, 9 Mar 2020 21:15:09 +0300
+Subject: [PATCH 1/4] ChunkedDecodingStreamFilter: be aware of segments
+
+See GH-1582
+Report the correct bytesProcessed_ taking into account
+getDelagate()->getBytesProcessed()
+Also, rewrite to avoid using goto or modifying for-loop variables.
+---
+ src/ChunkedDecodingStreamFilter.cc | 43 +++++++++++++++++-------------
+ 1 file changed, 25 insertions(+), 18 deletions(-)
+
+diff --git a/src/ChunkedDecodingStreamFilter.cc b/src/ChunkedDecodingStreamFilter.cc
+index 4e3a0e598..f619f380b 100644
+--- a/src/ChunkedDecodingStreamFilter.cc
++++ b/src/ChunkedDecodingStreamFilter.cc
+@@ -84,10 +84,31 @@ ChunkedDecodingStreamFilter::transform(const std::shared_ptr<BinaryStream>& out,
+                                        const unsigned char* inbuf, size_t inlen)
+ {
+   ssize_t outlen = 0;
+-  size_t i;
+   bytesProcessed_ = 0;
+-  for (i = 0; i < inlen; ++i) {
+-    unsigned char c = inbuf[i];
++  while (bytesProcessed_ < inlen) {
++    if (state_ == CHUNKS_COMPLETE) {
++      break;
++    }
++    if (state_ == CHUNK) {
++      int64_t readlen = std::min(chunkRemaining_,
++                                 static_cast<int64_t>(inlen - bytesProcessed_));
++      outlen += getDelegate()->transform(out, segment, inbuf + bytesProcessed_,
++                                         readlen);
++      int64_t processedlen = getDelegate()->getBytesProcessed();
++      bytesProcessed_ += processedlen;
++      chunkRemaining_ -= processedlen;
++      if (chunkRemaining_ == 0) {
++        state_ = PREV_CHUNK_CR;
++      }
++      if (processedlen < readlen) {
++        // segment download finished
++        break;
++      }
++      continue;
++    }
++    // The following states consume single char
++    unsigned char c = inbuf[bytesProcessed_];
++    bytesProcessed_++;
+     switch (state_) {
+     case PREV_CHUNK_SIZE:
+       if (util::isHexDigit(c)) {
+@@ -136,17 +157,6 @@ ChunkedDecodingStreamFilter::transform(const std::shared_ptr<BinaryStream>& out,
+                           "missing LF at the end of chunk size");
+       }
+       break;
+-    case CHUNK: {
+-      int64_t readlen =
+-          std::min(chunkRemaining_, static_cast<int64_t>(inlen - i));
+-      outlen += getDelegate()->transform(out, segment, inbuf + i, readlen);
+-      chunkRemaining_ -= readlen;
+-      i += readlen - 1;
+-      if (chunkRemaining_ == 0) {
+-        state_ = PREV_CHUNK_CR;
+-      }
+-      break;
+-    }
+     case PREV_CHUNK_CR:
+       if (c == '\r') {
+         state_ = PREV_CHUNK_LF;
+@@ -203,15 +213,12 @@ ChunkedDecodingStreamFilter::transform(const std::shared_ptr<BinaryStream>& out,
+                           "missing LF at the end of chunks");
+       }
+       break;
+-    case CHUNKS_COMPLETE:
+-      goto fin;
+     default:
+       // unreachable
+       assert(0);
+     }
+   }
+-fin:
+-  bytesProcessed_ += i;
++
+   return outlen;
+ }
+ 
+
+From 6d5ab2f124605c43bc868042c9bc4c2dbd4833b3 Mon Sep 17 00:00:00 2001
+From: Ali MJ Al-Nasrawy <alimjalnasrawy@gmail.com>
+Date: Mon, 9 Mar 2020 21:32:14 +0300
+Subject: [PATCH 2/4] GZipDecodingStreamFilter: be aware of segments
+
+See GH-1582
+Report the correct bytesProcessed_ taking into account
+getDelegate()->getBytesProcessed().
+This makes it necessary to use outbuf_ to store residual data not
+processed by the downstream filter.
+---
+ src/GZipDecodingStreamFilter.cc | 56 ++++++++++++++++++++-------------
+ src/GZipDecodingStreamFilter.h  |  5 ++-
+ 2 files changed, 38 insertions(+), 23 deletions(-)
+
+diff --git a/src/GZipDecodingStreamFilter.cc b/src/GZipDecodingStreamFilter.cc
+index d24acc3e5..c98847bf1 100644
+--- a/src/GZipDecodingStreamFilter.cc
++++ b/src/GZipDecodingStreamFilter.cc
+@@ -47,6 +47,7 @@ GZipDecodingStreamFilter::GZipDecodingStreamFilter(
+     std::unique_ptr<StreamFilter> delegate)
+     : StreamFilter{std::move(delegate)},
+       strm_{nullptr},
++      outbuf_(),
+       finished_{false},
+       bytesProcessed_{0}
+ {
+@@ -57,6 +58,8 @@ GZipDecodingStreamFilter::~GZipDecodingStreamFilter() { release(); }
+ void GZipDecodingStreamFilter::init()
+ {
+   finished_ = false;
++  outbuf_.reserve(OUTBUF_CAPACITY);
++  outbuf_.resize(0);
+   release();
+   strm_ = new z_stream();
+   strm_->zalloc = Z_NULL;
+@@ -87,42 +90,51 @@ GZipDecodingStreamFilter::transform(const std::shared_ptr<BinaryStream>& out,
+ {
+   bytesProcessed_ = 0;
+   ssize_t outlen = 0;
+-  if (inlen == 0) {
+-    return outlen;
+-  }
+ 
+   strm_->avail_in = inlen;
+   strm_->next_in = const_cast<unsigned char*>(inbuf);
+ 
+-  unsigned char outbuf[OUTBUF_LENGTH];
+-  while (1) {
+-    strm_->avail_out = OUTBUF_LENGTH;
+-    strm_->next_out = outbuf;
+-
+-    int ret = ::inflate(strm_, Z_NO_FLUSH);
+-
+-    if (ret == Z_STREAM_END) {
+-      finished_ = true;
++  while (bytesProcessed_ < inlen) {
++    // inflate into outbuf_, if empty!
++    if (outbuf_.empty()) {
++      outbuf_.resize(OUTBUF_CAPACITY);
++      strm_->avail_out = outbuf_.size();
++      strm_->next_out = outbuf_.data();
++
++      int ret = ::inflate(strm_, Z_NO_FLUSH);
++      if (ret == Z_STREAM_END) {
++        finished_ = true;
++      }
++      else if (ret != Z_OK && ret != Z_BUF_ERROR) {
++        throw DL_ABORT_EX(fmt("libz::inflate() failed. cause:%s", strm_->msg));
++      }
++
++      assert(inlen >= strm_->avail_in);
++      bytesProcessed_ = strm_->next_in - inbuf;
++      outbuf_.resize(strm_->next_out - outbuf_.data());
++      if (outbuf_.empty())
++        break;
+     }
+-    else if (ret != Z_OK && ret != Z_BUF_ERROR) {
+-      throw DL_ABORT_EX(fmt("libz::inflate() failed. cause:%s", strm_->msg));
+-    }
+-
+-    size_t produced = OUTBUF_LENGTH - strm_->avail_out;
+ 
+-    outlen += getDelegate()->transform(out, segment, outbuf, produced);
+-    if (strm_->avail_out > 0) {
++    // flush outbuf_
++    outlen += getDelegate()->transform(out, segment, outbuf_.data(),
++                                       outbuf_.size());
++    size_t processedlen = getDelegate()->getBytesProcessed();
++    if (processedlen == outbuf_.size()) {
++      outbuf_.clear();
++    }
++    else {
++      // segment download finished
++      outbuf_.erase(outbuf_.begin(), outbuf_.begin() + processedlen);
+       break;
+     }
+   }
+-  assert(inlen >= strm_->avail_in);
+-  bytesProcessed_ = inlen - strm_->avail_in;
+   return outlen;
+ }
+ 
+ bool GZipDecodingStreamFilter::finished()
+ {
+-  return finished_ && getDelegate()->finished();
++  return finished_ && outbuf_.empty() && getDelegate()->finished();
+ }
+ 
+ const std::string& GZipDecodingStreamFilter::getName() const { return NAME; }
+diff --git a/src/GZipDecodingStreamFilter.h b/src/GZipDecodingStreamFilter.h
+index d9c3c22eb..49a2a7f0a 100644
+--- a/src/GZipDecodingStreamFilter.h
++++ b/src/GZipDecodingStreamFilter.h
+@@ -37,6 +37,7 @@
+ 
+ #include "StreamFilter.h"
+ #include <zlib.h>
++#include <vector>
+ 
+ #include "a2functional.h"
+ 
+@@ -47,11 +48,13 @@ class GZipDecodingStreamFilter : public StreamFilter {
+ private:
+   z_stream* strm_;
+ 
++  std::vector<unsigned char> outbuf_;
++
+   bool finished_;
+ 
+   size_t bytesProcessed_;
+ 
+-  static const size_t OUTBUF_LENGTH = 16_k;
++  static const size_t OUTBUF_CAPACITY = 16_k;
+ 
+ public:
+   GZipDecodingStreamFilter(std::unique_ptr<StreamFilter> delegate = nullptr);
+
+From 2924a029abacca39d8761fa4573ba0efe00a2fd0 Mon Sep 17 00:00:00 2001
+From: Ali MJ Al-Nasrawy <alimjalnasrawy@gmail.com>
+Date: Sun, 15 Mar 2020 00:12:14 +0300
+Subject: [PATCH 3/4] transfer-encoding: support segmented download
+
+Partial content responses (code 206) with content-range works at higher
+level than content-length and transfer-encoding and is totally
+compatible with both. In other words, transfer-encoding specifies the
+encoding in which the request part is sent  while content-range species
+the position of this part within the whole "representation".
+
+Also, do range validation test for the response.
+
+This parially reverts 5ccd5b6.
+
+Fixes GH-1576.
+---
+ src/HttpHeaderProcessor.cc      | 5 +----
+ src/HttpResponse.cc             | 2 +-
+ src/HttpResponseCommand.cc      | 3 ---
+ test/HttpHeaderProcessorTest.cc | 2 +-
+ test/HttpResponseTest.cc        | 4 ++--
+ 5 files changed, 5 insertions(+), 11 deletions(-)
+
+diff --git a/src/HttpHeaderProcessor.cc b/src/HttpHeaderProcessor.cc
+index 53f061e6f..566c4ff71 100644
+--- a/src/HttpHeaderProcessor.cc
++++ b/src/HttpHeaderProcessor.cc
+@@ -452,12 +452,9 @@ bool HttpHeaderProcessor::parse(const unsigned char* data, size_t length)
+   // are present, delete content-length and content-range.  RFC 7230
+   // says that sender must not send both transfer-encoding and
+   // content-length.  If both present, transfer-encoding overrides
+-  // content-length.  There is no text about transfer-encoding and
+-  // content-range.  But there is no reason to send transfer-encoding
+-  // when range is set.
++  // content-length.
+   if (result_->defined(HttpHeader::TRANSFER_ENCODING)) {
+     result_->remove(HttpHeader::CONTENT_LENGTH);
+-    result_->remove(HttpHeader::CONTENT_RANGE);
+   }
+ 
+   return true;
+diff --git a/src/HttpResponse.cc b/src/HttpResponse.cc
+index 500cd64e8..68fd7f1b3 100644
+--- a/src/HttpResponse.cc
++++ b/src/HttpResponse.cc
+@@ -74,7 +74,7 @@ void HttpResponse::validateResponse() const
+   switch (statusCode) {
+   case 200: // OK
+   case 206: // Partial Content
+-    if (!httpHeader_->defined(HttpHeader::TRANSFER_ENCODING)) {
++    {
+       // compare the received range against the requested range
+       auto responseRange = httpHeader_->getRange();
+       if (!httpRequest_->isRangeSatisfied(responseRange)) {
+diff --git a/src/HttpResponseCommand.cc b/src/HttpResponseCommand.cc
+index 6e2a01d45..62d410daa 100644
+--- a/src/HttpResponseCommand.cc
++++ b/src/HttpResponseCommand.cc
+@@ -272,9 +272,6 @@ bool HttpResponseCommand::executeInternal()
+     // update last modified time
+     updateLastModifiedTime(httpResponse->getLastModifiedTime());
+ 
+-    // If both transfer-encoding and total length is specified, we
+-    // should have ignored total length.  In this case, we can not do
+-    // segmented downloading
+     if (totalLength == 0 || shouldInflateContentEncoding(httpResponse.get())) {
+       // we ignore content-length when inflate is required
+       fe->setLength(0);
+diff --git a/test/HttpHeaderProcessorTest.cc b/test/HttpHeaderProcessorTest.cc
+index c1d6cca06..6ef82fa57 100644
+--- a/test/HttpHeaderProcessorTest.cc
++++ b/test/HttpHeaderProcessorTest.cc
+@@ -224,7 +224,7 @@ void HttpHeaderProcessorTest::testGetHttpResponseHeader_teAndCl()
+   CPPUNIT_ASSERT_EQUAL(std::string("chunked"),
+                        httpHeader->find(HttpHeader::TRANSFER_ENCODING));
+   CPPUNIT_ASSERT(!httpHeader->defined(HttpHeader::CONTENT_LENGTH));
+-  CPPUNIT_ASSERT(!httpHeader->defined(HttpHeader::CONTENT_RANGE));
++  CPPUNIT_ASSERT(httpHeader->defined(HttpHeader::CONTENT_RANGE));
+ }
+ 
+ void HttpHeaderProcessorTest::testBeyondLimit()
+diff --git a/test/HttpResponseTest.cc b/test/HttpResponseTest.cc
+index c1b4ef43f..55e7975e6 100644
+--- a/test/HttpResponseTest.cc
++++ b/test/HttpResponseTest.cc
+@@ -451,12 +451,12 @@ void HttpResponseTest::testValidateResponse_chunked()
+                                     "bytes 0-10485760/10485761");
+   httpResponse.getHttpHeader()->put(HttpHeader::TRANSFER_ENCODING, "chunked");
+ 
+-  // if transfer-encoding is specified, then range validation is skipped.
++  // if transfer-encoding is specified, range validation is still necessary.
+   try {
+     httpResponse.validateResponse();
++    CPPUNIT_FAIL("exception must be thrown.");
+   }
+   catch (Exception& e) {
+-    CPPUNIT_FAIL("exception must not be thrown.");
+   }
+ }
+ 
+
+From 83cb6c15d3ee5574e9e743cf15a9e353c2bd22e1 Mon Sep 17 00:00:00 2001
+From: Ali MJ Al-Nasrawy <alimjalnasrawy@gmail.com>
+Date: Sun, 15 Mar 2020 00:32:12 +0300
+Subject: [PATCH 4/4] always use range requests
+
+Send "Range: bytes=0-" with the first http request to inform the server
+of range support by the client.
+
+As per RFC 7233, server MUST ignore the header (not request!) if it
+doesn't support range requests or the specified unit. So, this should
+have no side effects.
+
+Fixes GH-1576.
+---
+ src/HttpRequest.cc      | 3 +++
+ test/HttpRequestTest.cc | 6 ++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/src/HttpRequest.cc b/src/HttpRequest.cc
+index b5fb4f863..d57d2f0dd 100644
+--- a/src/HttpRequest.cc
++++ b/src/HttpRequest.cc
+@@ -213,6 +213,9 @@ std::string HttpRequest::createRequest()
+     }
+     builtinHds.emplace_back("Range:", rangeHeader);
+   }
++  else if (!segment_ && getMethod() == "GET") {
++    builtinHds.emplace_back("Range:", "bytes=0-");
++  }
+   if (proxyRequest_) {
+     if (request_->isKeepAliveEnabled() || request_->isPipeliningEnabled()) {
+       builtinHds.emplace_back("Connection:", "Keep-Alive");
+diff --git a/test/HttpRequestTest.cc b/test/HttpRequestTest.cc
+index 432852b06..28bd1d68b 100644
+--- a/test/HttpRequestTest.cc
++++ b/test/HttpRequestTest.cc
+@@ -527,6 +527,7 @@ void HttpRequestTest::testCreateRequest_query()
+       "Pragma: no-cache\r\n"
+       "Cache-Control: no-cache\r\n"
+       "Connection: close\r\n"
++      "Range: bytes=0-\r\n"
+       "\r\n";
+ 
+   CPPUNIT_ASSERT_EQUAL(expectedText, httpRequest.createRequest());
+@@ -624,6 +625,7 @@ void HttpRequestTest::testCreateRequest_wantDigest()
+                              "Pragma: no-cache\r\n"
+                              "Cache-Control: no-cache\r\n"
+                              "Connection: close\r\n"
++                             "Range: bytes=0-\r\n"
+                              "Want-Digest: " +
+                              wantDigest +
+                              "\r\n"
+@@ -781,6 +783,7 @@ void HttpRequestTest::testUserAgent()
+                              "Pragma: no-cache\r\n"
+                              "Cache-Control: no-cache\r\n"
+                              "Connection: close\r\n"
++                             "Range: bytes=0-\r\n"
+                              "\r\n";
+ 
+   CPPUNIT_ASSERT_EQUAL(expectedText, httpRequest.createRequest());
+@@ -818,6 +821,7 @@ void HttpRequestTest::testAddHeader()
+                              "Pragma: no-cache\r\n"
+                              "Cache-Control: no-cache\r\n"
+                              "Connection: close\r\n"
++                             "Range: bytes=0-\r\n"
+                              "X-ARIA2: v0.13\r\n"
+                              "X-ARIA2-DISTRIBUTE: enabled\r\n"
+                              "Accept: text/html\r\n"
+@@ -847,6 +851,7 @@ void HttpRequestTest::testAcceptMetalink()
+       "Pragma: no-cache\r\n"
+       "Cache-Control: no-cache\r\n"
+       "Connection: close\r\n"
++      "Range: bytes=0-\r\n"
+       "\r\n";
+ 
+   CPPUNIT_ASSERT_EQUAL(expectedText, httpRequest.createRequest());
+@@ -876,6 +881,7 @@ void HttpRequestTest::testEnableAcceptEncoding()
+                                  "Pragma: no-cache\r\n"
+                                  "Cache-Control: no-cache\r\n"
+                                  "Connection: close\r\n"
++                                 "Range: bytes=0-\r\n"
+                                  "\r\n";
+ 
+   std::string expectedText = expectedTextHead;

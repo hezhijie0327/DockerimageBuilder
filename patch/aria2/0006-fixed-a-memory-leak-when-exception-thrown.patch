@@ -1,0 +1,58 @@
+From 1e48d35f3bb840b9f7f300fd8dde8322e2f4c799 Mon Sep 17 00:00:00 2001
+From: xzvno <85975778+endjkv@users.noreply.github.com>
+Date: Mon, 21 Jun 2021 14:31:01 +0800
+Subject: [PATCH] fix memory leak when exception thrown
+
+---
+ src/Piece.cc            |  9 +++++++--
+ src/SinkStreamFilter.cc | 10 ++++++++--
+ 2 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/src/Piece.cc b/src/Piece.cc
+index ccbb0f44b..e1a53d918 100644
+--- a/src/Piece.cc
++++ b/src/Piece.cc
+@@ -347,8 +347,13 @@ void Piece::updateWrCache(WrDiskCache* diskCache, unsigned char* data,
+   cell->len = len;
+   cell->capacity = capacity;
+   bool rv;
+-  rv = wrCache_->cacheData(cell);
+-  assert(rv);
++  try {
++    rv = wrCache_->cacheData(cell);
++    assert(rv);
++  } catch (RecoverableException& e) {
++    delete cell;
++    throw;
++  }
+   rv = diskCache->update(wrCache_.get(), len);
+   assert(rv);
+ }
+diff --git a/src/SinkStreamFilter.cc b/src/SinkStreamFilter.cc
+index 47f529ded..42d1d810e 100644
+--- a/src/SinkStreamFilter.cc
++++ b/src/SinkStreamFilter.cc
+@@ -41,6 +41,7 @@
+ #include "Segment.h"
+ #include "WrDiskCache.h"
+ #include "Piece.h"
++#include "DlAbortEx.h"
+ 
+ namespace aria2 {
+ 
+@@ -81,8 +82,13 @@ ssize_t SinkStreamFilter::transform(const std::shared_ptr<BinaryStream>& out,
+         size_t capacity = std::max(len, static_cast<size_t>(4_k));
+         auto dataCopy = new unsigned char[capacity];
+         memcpy(dataCopy, inbuf + alen, len);
+-        piece->updateWrCache(wrDiskCache_, dataCopy, 0, len, capacity,
+-                             segment->getPositionToWrite() + alen);
++        try {
++          piece->updateWrCache(wrDiskCache_, dataCopy, 0, len, capacity,
++                               segment->getPositionToWrite() + alen);
++        } catch (RecoverableException& e) {
++          delete[] dataCopy;
++          throw;
++        }
+       }
+     }
+     else {

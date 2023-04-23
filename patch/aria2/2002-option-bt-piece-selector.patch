@@ -1,0 +1,508 @@
+From 64538814dd961a414ef8532733d8213fd3feff75 Mon Sep 17 00:00:00 2001
+From: sleepymac <sleepymac@protonmail.com>
+Date: Sat, 15 Aug 2020 09:58:47 -0700
+Subject: [PATCH] Adds an option for in-order downloading in BitTorrent.
+
+A new --bt-piece-selector option is added. If left unspecified or set to
+"default", the existing rarest piece selection algorithm is used. If set
+to "inorder", it enables in-order downloading. This allows playing media
+files while they are downloading.
+---
+ doc/manual-src/en/aria2c.rst     | 10 ++++++
+ doc/xmlrpc/aria2rpc              |  3 ++
+ src/DefaultPieceStorage.cc       |  9 ++++-
+ src/InorderPieceSelector.cc      | 59 ++++++++++++++++++++++++++++++++
+ src/InorderPieceSelector.h       | 55 +++++++++++++++++++++++++++++
+ src/Makefile.am                  |  1 +
+ src/OptionHandlerFactory.cc      | 10 ++++++
+ src/prefs.cc                     |  2 ++
+ src/prefs.h                      |  2 ++
+ src/usage_text.h                 | 11 ++++++
+ test/DefaultPieceStorageTest.cc  | 12 +------
+ test/InorderPieceSelector.h      | 26 --------------
+ test/InorderPieceSelectorTest.cc | 47 +++++++++++++++++++++++++
+ test/Makefile.am                 |  2 +-
+ 15 files changed, 211 insertions(+), 40 deletions(-)
+ create mode 100644 src/InorderPieceSelector.cc
+ create mode 100644 src/InorderPieceSelector.h
+ delete mode 100644 test/InorderPieceSelector.h
+ create mode 100644 test/InorderPieceSelectorTest.cc
+
+diff --git a/doc/manual-src/en/aria2c.rst b/doc/manual-src/en/aria2c.rst
+index f093f7335..b9c629bee 100644
+--- a/doc/manual-src/en/aria2c.rst
++++ b/doc/manual-src/en/aria2c.rst
+@@ -753,6 +753,15 @@ BitTorrent Specific Options
+   one which satisfies the given level.
+   Default: ``plain``
+ 
++.. option:: --bt-piece-selector=<SELECTOR>
++
++  Specify the piece selection algorithm used for BitTorrent downloads.
++  If unspecified or 'default' is given, aria2 prioritizes downloads of the
++  rarest pieces, that is the ones that are held by the least amount of peers.
++  This is the optimal behavior for the BitTorrent swarm.
++  If 'inorder' is given, aria2 tries to download pieces in order. This allows
++  playing media files while downloading them.
++
+ .. option:: --bt-prioritize-piece=head[=<SIZE>],tail[=<SIZE>]
+ 
+   Try to download first and last pieces of each file first. This is
+@@ -2132,6 +2141,7 @@ of URIs. These optional lines must start with white space(s).
+   * :option:`bt-max-peers <--bt-max-peers>`
+   * :option:`bt-metadata-only <--bt-metadata-only>`
+   * :option:`bt-min-crypto-level <--bt-min-crypto-level>`
++  * :option:`bt-piece-selector <--bt-piece-selector>`
+   * :option:`bt-prioritize-piece <--bt-prioritize-piece>`
+   * :option:`bt-remove-unselected-file <--bt-remove-unselected-file>`
+   * :option:`bt-request-peer-speed-limit <--bt-request-peer-speed-limit>`
+diff --git a/doc/xmlrpc/aria2rpc b/doc/xmlrpc/aria2rpc
+index f52b7f6a0..3fee3d845 100755
+--- a/doc/xmlrpc/aria2rpc
++++ b/doc/xmlrpc/aria2rpc
+@@ -116,6 +116,9 @@ OptionParser.new do |opt|
+   opt.on("--bt-min-crypto-level LEVEL",["plain","arc4"]){|val|
+     options["bt-min-crypto-level"]=val
+   }
++  opt.on("--bt-piece-selector SELECTOR",["default","inorder"){|val|
++    options["bt-piece-selector"]=val
++  }
+   opt.on("--bt-prioritize-piece RANGE") {|val|
+     options["bt-prioritize-piece"]=val
+   }
+diff --git a/src/DefaultPieceStorage.cc b/src/DefaultPieceStorage.cc
+index e08b1b185..ae27192ea 100644
+--- a/src/DefaultPieceStorage.cc
++++ b/src/DefaultPieceStorage.cc
+@@ -56,6 +56,7 @@
+ #include "Option.h"
+ #include "fmt.h"
+ #include "RarestPieceSelector.h"
++#include "InorderPieceSelector.h"
+ #include "DefaultStreamPieceSelector.h"
+ #include "InorderStreamPieceSelector.h"
+ #include "RandomStreamPieceSelector.h"
+@@ -91,7 +92,6 @@ DefaultPieceStorage::DefaultPieceStorage(
+       nextHaveIndex_(1),
+       pieceStatMan_(std::make_shared<PieceStatMan>(
+           downloadContext->getNumPieces(), true)),
+-      pieceSelector_(make_unique<RarestPieceSelector>(pieceStatMan_)),
+       wrDiskCache_(nullptr)
+ {
+   const std::string& pieceSelectorOpt =
+@@ -112,6 +112,13 @@ DefaultPieceStorage::DefaultPieceStorage(
+     streamPieceSelector_ =
+         make_unique<GeomStreamPieceSelector>(bitfieldMan_.get(), 1.5);
+   }
++
++  const std::string& btPieceSelectorOpt = option_->get(PREF_BT_PIECE_SELECTOR);
++  if (btPieceSelectorOpt.empty() || btPieceSelectorOpt == A2_V_DEFAULT) {
++    pieceSelector_ = make_unique<RarestPieceSelector>(pieceStatMan_);
++  } else if (btPieceSelectorOpt == V_INORDER) {
++    pieceSelector_ = make_unique<InorderPieceSelector>();
++  }
+ }
+ 
+ DefaultPieceStorage::~DefaultPieceStorage() = default;
+diff --git a/src/InorderPieceSelector.cc b/src/InorderPieceSelector.cc
+new file mode 100644
+index 000000000..0b8e7dca1
+--- /dev/null
++++ b/src/InorderPieceSelector.cc
+@@ -0,0 +1,59 @@
++/* <!-- copyright */
++/*
++ * aria2 - The high speed download utility
++ *
++ * Copyright (C) 2020 Tatsuhiro Tsujikawa
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ * In addition, as a special exception, the copyright holders give
++ * permission to link the code of portions of this program with the
++ * OpenSSL library under certain conditions as described in each
++ * individual source file, and distribute linked combinations
++ * including the two.
++ * You must obey the GNU General Public License in all respects
++ * for all of the code used other than OpenSSL.  If you modify
++ * file(s) with this exception, you may extend this exception to your
++ * version of the file(s), but you are not obligated to do so.  If you
++ * do not wish to do so, delete this exception statement from your
++ * version.  If you delete this exception statement from all source
++ * files in the program, then also delete it here.
++ */
++/* copyright --> */
++#include "InorderPieceSelector.h"
++
++#include "bitfield.h"
++
++namespace aria2 {
++
++InorderPieceSelector::InorderPieceSelector()
++{
++}
++
++InorderPieceSelector::~InorderPieceSelector() = default;
++
++bool InorderPieceSelector::select(size_t& index, const unsigned char* bitfield,
++                                  size_t nbits) const
++{
++  for (size_t i = 0; i < nbits; ++i) {
++    if (bitfield::test(bitfield, nbits, i)) {
++      index = i;
++      return true;
++    }
++  }
++  return false;
++}
++
++} // namespace aria2
+diff --git a/src/InorderPieceSelector.h b/src/InorderPieceSelector.h
+new file mode 100644
+index 000000000..954243180
+--- /dev/null
++++ b/src/InorderPieceSelector.h
+@@ -0,0 +1,55 @@
++/* <!-- copyright */
++/*
++ * aria2 - The high speed download utility
++ *
++ * Copyright (C) 2020 Tatsuhiro Tsujikawa
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ * In addition, as a special exception, the copyright holders give
++ * permission to link the code of portions of this program with the
++ * OpenSSL library under certain conditions as described in each
++ * individual source file, and distribute linked combinations
++ * including the two.
++ * You must obey the GNU General Public License in all respects
++ * for all of the code used other than OpenSSL.  If you modify
++ * file(s) with this exception, you may extend this exception to your
++ * version of the file(s), but you are not obligated to do so.  If you
++ * do not wish to do so, delete this exception statement from your
++ * version.  If you delete this exception statement from all source
++ * files in the program, then also delete it here.
++ */
++/* copyright --> */
++#ifndef D_INORDER_PIECE_SELECTOR_H
++#define D_INORDER_PIECE_SELECTOR_H
++
++#include "PieceSelector.h"
++
++#include <memory>
++
++namespace aria2 {
++
++class InorderPieceSelector : public PieceSelector {
++public:
++  InorderPieceSelector();
++  virtual ~InorderPieceSelector();
++
++  virtual bool select(size_t& index, const unsigned char* bitfield,
++                      size_t nbits) const CXX11_OVERRIDE;
++};
++
++} // namespace aria2
++
++#endif // D_INORDER_PIECE_SELECTOR_H
+diff --git a/src/Makefile.am b/src/Makefile.am
+index cb6e3b7cf..a52de3721 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -139,6 +139,7 @@ SRCS =  \
+ 	IndexedList.h\
+ 	InitiateConnectionCommand.cc InitiateConnectionCommand.h\
+ 	InitiateConnectionCommandFactory.cc InitiateConnectionCommandFactory.h\
++	InorderPieceSelector.cc InorderPieceSelector.h\
+ 	InorderStreamPieceSelector.cc InorderStreamPieceSelector.h\
+ 	RandomStreamPieceSelector.cc RandomStreamPieceSelector.h\
+ 	InorderURISelector.cc InorderURISelector.h\
+diff --git a/src/OptionHandlerFactory.cc b/src/OptionHandlerFactory.cc
+index 6bff4caa3..79012963c 100644
+--- a/src/OptionHandlerFactory.cc
++++ b/src/OptionHandlerFactory.cc
+@@ -1581,6 +1581,16 @@ std::vector<OptionHandler*> OptionHandlerFactory::createOptionHandlers()
+     op->setChangeOptionForReserved(true);
+     handlers.push_back(op);
+   }
++  {
++    OptionHandler* op(new ParameterOptionHandler(
++          PREF_BT_PIECE_SELECTOR, TEXT_BT_PIECE_SELECTOR, A2_V_DEFAULT,
++          {A2_V_DEFAULT, V_INORDER}));
++    op->addTag(TAG_BITTORRENT);
++    op->setInitialOption(true);
++    op->setChangeGlobalOption(true);
++    op->setChangeOptionForReserved(true);
++    handlers.push_back(op);
++  }
+   {
+     OptionHandler* op(new PrioritizePieceOptionHandler(
+         PREF_BT_PRIORITIZE_PIECE, TEXT_BT_PRIORITIZE_PIECE));
+diff --git a/src/prefs.cc b/src/prefs.cc
+index fe982685a..e05f44aa2 100644
+--- a/src/prefs.cc
++++ b/src/prefs.cc
+@@ -534,6 +534,8 @@ PrefPtr PREF_INDEX_OUT = makePref("index-out");
+ PrefPtr PREF_BT_TRACKER_INTERVAL = makePref("bt-tracker-interval");
+ // values: 1*digit
+ PrefPtr PREF_BT_STOP_TIMEOUT = makePref("bt-stop-timeout");
++// values: default | inorder
++PrefPtr PREF_BT_PIECE_SELECTOR = makePref("bt-piece-selector");
+ // values: head[=SIZE]|tail[=SIZE], ...
+ PrefPtr PREF_BT_PRIORITIZE_PIECE = makePref("bt-prioritize-piece");
+ // values: true | false
+diff --git a/src/prefs.h b/src/prefs.h
+index 9719b3be0..1ffb69c63 100644
+--- a/src/prefs.h
++++ b/src/prefs.h
+@@ -485,6 +485,8 @@ extern PrefPtr PREF_INDEX_OUT;
+ extern PrefPtr PREF_BT_TRACKER_INTERVAL;
+ // values: 1*digit
+ extern PrefPtr PREF_BT_STOP_TIMEOUT;
++// values: default | inorder
++extern PrefPtr PREF_BT_PIECE_SELECTOR;
+ // values: head[=SIZE]|tail[=SIZE], ...
+ extern PrefPtr PREF_BT_PRIORITIZE_PIECE;
+ // values: true | false
+diff --git a/src/usage_text.h b/src/usage_text.h
+index ebf67e3d3..7986f2008 100644
+--- a/src/usage_text.h
++++ b/src/usage_text.h
+@@ -618,6 +618,17 @@
+   _(" --bt-stop-timeout=SEC        Stop BitTorrent download if download speed is 0 in\n" \
+     "                              consecutive SEC seconds. If 0 is given, this\n" \
+     "                              feature is disabled.")
++#define TEXT_BT_PIECE_SELECTOR                                          \
++  _(" --bt-piece-selector=SELECTOR Specify the piece selection algorithm used for\n" \
++    "                              BitTorrent downloads.\n"             \
++    "                              If unspecified or 'default' is given, aria2\n" \
++    "                              prioritizes downloads of the rarest pieces, that\n" \
++    "                              is the ones that are held by the least amount of\n" \
++    "                              peers. This is the optimal behavior for the\n" \
++    "                              BitTorrent swarm.\n"                 \
++    "                              If 'inorder' is given, aria2 tries to download\n" \
++    "                              pieces in order. This allows playing media files\n" \
++    "                              while downloading them.")
+ #define TEXT_BT_PRIORITIZE_PIECE                                        \
+   _(" --bt-prioritize-piece=head[=SIZE],tail[=SIZE] Try to download first and last\n" \
+     "                              pieces of each file first. This is useful for\n" \
+diff --git a/test/DefaultPieceStorageTest.cc b/test/DefaultPieceStorageTest.cc
+index cbb3b4bff..9e556c6b9 100644
+--- a/test/DefaultPieceStorageTest.cc
++++ b/test/DefaultPieceStorageTest.cc
+@@ -8,8 +8,6 @@
+ #include "Peer.h"
+ #include "Option.h"
+ #include "FileEntry.h"
+-#include "RarestPieceSelector.h"
+-#include "InorderPieceSelector.h"
+ #include "DownloadContext.h"
+ #include "bittorrent_helper.h"
+ #include "DiskAdaptor.h"
+@@ -46,19 +44,18 @@ class DefaultPieceStorageTest : public CppUnit::TestFixture {
+   std::shared_ptr<DownloadContext> dctx_;
+   std::shared_ptr<Peer> peer;
+   std::shared_ptr<Option> option_;
+-  std::unique_ptr<PieceSelector> pieceSelector_;
+ 
+ public:
+   void setUp()
+   {
+     option_ = std::make_shared<Option>();
+     option_->put(PREF_DIR, ".");
++    option_->put(PREF_BT_PIECE_SELECTOR, V_INORDER);
+     dctx_ = std::make_shared<DownloadContext>();
+     bittorrent::load(A2_TEST_DIR "/test.torrent", dctx_, option_);
+     peer = std::make_shared<Peer>("192.168.0.1", 6889);
+     peer->allocateSessionResource(dctx_->getPieceLength(),
+                                   dctx_->getTotalLength());
+-    pieceSelector_ = make_unique<InorderPieceSelector>();
+   }
+ 
+   void testGetTotalLength();
+@@ -93,7 +90,6 @@ void DefaultPieceStorageTest::testGetTotalLength()
+ void DefaultPieceStorageTest::testGetMissingPiece()
+ {
+   DefaultPieceStorage pss(dctx_, option_.get());
+-  pss.setPieceSelector(std::move(pieceSelector_));
+   peer->setAllBitfield();
+ 
+   auto piece = pss.getMissingPiece(peer, 1);
+@@ -113,7 +109,6 @@ void DefaultPieceStorageTest::testGetMissingPiece()
+ void DefaultPieceStorageTest::testGetMissingPiece_many()
+ {
+   DefaultPieceStorage pss(dctx_, option_.get());
+-  pss.setPieceSelector(std::move(pieceSelector_));
+   peer->setAllBitfield();
+   std::vector<std::shared_ptr<Piece>> pieces;
+   pss.getMissingPiece(pieces, 2, peer, 1);
+@@ -133,7 +128,6 @@ void DefaultPieceStorageTest::testGetMissingPiece_many()
+ void DefaultPieceStorageTest::testGetMissingPiece_excludedIndexes()
+ {
+   DefaultPieceStorage pss(dctx_, option_.get());
+-  pss.setPieceSelector(std::move(pieceSelector_));
+   pss.setEndGamePieceNum(0);
+ 
+   peer->setAllBitfield();
+@@ -156,7 +150,6 @@ void DefaultPieceStorageTest::testGetMissingPiece_excludedIndexes()
+ void DefaultPieceStorageTest::testGetMissingPiece_manyWithExcludedIndexes()
+ {
+   DefaultPieceStorage pss(dctx_, option_.get());
+-  pss.setPieceSelector(std::move(pieceSelector_));
+   peer->setAllBitfield();
+   std::vector<size_t> excludedIndexes;
+   excludedIndexes.push_back(1);
+@@ -175,7 +168,6 @@ void DefaultPieceStorageTest::testGetMissingPiece_manyWithExcludedIndexes()
+ void DefaultPieceStorageTest::testGetMissingFastPiece()
+ {
+   DefaultPieceStorage pss(dctx_, option_.get());
+-  pss.setPieceSelector(std::move(pieceSelector_));
+   pss.setEndGamePieceNum(0);
+ 
+   peer->setAllBitfield();
+@@ -192,7 +184,6 @@ void DefaultPieceStorageTest::testGetMissingFastPiece()
+ void DefaultPieceStorageTest::testGetMissingFastPiece_excludedIndexes()
+ {
+   DefaultPieceStorage pss(dctx_, option_.get());
+-  pss.setPieceSelector(std::move(pieceSelector_));
+   pss.setEndGamePieceNum(0);
+ 
+   peer->setAllBitfield();
+@@ -224,7 +215,6 @@ void DefaultPieceStorageTest::testHasMissingPiece()
+ void DefaultPieceStorageTest::testCompletePiece()
+ {
+   DefaultPieceStorage pss(dctx_, option_.get());
+-  pss.setPieceSelector(std::move(pieceSelector_));
+   pss.setEndGamePieceNum(0);
+ 
+   peer->setAllBitfield();
+diff --git a/test/InorderPieceSelector.h b/test/InorderPieceSelector.h
+deleted file mode 100644
+index d7225737e..000000000
+--- a/test/InorderPieceSelector.h
++++ /dev/null
+@@ -1,26 +0,0 @@
+-#ifndef D_IN_ORDER_PIECE_SELECTOR_H
+-#define D_IN_ORDER_PIECE_SELECTOR_H
+-
+-#include "PieceSelector.h"
+-#include "bitfield.h"
+-
+-namespace aria2 {
+-
+-class InorderPieceSelector : public PieceSelector {
+-public:
+-  virtual bool select(size_t& index, const unsigned char* bitfield,
+-                      size_t nbits) const CXX11_OVERRIDE
+-  {
+-    for (size_t i = 0; i < nbits; ++i) {
+-      if (bitfield::test(bitfield, nbits, i)) {
+-        index = i;
+-        return true;
+-      }
+-    }
+-    return false;
+-  }
+-};
+-
+-} // namespace aria2
+-
+-#endif // D_IN_ORDER_PIECE_SELECTOR_H
+diff --git a/test/InorderPieceSelectorTest.cc b/test/InorderPieceSelectorTest.cc
+new file mode 100644
+index 000000000..d9818eeda
+--- /dev/null
++++ b/test/InorderPieceSelectorTest.cc
+@@ -0,0 +1,47 @@
++#include "InorderPieceSelector.h"
++
++#include <cppunit/extensions/HelperMacros.h>
++
++#include "BitfieldMan.h"
++#include "a2functional.h"
++
++namespace aria2 {
++
++class InorderPieceSelectorTest : public CppUnit::TestFixture {
++
++  CPPUNIT_TEST_SUITE(InorderPieceSelectorTest);
++  CPPUNIT_TEST(testSelect);
++  CPPUNIT_TEST_SUITE_END();
++
++public:
++  void testSelect();
++};
++
++CPPUNIT_TEST_SUITE_REGISTRATION(InorderPieceSelectorTest);
++
++void InorderPieceSelectorTest::testSelect()
++{
++  constexpr size_t pieceLength = 1_k;
++  BitfieldMan bf(pieceLength, pieceLength * 6);
++  bf.setAllBit();
++  bf.unsetBit(1);
++  bf.unsetBit(4);
++  InorderPieceSelector selector;
++
++  size_t index;
++  CPPUNIT_ASSERT(selector.select(index, bf.getBitfield(), bf.countBlock()));
++  CPPUNIT_ASSERT_EQUAL((size_t)0, index);
++  bf.unsetBit(0);
++  CPPUNIT_ASSERT(selector.select(index, bf.getBitfield(), bf.countBlock()));
++  CPPUNIT_ASSERT_EQUAL((size_t)2, index);
++  bf.unsetBit(2);
++  CPPUNIT_ASSERT(selector.select(index, bf.getBitfield(), bf.countBlock()));
++  CPPUNIT_ASSERT_EQUAL((size_t)3, index);
++  bf.unsetBit(3);
++  CPPUNIT_ASSERT(selector.select(index, bf.getBitfield(), bf.countBlock()));
++  CPPUNIT_ASSERT_EQUAL((size_t)5, index);
++  bf.unsetBit(5);
++  CPPUNIT_ASSERT(!selector.select(index, bf.getBitfield(), bf.countBlock()));
++}
++
++} // namespace aria2
+diff --git a/test/Makefile.am b/test/Makefile.am
+index c71144490..ac66a90f0 100644
+--- a/test/Makefile.am
++++ b/test/Makefile.am
+@@ -62,7 +62,6 @@ aria2c_SOURCES = AllTest.cc\
+ 	SequentialPickerTest.cc\
+ 	RarestPieceSelectorTest.cc\
+ 	PieceStatManTest.cc\
+-	InorderPieceSelector.h\
+ 	LongestSequencePieceSelectorTest.cc\
+ 	a2algoTest.cc\
+ 	bitfieldTest.cc\
+@@ -206,6 +205,7 @@ aria2c_SOURCES += BtAllowedFastMessageTest.cc\
+ 	MockExtensionMessageFactory.h\
+ 	MockPieceStorage.h\
+ 	BittorrentHelperTest.cc\
++	InorderPieceSelectorTest.cc\
+ 	PriorityPieceSelectorTest.cc\
+ 	MockPieceSelector.h\
+ 	extension_message_test_helper.h\
