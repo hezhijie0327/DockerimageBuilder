@@ -1,10 +1,12 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
+ADD ../patch/package.json /tmp/package.json
+
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/hezhijie0327/Patch/main/package.json" | jq -Sr ".module.libssh2" > "${WORKDIR}/libssh2.json" && cat "${WORKDIR}/libssh2.json" | jq -Sr ".version" && cat "${WORKDIR}/libssh2.json" | jq -Sr ".source" > "${WORKDIR}/libssh2.autobuild"
+RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.libssh2" > "${WORKDIR}/libssh2.json" && cat "${WORKDIR}/libssh2.json" | jq -Sr ".version" && cat "${WORKDIR}/libssh2.json" | jq -Sr ".source" > "${WORKDIR}/libssh2.autobuild"
 
 FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
 
