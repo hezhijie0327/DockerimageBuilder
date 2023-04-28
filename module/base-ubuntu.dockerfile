@@ -1,4 +1,4 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
 
 FROM ubuntu:latest AS REBASED_UBUNTU
 
@@ -36,7 +36,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
     && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
-    && apt install -qy autoconf automake autopoint autotools-dev binutils curl g++ gcc git jq libtool make perl pkg-config unzip wget yacc \
+    && apt install -qy autoconf automake autopoint autotools-dev binutils curl flex g++ gcc git jq libtool make perl pkg-config unzip wget yacc \
     && apt full-upgrade -qy \
     && apt autoremove -qy && apt clean autoclean -qy \
     && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
