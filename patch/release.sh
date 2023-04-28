@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -62,7 +62,7 @@ function GetLatestVersion() {
     SQLITE_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/sqlite/sqlite/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/version\-" | tail -n 1 | sed "s/refs\/tags\/version\-//")
     SQLITE_YEAR=$(curl -s --connect-timeout 15 $(curl -s --connect-timeout 15 'https://api.github.com/repos/sqlite/sqlite/git/matching-refs/tags' | jq -Sr '.[].object.url' | tail -n 1) | jq -Sr '.committer.date' | cut -d '-' -f 1)
     UNBOUND_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/NLnetLabs/unbound/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "rc" | grep "^refs/tags/release\-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
-    ZLIB_NG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/zlib-ng/zlib-ng/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/[0-9]" | tail -n 1 | sed "s/refs\/tags\///")
+    ZLIB_NG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/zlib-ng/zlib-ng/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/[0-9]" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\///")
 }
 # Generate Replacements
 function GenerateReplacements() {
