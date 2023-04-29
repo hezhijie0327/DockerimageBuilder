@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -8,7 +8,7 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.ngtcp2" > "${WORKDIR}/ngtcp2.json" && cat "${WORKDIR}/ngtcp2.json" | jq -Sr ".version" && cat "${WORKDIR}/ngtcp2.json" | jq -Sr ".source" > "${WORKDIR}/ngtcp2.autobuild"
 
-FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:glibc-openssl-quic AS BUILD_OPENSSL
 
 FROM hezhijie0327/base:ubuntu AS BUILD_NGTCP2
 
