@@ -19,12 +19,12 @@ FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
 COPY --from=BUILD_CLOUDFLAREDDNS /tmp/BUILDKIT /tmp/BUILDKIT/
 
-RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/vlmcs" && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/CloudflareDDNS.sh"
+RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/CloudflareDDNS.sh"
 
 FROM scratch
 
 COPY --from=BUILD_BASEOS / /
-COPY --from=GPG_SIGN /tmp/BUILDKIT /opt/CloudflareDDNS.sh
+COPY --from=GPG_SIGN /tmp/BUILDKIT /opt
 
 ENV XAUTHEMAIL=${XAUTHEMAIL} XAUTHKEY=${XAUTHKEY} ZONENAME=${ZONENAME} RECORDNAME=${RECORDNAME} TYPE=${TYPE} TTL=${TTL} PROXYSTATUS=${PROXYSTATUS} RUNNINGMODE=${RUNNINGMODE} UPDATEFREQUENCY=${UPDATEFREQUENCY}
 
