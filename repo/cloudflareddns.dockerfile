@@ -1,14 +1,5 @@
 # Current Version: 1.0.0
 
-FROM alpine:latest AS BUILD_BASEOS
-
-RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
-    && apk update \
-    && apk add --no-cache bind-tools curl jq \
-    && apk upgrade --no-cache \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
-    && rm -rf /tmp/* /var/cache/apk/*
-
 FROM hezhijie0327/base:alpine AS BUILD_CLOUDFLAREDDNS
 
 WORKDIR /tmp
@@ -21,10 +12,20 @@ COPY --from=BUILD_CLOUDFLAREDDNS /tmp/BUILDKIT /tmp/BUILDKIT/
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/CloudflareDDNS.sh"
 
+FROM alpine:latest AS BUILD_BASEOS
+
+COPY --from=GPG_SIGN /tmp/BUILDKIT /opt
+
+RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
+    && apk update \
+    && apk add --no-cache bind-tools curl jq \
+    && apk upgrade --no-cache \
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
+    && rm -rf /tmp/* /var/cache/apk/*
+
 FROM scratch
 
 COPY --from=BUILD_BASEOS / /
-COPY --from=GPG_SIGN /tmp/BUILDKIT /opt
 
 ENV XAUTHEMAIL=${XAUTHEMAIL} XAUTHKEY=${XAUTHKEY} ZONENAME=${ZONENAME} RECORDNAME=${RECORDNAME} TYPE=${TYPE} TTL=${TTL} PROXYSTATUS=${PROXYSTATUS} RUNNINGMODE=${RUNNINGMODE} UPDATEFREQUENCY=${UPDATEFREQUENCY}
 
