@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,7 +6,7 @@ ADD ../patch/package.json /tmp/package.json
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.mosdns" > "${WORKDIR}/mosdns.json" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".version" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".source" > "${WORKDIR}/mosdns.source.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".source_branch" > "${WORKDIR}/mosdns.source_branch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".patch" > "${WORKDIR}/mosdns.patch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".patch_branch" > "${WORKDIR}/mosdns.patch_branch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".version" > "${WORKDIR}/mosdns.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.mosdns" > "${WORKDIR}/mosdns.json" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".version" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".source" > "${WORKDIR}/mosdns.source.autobuild" && echo "https://github.com/hezhijie0327/mosdns.git" > "${WORKDIR}/mosdns.source.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".source_branch" > "${WORKDIR}/mosdns.source_branch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".patch" > "${WORKDIR}/mosdns.patch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".patch_branch" > "${WORKDIR}/mosdns.patch_branch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".version" > "${WORKDIR}/mosdns.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
@@ -20,7 +20,7 @@ COPY --from=GET_INFO /tmp/mosdns.*.autobuild /tmp/
 
 COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/mosdns.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/mosdns.source.autobuild") "${WORKDIR}/BUILDTMP/MOSDNS" && git clone -b $(cat "${WORKDIR}/mosdns.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/mosdns.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export MOSDNS_SHA=$(cd "${WORKDIR}/BUILDTMP/MOSDNS" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MOSDNS_VERSION=$(cat "${WORKDIR}/mosdns.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MOSDNS_CUSTOM_VERSION="${MOSDNS_VERSION}-ZHIJIE-${MOSDNS_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/MOSDNS" && go mod tidy && go get -u && go mod download && go mod vendor && go mod edit -require=github.com/quic-go/quic-go@v0.34.0 && go mod tidy && go mod vendor && go build -ldflags "-s -w -X main.version=${MOSDNS_CUSTOM_VERSION}" -trimpath -o mosdns && cp -rf "${WORKDIR}/BUILDTMP/MOSDNS/mosdns" "${WORKDIR}/BUILDKIT/mosdns"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/mosdns.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/mosdns.source.autobuild") "${WORKDIR}/BUILDTMP/MOSDNS" && git clone -b $(cat "${WORKDIR}/mosdns.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/mosdns.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export MOSDNS_SHA=$(cd "${WORKDIR}/BUILDTMP/MOSDNS" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MOSDNS_VERSION=$(cat "${WORKDIR}/mosdns.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MOSDNS_CUSTOM_VERSION="${MOSDNS_VERSION}-ZHIJIE-${MOSDNS_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/MOSDNS" && go mod tidy && go get -u && go mod download && go mod vendor && go build -ldflags "-s -w -X main.version=${MOSDNS_CUSTOM_VERSION}" -trimpath -o mosdns && cp -rf "${WORKDIR}/BUILDTMP/MOSDNS/mosdns" "${WORKDIR}/BUILDKIT/mosdns"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
