@@ -30,6 +30,4 @@ FROM scratch
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT /
 
-EXPOSE 443/tcp 443/udp 53/tcp 53/udp 853/tcp 853/udp
-
 ENTRYPOINT ["/v2ray"]
