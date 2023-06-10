@@ -8,7 +8,7 @@ WORKDIR /tmp
 
 COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b "https://github.com/cloudflare/cloudflared" --depth=1 "master" "${WORKDIR}/BUILDTMP/CLOUDFLARED" && cd "${WORKDIR}/BUILDTMP/CLOUDFLARED" && go mod tidy && go get -u ./cmd/cloudflared && go mod download && go get -t github.com/cloudflare/cloudflared/carrier && go mod vendor && make cloudflared && cp -rf "${WORKDIR}/BUILDTMP/CLOUDFLARED/cloudflared" "${WORKDIR}/BUILDKIT/cloudflared"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b "master" --depth=1 "https://github.com/cloudflare/cloudflared" "${WORKDIR}/BUILDTMP/CLOUDFLARED" && cd "${WORKDIR}/BUILDTMP/CLOUDFLARED" && go mod tidy && go get -u ./cmd/cloudflared && go mod download && go get -t github.com/cloudflare/cloudflared/carrier && go mod vendor && make cloudflared && cp -rf "${WORKDIR}/BUILDTMP/CLOUDFLARED/cloudflared" "${WORKDIR}/BUILDKIT/cloudflared"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
