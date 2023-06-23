@@ -1,11 +1,11 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 FROM ubuntu:rolling AS REBASED_UBUNTU
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
 RUN apt update \
-    && apt install -qy autoconf automake autopoint autotools-dev binutils curl flex g++ gcc git jq libtool make perl pkg-config unzip wget yacc \
+    && apt install -qy autoconf automake autopoint autotools-dev binutils curl flex g++ gcc git jq libicu-dev libtool make perl pkg-config unzip wget yacc \
     && apt full-upgrade -qy \
     && apt autoremove -qy && apt clean autoclean -qy \
     && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
