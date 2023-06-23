@@ -60,6 +60,7 @@ COPY --from=BUILD_JELLYFIN_FFMPEG /tmp/BUILDKIT/jellyfin-ffmpeg /tmp/BUILDTMP/je
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /opt/jellyfin-web
 
 RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
+    && export OSArchitecture=$( dpkg --print-architecture ) \
     && if [ "${OSArchitecture}" = "amd64" ]; then export MIRROR_URL="ubuntu"; else export MIRROR_URL="ubuntu-ports"; fi \
     && echo "deb https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename} main multiverse restricted universe" > "/etc/apt/sources.list" \
     && echo "deb https://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-backports main multiverse restricted universe" >> "/etc/apt/sources.list" \
