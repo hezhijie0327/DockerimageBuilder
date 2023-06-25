@@ -1,4 +1,4 @@
-# Current Version: 1.5.1
+# Current Version: 1.5.2
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -50,7 +50,7 @@ COPY --from=BUILD_JELLYFIN /tmp/BUILDKIT/jellyfin /tmp/BUILDKIT/jellyfin
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/jellyfin/jellyfin"
 
-FROM ubuntu:latest AS REBASED_JELLYFIN
+FROM ubuntu:rolling AS REBASED_JELLYFIN
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
