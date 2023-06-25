@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -8,7 +8,7 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.gperftools" > "${WORKDIR}/gperftools.json" && cat "${WORKDIR}/gperftools.json" | jq -Sr ".version" && cat "${WORKDIR}/gperftools.json" | jq -Sr ".source" > "${WORKDIR}/gperftools.autobuild"
 
-FROM hezhijie0327/base:ubuntu AS BUILD_GPERFTOOLS
+FROM hezhijie0327/base:ubuntu-lts AS BUILD_GPERFTOOLS
 
 WORKDIR /tmp
 
