@@ -1,4 +1,4 @@
-# Current Version: 1.5.3
+# Current Version: 1.5.4
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -54,7 +54,7 @@ FROM ubuntu:rolling AS REBASED_JELLYFIN
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
-COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt.tmp
+COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=GPG_SIGN /tmp/BUILDKIT/jellyfin /opt/jellyfin
 COPY --from=BUILD_JELLYFIN_FFMPEG /tmp/BUILDKIT/jellyfin-ffmpeg /tmp/BUILDTMP/jellyfin-ffmpeg
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /opt/jellyfin-web
@@ -91,12 +91,11 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
     && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
-    && apt install -qy ca-certificates /tmp/BUILDTMP/jellyfin-ffmpeg/*.deb \
+    && apt install -qy openssl /tmp/BUILDTMP/jellyfin-ffmpeg/*.deb \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
     && sed -i 's/http:/https:/g' "/etc/apt/sources.list" \
-    && cat /etc/ssl/certs/ca-certificates.crt.tmp > /etc/ssl/certs/ca-certificates.crt \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 FROM scratch
