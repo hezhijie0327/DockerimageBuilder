@@ -1,6 +1,6 @@
-# Current Version: 1.2.4
+# Current Version: 1.2.5
 
-FROM ubuntu:rolling AS REBASED_UBUNTU
+FROM ubuntu:latest AS REBASED_UBUNTU
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
