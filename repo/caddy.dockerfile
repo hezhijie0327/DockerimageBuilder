@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -18,7 +18,7 @@ COPY --from=GET_INFO /tmp/caddy.*.autobuild /tmp/
 
 COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/caddy.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/caddy.source.autobuild") "${WORKDIR}/BUILDTMP/CADDY" && git clone -b $(cat "${WORKDIR}/caddy.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/caddy.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && cd "${WORKDIR}/BUILDTMP/CADDY" && go mod tidy && go get -u && go mod download && go mod vendor && go mod vendor && go mod edit -require=github.com/quic-go/qtls-go1-20@v0.2.2 && go mod tidy && go mod vendor && cd "${WORKDIR}/BUILDTMP/CADDY/cmd/caddy" && export CGO_ENABLED=0 && go build && cp -rf "${WORKDIR}/BUILDTMP/CADDY/cmd/caddy/caddy" "${WORKDIR}/BUILDKIT/caddy"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/caddy.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/caddy.source.autobuild") "${WORKDIR}/BUILDTMP/CADDY" && git clone -b $(cat "${WORKDIR}/caddy.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/caddy.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && cd "${WORKDIR}/BUILDTMP/CADDY" && go mod tidy && go get -u && go mod download && go mod vendor && cd "${WORKDIR}/BUILDTMP/CADDY/cmd/caddy" && export CGO_ENABLED=0 && go build && cp -rf "${WORKDIR}/BUILDTMP/CADDY/cmd/caddy/caddy" "${WORKDIR}/BUILDKIT/caddy"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
