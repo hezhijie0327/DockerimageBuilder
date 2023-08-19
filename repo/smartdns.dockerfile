@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -30,6 +30,6 @@ FROM scratch
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT /
 
-EXPOSE 53/tcp 53/udp
+EXPOSE 53/tcp 53/udp 853/tcp
 
 ENTRYPOINT ["/smartdns"]
