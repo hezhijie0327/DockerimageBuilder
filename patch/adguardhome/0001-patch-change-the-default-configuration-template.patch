@@ -54,10 +54,10 @@ index 3806ef5b..bf1cd5dc 100644
  var webRegistered bool
 
 diff --git a/internal/home/config.go b/internal/home/config.go
-index b216137..1dd8b4f 100644
+index 4fa1aa4..de6c5f2 100644
 --- a/internal/home/config.go
 +++ b/internal/home/config.go
-@@ -282,11 +282,11 @@ type statsConfig struct {
+@@ -285,11 +285,11 @@ type statsConfig struct {
  //
  // TODO(a.garipov, e.burkov): This global is awful and must be removed.
  var config = &configuration{
@@ -72,18 +72,16 @@ index b216137..1dd8b4f 100644
  		Pprof: &httpPprofConfig{
  			Enabled: false,
  			Port:    6060,
-@@ -298,10 +298,10 @@ var config = &configuration{
- 		FilteringConfig: dnsforward.FilteringConfig{
- 			ProtectionEnabled:  true, // whether or not use any of filtering features
- 			BlockingMode:       dnsforward.BlockingModeDefault,
--			BlockedResponseTTL: 10, // in seconds
--			Ratelimit:          20,
-+			BlockedResponseTTL: 3600, // in seconds
-+			Ratelimit:          1000,
- 			RefuseAny:          true,
--			AllServers:         false,
-+			AllServers:         true,
- 			HandleDDR:          true,
+@@ -299,9 +299,9 @@ var config = &configuration{
+ 		BindHosts: []netip.Addr{netip.IPv4Unspecified()},
+ 		Port:      defaultPortDNS,
+ 		Config: dnsforward.Config{
+-			Ratelimit:  20,
++			Ratelimit:  1000,
+ 			RefuseAny:  true,
+-			AllServers: false,
++			AllServers: true,
+ 			HandleDDR:  true,
  			FastestTimeout: timeutil.Duration{
  				Duration: fastip.DefaultPingWaitTimeout,
 @@ -312,7 +312,7 @@ var config = &configuration{
@@ -95,43 +93,27 @@ index b216137..1dd8b4f 100644
  				UseCustom: false,
  			},
 
-@@ -320,19 +320,19 @@ var config = &configuration{
+@@ -320,7 +320,7 @@ var config = &configuration{
  			// we introduced a default limit due to this:
  			// https://github.com/AdguardTeam/AdGuardHome/issues/2015#issuecomment-674041912
  			// was later increased to 300 due to https://github.com/AdguardTeam/AdGuardHome/issues/2257
 -			MaxGoroutines: 300,
 +			MaxGoroutines: 1000,
  		},
- 		DnsfilterConf: &filtering.Config{
--			FilteringEnabled:           true,
--			FiltersUpdateIntervalHours: 24,
-+			FilteringEnabled:           false,
-+			FiltersUpdateIntervalHours: 1,
-
- 			ParentalEnabled:     false,
- 			SafeBrowsingEnabled: false,
-
--			SafeBrowsingCacheSize: 1 * 1024 * 1024,
--			SafeSearchCacheSize:   1 * 1024 * 1024,
--			ParentalCacheSize:     1 * 1024 * 1024,
--			CacheTime:             30,
-+			SafeBrowsingCacheSize: 4 * 1024 * 1024,
-+			SafeSearchCacheSize:   4 * 1024 * 1024,
-+			ParentalCacheSize:     4 * 1024 * 1024,
-+			CacheTime:             3600,
-
- 			SafeSearchConf: filtering.SafeSearchConfig{
- 				Enabled:    false,
-@@ -360,7 +360,7 @@ var config = &configuration{
+ 		UpstreamTimeout: timeutil.Duration{Duration: dnsforward.DefaultTimeout},
+ 		UsePrivateRDNS:  true,
+@@ -333,8 +333,8 @@ var config = &configuration{
  	QueryLog: queryLogConfig{
  		Enabled:     true,
  		FileEnabled: true,
 -		Interval:    timeutil.Duration{Duration: 90 * timeutil.Day},
+-		MemSize:     1000,
 +		Interval:    timeutil.Duration{Duration: 7 * timeutil.Day},
- 		MemSize:     1000,
++		MemSize:     0,
  		Ignored:     []string{},
  	},
-@@ -374,19 +374,9 @@ var config = &configuration{
+ 	Stats: statsConfig{
+@@ -347,32 +347,22 @@ var config = &configuration{
  	//
  	// TODO(a.garipov): Think of a way to make scripts/vetted-filters update
  	// these as well if necessary.
@@ -147,13 +129,41 @@ index b216137..1dd8b4f 100644
 -		Name:    "AdAway Default Blocklist",
 -	}},
 +	Filters: []filtering.FilterYAML{},
+ 	Filtering: &filtering.Config{
+ 		ProtectionEnabled:  true,
+ 		BlockingMode:       filtering.BlockingModeDefault,
+-		BlockedResponseTTL: 10, // in seconds
++		BlockedResponseTTL: 3600, // in seconds
+
+-		FilteringEnabled:           true,
+-		FiltersUpdateIntervalHours: 24,
++		FilteringEnabled:           false,
++		FiltersUpdateIntervalHours: 1,
+
+ 		ParentalEnabled:     false,
+ 		SafeBrowsingEnabled: false,
+
+-		SafeBrowsingCacheSize: 1 * 1024 * 1024,
+-		SafeSearchCacheSize:   1 * 1024 * 1024,
+-		ParentalCacheSize:     1 * 1024 * 1024,
+-		CacheTime:             30,
++		SafeBrowsingCacheSize: 4 * 1024 * 1024,
++		SafeSearchCacheSize:   4 * 1024 * 1024,
++		ParentalCacheSize:     4 * 1024 * 1024,
++		CacheTime:             3600,
+
+ 		SafeSearchConf: filtering.SafeSearchConfig{
+ 			Enabled:    false,
+@@ -390,7 +380,7 @@ var config = &configuration{
+ 		},
+ 	},
  	DHCP: &dhcpd.ServerConfig{
 -		LocalDomainName: "lan",
 +		LocalDomainName: "localdomain",
  		Conf4: dhcpd.V4ServerConf{
  			LeaseDuration: dhcpd.DefaultDHCPLeaseTTL,
  			ICMPTimeout:   dhcpd.DefaultDHCPTimeoutICMP,
-@@ -405,11 +395,11 @@ var config = &configuration{
+@@ -409,11 +399,11 @@ var config = &configuration{
  		},
  	},
  	Log: logSettings{
@@ -165,10 +175,10 @@ index b216137..1dd8b4f 100644
 +		Compress:   true,
 +		LocalTime:  true,
 +		MaxBackups: 3,
-+		MaxSize:    64,
++		MaxSize:    128,
 +		MaxAge:     7,
  	},
  	OSConfig:      &osConfig{},
- 	SchemaVersion: currentSchemaVersion,
+ 	SchemaVersion: confmigrate.CurrentSchemaVersion,
 --
-2.41.0
+2.42.0
