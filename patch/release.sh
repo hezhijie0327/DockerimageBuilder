@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.1.7
+# Current Version: 1.1.8
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -15,7 +15,7 @@ export DNSPROXY_VERSION_FIXED=""
 export DOTNET_VERSION_FIXED=""
 export EXPAT_VERSION_FIXED=""
 export GOLANG_VERSION_FIXED=""
-export GPERFTOOLS_VERSION_FIXED="2.10"
+export GPERFTOOLS_VERSION_FIXED=""
 export JELLYFIN_BRANCH_FIXED=""
 export JELLYFIN_VERSION_FIXED=""
 export LIBSSH2_VERSION_FIXED=""
