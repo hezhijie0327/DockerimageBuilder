@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.1.8
+# Current Version: 1.1.9
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -27,6 +27,7 @@ export SMARTDNS_VERSION_FIXED=""
 export SQLITE_VERSION_FIXED=""
 export SQLITE_YEAR_FIXED=""
 export V2RAY_VERSION_FIXED=""
+export VLMCSD_VERSION_FIXED=""
 export ZLIB_NG_VERSION_FIXED=""
 
 ## Function
@@ -52,6 +53,7 @@ function GetLatestVersion() {
     SQLITE_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/sqlite/sqlite/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/version\-" | tail -n 1 | sed "s/refs\/tags\/version\-//")
     SQLITE_YEAR=$(curl -s --connect-timeout 15 $(curl -s --connect-timeout 15 'https://api.github.com/repos/sqlite/sqlite/git/matching-refs/tags' | jq -Sr '.[].object.url' | tail -n 1) | jq -Sr '.committer.date' | cut -d '-' -f 1)
     V2RAY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/v2fly/v2ray-core/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    VLMCSD_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/Wind4/vlmcsd/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/svn" | tail -n 1 | sed "s/refs\/tags\/svn//")
     ZLIB_NG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/zlib-ng/zlib-ng/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/[0-9]" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\///")
 }
 # Generate Replacements
@@ -80,6 +82,7 @@ function GenerateReplacements() {
         "s/{SQLITE_VERSION}/${SQLITE_VERSION_FIXED:-${SQLITE_VERSION}}/g"
         "s/{SQLITE_YEAR}/${SQLITE_YEAR_FIXED:-${SQLITE_YEAR}}/g"
         "s/{V2RAY_VERSION}/${V2RAY_VERSION_FIXED:-${V2RAY_VERSION}}/g"
+        "s/{VLMCSD_VERSION}/${VLMCSD_VERSION_FIXED:-${VLMCSD_VERSION}}/g"
         "s/{ZLIB_NG_VERSION}/${ZLIB_NG_VERSION_FIXED:-${ZLIB_NG_VERSION}}/g"
     )
     SED_REPLACEMENT="" && for replacement_list_task in "${!replacement_list[@]}"; do
