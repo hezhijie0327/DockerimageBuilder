@@ -1,4 +1,4 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -18,7 +18,7 @@ COPY --from=GET_INFO /tmp/dnsproxy.*.autobuild /tmp/
 
 COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/dnsproxy.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/dnsproxy.source.autobuild") "${WORKDIR}/BUILDTMP/DNSPROXY" && git clone -b $(cat "${WORKDIR}/dnsproxy.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/dnsproxy.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export DNSPROXY_SHA=$(cd "${WORKDIR}/BUILDTMP/DNSPROXY" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export DNSPROXY_VERSION=$(cat "${WORKDIR}/dnsproxy.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export DNSPROXY_CUSTOM_VERSION="${DNSPROXY_VERSION}-ZHIJIE-${DNSPROXY_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/DNSPROXY" && go mod tidy && go get -u && go mod download && go mod vendor && go mod edit -require=github.com/quic-go/quic-go@v0.38.1 && go mod tidy && go mod vendor && make -j 1 VERSION="${DNSPROXY_CUSTOM_VERSION}" && cp -rf "${WORKDIR}/BUILDTMP/DNSPROXY/dnsproxy" "${WORKDIR}/BUILDKIT/dnsproxy"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/dnsproxy.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/dnsproxy.source.autobuild") "${WORKDIR}/BUILDTMP/DNSPROXY" && git clone -b $(cat "${WORKDIR}/dnsproxy.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/dnsproxy.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export DNSPROXY_SHA=$(cd "${WORKDIR}/BUILDTMP/DNSPROXY" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export DNSPROXY_VERSION=$(cat "${WORKDIR}/dnsproxy.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export DNSPROXY_CUSTOM_VERSION="${DNSPROXY_VERSION}-ZHIJIE-${DNSPROXY_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/DNSPROXY" && go mod tidy && go get -u && go mod download && go mod vendor && make -j 1 VERSION="${DNSPROXY_CUSTOM_VERSION}" && cp -rf "${WORKDIR}/BUILDTMP/DNSPROXY/dnsproxy" "${WORKDIR}/BUILDKIT/dnsproxy"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
