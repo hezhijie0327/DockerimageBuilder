@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -15,6 +15,7 @@ export DNSPROXY_VERSION_FIXED=""
 export DOTNET_VERSION_FIXED=""
 export EXPAT_VERSION_FIXED=""
 export GOLANG_VERSION_FIXED=""
+export GOST_VERSION_FIXED=""
 export GPERFTOOLS_VERSION_FIXED=""
 export JELLYFIN_BRANCH_FIXED=""
 export JELLYFIN_VERSION_FIXED=""
@@ -49,6 +50,7 @@ function GetLatestVersion() {
     DOTNET_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/dotnet/sdk/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//" | tr "_" ".")
     EXPAT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libexpat/libexpat/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/R\_" | tail -n 1 | sed "s/refs\/tags\/R\_//" | tr "_" ".")
     GOLANG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/golang/go/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "beta\|rc\|[a-z]$" | grep "^refs/tags/go" | tail -n 1 | sed "s/refs\/tags\/go//")
+    GOST_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/go-gost/gost/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//" | cut -d "-" -f 1)
     GPERFTOOLS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/gperftools/gperftools/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/gperftools\-" | tail -n 1 | sed "s/refs\/tags\/gperftools\-//")
     JELLYFIN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     LIBEVENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libevent/libevent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release\-" | grep "stable$" | tail -n 1 | sed "s/refs\/tags\/release\-//;s/\-stable//")
@@ -83,6 +85,7 @@ function GenerateReplacements() {
         "s/{EXPAT_VERSION_}/$(echo ${EXPAT_VERSION_FIXED:-${EXPAT_VERSION}} | tr '.' '_')/g"
         "s/{EXPAT_VERSION}/${EXPAT_VERSION_FIXED:-${EXPAT_VERSION}}/g"
         "s/{GOLANG_VERSION}/${GOLANG_VERSION_FIXED:-${GOLANG_VERSION}}/g"
+        "s/{GOST_VERSION}/${GOST_VERSION_FIXED:-${GOST_VERSION}}/g"
         "s/{GPERFTOOLS_VERSION}/${GPERFTOOLS_VERSION_FIXED:-${GPERFTOOLS_VERSION}}/g"
         "s/{JELLYFIN_BRANCH}/${JELLYFIN_BRANCH_FIXED:-${JELLYFIN_VERSION%?}z}/g"
         "s/{JELLYFIN_VERSION}/${JELLYFIN_VERSION_FIXED:-${JELLYFIN_VERSION}}/g"
