@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -30,6 +30,6 @@ FROM scratch
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT /
 
-EXPOSE 443/tcp 443/udp
+EXPOSE 443/tcp 443/udp 80/tcp
 
 ENTRYPOINT ["/gost"]
