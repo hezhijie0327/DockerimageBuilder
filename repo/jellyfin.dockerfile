@@ -1,4 +1,4 @@
-# Current Version: 1.5.9
+# Current Version: 1.6.0
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -11,6 +11,8 @@ WORKDIR /tmp
 RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.jellyfin" > "${WORKDIR}/jellyfin.json" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source" > "${WORKDIR}/jellyfin.source.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source_branch" > "${WORKDIR}/jellyfin.source_branch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch" > "${WORKDIR}/jellyfin.patch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch_branch" > "${WORKDIR}/jellyfin.patch_branch.autobuild" && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" > "${WORKDIR}/jellyfin.version.autobuild" && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "${WORKDIR}/arch"
 
 FROM --platform=linux/amd64 hezhijie0327/module:binary-dotnet AS BUILD_DOTNET
+
+FROM --platform=linux/amd64 hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 
 FROM --platform=linux/amd64 hezhijie0327/base:ubuntu as BUILD_JELLYFIN
 
@@ -38,17 +40,11 @@ RUN export WORKDIR=$(pwd) && GITHUB_API=$(cat "${WORKDIR}/BUILDTMP/github.api") 
 
 FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 
-FROM --platform=linux/amd64 hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
-
-FROM --platform=linux/amd64 hezhijie0327/module:glibc-zlibng AS BUILD_ZLIB_NG
-
 WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/jellyfin.*.autobuild /tmp/
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
-
-COPY --from=BUILD_ZLIB_NG / /
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild" | sed "s/\.git/-web\.git/g") "${WORKDIR}/BUILDTMP/jellyfin-web" && cd "${WORKDIR}/BUILDTMP/jellyfin-web" && npm ci --no-audit --unsafe-perm && npm run build:production && mv "${WORKDIR}/BUILDTMP/jellyfin-web/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
 
