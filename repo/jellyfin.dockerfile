@@ -1,4 +1,4 @@
-# Current Version: 1.6.0
+# Current Version: 1.6.1
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -98,7 +98,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
     && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
-    && apt install -qy openssl /tmp/BUILDTMP/jellyfin-ffmpeg/*.deb \
+    && apt install -qy /tmp/BUILDTMP/jellyfin-ffmpeg/*.deb \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
