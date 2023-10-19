@@ -1,4 +1,4 @@
-# Current Version: 1.5.7
+# Current Version: 1.5.8
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -17,7 +17,9 @@ FROM --platform=linux/amd64 hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
 FROM --platform=linux/amd64 hezhijie0327/base:ubuntu as BUILD_JELLYFIN
 
 COPY --from=BUILD_DOTNET / /tmp/BUILDLIB/DOTNET/
+
 COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
+
 COPY --from=GET_INFO /tmp/jellyfin.*.autobuild /tmp/
 
 WORKDIR /tmp
@@ -31,16 +33,22 @@ FROM hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_FFMPEG
 WORKDIR /tmp
 
 COPY --from=GET_GITHUB /opt/github.api /tmp/BUILDTMP/github.api
+
 COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
 
 RUN export WORKDIR=$(pwd) && GITHUB_API=$(cat "${WORKDIR}/BUILDTMP/github.api") && export SYS_CODENAME=$(cat '/etc/os-release' | grep 'UBUNTU_CODENAME=' | sed 's/UBUNTU_CODENAME=//g') && export SYS_ARCH=$(cat "${WORKDIR}/BUILDTMP/arch" | sed "s/x64/amd64/g") && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP" && wget --header="Authorization: Bearer ${GITHUB_API}" -O "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" $(curl -s --connect-timeout 15 -H "Authorization: Bearer ${GITHUB_API}" "https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/actions/artifacts?name=ubuntu-${SYS_CODENAME}-${SYS_ARCH}&per_page=100" | jq -r '.artifacts[] | select(.workflow_run.head_branch == "jellyfin") | .archive_download_url' | head -n 1) && unzip -d "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip"
 
 FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 
+FROM --platform=linux/amd64 hezhijie0327/module:glibc-zlibng AS BUILD_ZLIB_NG
+
 WORKDIR /tmp
 
-COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 COPY --from=GET_INFO /tmp/jellyfin.*.autobuild /tmp/
+
+COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
+
+COPY --from=BUILD_ZLIB_NG / /
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild" | sed "s/\.git/-web\.git/g") "${WORKDIR}/BUILDTMP/jellyfin-web" && cd "${WORKDIR}/BUILDTMP/jellyfin-web" && npm ci --no-audit --unsafe-perm && npm run build:production && mv "${WORKDIR}/BUILDTMP/jellyfin-web/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
 
@@ -55,8 +63,11 @@ FROM ubuntu:latest AS REBASED_JELLYFIN
 ENV DEBIAN_FRONTEND="noninteractive"
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 COPY --from=GPG_SIGN /tmp/BUILDKIT/jellyfin /opt/jellyfin
+
 COPY --from=BUILD_JELLYFIN_FFMPEG /tmp/BUILDKIT/jellyfin-ffmpeg /tmp/BUILDTMP/jellyfin-ffmpeg
+
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /opt/jellyfin-web
 
 RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
