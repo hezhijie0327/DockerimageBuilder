@@ -1,4 +1,4 @@
-# Current Version: 1.6.3
+# Current Version: 1.6.4
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -40,7 +40,7 @@ WORKDIR /tmp
 
 COPY --from=GET_GITHUB /opt/github.api /tmp/BUILDTMP/github.api
 
-COPY --from=GET_CODEMANE /tmp/arch /tmp/BUILDTMP/codename
+COPY --from=GET_CODEMANE /tmp/codename /tmp/BUILDTMP/codename
 
 COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
 
