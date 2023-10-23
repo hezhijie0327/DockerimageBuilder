@@ -1,6 +1,12 @@
-# Current Version: 1.6.2
+# Current Version: 1.6.3
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
+
+FROM ubuntu:latest AS GET_CODEMANE
+
+WORKDIR /tmp
+
+RUN export WORKDIR=$(pwd) && cat '/etc/os-release' | grep 'UBUNTU_CODENAME=' | sed 's/UBUNTU_CODENAME=//g' > "${WORKDIR}/codename"
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -34,9 +40,11 @@ WORKDIR /tmp
 
 COPY --from=GET_GITHUB /opt/github.api /tmp/BUILDTMP/github.api
 
+COPY --from=GET_CODEMANE /tmp/arch /tmp/BUILDTMP/codename
+
 COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
 
-RUN export WORKDIR=$(pwd) && GITHUB_API=$(cat "${WORKDIR}/BUILDTMP/github.api") && export SYS_CODENAME=$(cat '/etc/os-release' | grep 'UBUNTU_CODENAME=' | sed 's/UBUNTU_CODENAME=//g') && export SYS_ARCH=$(cat "${WORKDIR}/BUILDTMP/arch" | sed "s/x64/amd64/g") && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP" && wget --header="Authorization: Bearer ${GITHUB_API}" -O "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" $(curl -s --connect-timeout 15 -H "Authorization: Bearer ${GITHUB_API}" "https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/actions/artifacts?name=ubuntu-${SYS_CODENAME}-${SYS_ARCH}&per_page=100" | jq -r '.artifacts[] | select(.workflow_run.head_branch == "jellyfin") | .archive_download_url' | head -n 1) && unzip -d "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip"
+RUN export WORKDIR=$(pwd) && GITHUB_API=$(cat "${WORKDIR}/BUILDTMP/github.api") && export SYS_ARCH=$(cat "${WORKDIR}/BUILDTMP/arch" | sed "s/x64/amd64/g") && export SYS_CODENAME=$(cat "${WORKDIR}/BUILDTMP/codename") && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP" && wget --header="Authorization: Bearer ${GITHUB_API}" -O "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip" $(curl -s --connect-timeout 15 -H "Authorization: Bearer ${GITHUB_API}" "https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/actions/artifacts?name=ubuntu-${SYS_CODENAME}-${SYS_ARCH}&per_page=100" | jq -r '.artifacts[] | select(.workflow_run.head_branch == "jellyfin") | .archive_download_url' | head -n 1) && unzip -d "${WORKDIR}/BUILDKIT/jellyfin-ffmpeg" "${WORKDIR}/BUILDTMP/jellyfin-ffmpeg.zip"
 
 FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 
