@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS BUILD_CLOUDFLAREDDNS
 
@@ -16,11 +16,11 @@ FROM alpine:latest AS BUILD_BASEOS
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT /opt
 
-RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
-    && apk update \
+RUN apk update \
     && apk add --no-cache bind-tools curl jq \
     && apk upgrade --no-cache \
     && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
+    && sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && rm -rf /tmp/* /var/cache/apk/*
 
 FROM scratch
