@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.2.7
+# Current Version: 1.2.8
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -9,7 +9,6 @@
 export ADGUARDHOME_VERSION_FIXED=""
 export ARIA2_VERSION_FIXED=""
 export CADDY_VERSION_FIXED=""
-export CLASH_VERSION_FIXED=""
 export C_ARES_VERSION_FIXED=""
 export DNSPROXY_VERSION_FIXED=""
 export DOTNET_VERSION_FIXED=""
@@ -45,7 +44,6 @@ function GetLatestVersion() {
     ADGUARDHOME_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AdguardTeam/AdGuardHome/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     ARIA2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/aria2/aria2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release\-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     CADDY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/caddyserver/caddy/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\/v//")
-    CLASH_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/Dreamacro/clash/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     C_ARES_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/c-ares/c-ares/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/cares\-" | tail -n 1 | sed "s/refs\/tags\/cares\-//" | tr "_" ".")
     DNSPROXY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AdguardTeam/dnsproxy/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     DOTNET_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/dotnet/sdk/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//" | tr "_" ".")
@@ -80,7 +78,6 @@ function GenerateReplacements() {
         "s/{ADGUARDHOME_VERSION}/${ADGUARDHOME_VERSION_FIXED:-${ADGUARDHOME_VERSION}}/g"
         "s/{ARIA2_VERSION}/${ARIA2_VERSION_FIXED:-${ARIA2_VERSION}}/g"
         "s/{CADDY_VERSION}/${CADDY_VERSION_FIXED:-${CADDY_VERSION}}/g"
-        "s/{CLASH_VERSION}/${CLASH_VERSION_FIXED:-${CLASH_VERSION}}/g"
         "s/{C_ARES_VERSION}/${C_ARES_VERSION_FIXED:-${C_ARES_VERSION}}/g"
         "s/{DNSPROXY_VERSION}/${DNSPROXY_VERSION_FIXED:-${DNSPROXY_VERSION}}/g"
         "s/{DOTNET_VERSION}/${DOTNET_VERSION_FIXED:-${DOTNET_VERSION}}/g"
