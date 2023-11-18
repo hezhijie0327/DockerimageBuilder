@@ -1,4 +1,4 @@
-# Current Version: 1.7.0
+# Current Version: 1.7.1
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -54,7 +54,7 @@ COPY --from=GET_INFO /tmp/jellyfin_web.*.autobuild /tmp/
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin_web.source.autobuild" | sed "s/\.git/-web\.git/g") "${WORKDIR}/BUILDTMP/JELLYFIN-WEB" && cd "${WORKDIR}/BUILDTMP/JELLYFIN-WEB" && npm config set registry "https://registry.npmmirror.com" && npm ci --no-audit --unsafe-perm && npm run build:production && mv "${WORKDIR}/BUILDTMP/JELLYFIN-WEB/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin_web.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN-WEB" && cd "${WORKDIR}/BUILDTMP/JELLYFIN-WEB" && npm config set registry "https://registry.npmmirror.com" && npm ci --no-audit --unsafe-perm && npm run build:production && mv "${WORKDIR}/BUILDTMP/JELLYFIN-WEB/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
