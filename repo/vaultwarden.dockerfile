@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -89,11 +89,11 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && apt clean autoclean -qy \
     && sed -i 's/http:/https:/g' "/etc/apt/sources.list" \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* \
-    && mkdir -p "/opt/vaultwarden/data"
+    && mkdir -p "/etc/vaultwarden/data"
 
 FROM scratch
 
-ENV DEBIAN_FRONTEND="noninteractive" DATA_FOLDER="/opt/vaultwarden/data" ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/opt/vaultwarden/web-vault"
+ENV DEBIAN_FRONTEND="noninteractive" DATA_FOLDER="/etc/vaultwarden/data" ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/opt/vaultwarden/web-vault"
 
 COPY --from=REBASED_VAULTWARDEN / /
 
