@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -93,10 +93,10 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
 
 FROM scratch
 
-ENV DEBIAN_FRONTEND="noninteractive" WEBSOCKET_ENABLED="false" WEB_VAULT_ENABLED="true" ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" WEBSOCKET_ADDRESS="0.0.0.0" WEBSOCKET_PORT="3012" DATA_FOLDER="/opt/vaultwarden/data" WEB_VAULT_FOLDER="/opt/vaultwarden/web-vault"
+ENV DEBIAN_FRONTEND="noninteractive" DATA_FOLDER="/opt/vaultwarden/data" ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/opt/vaultwarden/web-vault"
 
 COPY --from=REBASED_VAULTWARDEN / /
 
-EXPOSE 3012/tcp 8000/tcp
+EXPOSE 8000/tcp
 
 ENTRYPOINT ["/opt/vaultwarden/vaultwarden"]
