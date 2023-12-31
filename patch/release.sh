@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.3.3
+# Current Version: 1.3.4
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -36,6 +36,7 @@ export SQLITE_VERSION_FIXED=""
 export SQLITE_YEAR_FIXED=""
 export UNBOUND_VERSION_FIXED=""
 export V2RAY_VERSION_FIXED=""
+export VAULTWARDEN_VERSION_FIXED=""
 export VLMCSD_VERSION_FIXED=""
 export ZLIB_NG_VERSION_FIXED=""
 
@@ -72,6 +73,7 @@ function GetLatestVersion() {
     SQLITE_YEAR=$(curl -s --connect-timeout 15 $(curl -s --connect-timeout 15 'https://api.github.com/repos/sqlite/sqlite/git/matching-refs/tags' | jq -Sr '.[].object.url' | tail -n 1) | jq -Sr '.committer.date' | cut -d '-' -f 1)
     UNBOUND_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/NLnetLabs/unbound/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "rc" | grep "^refs/tags/release\-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     V2RAY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/v2fly/v2ray-core/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    VAULTWARDEN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/dani-garcia/vaultwarden/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
     VLMCSD_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/Wind4/vlmcsd/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/svn" | tail -n 1 | sed "s/refs\/tags\/svn//")
     ZLIB_NG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/zlib-ng/zlib-ng/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/[0-9]" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\///")
 }
@@ -110,6 +112,7 @@ function GenerateReplacements() {
         "s/{SQLITE_YEAR}/${SQLITE_YEAR_FIXED:-${SQLITE_YEAR}}/g"
         "s/{UNBOUND_VERSION}/${UNBOUND_VERSION_FIXED:-${UNBOUND_VERSION}}/g"
         "s/{V2RAY_VERSION}/${V2RAY_VERSION_FIXED:-${V2RAY_VERSION}}/g"
+        "s/{VAULTWARDEN_VERSION}/${VAULTWARDEN_VERSION_FIXED:-${VAULTWARDEN_VERSION}}/g"
         "s/{VLMCSD_VERSION}/${VLMCSD_VERSION_FIXED:-${VLMCSD_VERSION}}/g"
         "s/{ZLIB_NG_VERSION}/${ZLIB_NG_VERSION_FIXED:-${ZLIB_NG_VERSION}}/g"
     )
