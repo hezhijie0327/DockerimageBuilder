@@ -1,4 +1,4 @@
-# Current Version: 1.9.2
+# Current Version: 1.9.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -34,6 +34,6 @@ FROM scratch
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT /
 
-EXPOSE 3000/tcp 443/tcp 443/udp 53/tcp 53/udp 6060/tcp 80/tcp 853/tcp 853/udp
+EXPOSE 3000/tcp 443/tcp 443/udp 53/tcp 53/udp 6060/tcp 67/udp 68/udp 80/tcp 853/tcp 853/udp
 
 ENTRYPOINT ["/AdGuardHome"]
