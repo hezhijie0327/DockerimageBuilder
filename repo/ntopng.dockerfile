@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -75,6 +75,6 @@ ENV DEBIAN_FRONTEND="noninteractive" NTOP_CONFIG=""
 
 COPY --from=BUILD_NTOPNG / /
 
-EXPOSE 3000/tcp
+EXPOSE 3000/tcp 3001/tcp
 
 ENTRYPOINT ["/opt/ntopng_runtime.sh"]
