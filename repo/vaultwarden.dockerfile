@@ -1,6 +1,4 @@
-# Current Version: 1.0.6
-
-FROM hezhijie0327/gpg:latest AS GET_GITHUB
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
