@@ -1,6 +1,6 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
-FROM debian:latest AS REBASED_DEBIAN
+FROM debian:rolling AS REBASED_DEBIAN
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
