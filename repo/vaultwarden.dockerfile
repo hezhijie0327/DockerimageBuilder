@@ -1,6 +1,4 @@
-# Current Version: 1.0.5
-
-FROM hezhijie0327/gpg:latest AS GET_GITHUB
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -42,7 +40,7 @@ COPY --from=BUILD_VAULTWARDEN /tmp/BUILDKIT/vaultwarden /tmp/BUILDKIT/vaultwarde
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/vaultwarden"
 
-FROM ubuntu:rolling AS REBASED_VAULTWARDEN
+FROM ubuntu:latest AS REBASED_VAULTWARDEN
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
