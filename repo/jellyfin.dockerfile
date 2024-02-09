@@ -1,4 +1,4 @@
-# Current Version: 1.7.5
+# Current Version: 1.7.6
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -32,7 +32,7 @@ WORKDIR /tmp
 
 ENV DOTNET_CLI_TELEMETRY_OPTOUT="1"
 
-RUN export WORKDIR=$(pwd) && export DOTNET_ROOT=${WORKDIR}/BUILDLIB/DOTNET && export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools && export SYS_ARCH=$(cat "${WORKDIR}/BUILDTMP/arch") && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN" && git clone -b $(cat "${WORKDIR}/jellyfin.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export JELLYFIN_SHA=$(cd "${WORKDIR}/BUILDTMP/JELLYFIN" && git rev-parse --short HEAD | cut -c 1-4) && export JELLYFIN_VERSION=$(cat "${WORKDIR}/jellyfin.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4) && export JELLYFIN_CUSTOM_VERSION="${JELLYFIN_VERSION}-ZHIJIE+${JELLYFIN_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/JELLYFIN" && git submodule update --init && dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="${WORKDIR}/BUILDKIT/jellyfin" --self-contained --runtime linux-${SYS_ARCH} -p:DebugSymbols=false -p:DebugType=none
+RUN export WORKDIR=$(pwd) && export DOTNET_ROOT=${WORKDIR}/BUILDLIB/DOTNET && export PATH=$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools && export SYS_ARCH=$(cat "${WORKDIR}/BUILDTMP/arch") && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN" && cd "${WORKDIR}/BUILDTMP/JELLYFIN" && git submodule update --init && dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="${WORKDIR}/BUILDKIT/jellyfin" --self-contained --runtime linux-${SYS_ARCH} -p:DebugSymbols=false -p:DebugType=none
 
 FROM hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_FFMPEG
 
@@ -50,11 +50,11 @@ FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_JELLYFIN_WEB
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/jellyfin_web.*.autobuild /tmp/
+COPY --from=GET_INFO /tmp/jellyfin*.*.autobuild /tmp/
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin_web.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN-WEB" && cd "${WORKDIR}/BUILDTMP/JELLYFIN-WEB" && npm config set registry "https://registry.npmmirror.com" && npm ci --no-audit --unsafe-perm && npm run build:production && mv "${WORKDIR}/BUILDTMP/JELLYFIN-WEB/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN" && git clone -b $(cat "${WORKDIR}/jellyfin_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin_web.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN-WEB" && git clone -b $(cat "${WORKDIR}/jellyfin_web.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin_web.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export JELLYFIN_SHA=$(cd "${WORKDIR}/BUILDTMP/JELLYFIN" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export JELLYFIN_VERSION=$(cat "${WORKDIR}/jellyfin.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export JELLYFIN_CUSTOM_VERSION="${JELLYFIN_VERSION}-ZHIJIE-${JELLYFIN_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/JELLYFIN-WEB" && sed -i "s/systemInfo.Version/'${JELLYFIN_CUSTOM_VERSION}'/g" "${WORKDIR}/BUILDTMP/JELLYFIN-WEB/src/controllers/dashboard/dashboard.js" && npm config set registry "https://registry.npmmirror.com" && npm ci --no-audit --unsafe-perm && npm run build:production && mv "${WORKDIR}/BUILDTMP/JELLYFIN-WEB/dist" "${WORKDIR}/BUILDKIT/jellyfin-web"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
