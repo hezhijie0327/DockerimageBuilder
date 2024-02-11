@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.3.6
+# Current Version: 1.3.7
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -30,6 +30,7 @@ export LIBUV_VERSION_FIXED=""
 export MOSDNS_VERSION_FIXED=""
 export NODEJS_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
+export RCLONE_VERSION_FIXED=""
 export REDIS_VERSION_FIXED=""
 export RUST_VERSION_FIXED=""
 export SMARTDNS_VERSION_FIXED=""
@@ -70,6 +71,7 @@ function GetLatestVersion() {
     NODEJS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nodejs/node/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "\-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
     SMARTDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/pymumu/smartdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/Release" | grep -v "\-\|RC\|Special" | tail -n 1 | sed "s/refs\/tags\/Release//")
+    RCLONE_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rclone/rclone/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\/v//")
     REDIS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/redis/redis/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\///")
     RUST_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rust-lang/rust/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
     SQLITE_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/sqlite/sqlite/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/version\-" | tail -n 1 | sed "s/refs\/tags\/version\-//")
@@ -109,6 +111,7 @@ function GenerateReplacements() {
         "s/{MOSDNS_VERSION}/${MOSDNS_VERSION_FIXED:-${MOSDNS_VERSION}}/g"
         "s/{NODEJS_VERSION}/${NODEJS_VERSION_FIXED:-${NODEJS_VERSION}}/g"
         "s/{OPENSSL_VERSION}/${OPENSSL_VERSION_FIXED:-${OPENSSL_VERSION}}/g"
+        "s/{RCLONE_VERSION}/${RCLONE_VERSION_FIXED:-${RCLONE_VERSION}}/g"
         "s/{REDIS_VERSION}/${REDIS_VERSION_FIXED:-${REDIS_VERSION}}/g"
         "s/{RUST_VERSION}/${RUST_VERSION_FIXED:-${RUST_VERSION}}/g"
         "s/{SMARTDNS_VERSION}/${SMARTDNS_VERSION_FIXED:-${SMARTDNS_VERSION}}/g"
