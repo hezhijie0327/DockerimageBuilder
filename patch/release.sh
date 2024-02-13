@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.3.7
+# Current Version: 1.3.8
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -141,6 +141,10 @@ function OutputPackage() {
         fi
     fi
 }
+# Sync Other Files
+function SyncOtherFiles() {
+    curl -s --connect-timeout 15 "https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/client/src/__locales/en.json" | jq -Sr . > "./patch/adguardhome/static/en-us.json"
+}
 
 ## Process
 # Call GetLatestVersion
@@ -149,3 +153,5 @@ GetLatestVersion
 GenerateReplacements
 # Call OutputPackage
 OutputPackage
+# Call SyncOtherFiles
+SyncOtherFiles
