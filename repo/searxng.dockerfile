@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -8,13 +8,13 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.morty" > "${WORKDIR}/morty.json" && cat "${WORKDIR}/morty.json" | jq -Sr ".version" && cat "${WORKDIR}/morty.json" | jq -Sr ".source" > "${WORKDIR}/morty.source.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".source_branch" > "${WORKDIR}/morty.source_branch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".patch" > "${WORKDIR}/morty.patch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".patch_branch" > "${WORKDIR}/morty.patch_branch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".version" > "${WORKDIR}/morty.version.autobuild"
 
-COPY --from=GET_INFO /tmp/morty.*.autobuild /tmp/
-
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
 FROM hezhijie0327/base:ubuntu AS BUILD_MORTY
 
 WORKDIR /tmp
+
+COPY --from=GET_INFO /tmp/morty.*.autobuild /tmp/
 
 COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
@@ -32,7 +32,7 @@ COPY --from=GPG_SIGN /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt /etc/ssl/ce
 COPY --from=GPG_SIGN /tmp/BUILDKIT/morty /usr/local/morty/morty
 COPY --from=GPG_SIGN /tmp/BUILDKIT/morty.sig /usr/local/morty/morty.sig
 
-RUN sed -i "s|unset MORTY_KEY|unset MORTY_KEY\ncd /usr/local/searxng\n/usr/local/morty/morty \&|g" "/usr/local/searxng/dockerfiles/docker-entrypoint.sh"
+RUN sed -i "s|unset MORTY_KEY|unset MORTY_KEY\ncd /usr/local/searxng\n/usr/local/morty/morty -followredirect true -ipv6 true -proxyenv -timeout 5 \&|g" "/usr/local/searxng/dockerfiles/docker-entrypoint.sh"
 
 FROM scratch
 
