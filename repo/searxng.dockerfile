@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -32,7 +32,7 @@ COPY --from=GPG_SIGN /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt /etc/ssl/ce
 COPY --from=GPG_SIGN /tmp/BUILDKIT/morty /usr/local/morty/morty
 COPY --from=GPG_SIGN /tmp/BUILDKIT/morty.sig /usr/local/morty/morty.sig
 
-RUN sed -i "s|unset MORTY_KEY|unset MORTY_KEY\ncd /usr/local/searxng\n/usr/local/morty/morty -followredirect true -ipv6 true -proxyenv -timeout 5 \&|g" "/usr/local/searxng/dockerfiles/docker-entrypoint.sh"
+RUN sed -i "s|unset MORTY_KEY|unset MORTY_KEY\ncd /usr/local/searxng\n/usr/local/morty/morty -followredirect true -ipv6 true -proxyenv -timeout 5 \&|g" "/usr/local/searxng/dockerfiles/docker-entrypoint.sh" && export MORTY_VERSION=$("/usr/local/morty/morty" -version | cut -d '-' -f 3) && export SEARXNG_VERSION=$(cat "/usr/local/searxng/searx/version_frozen.py" | grep 'VERSION_STRING' | cut -d '=' -f 2 | cut -d '"' -f 2) && sed -i "s|${SEARXNG_VERSION}|${SEARXNG_VERSION}-ZHIJIE-${MORTY_VERSION}|g" "/usr/local/searxng/searx/version_frozen.py"
 
 FROM scratch
 
