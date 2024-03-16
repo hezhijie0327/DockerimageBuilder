@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -16,7 +16,7 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/morty.*.autobuild /tmp/
 
-COPY --from=BUILD_GOLANG /GOLANG/ /tmp/BUILDLIB/
+COPY --from=BUILD_GOLANG /GOLANG_CF/ /tmp/BUILDLIB/
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/morty.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/morty.source.autobuild") "${WORKDIR}/BUILDTMP/MORTY" && git clone -b $(cat "${WORKDIR}/morty.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/morty.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export MORTY_SHA=$(cd "${WORKDIR}/BUILDTMP/MORTY" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MORTY_VERSION=$(cat "${WORKDIR}/BUILDTMP/MORTY/morty.go" | grep "const VERSION" | cut -d " " -f 4 | tr -d '[a-z]"') && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MORTY_CUSTOM_VERSION="${MORTY_VERSION}-ZHIJIE-${MORTY_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/MORTY" && sed -i "s/${MORTY_VERSION}/${MORTY_CUSTOM_VERSION}/g" "${WORKDIR}/BUILDTMP/MORTY/morty.go" && go mod tidy && go get -u && go mod download && go mod vendor && go mod edit -require=github.com/klauspost/compress@v1.15.9 && go mod edit -require=github.com/valyala/fasthttp@v1.44.0 && go mod tidy && go mod vendor && gofmt -l ./ && export CGO_ENABLED=0 && go build . && cp -rf "${WORKDIR}/BUILDTMP/MORTY/morty" "${WORKDIR}/BUILDKIT/morty"
 
