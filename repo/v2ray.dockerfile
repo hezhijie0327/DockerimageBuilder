@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -16,7 +16,7 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/v2ray.*.autobuild /tmp/
 
-COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
+COPY --from=BUILD_GOLANG /GOLANG/ /tmp/BUILDLIB/
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/v2ray.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/v2ray.source.autobuild") "${WORKDIR}/BUILDTMP/V2RAY" && git clone -b $(cat "${WORKDIR}/v2ray.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/v2ray.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export V2RAY_SHA=$(cd "${WORKDIR}/BUILDTMP/V2RAY" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export V2RAY_VERSION=$(cat "${WORKDIR}/v2ray.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export V2RAY_CUSTOM_VERSION="${V2RAY_VERSION}-ZHIJIE-${V2RAY_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/V2RAY" && go mod tidy && go get -u && go mod download && go mod vendor && export CGO_ENABLED=0 && go build -o v2ray -trimpath -ldflags "-X github.com/v2fly/v2ray-core/v5.version=${V2RAY_CUSTOM_VERSION} -s -w -buildid=" ./main && cp -rf "${WORKDIR}/BUILDTMP/V2RAY/v2ray" "${WORKDIR}/BUILDKIT/v2ray"
 

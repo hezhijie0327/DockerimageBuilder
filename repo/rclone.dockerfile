@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -16,7 +16,7 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/rclone.*.autobuild /tmp/
 
-COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
+COPY --from=BUILD_GOLANG /GOLANG/ /tmp/BUILDLIB/
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/rclone.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rclone.source.autobuild") "${WORKDIR}/BUILDTMP/RCLONE" && git clone -b $(cat "${WORKDIR}/rclone.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rclone.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export RCLONE_SHA=$(cd "${WORKDIR}/BUILDTMP/RCLONE" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export RCLONE_VERSION=$(cat "${WORKDIR}/rclone.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export RCLONE_CUSTOM_VERSION="v${RCLONE_VERSION}-ZHIJIE-${RCLONE_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/RCLONE" && go mod tidy && go get -u && go mod download && go mod vendor && go mod edit -require=storj.io/common@v0.0.0-20240111121419-ecae1362576c && go mod tidy && go mod vendor && export CGO_ENABLED=0 && go build -trimpath -ldflags "-s -X github.com/rclone/rclone/fs.Version=${RCLONE_CUSTOM_VERSION}" -tags cmount && cp -rf "${WORKDIR}/BUILDTMP/RCLONE/rclone" "${WORKDIR}/BUILDKIT/rclone"
 
