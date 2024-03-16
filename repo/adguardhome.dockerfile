@@ -1,4 +1,4 @@
-# Current Version: 1.9.3
+# Current Version: 1.9.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -18,7 +18,7 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/adguardhome.*.autobuild /tmp/
 
-COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
+COPY --from=BUILD_GOLANG /GOLANG/ /tmp/BUILDLIB/
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
