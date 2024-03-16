@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -22,8 +22,8 @@ WORKDIR /tmp
 
 COPY --from=BUILD_GOLANG /tmp/BUILDLIB/GOLANG /tmp/BUILDLIB
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/GOLANG_CF" "${WORKDIR}/BUILDKIT/GOLANG" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDTMP/cf" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b "cf" --depth 1 "https://github.com/cloudflare/go.git" "${WORKDIR}/BUILDTMP/go" && cd "${WORKDIR}/BUILDTMP/go/src" && bash "${WORKDIR}/BUILDTMP/go/src/make.bash" && cp -rf ${WORKDIR}/BUILDTMP/go/* "${WORKDIR}/BUILDKIT/GOLANG_CF/" && cp -rf ${WORKDIR}/BUILDLIB/* "${WORKDIR}/BUILDKIT/GOLANG/"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDKIT/GOLANG_CF" "${WORKDIR}/BUILDKIT/GOLANG" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDTMP/cf" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b "cf" --depth 1 "https://github.com/cloudflare/go.git" "${WORKDIR}/BUILDTMP/go" && cd "${WORKDIR}/BUILDTMP/go/src" && bash "${WORKDIR}/BUILDTMP/go/src/make.bash" && cp -rf ${WORKDIR}/BUILDTMP/go/* "${WORKDIR}/BUILDKIT/GOLANG_CF/"
 
 FROM scratch
 
-COPY --from=BUILD_GOLANG_CF /tmp/BUILDKIT /
+COPY --from=BUILD_GOLANG_CF /tmp/BUILDKIT/GOLANG_CF/ /
