@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -16,7 +16,7 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/gost.*.autobuild /tmp/
 
-COPY --from=BUILD_GOLANG /GOLANG/ /tmp/BUILDLIB/
+COPY --from=BUILD_GOLANG /GOLANG_CF/ /tmp/BUILDLIB/
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/gost.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/gost.source.autobuild") "${WORKDIR}/BUILDTMP/GOST" && git clone -b $(cat "${WORKDIR}/gost.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/gost.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export GOST_SHA=$(cd "${WORKDIR}/BUILDTMP/GOST" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export GOST_VERSION=$(cat "${WORKDIR}/gost.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export GOST_CUSTOM_VERSION="${GOST_VERSION}-ZHIJIE-${GOST_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/GOST/cmd/gost" && go mod tidy && go get -u && go mod download && go mod vendor && go mod edit -require=golang.zx2c4.com/wireguard@v0.0.0-20220703234212-c31a7b1ab478 && go mod tidy && go mod vendor && sed -i "s/version = \".*\"/version = \"${GOST_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/GOST/cmd/gost/version.go" && export CGO_ENABLED="0" && go build -v && cp -rf "${WORKDIR}/BUILDTMP/GOST/cmd/gost/gost" "${WORKDIR}/BUILDKIT/gost"
 
