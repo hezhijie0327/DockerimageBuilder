@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -26,7 +26,7 @@ COPY --from=BUILD_SQLITE / /tmp/BUILDLIB/
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" && export CPPFLAGS="-I${PREFIX}/include" && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" && export OPENSSL_DIR="${PREFIX}" && ldconfig --verbose && git clone -b $(cat "${WORKDIR}/vaultwarden.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/vaultwarden.source.autobuild") "${WORKDIR}/BUILDTMP/VAULTWARDEN" && git clone -b $(cat "${WORKDIR}/vaultwarden.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/vaultwarden.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export VAULTWARDEN_SHA=$(cd "${WORKDIR}/BUILDTMP/VAULTWARDEN" && git rev-parse --short HEAD | cut -c 1-4) && export VAULTWARDEN_VERSION=$(cat "${WORKDIR}/vaultwarden.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4) && export VAULTWARDEN_CUSTOM_VERSION="${VAULTWARDEN_VERSION}-ZHIJIE-${VAULTWARDEN_SHA}${PATCH_SHA}" && bash "${WORKDIR}/BUILDLIB/install.sh" && cd "${WORKDIR}/BUILDTMP/VAULTWARDEN" && export VW_VERSION="${VAULTWARDEN_CUSTOM_VERSION}" && cargo build --features sqlite --release && cp -rf "${WORKDIR}/BUILDTMP/VAULTWARDEN/target/release/vaultwarden" "${WORKDIR}/BUILDKIT/vaultwarden"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" && export CPPFLAGS="-I${PREFIX}/include" && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" && export OPENSSL_DIR="${PREFIX}" && ldconfig --verbose && git clone -b $(cat "${WORKDIR}/vaultwarden.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/vaultwarden.source.autobuild") "${WORKDIR}/BUILDTMP/VAULTWARDEN" && git clone -b $(cat "${WORKDIR}/vaultwarden.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/vaultwarden.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export VAULTWARDEN_SHA=$(cd "${WORKDIR}/BUILDTMP/VAULTWARDEN" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export VAULTWARDEN_VERSION=$(cat "${WORKDIR}/vaultwarden.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export VAULTWARDEN_CUSTOM_VERSION="${VAULTWARDEN_VERSION}-ZHIJIE-${VAULTWARDEN_SHA}${PATCH_SHA}" && bash "${WORKDIR}/BUILDLIB/install.sh" && cd "${WORKDIR}/BUILDTMP/VAULTWARDEN" && export VW_VERSION="${VAULTWARDEN_CUSTOM_VERSION}" && cargo build --features sqlite --release && cp -rf "${WORKDIR}/BUILDTMP/VAULTWARDEN/target/release/vaultwarden" "${WORKDIR}/BUILDKIT/vaultwarden" && echo "${VAULTWARDEN_CUSTOM_VERSION}" > "${WORKDIR}/BUILDKIT/vaultwarden.version"
 
 FROM hezhijie0327/base:alpine AS BUILD_VAULTWARDEN_WEB
 
@@ -47,6 +47,8 @@ ENV DEBIAN_FRONTEND="noninteractive"
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT/vaultwarden /opt/vaultwarden/vaultwarden
+
+COPY --from=BUILD_VAULTWARDEN /tmp/BUILDKIT/vaultwarden.version /tmp/vaultwarden.version
 
 COPY --from=BUILD_VAULTWARDEN_WEB /tmp/BUILDKIT/web-vault /opt/vaultwarden/web-vault
 
@@ -86,6 +88,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && apt autoremove -qy \
     && apt clean autoclean -qy \
     && sed -i 's/http:/https:/g' "/etc/apt/sources.list" \
+    && sed -i "s/Promise.resolve(\"[0-9]\+\(\.[0-9]\+\)*\")/Promise.resolve(\"$(cat '/tmp/vaultwarden.version')\")/g" /opt/vaultwarden/web-vault/app/main.*.js \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/* \
     && mkdir -p "/etc/vaultwarden/data"
 
