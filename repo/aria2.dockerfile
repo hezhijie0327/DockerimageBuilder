@@ -1,4 +1,4 @@
-# Current Version: 1.6.9
+# Current Version: 1.7.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -11,6 +11,8 @@ RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.aria2
 FROM hezhijie0327/module:glibc-cares AS BUILD_C_ARES
 
 FROM hezhijie0327/module:glibc-expat AS BUILD_EXPAT
+
+FROM hezhijie0327/module:glibc-glibc AS BUILD_GLIBC
 
 FROM hezhijie0327/module:glibc-gperftools AS BUILD_GPERFTOOLS
 
@@ -33,6 +35,8 @@ COPY --from=GET_INFO /tmp/aria2c.*.autobuild /tmp/
 COPY --from=BUILD_C_ARES / /tmp/BUILDLIB/
 
 COPY --from=BUILD_EXPAT / /tmp/BUILDLIB/
+
+COPY --from=BUILD_GLIBC / /tmp/BUILDLIB/
 
 COPY --from=BUILD_GPERFTOOLS / /tmp/BUILDLIB/
 
