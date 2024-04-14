@@ -1,4 +1,4 @@
-# Current Version: 1.1.8
+# Current Version: 1.1.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -9,6 +9,8 @@ WORKDIR /tmp
 RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.unbound" > "${WORKDIR}/unbound.json" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source" > "${WORKDIR}/unbound.source.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source_branch" > "${WORKDIR}/unbound.source_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch" > "${WORKDIR}/unbound.patch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch_branch" > "${WORKDIR}/unbound.patch_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" > "${WORKDIR}/unbound.version.autobuild"
 
 FROM hezhijie0327/module:glibc-expat AS BUILD_EXPAT
+
+FROM hezhijie0327/module:glibc-glibc AS BUILD_GLIBC
 
 FROM hezhijie0327/module:glibc-libevent AS BUILD_LIBEVENT
 
@@ -29,6 +31,8 @@ WORKDIR /tmp
 COPY --from=GET_INFO /tmp/unbound.*.autobuild /tmp/
 
 COPY --from=BUILD_EXPAT / /tmp/BUILDLIB/
+
+COPY --from=BUILD_GLIBC / /tmp/BUILDLIB/
 
 COPY --from=BUILD_LIBEVENT / /tmp/BUILDLIB/
 
