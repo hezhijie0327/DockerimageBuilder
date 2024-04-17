@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.4.0
+# Current Version: 1.4.1
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -17,6 +17,7 @@ export EXPAT_VERSION_FIXED=""
 export GOLANG_VERSION_FIXED=""
 export GOST_VERSION_FIXED=""
 export GPERFTOOLS_VERSION_FIXED=""
+export HAPROXY_VERSION_FIXED=""
 export JELLYFIN_VERSION_FIXED=""
 export JELLYFIN_WEB_VERSION_FIXED=""
 export JEMALLOC_VERSION_FIXED=""
@@ -27,10 +28,12 @@ export LIBNGHTTP2_VERSION_FIXED=""
 export LIBSSH2_VERSION_FIXED=""
 export LIBSODIUM_VERSION_FIXED=""
 export LIBUV_VERSION_FIXED=""
+export LUA_VERSION_FIXED=""
 export MORTY_VERSION_FIXED=""
 export MOSDNS_VERSION_FIXED=""
 export NODEJS_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
+export PCRE2_VERSION_FIXED=""
 export QBITTORRENT_VERSION_FIXED=""
 export RCLONE_VERSION_FIXED=""
 export REDIS_VERSION_FIXED=""
@@ -59,6 +62,7 @@ function GetLatestVersion() {
     GOLANG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/golang/go/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "beta\|rc\|[a-z]$" | grep "^refs/tags/go" | tail -n 1 | sed "s/refs\/tags\/go//")
     GOST_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/go-gost/gost/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//" | cut -d "-" -f 1)
     GPERFTOOLS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/gperftools/gperftools/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/gperftools\-" | tail -n 1 | sed "s/refs\/tags\/gperftools\-//")
+    HAPROXY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/haproxy/haproxy/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JELLYFIN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JELLYFIN_WEB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-web/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JEMALLOC_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jemalloc/jemalloc/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | tail -n 1 | sed "s/refs\/tags\///")
@@ -69,10 +73,12 @@ function GetLatestVersion() {
     LIBSSH2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libssh2/libssh2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/libssh2\-" | tail -n 1 | sed "s/refs\/tags\/libssh2\-//")
     LIBSODIUM_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jedisct1/libsodium/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | grep -v "\-RELEASE" | tail -n 1 | sed "s/refs\/tags\///")
     LIBUV_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libuv/libuv/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    LUA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lua/lua/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     MORTY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/asciimoo/morty/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     MOSDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/IrineSistiana/mosdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     NODEJS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nodejs/node/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "\-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
+    PCRE2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/PCRE2Project/pcre2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "RC" | grep "^refs/tags/pcre2-" | tail -n 1 | sed "s/refs\/tags\/pcre2\-//")
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     SMARTDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/pymumu/smartdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/Release" | grep -v "\-\|RC\|Special" | tail -n 1 | sed "s/refs\/tags\/Release//")
     RCLONE_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rclone/rclone/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\/v//")
@@ -102,6 +108,7 @@ function GenerateReplacements() {
         "s/{GOLANG_VERSION}/${GOLANG_VERSION_FIXED:-${GOLANG_VERSION}}/g"
         "s/{GOST_VERSION}/${GOST_VERSION_FIXED:-${GOST_VERSION}}/g"
         "s/{GPERFTOOLS_VERSION}/${GPERFTOOLS_VERSION_FIXED:-${GPERFTOOLS_VERSION}}/g"
+        "s/{HAPROXY_VERSION}/${HAPROXY_VERSION_FIXED:-${HAPROXY_VERSION}}/g"
         "s/{JELLYFIN_VERSION}/${JELLYFIN_VERSION_FIXED:-${JELLYFIN_VERSION}}/g"
         "s/{JELLYFIN_WEB_VERSION}/${JELLYFIN_WEB_VERSION_FIXED:-${JELLYFIN_WEB_VERSION}}/g"
         "s/{JEMALLOC_VERSION}/${JEMALLOC_VERSION_FIXED:-${JEMALLOC_VERSION}}/g"
@@ -112,10 +119,12 @@ function GenerateReplacements() {
         "s/{LIBSSH2_VERSION}/${LIBSSH2_VERSION_FIXED:-${LIBSSH2_VERSION}}/g"
         "s/{LIBSODIUM_VERSION}/${LIBSODIUM_VERSION_FIXED:-${LIBSODIUM_VERSION}}/g"
         "s/{LIBUV_VERSION}/${LIBUV_VERSION_FIXED:-${LIBUV_VERSION}}/g"
+        "s/{LUA_VERSION}/${LUA_VERSION_FIXED:-${LUA_VERSION}}/g"
         "s/{MORTY_VERSION}/${MORTY_VERSION_FIXED:-${MORTY_VERSION}}/g"
         "s/{MOSDNS_VERSION}/${MOSDNS_VERSION_FIXED:-${MOSDNS_VERSION}}/g"
         "s/{NODEJS_VERSION}/${NODEJS_VERSION_FIXED:-${NODEJS_VERSION}}/g"
         "s/{OPENSSL_VERSION}/${OPENSSL_VERSION_FIXED:-${OPENSSL_VERSION}}/g"
+        "s/{PCRE2_VERSION}/${PCRE2_VERSION_FIXED:-${PCRE2_VERSION}}/g"
         "s/{QBITTORRENT_VERSION}/${QBITTORRENT_VERSION_FIXED:-${QBITTORRENT_VERSION}}/g"
         "s/{RCLONE_VERSION}/${RCLONE_VERSION_FIXED:-${RCLONE_VERSION}}/g"
         "s/{REDIS_VERSION}/${REDIS_VERSION_FIXED:-${REDIS_VERSION}}/g"
