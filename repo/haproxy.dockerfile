@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -34,12 +34,12 @@ RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP
     && make \
         CFLAGS="-O3 -march=native \$(SPEC_CFLAGS) -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2 -DLUA_C89_NUMBERS" \
         LDFLAGS="-static -pthread -ldl" \
-        USE_THREAD="1" \
         TARGET="linux-glibc" \
         PREFIX="${PREFIX}" \
         USE_CRYPT_H="1" \
         USE_ENGINE="1" \
         USE_GETADDRINFO="1" \
+        USE_THREAD="1" \
         USE_STATIC_PCRE2="1" \
         USE_PCRE2_JIT="1" \
         USE_PROMEX="1" \
