@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -53,6 +53,7 @@ COPY --from=BUILD_VAULTWARDEN /tmp/BUILDKIT/vaultwarden.version /tmp/vaultwarden
 COPY --from=BUILD_VAULTWARDEN_WEB /tmp/BUILDKIT/web-vault /opt/vaultwarden/web-vault
 
 RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
+    && rm -rf /etc/apt/sources.list.d/*.* \
     && if [ $( dpkg --print-architecture ) = "amd64" ]; then export MIRROR_URL="ubuntu" ; else export MIRROR_URL="ubuntu-ports" ; fi \
     && echo "deb http://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename} main multiverse restricted universe" > "/etc/apt/sources.list" \
     && echo "deb http://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-backports main multiverse restricted universe" >> "/etc/apt/sources.list" \
