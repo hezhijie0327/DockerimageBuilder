@@ -1,4 +1,4 @@
-# Current Version: 1.8.1
+# Current Version: 1.8.2
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -108,7 +108,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
     && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
-    && apt install -qy libfontconfig libicu-dev \
+    && apt install -qy --no-install-recommends --no-install-suggests libfontconfig libicu-dev \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
