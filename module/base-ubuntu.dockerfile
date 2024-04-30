@@ -1,10 +1,11 @@
-# Current Version: 1.3.4
+# Current Version: 1.3.5
 
 FROM ubuntu:rolling AS REBASED_UBUNTU
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
 RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
+    && rm -rf /etc/apt/sources.list.d/*.* \
     && if [ $( dpkg --print-architecture ) = "amd64" ]; then export MIRROR_URL="ubuntu" ; else export MIRROR_URL="ubuntu-ports" ; fi \
     && echo "deb http://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename} main multiverse restricted universe" > "/etc/apt/sources.list" \
     && echo "deb http://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-backports main multiverse restricted universe" >> "/etc/apt/sources.list" \
