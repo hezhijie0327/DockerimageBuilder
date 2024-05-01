@@ -16,9 +16,7 @@ for i in $(cat "/opt/intel-patch/intel.version" | awk "{print $2}"); do
     fi && wget -P ${DOWNLOAD_DIR:-/tmp} $i
 done
 
-if [ -f ${DOWNLOAD_DIR:-/tmp}/*.deb ]; then
-    dpkg -i ${DOWNLOAD_DIR:-/tmp}/*.deb && rm -rf ${DOWNLOAD_DIR:-/tmp}/*.deb
-fi
-if [ -f ${DOWNLOAD_DIR:-/tmp}/*.ddeb ]; then
-    dpkg -i ${DOWNLOAD_DIR:-/tmp}/*.ddeb && rm -rf ${DOWNLOAD_DIR:-/tmp}/*.ddeb
+all_files=(${DOWNLOAD_DIR:-/tmp}/*.deb ${DOWNLOAD_DIR:-/tmp}/*.ddeb)
+if [ ${#all_files[@]} -gt 0 ]; then
+    dpkg -i "${all_files[@]}" && rm -f "${all_files[@]}"
 fi
