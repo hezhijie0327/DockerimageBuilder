@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.4.4
+# Current Version: 1.4.5
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -167,7 +167,15 @@ function OutputPackage() {
 }
 # Sync Other Files
 function SyncOtherFiles() {
-    curl -s --connect-timeout 15 "https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/client/src/__locales/en.json" | jq -Sr . > "./patch/adguardhome/static/en-us.json"
+    if [ ! -d "./patch/adguardhome/static" ]; then
+        mkdir -p "./patch/adguardhome/static"
+    fi && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/client/src/__locales/en.json" | jq -Sr . > "./patch/adguardhome/static/en-us.json"
+
+    if [ ! -d "./patch/jellyfin" ]; then
+        mkdir -p "./patch/jellyfin"
+    fi && rm -rf "./patch/jellyfin/intel.version" && for i in "intel/compute-runtime" "intel/intel-graphics-compiler"; do
+        curl -s --connect-timeout 15 "https://api.github.com/repos/${i}/releases/latest" | grep -o '"browser_download_URL": *"[^"]*"' | awk -F '"' '{print $4}' >> "./patch/jellyfin/intel.version"
+    done
 }
 
 ## Process
