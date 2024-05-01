@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.4.7
+# Current Version: 1.4.8
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -173,8 +173,8 @@ function SyncOtherFiles() {
 
     if [ ! -d "./patch/jellyfin" ]; then
         mkdir -p "./patch/jellyfin"
-    fi && rm -rf "./patch/jellyfin/intel.version" && for i in "intel/compute-runtime" "intel/intel-graphics-compiler"; do
-        curl -s --connect-timeout 15 "https://api.github.com/repos/${i}/releases/latest" | jq -r '.assets[] | select(.browser_download_url) | .browser_download_url' | grep -v "\.sum" >> "./patch/jellyfin/intel.version"
+    fi && rm -rf "./patch/jellyfin/intel.version" && for i in "intel/compute-runtime" "intel/intel-graphics-compiler" "intel/linux-npu-driver" "oneapi-src/level-zero"; do
+        curl -s --connect-timeout 15 "https://api.github.com/repos/${i}/releases/latest" | jq -r '.assets[] | select(.browser_download_url) | .browser_download_url' | grep "\.deb\|\.ddeb" >> "./patch/jellyfin/intel.version"
     done
 }
 
