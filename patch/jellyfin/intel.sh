@@ -2,12 +2,12 @@
 
 which "curl" > "/dev/null" 2>&1
 if [ "$?" -eq "1" ]; then
-    apt-get update && apt-get install -qy curl
+    apt update && apt install -qy curl
 fi
 
 which "wget" > "/dev/null" 2>&1
 if [ "$?" -eq "1" ]; then
-    apt-get update && apt-get install -qy wget
+    apt update && apt install -qy wget
 fi
 
 for i in $(cat "/opt/intel-patch/intel.version" | awk "{print $2}"); do
