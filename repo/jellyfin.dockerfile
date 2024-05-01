@@ -1,4 +1,4 @@
-# Current Version: 1.8.5
+# Current Version: 1.8.6
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -121,7 +121,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
 
 FROM scratch
 
-ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="all" NVIDIA_VISIBLE_DEVICES="all" PGID="0" PUID="0" ROC_ENABLE_PRE_VEGA="1"
+ENV DEBIAN_FRONTEND="noninteractive" GHPROXY_URL="" NVIDIA_DRIVER_CAPABILITIES="all" NVIDIA_VISIBLE_DEVICES="all" PGID="0" PUID="0" ROC_ENABLE_PRE_VEGA="1"
 
 COPY --from=REBASED_JELLYFIN / /
 
