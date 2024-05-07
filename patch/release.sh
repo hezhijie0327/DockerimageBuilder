@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.4.8
+# Current Version: 1.4.9
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -19,7 +19,6 @@ export GOST_VERSION_FIXED=""
 export GPERFTOOLS_VERSION_FIXED=""
 export HAPROXY_VERSION_FIXED=""
 export JELLYFIN_VERSION_FIXED=""
-export JELLYFIN_FFMPEG_VERSION_FIXED=""
 export JELLYFIN_WEB_VERSION_FIXED=""
 export JEMALLOC_VERSION_FIXED=""
 export LIBEVENT_VERSION_FIXED=""
@@ -67,7 +66,6 @@ function GetLatestVersion() {
     GPERFTOOLS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/gperftools/gperftools/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/gperftools\-" | tail -n 1 | sed "s/refs\/tags\/gperftools\-//")
     HAPROXY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/haproxy/haproxy/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JELLYFIN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
-    JELLYFIN_FFMPEG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-ffmpeg/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v"| tail -n 1 | sed "s/refs\/tags\/v//")
     JELLYFIN_WEB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-web/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JEMALLOC_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jemalloc/jemalloc/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | tail -n 1 | sed "s/refs\/tags\///")
     LIBEVENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libevent/libevent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release\-" | grep "stable$" | tail -n 1 | sed "s/refs\/tags\/release\-//;s/\-stable//")
@@ -116,7 +114,6 @@ function GenerateReplacements() {
         "s/{GPERFTOOLS_VERSION}/${GPERFTOOLS_VERSION_FIXED:-${GPERFTOOLS_VERSION}}/g"
         "s/{HAPROXY_VERSION}/${HAPROXY_VERSION_FIXED:-${HAPROXY_VERSION}}/g"
         "s/{JELLYFIN_VERSION}/${JELLYFIN_VERSION_FIXED:-${JELLYFIN_VERSION}}/g"
-        "s/{JELLYFIN_FFMPEG_VERSION}/${JELLYFIN_FFMPEG_VERSION_FIXED:-${JELLYFIN_FFMPEG_VERSION}}/g"
         "s/{JELLYFIN_WEB_VERSION}/${JELLYFIN_WEB_VERSION_FIXED:-${JELLYFIN_WEB_VERSION}}/g"
         "s/{JEMALLOC_VERSION}/${JEMALLOC_VERSION_FIXED:-${JEMALLOC_VERSION}}/g"
         "s/{LIBEVENT_VERSION}/${LIBEVENT_VERSION_FIXED:-${LIBEVENT_VERSION}}/g"
