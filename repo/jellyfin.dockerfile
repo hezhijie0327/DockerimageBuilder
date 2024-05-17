@@ -1,4 +1,4 @@
-# Current Version: 1.8.9
+# Current Version: 1.9.0
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -54,9 +54,6 @@ FROM ubuntu:latest AS REBASED_JELLYFIN
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
-ADD ../patch/jellyfin/intel.sh /opt/intel-patch/patch.sh
-ADD ../patch/jellyfin/intel.version /opt/intel-patch/intel.version
-
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=GET_INFO /tmp/*-archive-keyring.gpg /usr/share/keyrings/
 COPY --from=GET_INFO /tmp/patch*.sh /opt/nvidia-patch/
@@ -69,7 +66,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && rm -rf /etc/apt/sources.list.d/*.* \
     && export LSBVersion=$( . /etc/os-release;echo $VERSION_ID | tr -d . ) \
     && export OSArchitecture=$( dpkg --print-architecture ) \
-    && if [ "${OSArchitecture}" = "amd64" ]; then export export NVIDIA_URL="x86_64" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" > "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/rocm/apt/latest ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb-src [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/gpu/ubuntu ${LSBCodename} unified" > "/etc/apt/sources.list.d/intel.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/graphics/ubuntu ${LSBCodename} arc legacy unified" >> "/etc/apt/sources.list.d/intel.list" ; else export NVIDIA_URL="sbsa" && rm -rf "/usr/share/keyrings/amd-archive-keyring.gpg" "/usr/share/keyrings/intel-archive-keyring.gpg" "/opt/intel-patch" ; fi \
+    && if [ "${OSArchitecture}" = "amd64" ]; then export export NVIDIA_URL="x86_64" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" > "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/rocm/apt/latest ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb-src [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/gpu/ubuntu ${LSBCodename} unified" > "/etc/apt/sources.list.d/intel.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/graphics/ubuntu ${LSBCodename} arc legacy unified" >> "/etc/apt/sources.list.d/intel.list" ; else export NVIDIA_URL="sbsa" && rm -rf "/usr/share/keyrings/amd-archive-keyring.gpg" "/usr/share/keyrings/intel-archive-keyring.gpg" ; fi \
     && if [ "${OSArchitecture}" = "amd64" ] || [ "${OSArchitecture}" = "arm64" ]; then echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/libnvidia-archive-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/${OSArchitecture} /" > "/etc/apt/sources.list.d/nvidia.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/nvidia-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${LSBVersion}/${NVIDIA_URL}/ /" >> "/etc/apt/sources.list.d/nvidia.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/ubuntu ${LSBCodename} main unstable" > "/etc/apt/sources.list.d/jellyfin.list" ; fi \
     && if [ "${OSArchitecture}" = "amd64" ]; then export MIRROR_URL="ubuntu" ; else export MIRROR_URL="ubuntu-ports" ; fi \
     && echo "deb http://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename} main multiverse restricted universe" > "/etc/apt/sources.list" \
@@ -108,6 +105,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && apt autoremove -qy \
     && apt clean autoclean -qy \
     && sed -i 's/http:/https:/g' "/etc/apt/sources.list" \
+    && sed -i 's/deb/# deb/g' "/etc/apt/sources.list.d/jellyfin.list" \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 FROM scratch
