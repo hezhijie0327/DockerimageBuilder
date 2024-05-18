@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -16,7 +16,7 @@ RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' 
 
 FROM alpine:latest AS BUILD_BASEOS
 
-COPY --from=GET_INFO /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT /opt
 
