@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -32,7 +32,12 @@ COPY --from=GPG_SIGN /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt /etc/ssl/ce
 COPY --from=GPG_SIGN /tmp/BUILDKIT/morty /usr/local/morty/morty
 COPY --from=GPG_SIGN /tmp/BUILDKIT/morty.sig /usr/local/morty/morty.sig
 
-RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" && sed -i "s|unset MORTY_KEY|unset MORTY_KEY\ncd /usr/local/searxng\n/usr/local/morty/morty -followredirect true -ipv6 true -proxyenv -timeout 5 \&|g" "/usr/local/searxng/dockerfiles/docker-entrypoint.sh" && export MORTY_VERSION=$("/usr/local/morty/morty" -version | cut -d '-' -f 3) && export SEARXNG_VERSION=$(cat "/usr/local/searxng/searx/version_frozen.py" | grep 'VERSION_STRING' | cut -d '=' -f 2 | cut -d '"' -f 2) && sed -i "s|${SEARXNG_VERSION}|$(echo ${SEARXNG_VERSION} | tr 'a-z' 'A-Z')-ZHIJIE-${MORTY_VERSION}|g" "/usr/local/searxng/searx/version_frozen.py"
+RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
+    && apk update \
+    && apk add --no-cache bind-tools curl jq \
+    && apk upgrade --no-cache \
+    && sed -i "s|unset MORTY_KEY|unset MORTY_KEY\ncd /usr/local/searxng\n/usr/local/morty/morty -followredirect true -ipv6 true -proxyenv -timeout 5 \&|g" "/usr/local/searxng/dockerfiles/docker-entrypoint.sh" && export MORTY_VERSION=$("/usr/local/morty/morty" -version | cut -d '-' -f 3) && export SEARXNG_VERSION=$(cat "/usr/local/searxng/searx/version_frozen.py" | grep 'VERSION_STRING' | cut -d '=' -f 2 | cut -d '"' -f 2) && sed -i "s|${SEARXNG_VERSION}|$(echo ${SEARXNG_VERSION} | tr 'a-z' 'A-Z')-ZHIJIE-${MORTY_VERSION}|g" "/usr/local/searxng/searx/version_frozen.py" \
+    && rm -rf /tmp/* /var/cache/apk/*
 
 FROM scratch
 

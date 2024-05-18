@@ -1,4 +1,6 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
+
+FROM hezhijie0327/base:alpine AS GET_INFO
 
 FROM hezhijie0327/base:alpine AS BUILD_CLOUDFLAREDDNS
 
@@ -14,13 +16,14 @@ RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' 
 
 FROM alpine:latest AS BUILD_BASEOS
 
+COPY --from=GET_INFO /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 COPY --from=GPG_SIGN /tmp/BUILDKIT /opt
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && apk update \
     && apk add --no-cache bind-tools curl jq \
     && apk upgrade --no-cache \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
     && rm -rf /tmp/* /var/cache/apk/*
 
 FROM scratch
