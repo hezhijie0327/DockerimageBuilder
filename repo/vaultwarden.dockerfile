@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -36,7 +36,7 @@ RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' 
 
 FROM scratch
 
-ENV DEBIAN_FRONTEND="noninteractive" DATA_FOLDER="/etc/vaultwarden/data" ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/web-vault"
+ENV DATA_FOLDER="/etc/vaultwarden/data" ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/web-vault"
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
