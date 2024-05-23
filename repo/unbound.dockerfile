@@ -1,4 +1,4 @@
-# Current Version: 1.2.5
+# Current Version: 1.2.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,7 +6,7 @@ ADD ../patch/package.json /tmp/package.json
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.unbound" > "${WORKDIR}/unbound.json" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source" > "${WORKDIR}/unbound.source.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source_branch" > "${WORKDIR}/unbound.source_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch" > "${WORKDIR}/unbound.patch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch_branch" > "${WORKDIR}/unbound.patch_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" > "${WORKDIR}/unbound.version.autobuild" && wget -O "${WORKDIR}/root.hints" "https://www.internic.net/domain/named.cache"
+RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.unbound" > "${WORKDIR}/unbound.json" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source" > "${WORKDIR}/unbound.source.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source_branch" > "${WORKDIR}/unbound.source_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch" > "${WORKDIR}/unbound.patch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch_branch" > "${WORKDIR}/unbound.patch_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" > "${WORKDIR}/unbound.version.autobuild" && wget -O "${WORKDIR}/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" && wget -O "${WORKDIR}/root.hints" "https://www.internic.net/domain/named.cache"
 
 FROM hezhijie0327/module:glibc-expat AS BUILD_EXPAT
 
@@ -26,6 +26,7 @@ FROM hezhijie0327/base:ubuntu AS BUILD_UNBOUND
 
 WORKDIR /tmp
 
+COPY --from=GET_INFO /tmp/icannbundle.pem /tmp/BUILDKIT/etc/unbound/icannbundle.pem
 COPY --from=GET_INFO /tmp/root.hints /tmp/BUILDKIT/etc/unbound/root.hints
 COPY --from=GET_INFO /tmp/unbound.*.autobuild /tmp/
 
