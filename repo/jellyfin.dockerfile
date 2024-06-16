@@ -1,4 +1,4 @@
-# Current Version: 1.9.2
+# Current Version: 1.9.3
 
 FROM hezhijie0327/gpg:latest AS GET_GITHUB
 
@@ -62,8 +62,8 @@ COPY --from=GPG_SIGN /tmp/BUILDKIT/jellyfin /opt/jellyfin
 
 COPY --from=BUILD_JELLYFIN_WEB /tmp/BUILDKIT/jellyfin-web /opt/jellyfin-web
 
-RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
-    && rm -rf /etc/apt/sources.list.d/*.* \
+RUN rm -rf /etc/apt/sources.list.d/*.* \
+    && export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
     && export LSBVersion=$( . /etc/os-release;echo $VERSION_ID | tr -d . ) \
     && export OSArchitecture=$( dpkg --print-architecture ) \
     && if [ "${OSArchitecture}" = "amd64" ]; then export export NVIDIA_URL="x86_64" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" > "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/rocm/apt/latest ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb-src [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/graphics/ubuntu ${LSBCodename} arc legacy unified" > "/etc/apt/sources.list.d/intel.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" >> "/etc/apt/sources.list.d/intel.list" ; else export NVIDIA_URL="sbsa" && rm -rf "/usr/share/keyrings/amd-archive-keyring.gpg" "/usr/share/keyrings/intel-archive-keyring.gpg" "/usr/share/keyrings/intel-oneapi-archive-keyring.gpg" ; fi \

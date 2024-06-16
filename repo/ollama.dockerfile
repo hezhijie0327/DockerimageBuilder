@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,7 +6,7 @@ ADD ../patch/package.json /tmp/package.json
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.ollama" > "${WORKDIR}/ollama.json" && cat "${WORKDIR}/ollama.json" | jq -Sr ".version" && cat "${WORKDIR}/ollama.json" | jq -Sr ".source" > "${WORKDIR}/ollama.source.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".source_branch" > "${WORKDIR}/ollama.source_branch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".patch" > "${WORKDIR}/ollama.patch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".patch_branch" > "${WORKDIR}/ollama.patch_branch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".version" > "${WORKDIR}/ollama.version.autobuild" && curl -s --connect-timeout 15 "https://repo.radeon.com/rocm/rocm.gpg.key" | gpg --dearmor > "${WORKDIR}/amd-archive-keyring.gpg" && curl -s --connect-timeout 15 "https://repositories.intel.com/graphics/intel-graphics.key" | gpg --dearmor > "${WORKDIR}/intel-archive-keyring.gpg" && curl -s --connect-timeout 15 "https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB" | gpg --dearmor > "${WORKDIR}/intel-oneapi-archive-keyring.gpg" && curl -s --connect-timeout 15 "https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/3bf863cc.pub" | gpg --dearmor > "${WORKDIR}/nvidia-archive-keyring.gpg" && curl -s --connect-timeout 15 "https://nvidia.github.io/libnvidia-container/gpgkey" | gpg --dearmor > "${WORKDIR}/libnvidia-archive-keyring.gpg" && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/keylase/nvidia-patch/master/patch-fbc.sh" > "${WORKDIR}/patch-fbc.sh" && curl -s --connect-timeout 15 "https://raw.githubusercontent.com/keylase/nvidia-patch/master/patch.sh" > "${WORKDIR}/patch.sh"
+RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.ollama" > "${WORKDIR}/ollama.json" && cat "${WORKDIR}/ollama.json" | jq -Sr ".version" && cat "${WORKDIR}/ollama.json" | jq -Sr ".source" > "${WORKDIR}/ollama.source.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".source_branch" > "${WORKDIR}/ollama.source_branch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".patch" > "${WORKDIR}/ollama.patch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".patch_branch" > "${WORKDIR}/ollama.patch_branch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".version" > "${WORKDIR}/ollama.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
@@ -31,17 +31,12 @@ FROM ubuntu:latest AS REBASED_OLLAMA
 ENV DEBIAN_FRONTEND="noninteractive"
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=GET_INFO /tmp/*-archive-keyring.gpg /usr/share/keyrings/
-COPY --from=GET_INFO /tmp/patch*.sh /opt/nvidia-patch/
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT/ollama /opt/ollama/ollama
 
-RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
-    && rm -rf /etc/apt/sources.list.d/*.* \
-    && export LSBVersion=$( . /etc/os-release;echo $VERSION_ID | tr -d . ) \
+RUN rm -rf /etc/apt/sources.list.d/*.* \
+    && export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
     && export OSArchitecture=$( dpkg --print-architecture ) \
-    && if [ "${OSArchitecture}" = "amd64" ]; then export export NVIDIA_URL="x86_64" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" > "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/rocm/apt/latest ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb-src [arch=${OSArchitecture} signed-by=/usr/share/keyrings/amd-archive-keyring.gpg] https://repo.radeon.com/amdgpu/latest/ubuntu ${LSBCodename} main proprietary" >> "/etc/apt/sources.list.d/amd.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-archive-keyring.gpg] https://repositories.intel.com/graphics/ubuntu ${LSBCodename} arc legacy unified" > "/etc/apt/sources.list.d/intel.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/intel-oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" >> "/etc/apt/sources.list.d/intel.list" ; else export NVIDIA_URL="sbsa" && rm -rf "/usr/share/keyrings/amd-archive-keyring.gpg" "/usr/share/keyrings/intel-archive-keyring.gpg" "/usr/share/keyrings/intel-oneapi-archive-keyring.gpg" ; fi \
-    && if [ "${OSArchitecture}" = "amd64" ] || [ "${OSArchitecture}" = "arm64" ]; then echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/libnvidia-archive-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/ubuntu18.04/${OSArchitecture} /" > "/etc/apt/sources.list.d/nvidia.list" && echo "# deb [arch=${OSArchitecture} signed-by=/usr/share/keyrings/nvidia-archive-keyring.gpg] https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${LSBVersion}/${NVIDIA_URL}/ /" >> "/etc/apt/sources.list.d/nvidia.list" ; fi \
     && if [ "${OSArchitecture}" = "amd64" ]; then export MIRROR_URL="ubuntu" ; else export MIRROR_URL="ubuntu-ports" ; fi \
     && echo "deb http://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename} main multiverse restricted universe" > "/etc/apt/sources.list" \
     && echo "deb http://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename}-backports main multiverse restricted universe" >> "/etc/apt/sources.list" \
@@ -81,7 +76,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
 
 FROM scratch
 
-ENV DEBIAN_FRONTEND="noninteractive" PATH='/opt/ollama:$PATH' NVIDIA_DRIVER_CAPABILITIES="all" NVIDIA_VISIBLE_DEVICES="all" ROC_ENABLE_PRE_VEGA="1" OLLAMA_HOST="0.0.0.0" OLLAMA_ORIGINS='*'
+ENV DEBIAN_FRONTEND="noninteractive" PATH='/opt/ollama:$PATH' OLLAMA_HOST="0.0.0.0" OLLAMA_ORIGINS='*'
 
 COPY --from=REBASED_OLLAMA / /
 
