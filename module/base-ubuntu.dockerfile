@@ -1,4 +1,4 @@
-# Current Version: 1.3.6
+# Current Version: 1.3.7
 
 FROM ubuntu:rolling AS REBASED_UBUNTU
 
@@ -37,7 +37,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
     && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
     && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
-    && apt install -qy autoconf automake autopoint autotools-dev binutils bzip2 curl flex g++ gcc gifsicle git glibc-source jq libbsd-dev libc6-dev libicu-dev libpng-dev libtool make nasm perl pkg-config python3 python3-pip unzip wget yacc zlib1g-dev gettext texinfo gawk bison python3-numpy graphviz re2c crossbuild-essential-amd64 crossbuild-essential-arm64 libtinfo-dev protobuf-c-compiler libprotobuf-c-dev \
+    && apt install -qy autoconf automake autopoint autotools-dev binutils bzip2 curl flex g++ gcc gifsicle git glibc-source jq libbsd-dev libc6-dev libicu-dev libpng-dev libtool make nasm perl pkg-config python3 python3-pip unzip wget yacc zlib1g-dev gettext texinfo gawk bison python3-numpy graphviz re2c crossbuild-essential-amd64 crossbuild-essential-arm64 libtinfo-dev protobuf-c-compiler libprotobuf-c-dev cmake \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
