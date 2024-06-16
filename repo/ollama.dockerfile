@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -81,7 +81,7 @@ RUN export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-
 
 FROM scratch
 
-ENV DEBIAN_FRONTEND="noninteractive" NVIDIA_DRIVER_CAPABILITIES="all" NVIDIA_VISIBLE_DEVICES="all" ROC_ENABLE_PRE_VEGA="1" OLLAMA_HOST="0.0.0.0" OLLAMA_ORIGINS='*'
+ENV DEBIAN_FRONTEND="noninteractive" PATH='/opt/ollama:$PATH' NVIDIA_DRIVER_CAPABILITIES="all" NVIDIA_VISIBLE_DEVICES="all" ROC_ENABLE_PRE_VEGA="1" OLLAMA_HOST="0.0.0.0" OLLAMA_ORIGINS='*'
 
 COPY --from=REBASED_OLLAMA / /
 
