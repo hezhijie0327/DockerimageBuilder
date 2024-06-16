@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.5.5
+# Current Version: 1.5.6
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -41,7 +41,7 @@ export QBITTORRENT_VERSION_FIXED=""
 export RADVD_VERSION_FIXED=""
 export RCLONE_VERSION_FIXED=""
 export REDIS_VERSION_FIXED=""
-export RUST_VERSION_FIXED=""
+export RUST_VERSION_FIXED="1.78.0"
 export SMARTDNS_VERSION_FIXED=""
 export SQLITE_VERSION_FIXED=""
 export SQLITE_YEAR_FIXED=""
