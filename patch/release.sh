@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.5.6
+# Current Version: 1.5.7
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
