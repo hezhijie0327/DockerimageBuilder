@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.5.4
+# Current Version: 1.5.5
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -34,6 +34,7 @@ export LUA_VERSION_FIXED=""
 export MORTY_VERSION_FIXED=""
 export MOSDNS_VERSION_FIXED=""
 export NODEJS_VERSION_FIXED=""
+export OLLAMA_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
 export PCRE2_VERSION_FIXED=""
 export QBITTORRENT_VERSION_FIXED=""
@@ -83,6 +84,7 @@ function GetLatestVersion() {
     MORTY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/asciimoo/morty/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     MOSDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/IrineSistiana/mosdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     NODEJS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nodejs/node/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "\-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    OLLAMA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/ollama/ollama/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "\-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
     PCRE2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/PCRE2Project/pcre2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "RC" | grep "^refs/tags/pcre2-" | tail -n 1 | sed "s/refs\/tags\/pcre2\-//")
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
@@ -133,6 +135,7 @@ function GenerateReplacements() {
         "s/{MORTY_VERSION}/${MORTY_VERSION_FIXED:-${MORTY_VERSION}}/g"
         "s/{MOSDNS_VERSION}/${MOSDNS_VERSION_FIXED:-${MOSDNS_VERSION}}/g"
         "s/{NODEJS_VERSION}/${NODEJS_VERSION_FIXED:-${NODEJS_VERSION}}/g"
+        "s/{OLLAMA_VERSION}/${OLLAMA_VERSION_FIXED:-${OLLAMA_VERSION}}/g"
         "s/{OPENSSL_VERSION}/${OPENSSL_VERSION_FIXED:-${OPENSSL_VERSION}}/g"
         "s/{PCRE2_VERSION}/${PCRE2_VERSION_FIXED:-${PCRE2_VERSION}}/g"
         "s/{QBITTORRENT_VERSION}/${QBITTORRENT_VERSION_FIXED:-${QBITTORRENT_VERSION}}/g"
