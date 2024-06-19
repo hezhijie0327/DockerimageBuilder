@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -28,15 +28,21 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDKIT/lobechat /opt/lobechat
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && apk update \
+    && apk add --no-cache proxychains-ng \
     && apk upgrade --no-cache \
     && rm -rf /tmp/* /var/cache/apk/*
 
 FROM scratch
 
-ENV FEATURE_FLAGS="-check_updates,-welcome_suggest" HOSTNAME="0.0.0.0" PORT="3210"
+ENV FEATURE_FLAGS="-check_updates,-welcome_suggest" HOSTNAME="0.0.0.0" PORT="3210" PROXY_URL=""
 
 COPY --from=REBASED_LOBECHAT / /
 
 EXPOSE 3210/tcp
 
-CMD ["node", "/opt/lobechat/server.js"]
+CMD if [ -n "$PROXY_URL" ]; then \
+        echo -e "localnet 127.0.0.0/255.0.0.0\nlocalnet ::1/128\nproxy_dns\nremote_dns_subnet 224\nstrict_chain\ntcp_connect_time_out 8000\ntcp_read_time_out 15000\n[ProxyList]\n$(echo $PROXY_URL | cut -d: -f1) $(echo $PROXY_URL | cut -d/ -f3 | cut -d: -f1) $(echo $PROXY_URL | cut -d: -f3)" > /etc/proxychains/proxychains.conf; \
+        proxychains node /opt/lobechat/server.js; \
+    else \
+        node /opt/lobechat/server.js; \
+    fi
