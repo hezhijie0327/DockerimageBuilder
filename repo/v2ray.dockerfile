@@ -1,12 +1,10 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.v2ray" > "${WORKDIR}/v2ray.json" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".version" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".source" > "${WORKDIR}/v2ray.source.autobuild" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".source_branch" > "${WORKDIR}/v2ray.source_branch.autobuild" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".patch" > "${WORKDIR}/v2ray.patch.autobuild" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".patch_branch" > "${WORKDIR}/v2ray.patch_branch.autobuild" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".version" > "${WORKDIR}/v2ray.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.v2ray" > "${WORKDIR}/v2ray.json" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".version" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".source" > "${WORKDIR}/v2ray.source.autobuild" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".source_branch" > "${WORKDIR}/v2ray.source_branch.autobuild" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".patch" > "${WORKDIR}/v2ray.patch.autobuild" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".patch_branch" > "${WORKDIR}/v2ray.patch_branch.autobuild" && cat "${WORKDIR}/v2ray.json" | jq -Sr ".version" > "${WORKDIR}/v2ray.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
