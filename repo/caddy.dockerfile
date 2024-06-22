@@ -1,12 +1,10 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.caddy" > "${WORKDIR}/caddy.json" && cat "${WORKDIR}/caddy.json" | jq -Sr ".version" && cat "${WORKDIR}/caddy.json" | jq -Sr ".source" > "${WORKDIR}/caddy.source.autobuild" && cat "${WORKDIR}/caddy.json" | jq -Sr ".source_branch" > "${WORKDIR}/caddy.source_branch.autobuild" && cat "${WORKDIR}/caddy.json" | jq -Sr ".patch" > "${WORKDIR}/caddy.patch.autobuild" && cat "${WORKDIR}/caddy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/caddy.patch_branch.autobuild" && cat "${WORKDIR}/caddy.json" | jq -Sr ".version" > "${WORKDIR}/caddy.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.caddy" > "${WORKDIR}/caddy.json" && cat "${WORKDIR}/caddy.json" | jq -Sr ".version" && cat "${WORKDIR}/caddy.json" | jq -Sr ".source" > "${WORKDIR}/caddy.source.autobuild" && cat "${WORKDIR}/caddy.json" | jq -Sr ".source_branch" > "${WORKDIR}/caddy.source_branch.autobuild" && cat "${WORKDIR}/caddy.json" | jq -Sr ".patch" > "${WORKDIR}/caddy.patch.autobuild" && cat "${WORKDIR}/caddy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/caddy.patch_branch.autobuild" && cat "${WORKDIR}/caddy.json" | jq -Sr ".version" > "${WORKDIR}/caddy.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
