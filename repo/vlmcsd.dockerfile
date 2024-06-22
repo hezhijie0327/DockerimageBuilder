@@ -1,12 +1,10 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.vlmcsd" > "${WORKDIR}/vlmcsd.json" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".version" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".source" > "${WORKDIR}/vlmcsd.source.autobuild" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".source_branch" > "${WORKDIR}/vlmcsd.source_branch.autobuild" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".patch" > "${WORKDIR}/vlmcsd.patch.autobuild" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".patch_branch" > "${WORKDIR}/vlmcsd.patch_branch.autobuild" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".version" > "${WORKDIR}/vlmcsd.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.vlmcsd" > "${WORKDIR}/vlmcsd.json" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".version" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".source" > "${WORKDIR}/vlmcsd.source.autobuild" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".source_branch" > "${WORKDIR}/vlmcsd.source_branch.autobuild" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".patch" > "${WORKDIR}/vlmcsd.patch.autobuild" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".patch_branch" > "${WORKDIR}/vlmcsd.patch_branch.autobuild" && cat "${WORKDIR}/vlmcsd.json" | jq -Sr ".version" > "${WORKDIR}/vlmcsd.version.autobuild"
 
 FROM hezhijie0327/base:alpine AS BUILD_VLMCSD
 
