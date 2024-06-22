@@ -1,12 +1,10 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.gost" > "${WORKDIR}/gost.json" && cat "${WORKDIR}/gost.json" | jq -Sr ".version" && cat "${WORKDIR}/gost.json" | jq -Sr ".source" > "${WORKDIR}/gost.source.autobuild" && cat "${WORKDIR}/gost.json" | jq -Sr ".source_branch" > "${WORKDIR}/gost.source_branch.autobuild" && cat "${WORKDIR}/gost.json" | jq -Sr ".patch" > "${WORKDIR}/gost.patch.autobuild" && cat "${WORKDIR}/gost.json" | jq -Sr ".patch_branch" > "${WORKDIR}/gost.patch_branch.autobuild" && cat "${WORKDIR}/gost.json" | jq -Sr ".version" > "${WORKDIR}/gost.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.gost" > "${WORKDIR}/gost.json" && cat "${WORKDIR}/gost.json" | jq -Sr ".version" && cat "${WORKDIR}/gost.json" | jq -Sr ".source" > "${WORKDIR}/gost.source.autobuild" && cat "${WORKDIR}/gost.json" | jq -Sr ".source_branch" > "${WORKDIR}/gost.source_branch.autobuild" && cat "${WORKDIR}/gost.json" | jq -Sr ".patch" > "${WORKDIR}/gost.patch.autobuild" && cat "${WORKDIR}/gost.json" | jq -Sr ".patch_branch" > "${WORKDIR}/gost.patch_branch.autobuild" && cat "${WORKDIR}/gost.json" | jq -Sr ".version" > "${WORKDIR}/gost.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 

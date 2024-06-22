@@ -1,12 +1,10 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.c_ares" > "${WORKDIR}/c_ares.json" && cat "${WORKDIR}/c_ares.json" | jq -Sr ".version" && cat "${WORKDIR}/c_ares.json" | jq -Sr ".source" > "${WORKDIR}/c_ares.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.c_ares" > "${WORKDIR}/c_ares.json" && cat "${WORKDIR}/c_ares.json" | jq -Sr ".version" && cat "${WORKDIR}/c_ares.json" | jq -Sr ".source" > "${WORKDIR}/c_ares.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_C_ARES
 

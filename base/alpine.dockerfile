@@ -1,6 +1,10 @@
-# Current Version: 1.1.7
+# Current Version: 1.1.8
+
+FROM hezhijie0327/base:package AS GET_PACKAGE
 
 FROM alpine:latest AS REBASED_ALPINE
+
+COPY --from=GET_PACKAGE /package.json /opt/package.json
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && apk update \

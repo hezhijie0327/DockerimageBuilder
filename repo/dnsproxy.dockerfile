@@ -1,12 +1,10 @@
-# Current Version: 1.2.4
+# Current Version: 1.2.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.dnsproxy" > "${WORKDIR}/dnsproxy.json" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".source" > "${WORKDIR}/dnsproxy.source.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".source_branch" > "${WORKDIR}/dnsproxy.source_branch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".patch" > "${WORKDIR}/dnsproxy.patch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/dnsproxy.patch_branch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" > "${WORKDIR}/dnsproxy.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.dnsproxy" > "${WORKDIR}/dnsproxy.json" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".source" > "${WORKDIR}/dnsproxy.source.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".source_branch" > "${WORKDIR}/dnsproxy.source_branch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".patch" > "${WORKDIR}/dnsproxy.patch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/dnsproxy.patch_branch.autobuild" && cat "${WORKDIR}/dnsproxy.json" | jq -Sr ".version" > "${WORKDIR}/dnsproxy.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 

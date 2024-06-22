@@ -1,12 +1,10 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.jemalloc" > "${WORKDIR}/jemalloc.json" && cat "${WORKDIR}/jemalloc.json" | jq -Sr ".version" && cat "${WORKDIR}/jemalloc.json" | jq -Sr ".source" > "${WORKDIR}/jemalloc.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.jemalloc" > "${WORKDIR}/jemalloc.json" && cat "${WORKDIR}/jemalloc.json" | jq -Sr ".version" && cat "${WORKDIR}/jemalloc.json" | jq -Sr ".source" > "${WORKDIR}/jemalloc.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_JEMALLOC
 

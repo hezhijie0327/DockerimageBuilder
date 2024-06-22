@@ -1,12 +1,10 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.redis" > "${WORKDIR}/redis.json" && cat "${WORKDIR}/redis.json" | jq -Sr ".version" && cat "${WORKDIR}/redis.json" | jq -Sr ".source" > "${WORKDIR}/redis.source.autobuild" && cat "${WORKDIR}/redis.json" | jq -Sr ".source_branch" > "${WORKDIR}/redis.source_branch.autobuild" && cat "${WORKDIR}/redis.json" | jq -Sr ".patch" > "${WORKDIR}/redis.patch.autobuild" && cat "${WORKDIR}/redis.json" | jq -Sr ".patch_branch" > "${WORKDIR}/redis.patch_branch.autobuild" && cat "${WORKDIR}/redis.json" | jq -Sr ".version" > "${WORKDIR}/redis.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.redis" > "${WORKDIR}/redis.json" && cat "${WORKDIR}/redis.json" | jq -Sr ".version" && cat "${WORKDIR}/redis.json" | jq -Sr ".source" > "${WORKDIR}/redis.source.autobuild" && cat "${WORKDIR}/redis.json" | jq -Sr ".source_branch" > "${WORKDIR}/redis.source_branch.autobuild" && cat "${WORKDIR}/redis.json" | jq -Sr ".patch" > "${WORKDIR}/redis.patch.autobuild" && cat "${WORKDIR}/redis.json" | jq -Sr ".patch_branch" > "${WORKDIR}/redis.patch_branch.autobuild" && cat "${WORKDIR}/redis.json" | jq -Sr ".version" > "${WORKDIR}/redis.version.autobuild"
 
 FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
 

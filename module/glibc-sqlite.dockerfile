@@ -1,12 +1,10 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.sqlite" > "${WORKDIR}/sqlite.json" && cat "${WORKDIR}/sqlite.json" | jq -Sr ".version" && cat "${WORKDIR}/sqlite.json" | jq -Sr ".source" > "${WORKDIR}/sqlite.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.sqlite" > "${WORKDIR}/sqlite.json" && cat "${WORKDIR}/sqlite.json" | jq -Sr ".version" && cat "${WORKDIR}/sqlite.json" | jq -Sr ".source" > "${WORKDIR}/sqlite.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_SQLITE
 

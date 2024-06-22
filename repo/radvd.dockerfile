@@ -1,12 +1,10 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.radvd" > "${WORKDIR}/radvd.json" && cat "${WORKDIR}/radvd.json" | jq -Sr ".version" && cat "${WORKDIR}/radvd.json" | jq -Sr ".source" > "${WORKDIR}/radvd.source.autobuild" && cat "${WORKDIR}/radvd.json" | jq -Sr ".source_branch" > "${WORKDIR}/radvd.source_branch.autobuild" && cat "${WORKDIR}/radvd.json" | jq -Sr ".patch" > "${WORKDIR}/radvd.patch.autobuild" && cat "${WORKDIR}/radvd.json" | jq -Sr ".patch_branch" > "${WORKDIR}/radvd.patch_branch.autobuild" && cat "${WORKDIR}/radvd.json" | jq -Sr ".version" > "${WORKDIR}/radvd.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.radvd" > "${WORKDIR}/radvd.json" && cat "${WORKDIR}/radvd.json" | jq -Sr ".version" && cat "${WORKDIR}/radvd.json" | jq -Sr ".source" > "${WORKDIR}/radvd.source.autobuild" && cat "${WORKDIR}/radvd.json" | jq -Sr ".source_branch" > "${WORKDIR}/radvd.source_branch.autobuild" && cat "${WORKDIR}/radvd.json" | jq -Sr ".patch" > "${WORKDIR}/radvd.patch.autobuild" && cat "${WORKDIR}/radvd.json" | jq -Sr ".patch_branch" > "${WORKDIR}/radvd.patch_branch.autobuild" && cat "${WORKDIR}/radvd.json" | jq -Sr ".version" > "${WORKDIR}/radvd.version.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_RADVD
 

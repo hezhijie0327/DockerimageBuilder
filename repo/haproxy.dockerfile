@@ -1,12 +1,10 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.haproxy" > "${WORKDIR}/haproxy.json" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source" > "${WORKDIR}/haproxy.source.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source_branch" > "${WORKDIR}/haproxy.source_branch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch" > "${WORKDIR}/haproxy.patch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/haproxy.patch_branch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" > "${WORKDIR}/haproxy.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.haproxy" > "${WORKDIR}/haproxy.json" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source" > "${WORKDIR}/haproxy.source.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source_branch" > "${WORKDIR}/haproxy.source_branch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch" > "${WORKDIR}/haproxy.patch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/haproxy.patch_branch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" > "${WORKDIR}/haproxy.version.autobuild"
 
 FROM hezhijie0327/module:glibc-lua AS BUILD_LUA
 

@@ -1,12 +1,10 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.dotnet" > "${WORKDIR}/dotnet.json" && cat "${WORKDIR}/dotnet.json" | jq -Sr ".version" && cat "${WORKDIR}/dotnet.json" | jq -Sr ".source" | sed "s/{DOTNET_ARCH}/$(uname -m)/g;s/aarch64/arm64/g;s/x86_64/x64/g" > "${WORKDIR}/dotnet.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.dotnet" > "${WORKDIR}/dotnet.json" && cat "${WORKDIR}/dotnet.json" | jq -Sr ".version" && cat "${WORKDIR}/dotnet.json" | jq -Sr ".source" | sed "s/{DOTNET_ARCH}/$(uname -m)/g;s/aarch64/arm64/g;s/x86_64/x64/g" > "${WORKDIR}/dotnet.autobuild"
 
 FROM hezhijie0327/base:alpine AS BUILD_DOTNET
 

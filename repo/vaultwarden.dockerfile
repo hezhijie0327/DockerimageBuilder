@@ -1,12 +1,10 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.vaultwarden" > "${WORKDIR}/vaultwarden.json" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".version" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".source" > "${WORKDIR}/vaultwarden.source.autobuild" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".source_branch" > "${WORKDIR}/vaultwarden.source_branch.autobuild" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".patch" > "${WORKDIR}/vaultwarden.patch.autobuild" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".patch_branch" > "${WORKDIR}/vaultwarden.patch_branch.autobuild" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".version" > "${WORKDIR}/vaultwarden.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.vaultwarden" > "${WORKDIR}/vaultwarden.json" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".version" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".source" > "${WORKDIR}/vaultwarden.source.autobuild" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".source_branch" > "${WORKDIR}/vaultwarden.source_branch.autobuild" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".patch" > "${WORKDIR}/vaultwarden.patch.autobuild" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".patch_branch" > "${WORKDIR}/vaultwarden.patch_branch.autobuild" && cat "${WORKDIR}/vaultwarden.json" | jq -Sr ".version" > "${WORKDIR}/vaultwarden.version.autobuild"
 
 FROM hezhijie0327/module:binary-rust AS BUILD_RUST
 

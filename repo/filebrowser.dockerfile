@@ -1,12 +1,10 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.filebrowser" > "${WORKDIR}/filebrowser.json" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".version" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".source" > "${WORKDIR}/filebrowser.source.autobuild" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".source_branch" > "${WORKDIR}/filebrowser.source_branch.autobuild" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".patch" > "${WORKDIR}/filebrowser.patch.autobuild" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".patch_branch" > "${WORKDIR}/filebrowser.patch_branch.autobuild" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".version" > "${WORKDIR}/filebrowser.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.filebrowser" > "${WORKDIR}/filebrowser.json" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".version" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".source" > "${WORKDIR}/filebrowser.source.autobuild" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".source_branch" > "${WORKDIR}/filebrowser.source_branch.autobuild" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".patch" > "${WORKDIR}/filebrowser.patch.autobuild" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".patch_branch" > "${WORKDIR}/filebrowser.patch_branch.autobuild" && cat "${WORKDIR}/filebrowser.json" | jq -Sr ".version" > "${WORKDIR}/filebrowser.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 

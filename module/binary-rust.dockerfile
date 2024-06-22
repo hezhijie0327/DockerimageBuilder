@@ -1,12 +1,10 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.rust" > "${WORKDIR}/rust.json" && cat "${WORKDIR}/rust.json" | jq -Sr ".version" && cat "${WORKDIR}/rust.json" | jq -Sr ".source" | sed "s/{RUST_ARCH}/$(uname -m)/g" > "${WORKDIR}/rust.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.rust" > "${WORKDIR}/rust.json" && cat "${WORKDIR}/rust.json" | jq -Sr ".version" && cat "${WORKDIR}/rust.json" | jq -Sr ".source" | sed "s/{RUST_ARCH}/$(uname -m)/g" > "${WORKDIR}/rust.autobuild"
 
 FROM hezhijie0327/base:alpine AS BUILD_RUST
 

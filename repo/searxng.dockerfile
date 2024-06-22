@@ -1,12 +1,10 @@
-# Current Version: 1.1.0
+# Current Version: 1.1.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.morty" > "${WORKDIR}/morty.json" && cat "${WORKDIR}/morty.json" | jq -Sr ".version" && cat "${WORKDIR}/morty.json" | jq -Sr ".source" > "${WORKDIR}/morty.source.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".source_branch" > "${WORKDIR}/morty.source_branch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".patch" > "${WORKDIR}/morty.patch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".patch_branch" > "${WORKDIR}/morty.patch_branch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".version" > "${WORKDIR}/morty.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.morty" > "${WORKDIR}/morty.json" && cat "${WORKDIR}/morty.json" | jq -Sr ".version" && cat "${WORKDIR}/morty.json" | jq -Sr ".source" > "${WORKDIR}/morty.source.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".source_branch" > "${WORKDIR}/morty.source_branch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".patch" > "${WORKDIR}/morty.patch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".patch_branch" > "${WORKDIR}/morty.patch_branch.autobuild" && cat "${WORKDIR}/morty.json" | jq -Sr ".version" > "${WORKDIR}/morty.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
