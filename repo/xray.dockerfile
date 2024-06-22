@@ -1,12 +1,10 @@
-# Current Version: 1.1.0
+# Current Version: 1.1.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.xray" > "${WORKDIR}/xray.json" && cat "${WORKDIR}/xray.json" | jq -Sr ".version" && cat "${WORKDIR}/xray.json" | jq -Sr ".source" > "${WORKDIR}/xray.source.autobuild" && cat "${WORKDIR}/xray.json" | jq -Sr ".source_branch" > "${WORKDIR}/xray.source_branch.autobuild" && cat "${WORKDIR}/xray.json" | jq -Sr ".patch" > "${WORKDIR}/xray.patch.autobuild" && cat "${WORKDIR}/xray.json" | jq -Sr ".patch_branch" > "${WORKDIR}/xray.patch_branch.autobuild" && cat "${WORKDIR}/xray.json" | jq -Sr ".version" > "${WORKDIR}/xray.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.xray" > "${WORKDIR}/xray.json" && cat "${WORKDIR}/xray.json" | jq -Sr ".version" && cat "${WORKDIR}/xray.json" | jq -Sr ".source" > "${WORKDIR}/xray.source.autobuild" && cat "${WORKDIR}/xray.json" | jq -Sr ".source_branch" > "${WORKDIR}/xray.source_branch.autobuild" && cat "${WORKDIR}/xray.json" | jq -Sr ".patch" > "${WORKDIR}/xray.patch.autobuild" && cat "${WORKDIR}/xray.json" | jq -Sr ".patch_branch" > "${WORKDIR}/xray.patch_branch.autobuild" && cat "${WORKDIR}/xray.json" | jq -Sr ".version" > "${WORKDIR}/xray.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
