@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.5.8
+# Current Version: 1.5.9
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -77,7 +77,7 @@ function GetLatestVersion() {
     LIBMNL_VERSION=$(curl -s --connect-timeout 15 "https://git.netfilter.org/libmnl/log" | grep 'release' | cut -d '<' -f 6 | cut -d ' ' -f 4 | head -n 1)
     LIBNGHTTP2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nghttp2/nghttp2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     LIBSSH2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libssh2/libssh2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/libssh2\-" | tail -n 1 | sed "s/refs\/tags\/libssh2\-//")
-    LIBSODIUM_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jedisct1/libsodium/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | grep -v "\-RELEASE" | tail -n 1 | sed "s/refs\/tags\///")
+    LIBSODIUM_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jedisct1/libsodium/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | grep "\-RELEASE" | tail -n 1 | sed "s/refs\/tags\///;s/-RELEASE//")
     LIBUV_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libuv/libuv/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     LOBECHAT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lobehub/lobe-chat/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     LUA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lua/lua/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
