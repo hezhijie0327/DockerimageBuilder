@@ -1,12 +1,10 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.nodejs" > "${WORKDIR}/nodejs.json" && cat "${WORKDIR}/nodejs.json" | jq -Sr ".version" && cat "${WORKDIR}/nodejs.json" | jq -Sr ".source" | sed "s/{NODEJS_ARCH}/$(uname -m)/g;s/aarch64/arm64/g;s/x86_64/x64/g" > "${WORKDIR}/nodejs.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.nodejs" > "${WORKDIR}/nodejs.json" && cat "${WORKDIR}/nodejs.json" | jq -Sr ".version" && cat "${WORKDIR}/nodejs.json" | jq -Sr ".source" | sed "s/{NODEJS_ARCH}/$(uname -m)/g;s/aarch64/arm64/g;s/x86_64/x64/g" > "${WORKDIR}/nodejs.autobuild"
 
 FROM hezhijie0327/base:alpine AS BUILD_NODEJS
 
