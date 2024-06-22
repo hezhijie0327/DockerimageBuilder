@@ -1,12 +1,10 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.libuv" > "${WORKDIR}/libuv.json" && cat "${WORKDIR}/libuv.json" | jq -Sr ".version" && cat "${WORKDIR}/libuv.json" | jq -Sr ".source" > "${WORKDIR}/libuv.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.libuv" > "${WORKDIR}/libuv.json" && cat "${WORKDIR}/libuv.json" | jq -Sr ".version" && cat "${WORKDIR}/libuv.json" | jq -Sr ".source" > "${WORKDIR}/libuv.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_LIBUV
 
