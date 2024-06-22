@@ -1,12 +1,10 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.smartdns" > "${WORKDIR}/smartdns.json" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".version" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".source" > "${WORKDIR}/smartdns.source.autobuild" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".source_branch" > "${WORKDIR}/smartdns.source_branch.autobuild" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".patch" > "${WORKDIR}/smartdns.patch.autobuild" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".patch_branch" > "${WORKDIR}/smartdns.patch_branch.autobuild" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".version" > "${WORKDIR}/smartdns.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.smartdns" > "${WORKDIR}/smartdns.json" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".version" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".source" > "${WORKDIR}/smartdns.source.autobuild" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".source_branch" > "${WORKDIR}/smartdns.source_branch.autobuild" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".patch" > "${WORKDIR}/smartdns.patch.autobuild" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".patch_branch" > "${WORKDIR}/smartdns.patch_branch.autobuild" && cat "${WORKDIR}/smartdns.json" | jq -Sr ".version" > "${WORKDIR}/smartdns.version.autobuild"
 
 FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
 
