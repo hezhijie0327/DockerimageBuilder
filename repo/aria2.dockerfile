@@ -1,12 +1,10 @@
-# Current Version: 1.6.9
+# Current Version: 1.7.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.aria2c" > "${WORKDIR}/aria2c.json" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".version" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".source" > "${WORKDIR}/aria2c.source.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".source_branch" > "${WORKDIR}/aria2c.source_branch.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".patch" > "${WORKDIR}/aria2c.patch.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".patch_branch" > "${WORKDIR}/aria2c.patch_branch.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".version" > "${WORKDIR}/aria2c.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.aria2c" > "${WORKDIR}/aria2c.json" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".version" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".source" > "${WORKDIR}/aria2c.source.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".source_branch" > "${WORKDIR}/aria2c.source_branch.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".patch" > "${WORKDIR}/aria2c.patch.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".patch_branch" > "${WORKDIR}/aria2c.patch_branch.autobuild" && cat "${WORKDIR}/aria2c.json" | jq -Sr ".version" > "${WORKDIR}/aria2c.version.autobuild"
 
 FROM hezhijie0327/module:glibc-cares AS BUILD_C_ARES
 
