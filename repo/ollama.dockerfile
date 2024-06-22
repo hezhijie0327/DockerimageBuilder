@@ -1,12 +1,10 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.ollama" > "${WORKDIR}/ollama.json" && cat "${WORKDIR}/ollama.json" | jq -Sr ".version" && cat "${WORKDIR}/ollama.json" | jq -Sr ".source" > "${WORKDIR}/ollama.source.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".source_branch" > "${WORKDIR}/ollama.source_branch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".patch" > "${WORKDIR}/ollama.patch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".patch_branch" > "${WORKDIR}/ollama.patch_branch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".version" > "${WORKDIR}/ollama.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.ollama" > "${WORKDIR}/ollama.json" && cat "${WORKDIR}/ollama.json" | jq -Sr ".version" && cat "${WORKDIR}/ollama.json" | jq -Sr ".source" > "${WORKDIR}/ollama.source.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".source_branch" > "${WORKDIR}/ollama.source_branch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".patch" > "${WORKDIR}/ollama.patch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".patch_branch" > "${WORKDIR}/ollama.patch_branch.autobuild" && cat "${WORKDIR}/ollama.json" | jq -Sr ".version" > "${WORKDIR}/ollama.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
