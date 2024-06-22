@@ -1,6 +1,10 @@
-# Current Version: 1.3.7
+# Current Version: 1.3.8
+
+FROM hezhijie0327/base:package AS GET_PACKAGE
 
 FROM ubuntu:rolling AS REBASED_UBUNTU
+
+COPY --from=GET_PACKAGE /package.json /opt/package.json
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
