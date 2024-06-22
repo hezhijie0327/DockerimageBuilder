@@ -1,12 +1,10 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.golang" > "${WORKDIR}/golang.json" && cat "${WORKDIR}/golang.json" | jq -Sr ".version" && cat "${WORKDIR}/golang.json" | jq -Sr ".source" | sed "s/{GOLANG_ARCH}/$(uname -m)/g;s/aarch64/arm64/g;s/x86_64/amd64/g" > "${WORKDIR}/golang.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.golang" > "${WORKDIR}/golang.json" && cat "${WORKDIR}/golang.json" | jq -Sr ".version" && cat "${WORKDIR}/golang.json" | jq -Sr ".source" | sed "s/{GOLANG_ARCH}/$(uname -m)/g;s/aarch64/arm64/g;s/x86_64/amd64/g" > "${WORKDIR}/golang.autobuild"
 
 FROM hezhijie0327/base:alpine AS BUILD_GOLANG
 
