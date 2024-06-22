@@ -1,12 +1,10 @@
-# Current Version: 1.2.2
+# Current Version: 1.2.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".repo.mosdns" > "${WORKDIR}/mosdns.json" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".version" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".source" > "${WORKDIR}/mosdns.source.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".source_branch" > "${WORKDIR}/mosdns.source_branch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".patch" > "${WORKDIR}/mosdns.patch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".patch_branch" > "${WORKDIR}/mosdns.patch_branch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".version" > "${WORKDIR}/mosdns.version.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.mosdns" > "${WORKDIR}/mosdns.json" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".version" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".source" > "${WORKDIR}/mosdns.source.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".source_branch" > "${WORKDIR}/mosdns.source_branch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".patch" > "${WORKDIR}/mosdns.patch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".patch_branch" > "${WORKDIR}/mosdns.patch_branch.autobuild" && cat "${WORKDIR}/mosdns.json" | jq -Sr ".version" > "${WORKDIR}/mosdns.version.autobuild"
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
