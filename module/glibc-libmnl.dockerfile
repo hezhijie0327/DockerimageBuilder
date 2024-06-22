@@ -1,12 +1,10 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
-ADD ../patch/package.json /tmp/package.json
-
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "${WORKDIR}/package.json" | jq -Sr ".module.libmnl" > "${WORKDIR}/libmnl.json" && cat "${WORKDIR}/libmnl.json" | jq -Sr ".version" && cat "${WORKDIR}/libmnl.json" | jq -Sr ".source" > "${WORKDIR}/libmnl.autobuild"
+RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.libmnl" > "${WORKDIR}/libmnl.json" && cat "${WORKDIR}/libmnl.json" | jq -Sr ".version" && cat "${WORKDIR}/libmnl.json" | jq -Sr ".source" > "${WORKDIR}/libmnl.autobuild"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_LIBMNL
 
