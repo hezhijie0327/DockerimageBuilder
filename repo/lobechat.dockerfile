@@ -1,4 +1,4 @@
-# Current Version: 1.1.4
+# Current Version: 1.1.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -40,7 +40,7 @@ EXPOSE 3210/tcp
 
 CMD if [ -n "$PROXY_URL" ]; then \
         echo -e "localnet 127.0.0.0/255.0.0.0\nlocalnet ::1/128\nproxy_dns\nremote_dns_subnet 224\nstrict_chain\ntcp_connect_time_out 8000\ntcp_read_time_out 15000\n[ProxyList]\n$(echo $PROXY_URL | cut -d: -f1) $(echo $PROXY_URL | cut -d/ -f3 | cut -d: -f1) $(echo $PROXY_URL | cut -d: -f3)" > /etc/proxychains/proxychains.conf; \
-        proxychains node /opt/lobechat/server.js; \
+        proxychains -q node /opt/lobechat/server.js; \
     else \
         node /opt/lobechat/server.js; \
     fi
