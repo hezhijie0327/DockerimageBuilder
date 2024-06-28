@@ -1,4 +1,4 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -32,7 +32,7 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
 
 FROM scratch
 
-ENV NODE_TLS_REJECT_UNAUTHORIZED="0" FEATURE_FLAGS="-check_updates,-welcome_suggest" HOSTNAME="0.0.0.0" PORT="3210" PROXY_URL=""
+ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" FEATURE_FLAGS="-check_updates,-welcome_suggest" HOSTNAME="0.0.0.0" PORT="3210" PROXY_URL=""
 
 COPY --from=REBASED_LOBECHAT / /
 
