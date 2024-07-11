@@ -1,4 +1,4 @@
-# Current Version: 1.1.8
+# Current Version: 1.1.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -50,8 +50,7 @@ COPY --from=REBASED_LOBECHAT / /
 
 EXPOSE 3210/tcp 3211/tcp
 
-CMD \
-    if echo "$FEATURE_FLAGS" | grep -q '+webrtc_sync'; then \
+CMD if echo "$FEATURE_FLAGS" | grep -q '+webrtc_sync'; then \
         node /opt/webrtc/index.js & \
     fi \
     if [ -n "$PROXY_URL" ]; then \
