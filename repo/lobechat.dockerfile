@@ -1,4 +1,4 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -18,11 +18,23 @@ COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PNPM_HOME="/pnpm" && export PATH="${PNPM_HOME}:${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/lobechat.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.source.autobuild") "${WORKDIR}/BUILDTMP/LOBECHAT" && git clone -b $(cat "${WORKDIR}/lobechat.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export LOBECHAT_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_VERSION=$(cat "${WORKDIR}/lobechat.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_CUSTOM_VERSION="${LOBECHAT_VERSION}-ZHIJIE-${LOBECHAT_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/LOBECHAT" && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json" && corepack enable && pnpm add sharp && pnpm i && npm run build:docker && cp -rf "${WORKDIR}/BUILDTMP/LOBECHAT/.next/standalone" "${WORKDIR}/BUILDKIT/lobechat" && cp -rf "${WORKDIR}/BUILDTMP/LOBECHAT/.next/static" "${WORKDIR}/BUILDKIT/lobechat/.next/static" && cp -rf "${WORKDIR}/BUILDTMP/LOBECHAT/public" "${WORKDIR}/BUILDKIT/lobechat/public"
 
+FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_LOBECHAT_WEBRTC
+
+WORKDIR /tmp
+
+COPY --from=GET_INFO /tmp/lobechat.*.autobuild /tmp/
+
+COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
+
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PNPM_HOME="/pnpm" && export PATH="${PNPM_HOME}:${PREFIX}/bin:${PATH}" && git clone -b "main" --depth 1 "https://github.com/lobehub/y-webrtc-signaling.git" "${WORKDIR}/BUILDTMP/WEBRTC" && cp -rf ${WORKDIR}/BUILDTMP/WEBRTC/*.js* "${WORKDIR}/BUILDKIT/" && cd "${WORKDIR}/BUILDKIT" && sed -i 's/process.env.PORT/process.env.WEBRTC_PORT/g' "${WORKDIR}/BUILDKIT/index.js" && npm i
+
 FROM node:current-alpine AS REBASED_LOBECHAT
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=BUILD_LOBECHAT /tmp/BUILDKIT/lobechat /opt/lobechat
+
+COPY --from=BUILD_LOBECHAT_WEBRTC /tmp/BUILDKIT /opt/webrtc
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && apk update \
@@ -32,13 +44,14 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
 
 FROM scratch
 
-ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" FEATURE_FLAGS="-check_updates,-welcome_suggest" HOSTNAME="0.0.0.0" PORT="3210" PROXY_URL=""
+ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" FEATURE_FLAGS="-check_updates,-welcome_suggest" HOSTNAME="0.0.0.0" PORT="3210" PROXY_URL="" WEBRTC_PORT="3211"
 
 COPY --from=REBASED_LOBECHAT / /
 
-EXPOSE 3210/tcp
+EXPOSE 3210/tcp 3211/tcp
 
-CMD if [ -n "$PROXY_URL" ]; then \
+CMD node /opt/webrtc/index.js & \
+    if [ -n "$PROXY_URL" ]; then \
         echo -e "localnet 127.0.0.0/255.0.0.0\nlocalnet ::1/128\nproxy_dns\nremote_dns_subnet 224\nstrict_chain\ntcp_connect_time_out 8000\ntcp_read_time_out 15000\n[ProxyList]\n$(echo $PROXY_URL | cut -d: -f1) $(echo $PROXY_URL | cut -d/ -f3 | cut -d: -f1) $(echo $PROXY_URL | cut -d: -f3)" > /etc/proxychains/proxychains.conf; \
         proxychains -q node /opt/lobechat/server.js; \
     else \
