@@ -7,7 +7,7 @@ import { WebSocketServer } from 'ws'
 import http from 'http'
 import * as map from 'lib0/map'
 
-// Environment variables for port and host
+// Environment variables for host and port
 const host = process.env.WEBRTC_HOST || '0.0.0.0'
 const port = process.env.WEBRTC_PORT || 3001
 
@@ -29,7 +29,7 @@ const wsReadyState = {
     CONNECTING: 0,
     OPEN: 1,
     CLOSING: 2,
-    CLOSED: 3
+    CLOSED: 3,
 }
 
 /**
@@ -62,7 +62,7 @@ const send = ( conn, message ) =>
  * Setup a new client connection
  * @param {any} conn - WebSocket connection
  */
-const onConnection = conn =>
+const onConnection = ( conn ) =>
 {
     /**
      * Set of topics subscribed by the client
@@ -101,7 +101,7 @@ const onConnection = conn =>
     // Handle connection close event
     conn.on( 'close', () =>
     {
-        subscribedTopics.forEach( topicName =>
+        subscribedTopics.forEach( ( topicName ) =>
         {
             const subs = topics.get( topicName ) || new Set()
             subs.delete( conn )
@@ -118,7 +118,7 @@ const onConnection = conn =>
      * Handle incoming messages from the client
      * @param {object} message - Incoming message
      */
-    conn.on( 'message', message =>
+    conn.on( 'message', ( message ) =>
     {
         if ( typeof message === 'string' || message instanceof Buffer )
         {
@@ -129,7 +129,7 @@ const onConnection = conn =>
             switch ( message.type )
             {
                 case 'subscribe':
-                    ( message.topics || [] ).forEach( topicName =>
+                    ( message.topics || [] ).forEach( ( topicName ) =>
                     {
                         if ( typeof topicName === 'string' )
                         {
@@ -142,7 +142,7 @@ const onConnection = conn =>
                     } )
                     break
                 case 'unsubscribe':
-                    ( message.topics || [] ).forEach( topicName =>
+                    ( message.topics || [] ).forEach( ( topicName ) =>
                     {
                         const subs = topics.get( topicName )
                         if ( subs )
@@ -158,7 +158,7 @@ const onConnection = conn =>
                         if ( receivers )
                         {
                             message.clients = receivers.size
-                            receivers.forEach( receiver => send( receiver, message ) )
+                            receivers.forEach( ( receiver ) => send( receiver, message ) )
                         }
                     }
                     break
@@ -179,7 +179,7 @@ server.on( 'upgrade', ( request, socket, head ) =>
      * Handle authentication (if necessary)
      * @param {any} ws - WebSocket connection
      */
-    const handleAuth = ws =>
+    const handleAuth = ( ws ) =>
     {
         wss.emit( 'connection', ws, request )
     }
