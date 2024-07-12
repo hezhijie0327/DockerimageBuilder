@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // WebRTC Signaling server for LobeChat
 // ref: https://github.com/lobehub/y-webrtc-signaling
 
@@ -12,8 +14,8 @@ const port = process.env.WEBRTC_PORT || 3001
 // Create an HTTP server
 const server = http.createServer( ( request, response ) =>
 {
-    response.writeHead( 200, { 'Content-Type': 'text/plain' } )
-    response.end( 'okay' )
+    response.writeHead( 204 )
+    response.end()
 } )
 
 // Create a new WebSocket server
@@ -23,12 +25,12 @@ const wss = new WebSocketServer( { noServer: true } )
 const pingTimeout = 30000
 
 // WebSocket ready states
-const wsReadyState = [
-    0, // CONNECTING
-    1, // OPEN
-    2, // CLOSING
-    3 // CLOSED
-]
+const wsReadyState = {
+    CONNECTING: 0,
+    OPEN: 1,
+    CLOSING: 2,
+    CLOSED: 3
+}
 
 /**
  * Map from topic-name to set of subscribed clients.
@@ -43,7 +45,7 @@ const topics = new Map()
  */
 const send = ( conn, message ) =>
 {
-    if ( conn.readyState !== wsReadyState[ 0 ] && conn.readyState !== wsReadyState[ 1 ] )
+    if ( conn.readyState !== wsReadyState.CONNECTING && conn.readyState !== wsReadyState.OPEN )
     {
         conn.close()
     }
@@ -60,7 +62,7 @@ const send = ( conn, message ) =>
  * Setup a new client connection
  * @param {any} conn - WebSocket connection
  */
-const onconnection = conn =>
+const onConnection = conn =>
 {
     /**
      * Set of topics subscribed by the client
@@ -127,9 +129,6 @@ const onconnection = conn =>
             switch ( message.type )
             {
                 case 'subscribe':
-                    /**
-                     * @type {Array<string>}
-                     */
                     ( message.topics || [] ).forEach( topicName =>
                     {
                         if ( typeof topicName === 'string' )
@@ -143,9 +142,6 @@ const onconnection = conn =>
                     } )
                     break
                 case 'unsubscribe':
-                    /**
-                     * @type {Array<string>}
-                     */
                     ( message.topics || [] ).forEach( topicName =>
                     {
                         const subs = topics.get( topicName )
@@ -162,9 +158,7 @@ const onconnection = conn =>
                         if ( receivers )
                         {
                             message.clients = receivers.size
-                            receivers.forEach( receiver =>
-                                send( receiver, message )
-                            )
+                            receivers.forEach( receiver => send( receiver, message ) )
                         }
                     }
                     break
@@ -176,14 +170,14 @@ const onconnection = conn =>
 }
 
 // Set up WebSocket connection handler
-wss.on( 'connection', onconnection )
+wss.on( 'connection', onConnection )
 
 // Handle HTTP upgrade requests to WebSocket
 server.on( 'upgrade', ( request, socket, head ) =>
 {
     /**
-     * You may check auth of request here..
-     * @param {any} ws
+     * Handle authentication (if necessary)
+     * @param {any} ws - WebSocket connection
      */
     const handleAuth = ws =>
     {
