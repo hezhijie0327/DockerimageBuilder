@@ -17,7 +17,7 @@ const debugLog = ( ...args ) =>
 {
     if ( debug )
     {
-        console.debugLog( ...args )
+        console.log( ...args )
     }
 }
 
