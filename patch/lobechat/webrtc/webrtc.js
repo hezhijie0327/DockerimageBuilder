@@ -12,14 +12,8 @@ const debug = process.env.WEBRTC_DEBUG === 'true'
 const host = process.env.WEBRTC_HOST || '0.0.0.0'
 const port = process.env.WEBRTC_PORT || 3000
 
-// Conditional logging function
-const debugLog = ( ...args ) =>
-{
-    if ( debug )
-    {
-        console.log( ...args )
-    }
-}
+// Ping timeout interval in milliseconds
+const pingTimeout = 30000
 
 // Create an HTTP server
 const server = http.createServer( ( request, response ) =>
@@ -31,15 +25,25 @@ const server = http.createServer( ( request, response ) =>
 // Create a new WebSocket server
 const wss = new WebSocketServer( { noServer: true } )
 
-// Ping timeout interval in milliseconds
-const pingTimeout = 30000
-
 // WebSocket ready states
 const wsReadyState = {
     CONNECTING: 0,
     OPEN: 1,
     CLOSING: 2,
     CLOSED: 3,
+}
+
+/**
+ * Conditional logging function
+ * Logs messages to the console only if the debug mode is enabled.
+ * @param {...any} args - The messages or objects to log
+ */
+const debugLog = ( ...args ) =>
+{
+    if ( debug )
+    {
+        console.log( ...args )
+    }
 }
 
 /**
