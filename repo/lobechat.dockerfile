@@ -1,4 +1,4 @@
-# Current Version: 1.2.2
+# Current Version: 1.2.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -33,14 +33,14 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
 
 FROM scratch
 
-ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" FEATURE_FLAGS="-check_updates,-welcome_suggest" HOSTNAME="0.0.0.0" PORT="3210" PROXY_URL="" WEBRTC_HOST="0.0.0.0" WEBRTC_PORT="3211"
+ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" FEATURE_FLAGS="-check_updates,-welcome_suggest" HOSTNAME="0.0.0.0" PORT="3210" PROXY_URL="" ENABLE_WEBRTC_SIGNALING_SERVER="false" WEBRTC_DEBUG="false" WEBRTC_HOST="0.0.0.0" WEBRTC_PORT="3211"
 
 COPY --from=REBASED_LOBECHAT / /
 
 EXPOSE 3210/tcp 3211/tcp
 
 CMD \
-    if echo "$FEATURE_FLAGS" | grep -q '+webrtc_sync'; then \
+    if [ "$ENABLE_WEBRTC_SIGNALING_SERVER" = "true" ] && echo "$FEATURE_FLAGS" | grep -q '+webrtc_sync'; then \
         node /opt/webrtc/webrtc.js & \
     fi; \
     if [ -n "$PROXY_URL" ]; then \
