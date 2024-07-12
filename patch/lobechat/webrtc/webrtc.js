@@ -161,12 +161,25 @@ const onConnection = ( conn ) =>
         }
         if ( message && message.type && !closed )
         {
+            const invalidTopics = ( message.topics || [] ).filter( topicName => !allowedTopics.has( topicName ) )
+            const handleInvalidTopic = () =>
+            {
+                debugLog( `Invalid topic(s) detected. Disconnecting client.` )
+                conn.close()
+            }
+
+            if ( invalidTopics.length > 0 || ( message.type === 'publish' && !allowedTopics.has( message.topic ) ) )
+            {
+                handleInvalidTopic()
+                return
+            }
+
             switch ( message.type )
             {
                 case 'subscribe':
                     ( message.topics || [] ).forEach( ( topicName ) =>
                     {
-                        if ( typeof topicName === 'string' && allowedTopics.has( topicName ) )
+                        if ( typeof topicName === 'string' )
                         {
                             // Add connection to the topic
                             const topic = map.setIfUndefined( topics, topicName, () => new Set() )
@@ -175,38 +188,29 @@ const onConnection = ( conn ) =>
                             subscribedTopics.add( topicName )
 
                             debugLog( `Client subscribed to topic: ${ topicName }` )
-                        } else
-                        {
-                            debugLog( `Subscription to topic ${ topicName } is not allowed` )
                         }
                     } )
                     break
                 case 'unsubscribe':
                     ( message.topics || [] ).forEach( ( topicName ) =>
                     {
-                        if ( allowedTopics.has( topicName ) )
+                        const subs = topics.get( topicName )
+                        if ( subs )
                         {
-                            const subs = topics.get( topicName )
-                            if ( subs )
-                            {
-                                subs.delete( conn )
+                            subs.delete( conn )
 
-                                debugLog( `Client unsubscribed from topic: ${ topicName }` )
-                            }
+                            debugLog( `Client unsubscribed from topic: ${ topicName }` )
                         }
                     } )
                     break
                 case 'publish':
-                    if ( message.topic && allowedTopics.has( message.topic ) )
+                    const receivers = topics.get( message.topic )
+                    if ( receivers )
                     {
-                        const receivers = topics.get( message.topic )
-                        if ( receivers )
-                        {
-                            message.clients = receivers.size
-                            receivers.forEach( ( receiver ) => send( receiver, message ) )
+                        message.clients = receivers.size
+                        receivers.forEach( ( receiver ) => send( receiver, message ) )
 
-                            debugLog( `Published message to topic: ${ message.topic }` )
-                        }
+                        debugLog( `Published message to topic: ${ message.topic }` )
                     }
                     break
                 case 'ping':
