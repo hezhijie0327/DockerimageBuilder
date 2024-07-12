@@ -204,13 +204,16 @@ const onConnection = ( conn ) =>
                     } )
                     break
                 case 'publish':
-                    const receivers = topics.get( message.topic )
-                    if ( receivers )
+                    if ( message.topic )
                     {
-                        message.clients = receivers.size
-                        receivers.forEach( ( receiver ) => send( receiver, message ) )
+                        const receivers = topics.get( message.topic )
+                        if ( receivers )
+                        {
+                            message.clients = receivers.size
+                            receivers.forEach( ( receiver ) => send( receiver, message ) )
 
-                        debugLog( `Published message to topic: ${ message.topic }` )
+                            debugLog( `Published message to topic: ${ message.topic }` )
+                        }
                     }
                     break
                 case 'ping':
