@@ -132,11 +132,12 @@ const onConnection = ( conn ) =>
             {
                 topics.delete( topicName )
             }
+            debugLog( `Client disconnected from topic: ${ topicName }` )
         } )
         subscribedTopics.clear()
         closed = true
         clearInterval( pingInterval )
-        debugLog( 'Client disconnected' )
+        debugLog( 'Client fully disconnected' )
     } )
 
     // Handle incoming messages from the client
