@@ -12,6 +12,9 @@ const debug = process.env.WEBRTC_DEBUG === 'true'
 const host = process.env.WEBRTC_HOST || '0.0.0.0'
 const port = process.env.WEBRTC_PORT || 3000
 
+// Get allowed topics from the environment variable and convert to a Set
+const allowedTopics = new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) )
+
 // Ping timeout interval in milliseconds
 const pingTimeout = 30000
 
@@ -163,7 +166,7 @@ const onConnection = ( conn ) =>
                 case 'subscribe':
                     ( message.topics || [] ).forEach( ( topicName ) =>
                     {
-                        if ( typeof topicName === 'string' )
+                        if ( typeof topicName === 'string' && allowedTopics.has( topicName ) )
                         {
                             // Add connection to the topic
                             const topic = map.setIfUndefined( topics, topicName, () => new Set() )
@@ -172,23 +175,29 @@ const onConnection = ( conn ) =>
                             subscribedTopics.add( topicName )
 
                             debugLog( `Client subscribed to topic: ${ topicName }` )
+                        } else
+                        {
+                            debugLog( `Subscription to topic ${ topicName } is not allowed` )
                         }
                     } )
                     break
                 case 'unsubscribe':
                     ( message.topics || [] ).forEach( ( topicName ) =>
                     {
-                        const subs = topics.get( topicName )
-                        if ( subs )
+                        if ( allowedTopics.has( topicName ) )
                         {
-                            subs.delete( conn )
+                            const subs = topics.get( topicName )
+                            if ( subs )
+                            {
+                                subs.delete( conn )
 
-                            debugLog( `Client unsubscribed from topic: ${ topicName }` )
+                                debugLog( `Client unsubscribed from topic: ${ topicName }` )
+                            }
                         }
                     } )
                     break
                 case 'publish':
-                    if ( message.topic )
+                    if ( message.topic && allowedTopics.has( message.topic ) )
                     {
                         const receivers = topics.get( message.topic )
                         if ( receivers )
