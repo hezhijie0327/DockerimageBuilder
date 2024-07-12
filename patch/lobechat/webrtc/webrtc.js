@@ -229,5 +229,5 @@ server.on( 'upgrade', ( request, socket, head ) =>
 // Start the HTTP server and bind it to the specified host and port
 server.listen( port, host, () =>
 {
-    debugLog( `WebRTC Signaling server running on ${ host }:${ port }` )
+    console.log( `WebRTC Signaling server running on ${ host }:${ port }` )
 } )
