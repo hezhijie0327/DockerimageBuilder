@@ -7,9 +7,19 @@ import { WebSocketServer } from 'ws'
 import http from 'http'
 import * as map from 'lib0/map'
 
-// Environment variables for host and port
+// Environment variables for debug, host and port
+const debug = process.env.WEBRTC_DEBUG === 'true'
 const host = process.env.WEBRTC_HOST || '0.0.0.0'
-const port = process.env.WEBRTC_PORT || 3001
+const port = process.env.WEBRTC_PORT || 3000
+
+// Conditional logging function
+const debugLog = ( ...args ) =>
+{
+    if ( debug )
+    {
+        console.debugLog( ...args )
+    }
+}
 
 // Create an HTTP server
 const server = http.createServer( ( request, response ) =>
@@ -52,8 +62,12 @@ const send = ( conn, message ) =>
     try
     {
         conn.send( JSON.stringify( message ) )
+
+        debugLog( `Sent message: ${ JSON.stringify( message ) }` )
     } catch ( e )
     {
+        debugLog( 'Error sending message:', e )
+
         conn.close()
     }
 }
@@ -64,6 +78,8 @@ const send = ( conn, message ) =>
  */
 const onConnection = ( conn ) =>
 {
+    debugLog( 'New client connected' )
+
     /**
      * Set of topics subscribed by the client
      * @type {Set<string>}
@@ -77,6 +93,8 @@ const onConnection = ( conn ) =>
     {
         if ( !pongReceived )
         {
+            debugLog( 'Ping not received, closing connection' )
+
             conn.close()
             clearInterval( pingInterval )
         } else
@@ -85,8 +103,12 @@ const onConnection = ( conn ) =>
             try
             {
                 conn.ping()
+
+                debugLog( 'Ping sent' )
             } catch ( e )
             {
+                debugLog( 'Error sending ping:', e )
+
                 conn.close()
             }
         }
@@ -96,6 +118,8 @@ const onConnection = ( conn ) =>
     conn.on( 'pong', () =>
     {
         pongReceived = true
+
+        debugLog( 'Pong received' )
     } )
 
     // Handle connection close event
@@ -112,6 +136,8 @@ const onConnection = ( conn ) =>
         } )
         subscribedTopics.clear()
         closed = true
+
+        debugLog( 'Client disconnected' )
     } )
 
     /**
@@ -120,6 +146,8 @@ const onConnection = ( conn ) =>
      */
     conn.on( 'message', ( message ) =>
     {
+        debugLog( `Received message: ${ message }` )
+
         if ( typeof message === 'string' || message instanceof Buffer )
         {
             message = JSON.parse( message )
@@ -138,6 +166,8 @@ const onConnection = ( conn ) =>
                             topic.add( conn )
                             // Add topic to the connection's subscribed topics
                             subscribedTopics.add( topicName )
+
+                            debugLog( `Client subscribed to topic: ${ topicName }` )
                         }
                     } )
                     break
@@ -148,6 +178,8 @@ const onConnection = ( conn ) =>
                         if ( subs )
                         {
                             subs.delete( conn )
+
+                            debugLog( `Client unsubscribed from topic: ${ topicName }` )
                         }
                     } )
                     break
@@ -159,11 +191,15 @@ const onConnection = ( conn ) =>
                         {
                             message.clients = receivers.size
                             receivers.forEach( ( receiver ) => send( receiver, message ) )
+
+                            debugLog( `Published message to topic: ${ message.topic }` )
                         }
                     }
                     break
                 case 'ping':
                     send( conn, { type: 'pong' } )
+
+                    debugLog( 'Received ping, sent pong' )
             }
         }
     } )
@@ -175,12 +211,16 @@ wss.on( 'connection', onConnection )
 // Handle HTTP upgrade requests to WebSocket
 server.on( 'upgrade', ( request, socket, head ) =>
 {
+    debugLog( 'HTTP upgrade request received' )
+
     /**
      * Handle authentication (if necessary)
      * @param {any} ws - WebSocket connection
      */
     const handleAuth = ( ws ) =>
     {
+        debugLog( 'WebSocket connection authenticated' )
+
         wss.emit( 'connection', ws, request )
     }
     wss.handleUpgrade( request, socket, head, handleAuth )
