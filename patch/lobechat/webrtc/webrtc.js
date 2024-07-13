@@ -10,7 +10,7 @@ import http from 'http'
 const CONFIG = {
     allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
     host: process.env.WEBRTC_HOST || '0.0.0.0',
-    logLevel: process.env.WEBRTC_LOG_LEVEL || 'info', // 'debug', 'info', 'error', or 'none'
+    logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice', // 'debug', 'info', 'notice', 'error', or 'none'
     port: process.env.WEBRTC_PORT || 3000,
     pingTimeout: 30000
 }
@@ -18,11 +18,11 @@ const CONFIG = {
 // Logging function
 const log = ( level, ...args ) =>
 {
-    const levels = [ 'debug', 'info', 'error', 'none' ]
+    const levels = [ 'debug', 'info', 'notice', 'error', 'none' ]
     const configLevelIndex = levels.indexOf( CONFIG.logLevel )
     const messageLevelIndex = levels.indexOf( level )
 
-    if ( configLevelIndex < 3 && messageLevelIndex >= configLevelIndex )
+    if ( configLevelIndex < 4 && messageLevelIndex >= configLevelIndex )
     {
         console.log( `[${ level.toUpperCase() }]`, ...args )
     }
@@ -219,6 +219,6 @@ server.on( 'upgrade', ( request, socket, head ) =>
 // Start the server
 server.listen( CONFIG.port, CONFIG.host, () =>
 {
-    log( 'info', `WebRTC Signaling server running on ${ CONFIG.host }:${ CONFIG.port }` )
+    log( 'notice', `WebRTC Signaling server running on ${ CONFIG.host }:${ CONFIG.port }` )
     log( 'debug', 'Server configuration:', CONFIG )
 } )
