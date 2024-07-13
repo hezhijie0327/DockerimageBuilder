@@ -1,8 +1,5 @@
 #!/usr/bin/env node
 
-// WebRTC Signaling server for LobeChat
-// ref: https://github.com/lobehub/y-webrtc-signaling
-
 import { WebSocketServer } from 'ws'
 import http from 'http'
 
@@ -220,5 +217,6 @@ server.on( 'upgrade', ( request, socket, head ) =>
 server.listen( CONFIG.port, CONFIG.host, () =>
 {
     log( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
+    log( 'notice', 'Developed by @hezhijie0327. Ref: https://github.com/lobehub/y-webrtc-signaling' )
     log( 'notice', 'Server configuration:', CONFIG )
 } )
