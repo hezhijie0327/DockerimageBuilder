@@ -23,7 +23,22 @@ const log = ( level, ...args ) =>
 
     if ( configLevelIndex < 4 && messageLevelIndex >= configLevelIndex )
     {
-        console.log( `[${ level.toUpperCase() }]`, ...args )
+        const formattedArgs = args.map( arg =>
+        {
+            if ( typeof arg === 'object' && arg !== null )
+            {
+                try
+                {
+                    return JSON.stringify( arg )
+                } catch ( e )
+                {
+                    return arg
+                }
+            }
+            return arg
+        } )
+
+        console.log( `[${ level.toUpperCase() }]`, ...formattedArgs )
     }
 }
 
