@@ -5,11 +5,14 @@ import http from 'http'
 
 // Configuration object
 const CONFIG = {
-    allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
-    host: process.env.WEBRTC_HOST || '0.0.0.0',
     logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice', // 'debug', 'info', 'notice', 'error', or 'none'
+
+    host: process.env.WEBRTC_HOST || '0.0.0.0',
     port: process.env.WEBRTC_PORT || 3000,
-    pingTimeout: 30000
+
+    allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
+
+    pingTimeout: process.env.WEBRTC_PING_TIMEOUT || 30000
 }
 
 // Logging function
