@@ -118,21 +118,13 @@ const handleMessage = ( conn, message ) =>
     // Check for invalid topics
     if ( messageTopics )
     {
-        const deniedTopics = messageTopics.filter( t => CONFIG.denied.has( t ) )
-        const invalidTopics = messageTopics.filter( t => !CONFIG.allowed.has( t ) )
-
-        if ( deniedTopics.length > 0 )
-        {
-            handleSyslog( 'info', 'Denied topic(s) detected:', deniedTopics.join( ', ' ) )
-            handleSyslog( 'debug', 'Denied topic(s):', Array.from( CONFIG.denied ).join( ', ' ) )
-            handleSyslog( 'info', 'Disconnecting client due to denied topic(s).' )
-            return conn.close()
-        }
+        const invalidTopics = messageTopics.filter( t => !CONFIG.allowed.has( t ) || CONFIG.denied.has( t ) )
 
         if ( invalidTopics.length > 0 )
         {
             handleSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
             handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowed ).join( ', ' ) )
+            handleSyslog( 'debug', 'Denied topic(s):', Array.from( CONFIG.denied ).join( ', ' ) )
             handleSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
