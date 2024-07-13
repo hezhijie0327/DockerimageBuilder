@@ -8,6 +8,7 @@ const CONFIG = {
     host: process.env.WEBRTC_HOST || '0.0.0.0',
     port: parseInt( process.env.WEBRTC_PORT ) || 3000,
     allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
+    deniedTopics: new Set( ( process.env.WEBRTC_DENIED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
     pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
 }
 
@@ -131,11 +132,21 @@ const handleMessage = ( conn, message ) =>
     if ( messageTopics )
     {
         const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) )
+        const deniedTopics = messageTopics.filter( t => CONFIG.deniedTopics.has( t ) )
+
         if ( invalidTopics.length > 0 )
         {
             handleSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
             handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
             handleSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
+            return conn.close()
+        }
+
+        if ( deniedTopics.length > 0 )
+        {
+            handleSyslog( 'info', 'Denied topic(s) detected:', deniedTopics.join( ', ' ) )
+            handleSyslog( 'debug', 'Denied topic(s):', Array.from( CONFIG.deniedTopics ).join( ', ' ) )
+            handleSyslog( 'info', 'Disconnecting client due to denied topic(s).' )
             return conn.close()
         }
     }
@@ -163,7 +174,10 @@ const handleMessage = ( conn, message ) =>
         case 'subscribe':
             messageTopics.forEach( topicName =>
             {
-                if ( !topics.has( topicName ) ) topics.set( topicName, new Set() )
+                if ( !topics.has( topicName ) )
+                {
+                    topics.set( topicName, new Set() )
+                }
                 topics.get( topicName ).add( conn )
                 conn.subscribedTopics.add( topicName )
                 handleSyslog( 'info', `Client subscribed to topic: ${ topicName }` )
@@ -176,7 +190,10 @@ const handleMessage = ( conn, message ) =>
                 if ( topicSet )
                 {
                     topicSet.delete( conn )
-                    if ( topicSet.size === 0 ) topics.delete( topicName )
+                    if ( topicSet.size === 0 )
+                    {
+                        topics.delete( topicName )
+                    }
                     conn.subscribedTopics.delete( topicName )
                     handleSyslog( 'info', `Client unsubscribed from topic: ${ topicName }` )
                 }
