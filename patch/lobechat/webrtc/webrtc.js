@@ -156,9 +156,9 @@ const onConnection = ( conn ) =>
 
             const invalidTopics = ( messageTopics || [] ).filter( topicName => !allowedTopics.has( topicName ) )
 
-            if ( invalidTopics.length > 0 || ( type === 'publish' && !allowedTopics.has( messageTopic ) ) )
+            if ( invalidTopics.length > 0 )
             {
-                debugLog( `Invalid topic(s) detected. Disconnecting client.` )
+                debugLog( `Invalid topic(s) detected: ${ invalidTopics.join( ', ' ) }. Disconnecting client.` )
                 conn.close()
                 return
             }
