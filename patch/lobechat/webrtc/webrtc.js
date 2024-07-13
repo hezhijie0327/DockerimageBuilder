@@ -219,6 +219,6 @@ server.on( 'upgrade', ( request, socket, head ) =>
 // Start the server
 server.listen( CONFIG.port, CONFIG.host, () =>
 {
-    log( 'notice', `WebRTC Signaling server running on ${ CONFIG.host }:${ CONFIG.port }` )
-    log( 'debug', 'Server configuration:', CONFIG )
+    log( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
+    log( 'notice', 'Server configuration:', CONFIG )
 } )
