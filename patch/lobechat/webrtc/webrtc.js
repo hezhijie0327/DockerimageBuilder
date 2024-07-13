@@ -7,11 +7,11 @@ const CONFIG = {
     logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice', // 'debug', 'info', 'notice', 'error', or 'none'
 
     host: process.env.WEBRTC_HOST || '0.0.0.0',
-    port: process.env.WEBRTC_PORT || 3000,
+    port: parseInt( process.env.WEBRTC_PORT ) || 3000,
 
     allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
 
-    pingTimeout: process.env.WEBRTC_PING_TIMEOUT || 30000
+    pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
 }
 
 // Logging function
