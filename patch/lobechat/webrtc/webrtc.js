@@ -4,24 +4,33 @@ import { WebSocketServer } from 'ws'
 
 // Configuration object
 const CONFIG = {
-    logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice', // 'debug', 'info', 'notice', 'error', or 'none'
+    logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
     host: process.env.WEBRTC_HOST || '0.0.0.0',
     port: parseInt( process.env.WEBRTC_PORT ) || 3000,
     allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
     pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
 }
 
-// Logging function
-const log = ( level, ...args ) =>
+// Map to store topics and their subscribed connections
+const topics = new Map()
+
+/**
+ * Logs messages based on the configured log level.
+ * @param {string} level - The log level ('debug', 'info', 'notice', 'error', 'none').
+ * @param {...any} args - The messages or objects to log.
+ */
+const logMessage = ( level, ...args ) =>
 {
     const levels = [ 'debug', 'info', 'notice', 'error', 'none' ]
     const configLevelIndex = levels.indexOf( CONFIG.logLevel )
     const messageLevelIndex = levels.indexOf( level )
 
+    // Check if the current log level allows logging of the given level
     if ( configLevelIndex < 4 && messageLevelIndex >= configLevelIndex )
     {
         const formattedArgs = args.map( arg =>
         {
+            // Stringify objects for better logging
             if ( typeof arg === 'object' && arg !== null )
             {
                 try
@@ -35,12 +44,10 @@ const log = ( level, ...args ) =>
             return arg
         } )
 
+        // Output the log message
         console.log( `[${ level.toUpperCase() }]`, ...formattedArgs )
     }
 }
-
-// Map to store topics and their subscribed connections
-const topics = new Map()
 
 /**
  * Send a message to a WebSocket connection
@@ -58,16 +65,16 @@ const sendMessage = ( conn, message ) =>
      */
     if ( conn.readyState > 1 )
     {
-        log( 'debug', 'Connection is closing or closed, unable to send message' )
+        logMessage( 'debug', 'Connection is closing or closed, unable to send message' )
         return conn.close()
     }
     try
     {
         conn.send( JSON.stringify( message ) )
-        log( 'debug', 'Sent message:', message )
+        logMessage( 'debug', 'Sent message:', message )
     } catch ( e )
     {
-        log( 'error', 'Error sending message:', e )
+        logMessage( 'error', 'Error sending message:', e )
         conn.close()
     }
 }
@@ -79,7 +86,7 @@ const sendMessage = ( conn, message ) =>
  */
 const handleMessage = ( conn, message ) =>
 {
-    log( 'debug', 'Received message:', message )
+    logMessage( 'debug', 'Received message:', message )
 
     const { type, topics: messageTopics, topic } = message
 
@@ -89,20 +96,20 @@ const handleMessage = ( conn, message ) =>
         const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) )
         if ( invalidTopics.length > 0 )
         {
-            log( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            log( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
-            log( 'info', 'Disconnecting client due to invalid topic(s).' )
+            logMessage( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
+            logMessage( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
+            logMessage( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
     }
 
-    log( 'debug', 'Handling message of type:', type )
+    logMessage( 'debug', 'Handling message of type:', type )
 
     switch ( type )
     {
         case 'ping':
             sendMessage( conn, { type: 'pong' } )
-            log( 'debug', 'Received ping, sent pong' )
+            logMessage( 'debug', 'Received ping, sent pong' )
             break
         case 'publish':
             const receivers = topics.get( topic )
@@ -110,10 +117,10 @@ const handleMessage = ( conn, message ) =>
             {
                 message.clients = receivers.size
                 receivers.forEach( receiver => sendMessage( receiver, message ) )
-                log( 'info', `Published message to topic: ${ topic }, receivers: ${ receivers.size }` )
+                logMessage( 'info', `Published message to topic: ${ topic }, receivers: ${ receivers.size }` )
             } else
             {
-                log( 'info', `Attempted to publish to non-existent topic: ${ topic }` )
+                logMessage( 'info', `Attempted to publish to non-existent topic: ${ topic }` )
             }
             break
         case 'subscribe':
@@ -122,7 +129,7 @@ const handleMessage = ( conn, message ) =>
                 if ( !topics.has( topicName ) ) topics.set( topicName, new Set() )
                 topics.get( topicName ).add( conn )
                 conn.subscribedTopics.add( topicName )
-                log( 'info', `Client subscribed to topic: ${ topicName }` )
+                logMessage( 'info', `Client subscribed to topic: ${ topicName }` )
             } )
             break
         case 'unsubscribe':
@@ -134,12 +141,12 @@ const handleMessage = ( conn, message ) =>
                     topicSet.delete( conn )
                     if ( topicSet.size === 0 ) topics.delete( topicName )
                     conn.subscribedTopics.delete( topicName )
-                    log( 'info', `Client unsubscribed from topic: ${ topicName }` )
+                    logMessage( 'info', `Client unsubscribed from topic: ${ topicName }` )
                 }
             } )
             break
         default:
-            log( 'info', `Received unknown message type: ${ type }` )
+            logMessage( 'info', `Received unknown message type: ${ type }` )
     }
 }
 
@@ -149,7 +156,7 @@ const handleMessage = ( conn, message ) =>
  */
 const onConnection = ( conn ) =>
 {
-    log( 'info', 'New client connected' )
+    logMessage( 'info', 'New client connected' )
 
     // Initialize connection properties
     conn.subscribedTopics = new Set()
@@ -159,7 +166,7 @@ const onConnection = ( conn ) =>
     conn.on( 'pong', () =>
     {
         conn.isAlive = true
-        log( 'debug', 'Pong received' )
+        logMessage( 'debug', 'Pong received' )
     } )
 
     // Set up ping interval
@@ -167,14 +174,14 @@ const onConnection = ( conn ) =>
     {
         if ( !conn.isAlive )
         {
-            log( 'info', 'Client connection terminated due to lack of response' )
+            logMessage( 'info', 'Client connection terminated due to lack of response' )
             clearInterval( pingInterval )
             return conn.terminate()
         }
 
         conn.isAlive = false
         conn.ping()
-        log( 'debug', 'Ping sent' )
+        logMessage( 'debug', 'Ping sent' )
     }, CONFIG.pingTimeout )
 
     // Handle connection close
@@ -187,12 +194,12 @@ const onConnection = ( conn ) =>
             {
                 topicSet.delete( conn )
                 if ( topicSet.size === 0 ) topics.delete( topicName )
-                log( 'debug', `Removed client from topic: ${ topicName }` )
+                logMessage( 'debug', `Removed client from topic: ${ topicName }` )
             }
         } )
 
         clearInterval( pingInterval )
-        log( 'info', 'Client(s) fully disconnected' )
+        logMessage( 'info', 'Client(s) fully disconnected' )
     } )
 
     // Handle incoming messages
@@ -206,11 +213,11 @@ const onConnection = ( conn ) =>
                 handleMessage( conn, parsedMessage )
             } else
             {
-                log( 'info', 'Received message without type, ignoring' )
+                logMessage( 'info', 'Received message without type, ignoring' )
             }
         } catch ( e )
         {
-            log( 'error', 'Error parsing message:', e )
+            logMessage( 'error', 'Error parsing message:', e )
         }
     } )
 }
@@ -227,13 +234,13 @@ wss.on( 'connection', onConnection )
 // Handle WebSocket errors
 wss.on( 'error', ( error ) =>
 {
-    log( 'error', 'WebSocket server error:', error )
+    logMessage( 'error', 'WebSocket server error:', error )
 } )
 
 // Start WebSocket server
 wss.on( 'listening', () =>
 {
-    log( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
-    log( 'notice', 'Developed by @hezhijie0327' )
-    log( 'notice', 'Server configuration:', CONFIG )
+    logMessage( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
+    logMessage( 'notice', 'Developed by @hezhijie0327' )
+    logMessage( 'notice', 'Server configuration:', CONFIG )
 } )
