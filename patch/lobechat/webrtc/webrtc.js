@@ -38,6 +38,13 @@ const topics = new Map()
  */
 const send = ( conn, message ) =>
 {
+    /**
+     * WebSocket ready states:
+     * CONNECTING: 0
+     * OPEN: 1
+     * CLOSING: 2
+     * CLOSED: 3
+     */
     if ( conn.readyState > 1 )
     {
         log( 'debug', 'Connection is closing or closed, unable to send message' )
