@@ -79,8 +79,8 @@ const handleMessage = ( conn, message ) =>
         if ( invalidTopics.length > 0 )
         {
             log( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            log( 'debug', 'Allowed topics:', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
-            log( 'info', 'Disconnecting client due to invalid topics.' )
+            log( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
+            log( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
     }
