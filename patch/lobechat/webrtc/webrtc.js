@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { WebSocketServer } from 'ws'
-import http from 'http'
 
 // Configuration object
 const CONFIG = {
@@ -139,8 +138,8 @@ const onConnection = ( conn ) =>
     log( 'info', 'New client connected' )
 
     // Initialize connection properties
-    conn.subscribedTopics = new Set()
     conn.isAlive = true
+    conn.subscribedTopics = new Set()
 
     // Set up ping interval
     const pingInterval = setInterval( () =>
@@ -201,32 +200,25 @@ const onConnection = ( conn ) =>
     } )
 }
 
-// Create HTTP server
-const server = http.createServer( ( _, res ) =>
-{
-    res.writeHead( 204 )
-    res.end()
+// Create WebSocket server
+const wss = new WebSocketServer( {
+    host: CONFIG.host,
+    port: CONFIG.port
 } )
 
-// Create WebSocket server
-const wss = new WebSocketServer( { noServer: true } )
+// Handle WebSocket connections
 wss.on( 'connection', onConnection )
 
-// Handle upgrade requests
-server.on( 'upgrade', ( request, socket, head ) =>
+// Handle WebSocket errors
+wss.on( 'error', ( error ) =>
 {
-    log( 'debug', 'HTTP upgrade request received' )
-    wss.handleUpgrade( request, socket, head, ( ws ) =>
-    {
-        log( 'info', 'WebSocket connection authenticated' )
-        wss.emit( 'connection', ws, request )
-    } )
+    log( 'error', 'WebSocket server error:', error )
 } )
 
-// Start the server
-server.listen( CONFIG.port, CONFIG.host, () =>
+// Start WebSocket server
+wss.on( 'listening', () =>
 {
     log( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
-    log( 'notice', 'Developed by @hezhijie0327. Ref: https://github.com/lobehub/y-webrtc-signaling' )
+    log( 'notice', 'Developed by @hezhijie0327' )
     log( 'notice', 'Server configuration:', CONFIG )
 } )
