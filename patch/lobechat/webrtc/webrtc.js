@@ -2,19 +2,6 @@
 
 import { WebSocketServer } from 'ws'
 
-// Configuration object
-const CONFIG = {
-    logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
-    host: process.env.WEBRTC_HOST || '0.0.0.0',
-    port: parseInt( process.env.WEBRTC_PORT ) || 3000,
-    allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
-    deniedTopics: new Set( ( process.env.WEBRTC_DENIED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
-    pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
-}
-
-// Map to store topics and their subscribed connections
-const topics = new Map()
-
 /**
  * Send a message to a WebSocket connection
  * @param {WebSocket} conn - The WebSocket connection
@@ -131,22 +118,22 @@ const handleMessage = ( conn, message ) =>
     // Check for invalid topics
     if ( messageTopics )
     {
-        const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) )
-        const deniedTopics = messageTopics.filter( t => CONFIG.deniedTopics.has( t ) )
-
-        if ( invalidTopics.length > 0 )
-        {
-            handleSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
-            handleSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
-            return conn.close()
-        }
+        const deniedTopics = messageTopics.filter( t => CONFIG.denied.has( t ) )
+        const invalidTopics = messageTopics.filter( t => !CONFIG.allowed.has( t ) )
 
         if ( deniedTopics.length > 0 )
         {
             handleSyslog( 'info', 'Denied topic(s) detected:', deniedTopics.join( ', ' ) )
-            handleSyslog( 'debug', 'Denied topic(s):', Array.from( CONFIG.deniedTopics ).join( ', ' ) )
+            handleSyslog( 'debug', 'Denied topic(s):', Array.from( CONFIG.denied ).join( ', ' ) )
             handleSyslog( 'info', 'Disconnecting client due to denied topic(s).' )
+            return conn.close()
+        }
+
+        if ( invalidTopics.length > 0 )
+        {
+            handleSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
+            handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowed ).join( ', ' ) )
+            handleSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
     }
@@ -238,6 +225,43 @@ const handleSyslog = ( level, ...args ) =>
         console.log( `[${ level.toUpperCase() }]`, ...formattedArgs )
     }
 }
+
+/**
+ * Parse the merged topics environment variable into allowed and denied topics
+ * @param {string} topics - The merged topics string with + for allowed and - for denied topics
+ * @returns {{ allowed: Set<string>, denied: Set<string> }} - An object containing sets of allowed and denied topics
+ */
+const parseTopics = ( topics ) =>
+{
+    const allowed = new Set()
+    const denied = new Set()
+
+    topics.split( ',' ).forEach( topic =>
+    {
+        topic = topic.trim()
+        if ( topic.startsWith( '+' ) )
+        {
+            allowed.add( topic.slice( 1 ) )
+        } else if ( topic.startsWith( '-' ) )
+        {
+            denied.add( topic.slice( 1 ) )
+        }
+    } )
+
+    return { allowed, denied }
+}
+
+// Server Configuration
+const CONFIG = {
+    logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
+    host: process.env.WEBRTC_HOST || '0.0.0.0',
+    port: parseInt( process.env.WEBRTC_PORT ) || 3000,
+    ...parseTopics( process.env.WEBRTC_TOPICS_LIST || '' ),
+    pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
+}
+
+// Map to store topics and their subscribed connections
+const topics = new Map()
 
 // Create WebSocket server
 const wss = new WebSocketServer( {
