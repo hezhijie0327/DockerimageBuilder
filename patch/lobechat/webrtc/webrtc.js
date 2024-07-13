@@ -9,14 +9,24 @@ import http from 'http'
 // Configuration object
 const CONFIG = {
     allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
-    debug: process.env.WEBRTC_DEBUG || 'true',
     host: process.env.WEBRTC_HOST || '0.0.0.0',
+    logLevel: process.env.WEBRTC_LOG_LEVEL || 'info', // 'debug', 'info', 'error', or 'none'
     port: process.env.WEBRTC_PORT || 3000,
     pingTimeout: 30000
 }
 
-// Debug logging function
-const debugLog = ( ...args ) => CONFIG.debug && console.log( '[DEBUG]', ...args )
+// Logging function
+const log = ( level, ...args ) =>
+{
+    const levels = [ 'debug', 'info', 'error', 'none' ]
+    const configLevelIndex = levels.indexOf( CONFIG.logLevel )
+    const messageLevelIndex = levels.indexOf( level )
+
+    if ( configLevelIndex < 3 && messageLevelIndex >= configLevelIndex )
+    {
+        console.log( `[${ level.toUpperCase() }]`, ...args )
+    }
+}
 
 // Map to store topics and their subscribed connections
 const topics = new Map()
@@ -30,16 +40,16 @@ const send = ( conn, message ) =>
 {
     if ( conn.readyState > 1 )
     {
-        debugLog( 'Connection is closing or closed, unable to send message' )
+        log( 'debug', 'Connection is closing or closed, unable to send message' )
         return conn.close()
     }
     try
     {
         conn.send( JSON.stringify( message ) )
-        debugLog( 'Sent message:', message )
+        log( 'debug', 'Sent message:', message )
     } catch ( e )
     {
-        debugLog( 'Error sending message:', e )
+        log( 'error', 'Error sending message:', e )
         conn.close()
     }
 }
@@ -53,7 +63,7 @@ const handleMessage = ( conn, message ) =>
 {
     const { type, topics: messageTopics, topic } = message
 
-    debugLog( 'Handling message of type:', type )
+    log( 'debug', 'Handling message of type:', type )
 
     // Check for invalid topics
     if ( messageTopics )
@@ -61,9 +71,9 @@ const handleMessage = ( conn, message ) =>
         const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) )
         if ( invalidTopics.length > 0 )
         {
-            debugLog( 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            debugLog( 'Allowed topics:', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
-            debugLog( 'Disconnecting client.' )
+            log( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
+            log( 'debug', 'Allowed topics:', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
+            log( 'info', 'Disconnecting client due to invalid topics.' )
             return conn.close()
         }
     }
@@ -76,7 +86,7 @@ const handleMessage = ( conn, message ) =>
                 if ( !topics.has( topicName ) ) topics.set( topicName, new Set() )
                 topics.get( topicName ).add( conn )
                 conn.subscribedTopics.add( topicName )
-                debugLog( `Client subscribed to topic: ${ topicName }` )
+                log( 'info', `Client subscribed to topic: ${ topicName }` )
             } )
             break
         case 'unsubscribe':
@@ -88,7 +98,7 @@ const handleMessage = ( conn, message ) =>
                     topicSet.delete( conn )
                     if ( topicSet.size === 0 ) topics.delete( topicName )
                     conn.subscribedTopics.delete( topicName )
-                    debugLog( `Client unsubscribed from topic: ${ topicName }` )
+                    log( 'info', `Client unsubscribed from topic: ${ topicName }` )
                 }
             } )
             break
@@ -98,18 +108,18 @@ const handleMessage = ( conn, message ) =>
             {
                 message.clients = receivers.size
                 receivers.forEach( receiver => send( receiver, message ) )
-                debugLog( `Published message to topic: ${ topic }, receivers: ${ receivers.size }` )
+                log( 'info', `Published message to topic: ${ topic }, receivers: ${ receivers.size }` )
             } else
             {
-                debugLog( `Attempted to publish to non-existent topic: ${ topic }` )
+                log( 'info', `Attempted to publish to non-existent topic: ${ topic }` )
             }
             break
         case 'ping':
             send( conn, { type: 'pong' } )
-            debugLog( 'Received ping, sent pong' )
+            log( 'debug', 'Received ping, sent pong' )
             break
         default:
-            debugLog( `Received unknown message type: ${ type }` )
+            log( 'info', `Received unknown message type: ${ type }` )
     }
 }
 
@@ -119,7 +129,7 @@ const handleMessage = ( conn, message ) =>
  */
 const onConnection = ( conn ) =>
 {
-    debugLog( 'New client connected' )
+    log( 'info', 'New client connected' )
 
     // Initialize connection properties
     conn.subscribedTopics = new Set()
@@ -130,20 +140,20 @@ const onConnection = ( conn ) =>
     {
         if ( !conn.isAlive )
         {
-            debugLog( 'Connection is not alive, terminating' )
+            log( 'info', 'Connection is not alive, terminating' )
             clearInterval( pingInterval )
             return conn.terminate()
         }
         conn.isAlive = false
         conn.ping()
-        debugLog( 'Ping sent' )
+        log( 'debug', 'Ping sent' )
     }, CONFIG.pingTimeout )
 
     // Handle pong messages
     conn.on( 'pong', () =>
     {
         conn.isAlive = true
-        debugLog( 'Pong received' )
+        log( 'debug', 'Pong received' )
     } )
 
     // Handle connection close
@@ -156,17 +166,17 @@ const onConnection = ( conn ) =>
             {
                 topicSet.delete( conn )
                 if ( topicSet.size === 0 ) topics.delete( topicName )
-                debugLog( `Removed client from topic: ${ topicName }` )
+                log( 'debug', `Removed client from topic: ${ topicName }` )
             }
         } )
         clearInterval( pingInterval )
-        debugLog( 'Client fully disconnected' )
+        log( 'info', 'Client fully disconnected' )
     } )
 
     // Handle incoming messages
     conn.on( 'message', ( message ) =>
     {
-        debugLog( 'Received message:', message )
+        log( 'debug', 'Received message:', message )
         try
         {
             const parsedMessage = JSON.parse( message )
@@ -175,11 +185,11 @@ const onConnection = ( conn ) =>
                 handleMessage( conn, parsedMessage )
             } else
             {
-                debugLog( 'Received message without type, ignoring' )
+                log( 'info', 'Received message without type, ignoring' )
             }
         } catch ( e )
         {
-            debugLog( 'Error parsing message:', e )
+            log( 'error', 'Error parsing message:', e )
         }
     } )
 }
@@ -198,10 +208,10 @@ wss.on( 'connection', onConnection )
 // Handle upgrade requests
 server.on( 'upgrade', ( request, socket, head ) =>
 {
-    debugLog( 'HTTP upgrade request received' )
+    log( 'debug', 'HTTP upgrade request received' )
     wss.handleUpgrade( request, socket, head, ( ws ) =>
     {
-        debugLog( 'WebSocket connection authenticated' )
+        log( 'info', 'WebSocket connection authenticated' )
         wss.emit( 'connection', ws, request )
     } )
 } )
@@ -209,6 +219,6 @@ server.on( 'upgrade', ( request, socket, head ) =>
 // Start the server
 server.listen( CONFIG.port, CONFIG.host, () =>
 {
-    console.log( `WebRTC Signaling server running on ${ CONFIG.host }:${ CONFIG.port }` )
-    debugLog( 'Server configuration:', CONFIG )
+    log( 'info', `WebRTC Signaling server running on ${ CONFIG.host }:${ CONFIG.port }` )
+    log( 'debug', 'Server configuration:', CONFIG )
 } )
