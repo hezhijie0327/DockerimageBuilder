@@ -101,7 +101,7 @@ const handleMessage = ( conn, message ) =>
     switch ( type )
     {
         case 'ping':
-            sendMessage( { type: 'pong' } )
+            sendMessage( conn, { type: 'pong' } )
             log( 'debug', 'Received ping, sent pong' )
             break
         case 'publish':
@@ -168,14 +168,12 @@ const onConnection = ( conn ) =>
         if ( !conn.isAlive )
         {
             log( 'info', 'Client connection terminated due to lack of response' )
-            conn.terminate()
             clearInterval( pingInterval )
-            return
+            return conn.terminate()
         }
 
-        // Send ping with no data
         conn.isAlive = false
-        conn.ping( null, false, true )
+        conn.ping()
         log( 'debug', 'Ping sent' )
     }, CONFIG.pingTimeout )
 
