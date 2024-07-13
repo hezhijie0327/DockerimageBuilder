@@ -67,9 +67,9 @@ const send = ( conn, message ) =>
  */
 const handleMessage = ( conn, message ) =>
 {
-    const { type, topics: messageTopics, topic } = message
+    log( 'debug', 'Received message:', message )
 
-    log( 'debug', 'Handling message of type:', type )
+    const { type, topics: messageTopics, topic } = message
 
     // Check for invalid topics
     if ( messageTopics )
@@ -83,6 +83,8 @@ const handleMessage = ( conn, message ) =>
             return conn.close()
         }
     }
+
+    log( 'debug', 'Handling message of type:', type )
 
     switch ( type )
     {
@@ -182,7 +184,6 @@ const onConnection = ( conn ) =>
     // Handle incoming messages
     conn.on( 'message', ( message ) =>
     {
-        log( 'debug', 'Received message:', message )
         try
         {
             const parsedMessage = JSON.parse( message )
