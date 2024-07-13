@@ -26,7 +26,7 @@ const log = ( level, ...args ) =>
             {
                 try
                 {
-                    return JSON.stringify( arg )
+                    return JSON.stringify( arg, null, 2 )
                 } catch ( e )
                 {
                     return arg
