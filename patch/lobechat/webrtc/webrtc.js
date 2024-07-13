@@ -5,12 +5,9 @@ import { WebSocketServer } from 'ws'
 // Configuration object
 const CONFIG = {
     logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice', // 'debug', 'info', 'notice', 'error', or 'none'
-
     host: process.env.WEBRTC_HOST || '0.0.0.0',
     port: parseInt( process.env.WEBRTC_PORT ) || 3000,
-
     allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
-
     pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
 }
 
@@ -50,7 +47,7 @@ const topics = new Map()
  * @param {WebSocket} conn - The WebSocket connection
  * @param {object} message - The message to send
  */
-const send = ( conn, message ) =>
+const sendMessage = ( conn, message ) =>
 {
     /**
      * WebSocket ready states:
@@ -103,6 +100,22 @@ const handleMessage = ( conn, message ) =>
 
     switch ( type )
     {
+        case 'ping':
+            sendMessage( { type: 'pong' } )
+            log( 'debug', 'Received ping, sent pong' )
+            break
+        case 'publish':
+            const receivers = topics.get( topic )
+            if ( receivers )
+            {
+                message.clients = receivers.size
+                receivers.forEach( receiver => sendMessage( receiver, message ) )
+                log( 'info', `Published message to topic: ${ topic }, receivers: ${ receivers.size }` )
+            } else
+            {
+                log( 'info', `Attempted to publish to non-existent topic: ${ topic }` )
+            }
+            break
         case 'subscribe':
             messageTopics.forEach( topicName =>
             {
@@ -125,22 +138,6 @@ const handleMessage = ( conn, message ) =>
                 }
             } )
             break
-        case 'publish':
-            const receivers = topics.get( topic )
-            if ( receivers )
-            {
-                message.clients = receivers.size
-                receivers.forEach( receiver => send( receiver, message ) )
-                log( 'info', `Published message to topic: ${ topic }, receivers: ${ receivers.size }` )
-            } else
-            {
-                log( 'info', `Attempted to publish to non-existent topic: ${ topic }` )
-            }
-            break
-        case 'ping':
-            send( conn, { type: 'pong' } )
-            log( 'debug', 'Received ping, sent pong' )
-            break
         default:
             log( 'info', `Received unknown message type: ${ type }` )
     }
@@ -155,29 +152,32 @@ const onConnection = ( conn ) =>
     log( 'info', 'New client connected' )
 
     // Initialize connection properties
-    conn.isAlive = true
     conn.subscribedTopics = new Set()
+
+    // Set up ping/pong
+    conn.isAlive = true
+    conn.on( 'pong', () =>
+    {
+        conn.isAlive = true
+        log( 'debug', 'Pong received' )
+    } )
 
     // Set up ping interval
     const pingInterval = setInterval( () =>
     {
         if ( !conn.isAlive )
         {
-            log( 'info', 'Connection is not alive, terminating' )
+            log( 'info', 'Client connection terminated due to lack of response' )
+            conn.terminate()
             clearInterval( pingInterval )
-            return conn.terminate()
+            return
         }
+
+        // Send ping with no data
         conn.isAlive = false
-        conn.ping()
+        conn.ping( null, false, true )
         log( 'debug', 'Ping sent' )
     }, CONFIG.pingTimeout )
-
-    // Handle pong messages
-    conn.on( 'pong', () =>
-    {
-        conn.isAlive = true
-        log( 'debug', 'Pong received' )
-    } )
 
     // Handle connection close
     conn.on( 'close', () =>
@@ -192,8 +192,9 @@ const onConnection = ( conn ) =>
                 log( 'debug', `Removed client from topic: ${ topicName }` )
             }
         } )
+
         clearInterval( pingInterval )
-        log( 'info', 'Client fully disconnected' )
+        log( 'info', 'Client(s) fully disconnected' )
     } )
 
     // Handle incoming messages
@@ -219,7 +220,7 @@ const onConnection = ( conn ) =>
 // Create WebSocket server
 const wss = new WebSocketServer( {
     host: CONFIG.host,
-    port: CONFIG.port
+    port: CONFIG.port,
 } )
 
 // Handle WebSocket connections
