@@ -184,15 +184,8 @@ const handleWebSocketConnection = ( conn ) =>
     generateSyslog( 'info', 'New client connected' )
 
     // Initialize connection properties
-    conn.subscribedTopics = new Set()
-
-    // Set up ping/pong
     conn.isAlive = true
-    conn.on( 'pong', () =>
-    {
-        conn.isAlive = true
-        generateSyslog( 'debug', 'Pong received' )
-    } )
+    conn.subscribedTopics = new Set()
 
     // Set up ping interval
     const pingInterval = setInterval( () =>
@@ -247,6 +240,13 @@ const handleWebSocketConnection = ( conn ) =>
         {
             generateSyslog( 'error', 'Error parsing message:', e )
         }
+    } )
+
+    // Handle pong responses
+    conn.on( 'pong', () =>
+    {
+        conn.isAlive = true
+        generateSyslog( 'debug', 'Pong received' )
     } )
 }
 
