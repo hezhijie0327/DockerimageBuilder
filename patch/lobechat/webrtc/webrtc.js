@@ -7,7 +7,7 @@ const CONFIG = {
     logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
     host: process.env.WEBRTC_HOST || '0.0.0.0',
     port: parseInt( process.env.WEBRTC_PORT ) || 3000,
-    allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
+    allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).filter( Boolean ).map( topic => topic.trim() ) ),
     pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
 }
 
@@ -128,13 +128,13 @@ const handleMessage = ( conn, message ) =>
     const { type, topics: messageTopics, topic } = message
 
     // Check for invalid topics
-    if ( messageTopics )
+    if ( messageTopics && CONFIG.allowedTopics.size > 0 )
     {
-        const invalidTopics = messageTopics.filter( t => CONFIG.allowedTopics.size > 0 && !CONFIG.allowedTopics.has( t ) )
+        const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) )
         if ( invalidTopics.length > 0 )
         {
             handleSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            handleSyslog( 'debug', 'Allowed topic(s):', CONFIG.allowedTopics.size === 0 ? 'All topics allowed' : Array.from( CONFIG.allowedTopics ).join( ', ' ) )
+            handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
             handleSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
