@@ -208,7 +208,18 @@ const handleSyslog = ( level, ...args ) =>
             {
                 try
                 {
-                    return JSON.stringify( arg, null, 2 )
+                    return JSON.stringify(
+                        arg,
+                        ( key, value ) =>
+                        {
+                            if ( value instanceof Set )
+                            {
+                                return Array.from( value )
+                            }
+                            return value
+                        },
+                        2
+                    )
                 } catch ( e )
                 {
                     return arg
