@@ -118,13 +118,13 @@ const handleMessage = ( conn, message ) =>
     // Check for invalid topics
     if ( messageTopics )
     {
-        const invalidTopics = messageTopics.filter( t => !CONFIG.allowed.has( t ) || CONFIG.denied.has( t ) )
+        const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) || CONFIG.deniedTopics.has( t ) )
 
         if ( invalidTopics.length > 0 )
         {
             handleSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowed ).join( ', ' ) )
-            handleSyslog( 'debug', 'Denied topic(s):', Array.from( CONFIG.denied ).join( ', ' ) )
+            handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
+            handleSyslog( 'debug', 'Denied topic(s):', Array.from( CONFIG.deniedTopics ).join( ', ' ) )
             handleSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
@@ -221,26 +221,30 @@ const handleSyslog = ( level, ...args ) =>
 /**
  * Parse the merged topics environment variable into allowed and denied topics
  * @param {string} topics - The merged topics string with + for allowed and - for denied topics
- * @returns {{ allowed: Set<string>, denied: Set<string> }} - An object containing sets of allowed and denied topics
+ * @returns {{ allowedTopics: Set<string>, deniedTopics: Set<string> }} - An object containing sets of allowed and denied topics
  */
 const parseTopics = ( topics ) =>
 {
-    const allowed = new Set()
-    const denied = new Set()
+    const allowedTopics = new Set()
+    const deniedTopics = new Set()
+
+    handleSyslog( 'debug', 'Parsing topics:', topics )
 
     topics.split( ',' ).forEach( topic =>
     {
         topic = topic.trim()
         if ( topic.startsWith( '+' ) )
         {
-            allowed.add( topic.slice( 1 ) )
+            allowedTopics.add( topic.slice( 1 ) )
+            handleSyslog( 'debug', 'Added to allowedTopics:', topic.slice( 1 ) )
         } else if ( topic.startsWith( '-' ) )
         {
-            denied.add( topic.slice( 1 ) )
+            deniedTopics.add( topic.slice( 1 ) )
+            handleSyslog( 'debug', 'Added to deniedTopics:', topic.slice( 1 ) )
         }
     } )
 
-    return { allowed, denied }
+    return { allowedTopics, deniedTopics }
 }
 
 // Server Configuration
