@@ -1,4 +1,4 @@
-# Current Version: 1.3.0
+# Current Version: 1.3.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -39,7 +39,7 @@ ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
     PROXY_URL="" \
     ENABLE_WEBRTC_SIGNALING_SERVER="false" \
     WEBRTC_HOST="0.0.0.0" WEBRTC_PORT="3211" \
-    WEBRTC_ALLOWED_TOPICS="" \
+    WEBRTC_TOPICS_LIST ="" \
     WEBRTC_LOG_LEVEL="notice" \
     WEBRTC_PING_TIMEOUT="30000"
 
