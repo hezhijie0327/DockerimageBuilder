@@ -44,7 +44,7 @@ const generateSyslog = ( level, ...args ) =>
                     {
                         if ( value instanceof Set )
                         {
-                            return Array.from( value ).sort( ( a, b ) => a - b )
+                            return Array.from( value )
                         }
                         return value
                     }, 2 )
