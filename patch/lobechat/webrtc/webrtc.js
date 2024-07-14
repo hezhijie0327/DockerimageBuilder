@@ -23,7 +23,7 @@ const CONFIG = {
 
 /**
  * Logs messages based on the configured log level.
- * @param {string} level - The log level ('debug', 'info', 'notice', 'error', 'none').
+ * @param {string} level - The log level.
  * @param {...any} args - The messages or objects to log.
  */
 const generateSyslog = ( level, ...args ) =>
