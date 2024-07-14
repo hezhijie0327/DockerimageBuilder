@@ -4,15 +4,22 @@ import { WebSocketServer } from 'ws'
 
 // Configuration object
 const CONFIG = {
-    logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
-    host: process.env.WEBRTC_HOST || '0.0.0.0',
-    port: parseInt( process.env.WEBRTC_PORT ) || 3000,
-    allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).filter( Boolean ).map( topic => topic.trim() ) ),
-    pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
+    logging: {
+        levelList: [ 'debug', 'info', 'notice', 'error', 'none' ],
+        logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
+    },
+    server: {
+        host: process.env.WEBRTC_HOST || '0.0.0.0',
+        port: parseInt( process.env.WEBRTC_PORT ) || 3000,
+    },
+    timeouts: {
+        ping: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
+    },
+    topics: {
+        allowedList: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).filter( Boolean ).map( topic => topic.trim() ) ),
+        topicsMap: new Map(),
+    },
 }
-
-// Map to store topics and their subscribed connections
-const topics = new Map()
 
 /**
  * Logs messages based on the configured log level.
@@ -21,12 +28,19 @@ const topics = new Map()
  */
 const generateSyslog = ( level, ...args ) =>
 {
-    const levels = [ 'debug', 'info', 'notice', 'error', 'none' ]
-    const configLevelIndex = levels.indexOf( CONFIG.logLevel )
-    const messageLevelIndex = levels.indexOf( level )
+    const { logLevel, levelList } = CONFIG.logging
+
+    // Ensure the provided log level is valid
+    if ( !levelList.includes( level ) )
+    {
+        throw new Error( `Invalid log level: ${ level }. Allowed levels are ${ levelList.join( ', ' ) }` )
+    }
+
+    const logLevelIndex = levelList.indexOf( logLevel )
+    const messageLevelIndex = levelList.indexOf( level )
 
     // Check if the current log level allows logging of the given level
-    if ( configLevelIndex < 4 && messageLevelIndex >= configLevelIndex )
+    if ( logLevelIndex <= messageLevelIndex )
     {
         const formattedArgs = args.map( arg =>
         {
@@ -68,13 +82,6 @@ const generateSyslog = ( level, ...args ) =>
  */
 const sendMessage = ( conn, message ) =>
 {
-    /**
-     * WebSocket ready states:
-     * CONNECTING: 0
-     * OPEN: 1
-     * CLOSING: 2
-     * CLOSED: 3
-     */
     if ( conn.readyState > 1 )
     {
         generateSyslog( 'debug', 'Connection is closing or closed, unable to send message' )
@@ -103,13 +110,13 @@ const handleMessage = ( conn, message ) =>
     const { type, topics: messageTopics, topic } = message
 
     // Check for invalid topics
-    if ( messageTopics && CONFIG.allowedTopics.size > 0 )
+    if ( messageTopics && CONFIG.topics.allowedList.size > 0 )
     {
-        const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) )
+        const invalidTopics = messageTopics.filter( t => !CONFIG.topics.allowedList.has( t ) )
         if ( invalidTopics.length > 0 )
         {
             generateSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            generateSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
+            generateSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
             generateSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
@@ -124,7 +131,7 @@ const handleMessage = ( conn, message ) =>
             generateSyslog( 'debug', 'Received ping, sent pong' )
             break
         case 'publish':
-            const receivers = topics.get( topic )
+            const receivers = CONFIG.topics.topicsMap.get( topic )
             if ( receivers )
             {
                 message.clients = receivers.size
@@ -138,8 +145,8 @@ const handleMessage = ( conn, message ) =>
         case 'subscribe':
             messageTopics.forEach( topicName =>
             {
-                if ( !topics.has( topicName ) ) topics.set( topicName, new Set() )
-                topics.get( topicName ).add( conn )
+                if ( !CONFIG.topics.topicsMap.has( topicName ) ) CONFIG.topics.topicsMap.set( topicName, new Set() )
+                CONFIG.topics.topicsMap.get( topicName ).add( conn )
                 conn.subscribedTopics.add( topicName )
                 generateSyslog( 'info', `Client subscribed to topic: ${ topicName }` )
             } )
@@ -147,11 +154,11 @@ const handleMessage = ( conn, message ) =>
         case 'unsubscribe':
             messageTopics.forEach( topicName =>
             {
-                const topicSet = topics.get( topicName )
+                const topicSet = CONFIG.topics.topicsMap.get( topicName )
                 if ( topicSet )
                 {
                     topicSet.delete( conn )
-                    if ( topicSet.size === 0 ) topics.delete( topicName )
+                    if ( topicSet.size === 0 ) CONFIG.topics.topicsMap.delete( topicName )
                     conn.subscribedTopics.delete( topicName )
                     generateSyslog( 'info', `Client unsubscribed from topic: ${ topicName }` )
                 }
@@ -194,18 +201,18 @@ const handleWebSocketConnection = ( conn ) =>
         conn.isAlive = false
         conn.ping()
         generateSyslog( 'debug', 'Ping sent' )
-    }, CONFIG.pingTimeout )
+    }, CONFIG.timeouts.ping )
 
     // Handle connection close
     conn.on( 'close', () =>
     {
         conn.subscribedTopics.forEach( topicName =>
         {
-            const topicSet = topics.get( topicName )
+            const topicSet = CONFIG.topics.topicsMap.get( topicName )
             if ( topicSet )
             {
                 topicSet.delete( conn )
-                if ( topicSet.size === 0 ) topics.delete( topicName )
+                if ( topicSet.size === 0 ) CONFIG.topics.topicsMap.delete( topicName )
                 generateSyslog( 'debug', `Removed client from topic: ${ topicName }` )
             }
         } )
@@ -236,8 +243,8 @@ const handleWebSocketConnection = ( conn ) =>
 
 // Create WebSocket server
 const wss = new WebSocketServer( {
-    host: CONFIG.host,
-    port: CONFIG.port,
+    host: CONFIG.server.host,
+    port: CONFIG.server.port,
 } )
 
 // Handle WebSocket connections
