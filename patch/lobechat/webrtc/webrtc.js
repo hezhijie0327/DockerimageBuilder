@@ -179,6 +179,7 @@ const handleMessage = ( conn, message ) =>
  */
 const handleWebSocketConnection = ( conn, req ) =>
 {
+    // Get basic client infomation from headers
     const clientInfo = {
         ipAddress: req.headers[ 'CF-Connecting-IP' ] || req.headers[ 'x-forwarded-for' ] || 'Unknown',
         userAgent: req.headers[ 'user-agent' ] || 'Unknown'
