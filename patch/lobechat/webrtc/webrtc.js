@@ -2,6 +2,18 @@
 
 import { WebSocketServer } from 'ws'
 
+// Configuration object
+const CONFIG = {
+    logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
+    host: process.env.WEBRTC_HOST || '0.0.0.0',
+    port: parseInt( process.env.WEBRTC_PORT ) || 3000,
+    allowedTopics: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).map( topic => topic.trim() ) ),
+    pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
+}
+
+// Map to store topics and their subscribed connections
+const topics = new Map()
+
 /**
  * Send a message to a WebSocket connection
  * @param {WebSocket} conn - The WebSocket connection
@@ -118,13 +130,11 @@ const handleMessage = ( conn, message ) =>
     // Check for invalid topics
     if ( messageTopics )
     {
-        const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) || CONFIG.deniedTopics.has( t ) )
-
+        const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) )
         if ( invalidTopics.length > 0 )
         {
             handleSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
             handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
-            handleSyslog( 'debug', 'Denied topic(s):', Array.from( CONFIG.deniedTopics ).join( ', ' ) )
             handleSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
@@ -153,10 +163,7 @@ const handleMessage = ( conn, message ) =>
         case 'subscribe':
             messageTopics.forEach( topicName =>
             {
-                if ( !topics.has( topicName ) )
-                {
-                    topics.set( topicName, new Set() )
-                }
+                if ( !topics.has( topicName ) ) topics.set( topicName, new Set() )
                 topics.get( topicName ).add( conn )
                 conn.subscribedTopics.add( topicName )
                 handleSyslog( 'info', `Client subscribed to topic: ${ topicName }` )
@@ -169,10 +176,7 @@ const handleMessage = ( conn, message ) =>
                 if ( topicSet )
                 {
                     topicSet.delete( conn )
-                    if ( topicSet.size === 0 )
-                    {
-                        topics.delete( topicName )
-                    }
+                    if ( topicSet.size === 0 ) topics.delete( topicName )
                     conn.subscribedTopics.delete( topicName )
                     handleSyslog( 'info', `Client unsubscribed from topic: ${ topicName }` )
                 }
@@ -217,47 +221,6 @@ const handleSyslog = ( level, ...args ) =>
         console.log( `[${ level.toUpperCase() }]`, ...formattedArgs )
     }
 }
-
-/**
- * Parse the merged topics environment variable into allowed and denied topics
- * @param {string} topics - The merged topics string with + for allowed and - for denied topics
- * @returns {{ allowedTopics: Set<string>, deniedTopics: Set<string> }} - An object containing sets of allowed and denied topics
- */
-const parseTopics = ( topics ) =>
-{
-    const allowedTopics = new Set()
-    const deniedTopics = new Set()
-
-    handleSyslog( 'debug', 'Parsing topics:', topics )
-
-    topics.split( ',' ).forEach( topic =>
-    {
-        topic = topic.trim()
-        if ( topic.startsWith( '+' ) )
-        {
-            allowedTopics.add( topic.slice( 1 ) )
-            handleSyslog( 'debug', 'Added to allowedTopics:', topic.slice( 1 ) )
-        } else if ( topic.startsWith( '-' ) )
-        {
-            deniedTopics.add( topic.slice( 1 ) )
-            handleSyslog( 'debug', 'Added to deniedTopics:', topic.slice( 1 ) )
-        }
-    } )
-
-    return { allowedTopics, deniedTopics }
-}
-
-// Server Configuration
-const CONFIG = {
-    logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
-    host: process.env.WEBRTC_HOST || '0.0.0.0',
-    port: parseInt( process.env.WEBRTC_PORT ) || 3000,
-    ...parseTopics( process.env.WEBRTC_TOPICS_LIST || '' ),
-    pingTimeout: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
-}
-
-// Map to store topics and their subscribed connections
-const topics = new Map()
 
 // Create WebSocket server
 const wss = new WebSocketServer( {
