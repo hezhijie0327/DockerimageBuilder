@@ -137,9 +137,6 @@ const handleMessage = ( conn, message ) =>
                 message.clients = receivers.size
                 receivers.forEach( receiver => sendMessage( receiver, message ) )
                 generateSyslog( 'info', `Published message to topic: ${ topic }, receivers: ${ receivers.size }` )
-            } else
-            {
-                generateSyslog( 'info', `Attempted to publish to non-existent topic: ${ topic }` )
             }
             break
         case 'subscribe':
@@ -178,10 +175,16 @@ const handleMessage = ( conn, message ) =>
 /**
  * Handle new WebSocket connections
  * @param {WebSocket} conn - The new WebSocket connection
+ * @param {http.IncomingMessage} req - The request object
  */
-const handleWebSocketConnection = ( conn ) =>
+const handleWebSocketConnection = ( conn, req ) =>
 {
-    generateSyslog( 'info', 'New client connected' )
+    const clientInfo = {
+        ipAddress: req.headers[ 'CF-Connecting-IP' ] || req.headers[ 'x-forwarded-for' ] || 'Unknown',
+        userAgent: req.headers[ 'user-agent' ] || 'Unknown'
+    }
+
+    generateSyslog( 'info', 'Client connected:', clientInfo )
 
     // Initialize connection properties
     conn.isAlive = true
@@ -220,7 +223,7 @@ const handleWebSocketConnection = ( conn ) =>
         } )
 
         clearInterval( pingInterval )
-        generateSyslog( 'info', 'Client(s) fully disconnected' )
+        generateSyslog( 'info', 'Client disconnected:', clientInfo )
     } )
 
     // Handle incoming messages
@@ -257,7 +260,10 @@ const wss = new WebSocketServer( {
 } )
 
 // Handle WebSocket connections
-wss.on( 'connection', handleWebSocketConnection )
+wss.on( 'connection', ( conn, req ) =>
+{
+    handleWebSocketConnection( conn, req )
+} )
 
 // Handle WebSocket errors
 wss.on( 'error', ( error ) =>
