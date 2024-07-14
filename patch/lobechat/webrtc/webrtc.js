@@ -145,7 +145,10 @@ const handleMessage = ( conn, message ) =>
         case 'subscribe':
             messageTopics.forEach( topicName =>
             {
-                if ( !CONFIG.topics.topicsMap.has( topicName ) ) CONFIG.topics.topicsMap.set( topicName, new Set() )
+                if ( !CONFIG.topics.topicsMap.has( topicName ) )
+                {
+                    CONFIG.topics.topicsMap.set( topicName, new Set() )
+                }
                 CONFIG.topics.topicsMap.get( topicName ).add( conn )
                 conn.subscribedTopics.add( topicName )
                 generateSyslog( 'info', `Client subscribed to topic: ${ topicName }` )
@@ -158,7 +161,10 @@ const handleMessage = ( conn, message ) =>
                 if ( topicSet )
                 {
                     topicSet.delete( conn )
-                    if ( topicSet.size === 0 ) CONFIG.topics.topicsMap.delete( topicName )
+                    if ( topicSet.size === 0 )
+                    {
+                        CONFIG.topics.topicsMap.delete( topicName )
+                    }
                     conn.subscribedTopics.delete( topicName )
                     generateSyslog( 'info', `Client unsubscribed from topic: ${ topicName }` )
                 }
@@ -212,7 +218,10 @@ const handleWebSocketConnection = ( conn ) =>
             if ( topicSet )
             {
                 topicSet.delete( conn )
-                if ( topicSet.size === 0 ) CONFIG.topics.topicsMap.delete( topicName )
+                if ( topicSet.size === 0 )
+                {
+                    CONFIG.topics.topicsMap.delete( topicName )
+                }
                 generateSyslog( 'debug', `Removed client from topic: ${ topicName }` )
             }
         } )
