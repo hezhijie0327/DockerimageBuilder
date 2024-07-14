@@ -30,23 +30,24 @@ const generateSyslog = ( level, ...args ) =>
     {
         const formattedArgs = args.map( arg =>
         {
-            // Stringify objects for better logging
+            // Stringify objects for better logging with sorted keys
             if ( typeof arg === 'object' && arg !== null )
             {
                 try
                 {
-                    return JSON.stringify(
-                        arg,
-                        ( key, value ) =>
+                    const sortedArg = Object.keys( arg ).sort().reduce( ( sorted, key ) =>
+                    {
+                        sorted[ key ] = arg[ key ]
+                        return sorted
+                    }, {} )
+                    return JSON.stringify( sortedArg, ( key, value ) =>
+                    {
+                        if ( value instanceof Set )
                         {
-                            if ( value instanceof Set )
-                            {
-                                return Array.from( value )
-                            }
-                            return value
-                        },
-                        2
-                    )
+                            return Array.from( value )
+                        }
+                        return value
+                    }, 2 )
                 } catch ( e )
                 {
                     return arg
