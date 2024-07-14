@@ -130,11 +130,11 @@ const handleMessage = ( conn, message ) =>
     // Check for invalid topics
     if ( messageTopics )
     {
-        const invalidTopics = messageTopics.filter( t => !CONFIG.allowedTopics.has( t ) )
+        const invalidTopics = messageTopics.filter( t => CONFIG.allowedTopics.size > 0 && !CONFIG.allowedTopics.has( t ) )
         if ( invalidTopics.length > 0 )
         {
             handleSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            handleSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.allowedTopics ).join( ', ' ) )
+            handleSyslog( 'debug', 'Allowed topic(s):', CONFIG.allowedTopics.size === 0 ? 'All topics allowed' : Array.from( CONFIG.allowedTopics ).join( ', ' ) )
             handleSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
             return conn.close()
         }
