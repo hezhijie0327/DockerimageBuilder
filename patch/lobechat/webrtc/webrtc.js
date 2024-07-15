@@ -78,6 +78,24 @@ const printSyslog = ( level, ...args ) =>
 }
 
 /**
+ * Sets a default value in a Map if the key does not exist.
+ * @param {Map} map - The Map to operate on.
+ * @param {*} key - The key to check and possibly set.
+ * @param {Function} createValue - A function that returns the default value to set if key does not exist.
+ * @returns {*} The existing value if the key exists, or the newly created value if the key does not exist.
+ */
+const setIfUndefined = ( map, key, createValue ) =>
+{
+    if ( !map.has( key ) )
+    {
+        const value = createValue()
+        map.set( key, value )
+        return value
+    }
+    return map.get( key )
+}
+
+/**
  * Send a message to a WebSocket connection
  * @param {WebSocket} conn - The WebSocket connection
  * @param {object} message - The message to send
@@ -234,7 +252,7 @@ const handleWebSocketConnection = ( conn, req ) =>
                     {
                         if ( typeof topicName === 'string' )
                         {
-                            const topicSet = CONFIG.topics.topicsMap.get( topicName ) || new Set()
+                            const topicSet = setIfUndefined( CONFIG.topics.topicsMap, topicName, () => new Set() )
 
                             topicSet.add( conn )
 
