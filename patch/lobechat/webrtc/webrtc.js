@@ -9,8 +9,8 @@ import { WebSocketServer } from 'ws'
  */
 const CONFIG = {
     logging: {
-        // Available log levels in order of verbosity
-        levelList: [ 'debug', 'info', 'notice', 'error', 'none' ],
+        // Allowed log levels in order of verbosity
+        allowedLevel: [ 'debug', 'info', 'notice', 'error', 'none' ],
         // Current log level, can be set via environment variable or defaults to 'notice'
         logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
     },
@@ -43,16 +43,16 @@ const CONFIG = {
  */
 const printSyslog = ( level, ...args ) =>
 {
-    const { logLevel, levelList } = CONFIG.logging
+    const { allowedLevel, logLevel } = CONFIG.logging
 
     // Ensure the provided log level is valid
-    if ( !levelList.includes( level ) )
+    if ( !allowedLevel.includes( level ) )
     {
-        throw new Error( `Invalid log level: ${ level }. Allowed levels are ${ levelList.join( ', ' ) }` )
+        throw new Error( `Invalid log level: ${ level }. Allowed levels are ${ allowedLevel.join( ', ' ) }` )
     }
 
-    const logLevelIndex = levelList.indexOf( logLevel )
-    const messageLevelIndex = levelList.indexOf( level )
+    const logLevelIndex = allowedLevel.indexOf( logLevel )
+    const messageLevelIndex = allowedLevel.indexOf( level )
 
     // Check if the current log level allows logging of the given level
     if ( logLevelIndex <= messageLevelIndex )
