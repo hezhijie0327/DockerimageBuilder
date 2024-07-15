@@ -66,8 +66,10 @@ const printSyslog = ( level, ...args ) =>
                 {
                     return arg
                 }
+            } else
+            {
+                return arg
             }
-            return arg
         } )
 
         // Output the log message
@@ -110,13 +112,13 @@ const handleWebSocketConnection = ( conn, req ) =>
 {
     // Get basic client infomation from headers
     const clientInfo = {
-        ipAddress: req.headers[ 'CF-Connecting-IP' ] || req.headers[ 'x-forwarded-for' ] || 'Unknown',
+        ipAddress: req.headers[ 'x-forwarded-for' ] || 'Unknown',
         userAgent: req.headers[ 'user-agent' ] || 'Unknown'
     }
 
     printSyslog( 'info', 'Client connected:', clientInfo )
 
-    // Initialize connection properties
+    // Initialize variables
     const subscribedTopics = new Set()
 
     let isClosed = false
@@ -129,7 +131,7 @@ const handleWebSocketConnection = ( conn, req ) =>
         {
             conn.close()
 
-            printSyslog( 'info', 'Client connection terminated due to lack of response' )
+            printSyslog( 'info', 'Client connection terminated due to lack of response:', clientInfo )
 
             clearInterval( pingInterval )
         } else
@@ -163,6 +165,8 @@ const handleWebSocketConnection = ( conn, req ) =>
             {
                 CONFIG.topics.topicsMap.delete( topicName )
             }
+
+            printSyslog( 'debug', `Client unsubscribed from topic: ${ topicName }` )
         } )
 
         subscribedTopics.clear()
@@ -179,6 +183,7 @@ const handleWebSocketConnection = ( conn, req ) =>
         {
             message = JSON.parse( message )
         }
+
         if ( message && message.type && !isClosed )
         {
             printSyslog( 'debug', 'Received message:', message )
@@ -190,13 +195,12 @@ const handleWebSocketConnection = ( conn, req ) =>
 
                 if ( invalidTopics.length > 0 )
                 {
-                    printSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-
+                    printSyslog( 'debug', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
                     printSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
 
                     conn.close()
 
-                    printSyslog( 'info', 'Disconnected client due to invalid topic(s).' )
+                    printSyslog( 'info', 'Disconnected client due to invalid topic(s):', clientInfo )
                 }
             }
 
@@ -208,6 +212,7 @@ const handleWebSocketConnection = ( conn, req ) =>
                     sendMessage( conn, { type: 'pong' } )
 
                     printSyslog( 'debug', 'Received ping, sent pong' )
+
                     break
                 case 'publish':
                     if ( message.topic )
@@ -219,9 +224,10 @@ const handleWebSocketConnection = ( conn, req ) =>
                             message.clients = receivers.size
                             receivers.forEach( receiver => sendMessage( receiver, message ) )
 
-                            printSyslog( 'info', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }` )
+                            printSyslog( 'debug', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }` )
                         }
                     }
+
                     break
                 case 'subscribe':
                     ( message.topics || [] ).forEach( topicName =>
@@ -234,9 +240,10 @@ const handleWebSocketConnection = ( conn, req ) =>
 
                             subscribedTopics.add( topicName )
 
-                            printSyslog( 'info', `Client subscribed to topic: ${ topicName }` )
+                            printSyslog( 'debug', `Client subscribed to topic: ${ topicName }` )
                         }
                     } )
+
                     break
                 case 'unsubscribe':
                     ( message.topics || [] ).forEach( topicName =>
@@ -247,12 +254,13 @@ const handleWebSocketConnection = ( conn, req ) =>
                         {
                             topicSet.delete( conn )
 
-                            printSyslog( 'info', `Client unsubscribed from topic: ${ topicName }` )
+                            printSyslog( 'debug', `Client unsubscribed from topic: ${ topicName }` )
                         }
                     } )
+
                     break
                 default:
-                    printSyslog( 'info', `Received unknown message type: ${ message.type }` )
+                    printSyslog( 'error', `Received unknown message type: ${ message.type }` )
             }
         }
     } )
