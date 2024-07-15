@@ -10,10 +10,10 @@ const CONFIG = {
     },
     server: {
         host: process.env.WEBRTC_HOST || '0.0.0.0',
-        port: parseInt( process.env.WEBRTC_PORT ) || 3000,
+        port: Number( process.env.WEBRTC_PORT ) || 3000,
     },
     timeouts: {
-        ping: parseInt( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
+        ping: Number( process.env.WEBRTC_PING_TIMEOUT ) || 30000,
     },
     topics: {
         allowedList: new Set( ( process.env.WEBRTC_ALLOWED_TOPICS || '' ).split( ',' ).filter( Boolean ).map( topic => topic.trim() ) ),
@@ -26,7 +26,7 @@ const CONFIG = {
  * @param {string} level - The log level.
  * @param {...any} args - The messages or objects to log.
  */
-const generateSyslog = ( level, ...args ) =>
+const printSyslog = ( level, ...args ) =>
 {
     const { logLevel, levelList } = CONFIG.logging
 
@@ -84,98 +84,27 @@ const sendMessage = ( conn, message ) =>
 {
     if ( conn.readyState > 1 )
     {
-        generateSyslog( 'debug', 'Connection is closing or closed, unable to send message' )
-        return conn.close()
+        conn.close()
+
+        printSyslog( 'debug', 'Connection is closing or closed, unable to send message' )
     }
     try
     {
         conn.send( JSON.stringify( message ) )
-        generateSyslog( 'debug', 'Sent message:', message )
+
+        printSyslog( 'debug', 'Sent message:', message )
     } catch ( e )
     {
-        generateSyslog( 'error', 'Error sending message:', e )
         conn.close()
-    }
-}
 
-/**
- * Handle incoming WebSocket messages
- * @param {WebSocket} conn - The WebSocket connection
- * @param {object} message - The parsed message object
- */
-const handleMessage = ( conn, message ) =>
-{
-    generateSyslog( 'debug', 'Received message:', message )
-
-    const { type, topics: messageTopics, topic } = message
-
-    // Check for invalid topics
-    if ( messageTopics && CONFIG.topics.allowedList.size > 0 )
-    {
-        const invalidTopics = messageTopics.filter( t => !CONFIG.topics.allowedList.has( t ) )
-        if ( invalidTopics.length > 0 )
-        {
-            generateSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-            generateSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
-            generateSyslog( 'info', 'Disconnecting client due to invalid topic(s).' )
-            return conn.close()
-        }
-    }
-
-    generateSyslog( 'debug', 'Handling message of type:', type )
-
-    switch ( type )
-    {
-        case 'ping':
-            sendMessage( conn, { type: 'pong' } )
-            generateSyslog( 'debug', 'Received ping, sent pong' )
-            break
-        case 'publish':
-            const receivers = CONFIG.topics.topicsMap.get( topic )
-            if ( receivers )
-            {
-                message.clients = receivers.size
-                receivers.forEach( receiver => sendMessage( receiver, message ) )
-                generateSyslog( 'info', `Published message to topic: ${ topic }, receivers: ${ receivers.size }` )
-            }
-            break
-        case 'subscribe':
-            messageTopics.forEach( topicName =>
-            {
-                if ( !CONFIG.topics.topicsMap.has( topicName ) )
-                {
-                    CONFIG.topics.topicsMap.set( topicName, new Set() )
-                }
-                CONFIG.topics.topicsMap.get( topicName ).add( conn )
-                conn.subscribedTopics.add( topicName )
-                generateSyslog( 'info', `Client subscribed to topic: ${ topicName }` )
-            } )
-            break
-        case 'unsubscribe':
-            messageTopics.forEach( topicName =>
-            {
-                const topicSet = CONFIG.topics.topicsMap.get( topicName )
-                if ( topicSet )
-                {
-                    topicSet.delete( conn )
-                    if ( topicSet.size === 0 )
-                    {
-                        CONFIG.topics.topicsMap.delete( topicName )
-                    }
-                    conn.subscribedTopics.delete( topicName )
-                    generateSyslog( 'info', `Client unsubscribed from topic: ${ topicName }` )
-                }
-            } )
-            break
-        default:
-            generateSyslog( 'info', `Received unknown message type: ${ type }` )
+        printSyslog( 'error', 'Error sending message:', e )
     }
 }
 
 /**
  * Handle new WebSocket connections
- * @param {WebSocket} conn - The new WebSocket connection
- * @param {http.IncomingMessage} req - The request object
+ * @param {any} conn - The new WebSocket connection
+ * @param {any} req - The request object
  */
 const handleWebSocketConnection = ( conn, req ) =>
 {
@@ -185,72 +114,155 @@ const handleWebSocketConnection = ( conn, req ) =>
         userAgent: req.headers[ 'user-agent' ] || 'Unknown'
     }
 
-    generateSyslog( 'info', 'Client connected:', clientInfo )
+    printSyslog( 'info', 'Client connected:', clientInfo )
 
     // Initialize connection properties
-    conn.isAlive = true
-    conn.subscribedTopics = new Set()
+    const subscribedTopics = new Set()
+
+    let isClosed = false
+    let pongReceived = true
 
     // Set up ping interval
     const pingInterval = setInterval( () =>
     {
-        if ( !conn.isAlive )
+        if ( !pongReceived )
         {
-            generateSyslog( 'info', 'Client connection terminated due to lack of response' )
-            clearInterval( pingInterval )
-            return conn.terminate()
-        }
+            conn.close()
 
-        conn.isAlive = false
-        conn.ping()
-        generateSyslog( 'debug', 'Ping sent' )
+            printSyslog( 'info', 'Client connection terminated due to lack of response' )
+
+            clearInterval( pingInterval )
+        } else
+        {
+            pongReceived = false
+
+            try
+            {
+                conn.ping()
+
+                printSyslog( 'debug', 'Ping sent' )
+            } catch ( e )
+            {
+                conn.close()
+
+                printSyslog( 'error', 'Error sending ping:', e )
+            }
+        }
     }, CONFIG.timeouts.ping )
 
     // Handle connection close
     conn.on( 'close', () =>
     {
-        conn.subscribedTopics.forEach( topicName =>
+        subscribedTopics.forEach( topicName =>
         {
-            const topicSet = CONFIG.topics.topicsMap.get( topicName )
-            if ( topicSet )
+            const topicSet = CONFIG.topics.topicsMap.get( topicName ) || new Set()
+
+            topicSet.delete( conn )
+
+            if ( topicSet.size === 0 )
             {
-                topicSet.delete( conn )
-                if ( topicSet.size === 0 )
-                {
-                    CONFIG.topics.topicsMap.delete( topicName )
-                }
-                generateSyslog( 'debug', `Removed client from topic: ${ topicName }` )
+                CONFIG.topics.topicsMap.delete( topicName )
             }
         } )
 
-        clearInterval( pingInterval )
-        generateSyslog( 'info', 'Client disconnected:', clientInfo )
+        subscribedTopics.clear()
+
+        isClosed = true
+
+        printSyslog( 'info', 'Client disconnected:', clientInfo )
     } )
 
     // Handle incoming messages
     conn.on( 'message', ( message ) =>
     {
-        try
+        if ( typeof message === 'string' || message instanceof Buffer )
         {
-            const parsedMessage = JSON.parse( message )
-            if ( parsedMessage && parsedMessage.type )
+            message = JSON.parse( message )
+        }
+        if ( message && message.type && !isClosed )
+        {
+            printSyslog( 'debug', 'Received message:', message )
+
+            // Check for invalid topics
+            if ( message.topics && CONFIG.topics.allowedList.size > 0 )
             {
-                handleMessage( conn, parsedMessage )
-            } else
-            {
-                generateSyslog( 'info', 'Received message without type, ignoring' )
+                const invalidTopics = message.topics.filter( t => !CONFIG.topics.allowedList.has( t ) )
+
+                if ( invalidTopics.length > 0 )
+                {
+                    printSyslog( 'info', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
+
+                    printSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
+
+                    conn.close()
+
+                    printSyslog( 'info', 'Disconnected client due to invalid topic(s).' )
+                }
             }
-        } catch ( e )
-        {
-            generateSyslog( 'error', 'Error parsing message:', e )
+
+            printSyslog( 'debug', 'Handling message of type:', message.type )
+
+            switch ( message.type )
+            {
+                case 'ping':
+                    sendMessage( conn, { type: 'pong' } )
+
+                    printSyslog( 'debug', 'Received ping, sent pong' )
+                    break
+                case 'publish':
+                    if ( message.topic )
+                    {
+                        const receivers = CONFIG.topics.topicsMap.get( message.topic )
+
+                        if ( receivers )
+                        {
+                            message.clients = receivers.size
+                            receivers.forEach( receiver => sendMessage( receiver, message ) )
+
+                            printSyslog( 'info', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }` )
+                        }
+                    }
+                    break
+                case 'subscribe':
+                    ( message.topics || [] ).forEach( topicName =>
+                    {
+                        if ( typeof topicName === 'string' )
+                        {
+                            const topicSet = CONFIG.topics.topicsMap.get( topicName ) || new Set()
+
+                            topicSet.add( conn )
+
+                            subscribedTopics.add( topicName )
+
+                            printSyslog( 'info', `Client subscribed to topic: ${ topicName }` )
+                        }
+                    } )
+                    break
+                case 'unsubscribe':
+                    ( message.topics || [] ).forEach( topicName =>
+                    {
+                        const topicSet = CONFIG.topics.topicsMap.get( topicName )
+
+                        if ( topicSet )
+                        {
+                            topicSet.delete( conn )
+
+                            printSyslog( 'info', `Client unsubscribed from topic: ${ topicName }` )
+                        }
+                    } )
+                    break
+                default:
+                    printSyslog( 'info', `Received unknown message type: ${ message.type }` )
+            }
         }
     } )
 
     // Handle pong responses
     conn.on( 'pong', () =>
     {
-        conn.isAlive = true
-        generateSyslog( 'debug', 'Pong received' )
+        pongReceived = true
+
+        printSyslog( 'debug', 'Pong received' )
     } )
 }
 
@@ -269,13 +281,13 @@ wss.on( 'connection', ( conn, req ) =>
 // Handle WebSocket errors
 wss.on( 'error', ( error ) =>
 {
-    generateSyslog( 'error', 'WebSocket server error:', error )
+    printSyslog( 'error', 'WebSocket server error:', error )
 } )
 
 // Start WebSocket server
 wss.on( 'listening', () =>
 {
-    generateSyslog( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
-    generateSyslog( 'notice', 'Developed by @hezhijie0327' )
-    generateSyslog( 'notice', 'Server configuration:', CONFIG )
+    printSyslog( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
+    printSyslog( 'notice', 'Developed by @hezhijie0327' )
+    printSyslog( 'notice', 'Server configuration:', CONFIG )
 } )
