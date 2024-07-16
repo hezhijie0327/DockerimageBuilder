@@ -134,7 +134,7 @@ const sendMessage = ( conn, message ) =>
     {
         conn.close()
 
-        logMessage( 'debug', 'Connection is closing or closed, unable to send message' )
+        logMessage( 'debug', 'Client connection is closing or closed, unable to send message' )
     }
 
     try
@@ -148,7 +148,7 @@ const sendMessage = ( conn, message ) =>
         // Close the connection if an error occurs during sending
         conn.close()
 
-        logMessage( 'error', 'Error sending message:', e )
+        logMessage( 'error', 'Client connection has been closed due to got error during sending message:', e )
     }
 }
 
@@ -184,7 +184,7 @@ const handleWebSocketConnection = ( conn, req ) =>
             // Close the connection if no pong was received since the last ping
             conn.close()
 
-            logMessage( 'info', 'Client connection closed due to lack of response:', clientInfo )
+            logMessage( 'info', 'Client connection has been closed due to lack of response:', clientInfo )
 
             clearInterval( pingInterval )
         } else
@@ -201,7 +201,7 @@ const handleWebSocketConnection = ( conn, req ) =>
             {
                 conn.close()
 
-                logMessage( 'error', 'Error sending ping:', e )
+                logMessage( 'error', 'Client connection has been closed due to error during ping:', e )
             }
         }
     }, CONFIG.timeouts.ping )
@@ -254,10 +254,10 @@ const handleWebSocketConnection = ( conn, req ) =>
                     logMessage( 'debug', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
                     logMessage( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
 
-                    // Terminate the connection if invalid topics are detected
-                    conn.terminate()
+                    // Close the connection if invalid topics are detected
+                    conn.close()
 
-                    logMessage( 'info', 'Terminated client due to invalid topic(s):', clientInfo )
+                    logMessage( 'info', 'Client connection has been closed due to invalid topic(s):', clientInfo )
                 }
             }
 
