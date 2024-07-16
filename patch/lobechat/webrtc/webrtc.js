@@ -254,7 +254,8 @@ const handleWebSocketConnection = ( conn, req ) =>
                     logMessage( 'debug', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
                     logMessage( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
 
-                    conn.close()
+                    // Use the terminate method to immediately disconnect the client
+                    conn.terminate()
 
                     logMessage( 'info', 'Disconnected client due to invalid topic(s):', clientInfo )
                 }
