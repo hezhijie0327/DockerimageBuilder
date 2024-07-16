@@ -122,45 +122,12 @@ const setIfUndefined = ( map, key, createValue ) =>
 }
 
 /**
- * Send a message to a WebSocket connection
- * This function handles the serialization of the message and error handling during sending.
- *
- * @param {WebSocket} conn - The WebSocket connection to send the message to.
- * @param {object} message - The message object to send.
- */
-const sendMessage = ( conn, message ) =>
-{
-    // Check if the connection is closing or closed
-    if ( conn.readyState <= 1 )
-    {
-        try
-        {
-            // Serialize and send the message
-            conn.send( JSON.stringify( message ) )
-
-            logMessage( 'debug', 'Sent message:', message )
-        } catch ( e )
-        {
-            // Close the connection if an error occurs during sending
-            conn.close()
-
-            logMessage( 'error', 'Client connection has been closed due to got error during sending message:', e )
-        }
-    } else
-    {
-        conn.close()
-
-        logMessage( 'debug', 'Client connection is closing or closed, unable to send message' )
-    }
-}
-
-/**
  * Handle new WebSocket connections
  * This is the main function that manages the lifecycle of each WebSocket connection,
  * including message handling, ping/pong for keep-alive, and cleanup on disconnection.
  *
- * @param {import('ws').WebSocket} conn - The new WebSocket connection object.
- * @param {import('http').IncomingMessage} req - The HTTP request that initiated the WebSocket connection.
+ * @param {any} conn - The new WebSocket connection object.
+ * @param {any} req - The HTTP request that initiated the WebSocket connection.
  */
 const handleWebSocketConnection = ( conn, req ) =>
 {
@@ -288,7 +255,31 @@ const handleWebSocketConnection = ( conn, req ) =>
                         {
                             message.clients = receivers.size
 
-                            receivers.forEach( receiver => sendMessage( receiver, message ) )
+                            receivers.forEach( receiver =>
+                            {
+                                // Check if the connection is closing or closed
+                                if ( receiver.readyState <= 1 )
+                                {
+                                    try
+                                    {
+                                        // Serialize and send the message
+                                        receiver.send( JSON.stringify( message ) )
+
+                                        logMessage( 'debug', 'Sent message:', message )
+                                    } catch ( e )
+                                    {
+                                        // Close the connection if an error occurs during sending
+                                        receiver.close()
+
+                                        logMessage( 'error', 'Client connection has been closed due to got error during sending message:', clientInfo, e )
+                                    }
+                                } else
+                                {
+                                    receiver.close()
+
+                                    logMessage( 'debug', 'Client connection is closing or closed, unable to send message:', clientInfo )
+                                }
+                            } )
 
                             logMessage( 'debug', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }` )
                         } else
