@@ -98,30 +98,6 @@ const logMessage = ( level, ...args ) =>
 }
 
 /**
- * Sets a default value in a Map if the key does not exist.
- * This utility function is useful for initializing map values lazily.
- *
- * @param {Map} map - The Map to operate on.
- * @param {*} key - The key to check and possibly set.
- * @param {Function} createValue - A function that returns the default value to set if key does not exist.
- * @returns {*} The existing value if the key exists, or the newly created value if the key does not exist.
- */
-const setIfUndefined = ( map, key, createValue ) =>
-{
-    if ( !map.has( key ) )
-    {
-        const value = createValue()
-
-        map.set( key, value )
-
-        return value
-    } else
-    {
-        return map.get( key )
-    }
-}
-
-/**
  * Handle new WebSocket connections
  * This is the main function that manages the lifecycle of each WebSocket connection,
  * including message handling, ping/pong for keep-alive, and cleanup on disconnection.
@@ -165,7 +141,7 @@ const handleWebSocketConnection = ( conn, req ) =>
             {
                 conn.ping()
 
-                logMessage( 'debug', 'Ping sent' )
+                logMessage( 'debug', 'Sent ping' )
             } catch ( e )
             {
                 conn.close()
@@ -238,10 +214,11 @@ const handleWebSocketConnection = ( conn, req ) =>
             switch ( message.type )
             {
                 case 'ping':
-                    // Respond to client pings
+                    logMessage( 'debug', 'Received ping' )
+
                     conn.pong()
 
-                    logMessage( 'debug', 'Received ping, sent pong' )
+                    logMessage( 'debug', 'Sent pong' )
 
                     break
 
@@ -296,7 +273,23 @@ const handleWebSocketConnection = ( conn, req ) =>
                     {
                         if ( typeof topicName === 'string' )
                         {
-                            const topicSet = setIfUndefined( CONFIG.topics.topicsMap, topicName, () => new Set() )
+                            const topicSet = ( () =>
+                            {
+                                const map = CONFIG.topics.topicsMap
+                                const key = topicName
+
+                                if ( !map.has( key ) )
+                                {
+                                    const value = new Set()
+
+                                    map.set( key, value )
+
+                                    return value
+                                } else
+                                {
+                                    return map.get( key )
+                                }
+                            } )()
 
                             topicSet.add( conn )
 
