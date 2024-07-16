@@ -10,7 +10,7 @@ import { WebSocketServer } from 'ws'
 const CONFIG = {
     logging: {
         // Allowed log levels in order of verbosity
-        allowedLevel: [ 'debug', 'info', 'notice', 'error', 'none' ],
+        allowedLevels: [ 'debug', 'info', 'notice', 'error', 'none' ],
         // Current log level, can be set via environment variable or defaults to 'notice'
         logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
     },
@@ -41,18 +41,18 @@ const CONFIG = {
  * @param {...any} args - The messages or objects to log.
  * @throws {Error} If an invalid log level is provided.
  */
-const printSyslog = ( level, ...args ) =>
+const logMessage = ( level, ...args ) =>
 {
-    const { allowedLevel, logLevel } = CONFIG.logging
+    const { allowedLevels, logLevel } = CONFIG.logging
 
     // Ensure the provided log level is valid
-    if ( !allowedLevel.includes( level ) )
+    if ( !allowedLevels.includes( level ) )
     {
-        throw new Error( `Invalid log level: ${ level }. Allowed levels are ${ allowedLevel.join( ', ' ) }` )
+        throw new Error( `Invalid log level: ${ level }. Allowed levels are ${ allowedLevels.join( ', ' ) }` )
     }
 
-    const logLevelIndex = allowedLevel.indexOf( logLevel )
-    const messageLevelIndex = allowedLevel.indexOf( level )
+    const logLevelIndex = allowedLevels.indexOf( logLevel )
+    const messageLevelIndex = allowedLevels.indexOf( level )
 
     // Check if the current log level allows logging of the given level
     if ( logLevelIndex <= messageLevelIndex )
@@ -133,7 +133,7 @@ const sendMessage = ( conn, message ) =>
     {
         conn.close()
 
-        printSyslog( 'debug', 'Connection is closing or closed, unable to send message' )
+        logMessage( 'debug', 'Connection is closing or closed, unable to send message' )
     }
 
     try
@@ -141,13 +141,13 @@ const sendMessage = ( conn, message ) =>
         // Serialize and send the message
         conn.send( JSON.stringify( message ) )
 
-        printSyslog( 'debug', 'Sent message:', message )
+        logMessage( 'debug', 'Sent message:', message )
     } catch ( e )
     {
         // Close the connection if an error occurs during sending
         conn.close()
 
-        printSyslog( 'error', 'Error sending message:', e )
+        logMessage( 'error', 'Error sending message:', e )
     }
 }
 
@@ -167,7 +167,7 @@ const handleWebSocketConnection = ( conn, req ) =>
         userAgent: req.headers[ 'user-agent' ] || 'Unknown'
     }
 
-    printSyslog( 'info', 'Client connected:', clientInfo )
+    logMessage( 'info', 'Client connected:', clientInfo )
 
     // Initialize connection-specific variables
     const subscribedTopics = new Set()
@@ -183,7 +183,7 @@ const handleWebSocketConnection = ( conn, req ) =>
             // Close the connection if no pong was received since the last ping
             conn.close()
 
-            printSyslog( 'info', 'Client connection terminated due to lack of response:', clientInfo )
+            logMessage( 'info', 'Client connection terminated due to lack of response:', clientInfo )
 
             clearInterval( pingInterval )
         } else
@@ -195,12 +195,12 @@ const handleWebSocketConnection = ( conn, req ) =>
             {
                 conn.ping()
 
-                printSyslog( 'debug', 'Ping sent' )
+                logMessage( 'debug', 'Ping sent' )
             } catch ( e )
             {
                 conn.close()
 
-                printSyslog( 'error', 'Error sending ping:', e )
+                logMessage( 'error', 'Error sending ping:', e )
             }
         }
     }, CONFIG.timeouts.ping )
@@ -220,14 +220,14 @@ const handleWebSocketConnection = ( conn, req ) =>
                 CONFIG.topics.topicsMap.delete( topicName )
             }
 
-            printSyslog( 'debug', `Client unsubscribed from topic: ${ topicName }` )
+            logMessage( 'debug', `Client unsubscribed from topic: ${ topicName }` )
         } )
 
         subscribedTopics.clear()
 
         isClosed = true
 
-        printSyslog( 'info', 'Client disconnected:', clientInfo )
+        logMessage( 'info', 'Client disconnected:', clientInfo )
     } )
 
     // Handle incoming messages
@@ -241,7 +241,7 @@ const handleWebSocketConnection = ( conn, req ) =>
 
         if ( message && message.type && !isClosed )
         {
-            printSyslog( 'debug', 'Received message:', message )
+            logMessage( 'debug', 'Received message:', message )
 
             // Validate topics if a whitelist is defined
             if ( message.topics && CONFIG.topics.allowedList.size > 0 )
@@ -250,16 +250,16 @@ const handleWebSocketConnection = ( conn, req ) =>
 
                 if ( invalidTopics.length > 0 )
                 {
-                    printSyslog( 'debug', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
-                    printSyslog( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
+                    logMessage( 'debug', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
+                    logMessage( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
 
                     conn.close()
 
-                    printSyslog( 'info', 'Disconnected client due to invalid topic(s):', clientInfo )
+                    logMessage( 'info', 'Disconnected client due to invalid topic(s):', clientInfo )
                 }
             }
 
-            printSyslog( 'debug', 'Handling message of type:', message.type )
+            logMessage( 'debug', 'Handling message of type:', message.type )
 
             // Process the message based on its type
             switch ( message.type )
@@ -268,7 +268,7 @@ const handleWebSocketConnection = ( conn, req ) =>
                     // Respond to client pings
                     sendMessage( conn, { type: 'pong' } )
 
-                    printSyslog( 'debug', 'Received ping, sent pong' )
+                    logMessage( 'debug', 'Received ping, sent pong' )
 
                     break
 
@@ -284,7 +284,7 @@ const handleWebSocketConnection = ( conn, req ) =>
 
                             receivers.forEach( receiver => sendMessage( receiver, message ) )
 
-                            printSyslog( 'debug', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }` )
+                            logMessage( 'debug', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }` )
                         }
                     }
 
@@ -302,7 +302,7 @@ const handleWebSocketConnection = ( conn, req ) =>
 
                             subscribedTopics.add( topicName )
 
-                            printSyslog( 'debug', `Client subscribed to topic: ${ topicName }` )
+                            logMessage( 'debug', `Client subscribed to topic: ${ topicName }` )
                         }
                     } )
 
@@ -318,14 +318,14 @@ const handleWebSocketConnection = ( conn, req ) =>
                         {
                             topicSet.delete( conn )
 
-                            printSyslog( 'debug', `Client unsubscribed from topic: ${ topicName }` )
+                            logMessage( 'debug', `Client unsubscribed from topic: ${ topicName }` )
                         }
                     } )
 
                     break
 
                 default:
-                    printSyslog( 'error', `Received unknown message type: ${ message.type }` )
+                    logMessage( 'error', `Received unknown message type: ${ message.type }` )
             }
         }
     } )
@@ -335,7 +335,7 @@ const handleWebSocketConnection = ( conn, req ) =>
     {
         pongReceived = true
 
-        printSyslog( 'debug', 'Pong received' )
+        logMessage( 'debug', 'Pong received' )
     } )
 }
 
@@ -354,13 +354,13 @@ wss.on( 'connection', ( conn, req ) =>
 // Handle WebSocket server errors
 wss.on( 'error', ( error ) =>
 {
-    printSyslog( 'error', 'WebSocket server error:', error )
+    logMessage( 'error', 'WebSocket server error:', error )
 } )
 
 // Log server start and configuration
 wss.on( 'listening', () =>
 {
-    printSyslog( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
-    printSyslog( 'notice', 'Developed by @hezhijie0327' )
-    printSyslog( 'notice', 'Server configuration:', CONFIG )
+    logMessage( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
+    logMessage( 'notice', 'Developed by @hezhijie0327' )
+    logMessage( 'notice', 'Server configuration:', CONFIG )
 } )
