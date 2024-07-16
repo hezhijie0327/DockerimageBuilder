@@ -184,7 +184,7 @@ const handleWebSocketConnection = ( conn, req ) =>
             // Close the connection if no pong was received since the last ping
             conn.close()
 
-            logMessage( 'info', 'Client connection terminated due to lack of response:', clientInfo )
+            logMessage( 'info', 'Client connection closed due to lack of response:', clientInfo )
 
             clearInterval( pingInterval )
         } else
@@ -254,10 +254,10 @@ const handleWebSocketConnection = ( conn, req ) =>
                     logMessage( 'debug', 'Invalid topic(s) detected:', invalidTopics.join( ', ' ) )
                     logMessage( 'debug', 'Allowed topic(s):', Array.from( CONFIG.topics.allowedList ).join( ', ' ) )
 
-                    // Use the terminate method to immediately disconnect the client
+                    // Terminate the connection if invalid topics are detected
                     conn.terminate()
 
-                    logMessage( 'info', 'Disconnected client due to invalid topic(s):', clientInfo )
+                    logMessage( 'info', 'Terminated client due to invalid topic(s):', clientInfo )
                 }
             }
 
