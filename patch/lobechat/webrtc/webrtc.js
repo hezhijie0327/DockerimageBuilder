@@ -77,9 +77,10 @@ const logMessage = ( level, ...args ) =>
                         if ( value instanceof Set )
                         {
                             return Array.from( value )
+                        } else
+                        {
+                            return value
                         }
-
-                        return value
                     }, 2 )
                 } catch ( e )
                 {
@@ -135,20 +136,21 @@ const sendMessage = ( conn, message ) =>
         conn.close()
 
         logMessage( 'debug', 'Client connection is closing or closed, unable to send message' )
-    }
-
-    try
+    } else
     {
-        // Serialize and send the message
-        conn.send( JSON.stringify( message ) )
+        try
+        {
+            // Serialize and send the message
+            conn.send( JSON.stringify( message ) )
 
-        logMessage( 'debug', 'Sent message:', message )
-    } catch ( e )
-    {
-        // Close the connection if an error occurs during sending
-        conn.close()
+            logMessage( 'debug', 'Sent message:', message )
+        } catch ( e )
+        {
+            // Close the connection if an error occurs during sending
+            conn.close()
 
-        logMessage( 'error', 'Client connection has been closed due to got error during sending message:', e )
+            logMessage( 'error', 'Client connection has been closed due to got error during sending message:', e )
+        }
     }
 }
 
@@ -226,6 +228,8 @@ const handleWebSocketConnection = ( conn, req ) =>
 
         subscribedTopics.clear()
 
+        logMessage( 'debug', 'Client unsubscribed from all topics' )
+
         isClosed = true
 
         logMessage( 'info', 'Client disconnected:', clientInfo )
@@ -287,6 +291,9 @@ const handleWebSocketConnection = ( conn, req ) =>
                             receivers.forEach( receiver => sendMessage( receiver, message ) )
 
                             logMessage( 'debug', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }` )
+                        } else
+                        {
+                            logMessage( 'debug', `No receivers found for topic: ${ message.topic }` )
                         }
                     }
 
@@ -305,6 +312,9 @@ const handleWebSocketConnection = ( conn, req ) =>
                             subscribedTopics.add( topicName )
 
                             logMessage( 'debug', `Client subscribed to topic: ${ topicName }` )
+                        } else
+                        {
+                            logMessage( 'error', 'Invalid topic name:', topicName )
                         }
                     } )
 
@@ -321,6 +331,9 @@ const handleWebSocketConnection = ( conn, req ) =>
                             topicSet.delete( conn )
 
                             logMessage( 'debug', `Client unsubscribed from topic: ${ topicName }` )
+                        } else
+                        {
+                            logMessage( 'debug', `Client is not subscribed to topic: ${ topicName }` )
                         }
                     } )
 
