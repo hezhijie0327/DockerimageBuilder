@@ -268,7 +268,7 @@ const handleWebSocketConnection = ( conn, req ) =>
             {
                 case 'ping':
                     // Respond to client pings
-                    sendMessage( conn, { type: 'pong' } )
+                    conn.pong()
 
                     logMessage( 'debug', 'Received ping, sent pong' )
 
