@@ -110,7 +110,11 @@ const setIfUndefined = ( map, key, createValue ) =>
 {
     if ( !map.has( key ) )
     {
-        return map.set( key, createValue() )
+        const value = createValue()
+
+        map.set( key, value )
+
+        return value
     } else
     {
         return map.get( key )
