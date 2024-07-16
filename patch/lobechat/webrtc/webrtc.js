@@ -141,7 +141,7 @@ const handleWebSocketConnection = ( conn, req ) =>
             {
                 conn.ping()
 
-                logMessage( 'debug', 'Sent ping' )
+                logMessage( 'info', 'Sent ping:', clientInfo )
             } catch ( e )
             {
                 conn.close()
@@ -214,11 +214,9 @@ const handleWebSocketConnection = ( conn, req ) =>
             switch ( message.type )
             {
                 case 'ping':
-                    logMessage( 'debug', 'Received ping' )
-
                     conn.pong()
 
-                    logMessage( 'debug', 'Sent pong' )
+                    logMessage( 'info', 'Received ping, sent pong:', clientInfo )
 
                     break
 
@@ -248,13 +246,13 @@ const handleWebSocketConnection = ( conn, req ) =>
                                         // Close the connection if an error occurs during sending
                                         receiver.close()
 
-                                        logMessage( 'error', 'Client connection has been closed due to got error during sending message:', clientInfo, e )
+                                        logMessage( 'error', 'Client connection has been closed due to got error during sending message:', e )
                                     }
                                 } else
                                 {
                                     receiver.close()
 
-                                    logMessage( 'debug', 'Client connection is closing or closed, unable to send message:', clientInfo )
+                                    logMessage( 'debug', 'Client connection is closing or closed, unable to send message' )
                                 }
                             } )
 
@@ -334,7 +332,7 @@ const handleWebSocketConnection = ( conn, req ) =>
     {
         pongReceived = true
 
-        logMessage( 'debug', 'Pong received' )
+        logMessage( 'info', 'Pong received:', clientInfo )
     } )
 }
 
