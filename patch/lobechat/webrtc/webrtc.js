@@ -113,7 +113,7 @@ const handleWebSocketConnection = ( conn, req ) =>
         userAgent: req.headers[ 'user-agent' ] || 'Unknown'
     }
 
-    logMessage( 'info', 'Client connected:', clientInfo )
+    logMessage( 'info', 'New client connected:', clientInfo )
 
     // Initialize connection-specific variables
     const subscribedTopics = new Set()
@@ -129,7 +129,7 @@ const handleWebSocketConnection = ( conn, req ) =>
             // Close the connection if no pong was received since the last ping
             conn.close()
 
-            logMessage( 'info', 'Client connection has been closed due to lack of response:', clientInfo )
+            logMessage( 'info', 'Connection closed due to ping timeout:', clientInfo )
 
             clearInterval( pingInterval )
         } else
@@ -141,12 +141,12 @@ const handleWebSocketConnection = ( conn, req ) =>
             {
                 conn.ping()
 
-                logMessage( 'info', 'Sent ping:', clientInfo )
+                logMessage( 'debug', 'Ping sent:', clientInfo )
             } catch ( e )
             {
                 conn.close()
 
-                logMessage( 'error', 'Client connection has been closed due to error during ping:', e )
+                logMessage( 'error', 'Connection closed due to ping error:', e )
             }
         }
     }, CONFIG.timeouts.ping )
@@ -204,11 +204,9 @@ const handleWebSocketConnection = ( conn, req ) =>
                     // Close the connection if invalid topics are detected
                     conn.close()
 
-                    logMessage( 'info', 'Client connection has been closed due to invalid topic(s):', clientInfo )
+                    logMessage( 'info', 'Connection closed due to invalid topic(s):', clientInfo )
                 }
             }
-
-            logMessage( 'debug', 'Handling message of type:', message.type )
 
             // Process the message based on its type
             switch ( message.type )
@@ -216,7 +214,7 @@ const handleWebSocketConnection = ( conn, req ) =>
                 case 'ping':
                     conn.pong()
 
-                    logMessage( 'info', 'Received ping, sent pong:', clientInfo )
+                    logMessage( 'debug', 'Ping received, pong sent:', clientInfo )
 
                     break
 
@@ -240,30 +238,30 @@ const handleWebSocketConnection = ( conn, req ) =>
                                         // Serialize and send the message
                                         receiver.send( JSON.stringify( message ) )
 
-                                        logMessage( 'debug', 'Sent message:', message )
+                                        logMessage( 'debug', 'Message sent to receiver:', message )
                                     } catch ( e )
                                     {
                                         // Close the connection if an error occurs during sending
                                         receiver.close()
 
-                                        logMessage( 'error', 'Client connection has been closed due to got error during sending message:', e )
+                                        logMessage( 'error', 'Error sending message to receiver:', e )
                                     }
                                 } else
                                 {
                                     receiver.close()
 
-                                    logMessage( 'debug', 'Client connection is closing or closed, unable to send message' )
+                                    logMessage( 'debug', 'Receiver connection closing or closed, message not sent' )
                                 }
                             } )
 
-                            logMessage( 'info', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }:`, clientInfo )
+                            logMessage( 'debug', `Message published to topic: ${ message.topic }, receivers: ${ receivers.size }` )
                         } else
                         {
-                            logMessage( 'error', `No receivers found for topic: ${ message.topic }` )
+                            logMessage( 'debug', `No receivers found for topic: ${ message.topic }` )
                         }
                     } else
                     {
-                        logMessage( 'error', 'No topic found' )
+                        logMessage( 'debug', 'Publish message missing topic' )
                     }
 
                     break
@@ -299,7 +297,7 @@ const handleWebSocketConnection = ( conn, req ) =>
                             logMessage( 'debug', `Client subscribed to topic: ${ topicName }` )
                         } else
                         {
-                            logMessage( 'error', 'Invalid type of topicName:', topicName.type )
+                            logMessage( 'debug', 'Invalid topic name in subscription:', topicName )
                         }
                     } )
 
@@ -318,14 +316,14 @@ const handleWebSocketConnection = ( conn, req ) =>
                             logMessage( 'debug', `Client unsubscribed from topic: ${ topicName }` )
                         } else
                         {
-                            logMessage( 'error', `Client is not subscribed to topic: ${ topicName }` )
+                            logMessage( 'debug', `Client not subscribed to topic: ${ topicName }` )
                         }
                     } )
 
                     break
 
                 default:
-                    logMessage( 'error', `Received unknown message type: ${ message.type }` )
+                    logMessage( 'debug', `Unknown message type received: ${ message.type }` )
             }
         }
     } )
@@ -335,7 +333,7 @@ const handleWebSocketConnection = ( conn, req ) =>
     {
         pongReceived = true
 
-        logMessage( 'info', 'Pong received:', clientInfo )
+        logMessage( 'debug', 'Pong received:', clientInfo )
     } )
 }
 
