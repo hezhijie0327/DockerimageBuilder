@@ -110,11 +110,7 @@ const setIfUndefined = ( map, key, createValue ) =>
 {
     if ( !map.has( key ) )
     {
-        const value = createValue()
-
-        map.set( key, value )
-
-        return value
+        return map.set( key, createValue() )
     } else
     {
         return map.get( key )
@@ -131,12 +127,7 @@ const setIfUndefined = ( map, key, createValue ) =>
 const sendMessage = ( conn, message ) =>
 {
     // Check if the connection is closing or closed
-    if ( conn.readyState > 1 )
-    {
-        conn.close()
-
-        logMessage( 'debug', 'Client connection is closing or closed, unable to send message' )
-    } else
+    if ( conn.readyState <= 1 )
     {
         try
         {
@@ -151,6 +142,11 @@ const sendMessage = ( conn, message ) =>
 
             logMessage( 'error', 'Client connection has been closed due to got error during sending message:', e )
         }
+    } else
+    {
+        conn.close()
+
+        logMessage( 'debug', 'Client connection is closing or closed, unable to send message' )
     }
 }
 
@@ -375,7 +371,6 @@ wss.on( 'error', ( error ) =>
 // Log server start and configuration
 wss.on( 'listening', () =>
 {
-    logMessage( 'notice', 'Welcome to LobeChat WebRTC Signaling server!!!' )
-    logMessage( 'notice', 'Developed by @hezhijie0327' )
+    logMessage( 'notice', 'LobeChat WebRTC Signaling server started' )
     logMessage( 'notice', 'Server configuration:', CONFIG )
 } )
