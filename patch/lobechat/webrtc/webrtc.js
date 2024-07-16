@@ -256,11 +256,14 @@ const handleWebSocketConnection = ( conn, req ) =>
                                 }
                             } )
 
-                            logMessage( 'debug', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }` )
+                            logMessage( 'info', `Published message to topic: ${ message.topic }, receivers: ${ receivers.size }:`, clientInfo )
                         } else
                         {
-                            logMessage( 'debug', `No receivers found for topic: ${ message.topic }` )
+                            logMessage( 'error', `No receivers found for topic: ${ message.topic }` )
                         }
+                    } else
+                    {
+                        logMessage( 'error', 'No topic found' )
                     }
 
                     break
@@ -296,7 +299,7 @@ const handleWebSocketConnection = ( conn, req ) =>
                             logMessage( 'debug', `Client subscribed to topic: ${ topicName }` )
                         } else
                         {
-                            logMessage( 'error', 'Invalid topic name:', topicName )
+                            logMessage( 'error', 'Invalid type of topicName:', topicName.type )
                         }
                     } )
 
@@ -315,7 +318,7 @@ const handleWebSocketConnection = ( conn, req ) =>
                             logMessage( 'debug', `Client unsubscribed from topic: ${ topicName }` )
                         } else
                         {
-                            logMessage( 'debug', `Client is not subscribed to topic: ${ topicName }` )
+                            logMessage( 'error', `Client is not subscribed to topic: ${ topicName }` )
                         }
                     } )
 
