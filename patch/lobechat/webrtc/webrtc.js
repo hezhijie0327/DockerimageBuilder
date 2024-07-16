@@ -114,7 +114,8 @@ const setIfUndefined = ( map, key, createValue ) =>
         map.set( key, value )
 
         return value
-    } else {
+    } else
+    {
         return map.get( key )
     }
 }
