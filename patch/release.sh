@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.5.9
+# Current Version: 1.6.0
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -83,7 +83,7 @@ function GetLatestVersion() {
     LUA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lua/lua/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     MORTY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/asciimoo/morty/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     MOSDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/IrineSistiana/mosdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
-    NODEJS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nodejs/node/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "\-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    NODEJS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nodejs/node/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "\-" | grep "^refs/tags/v" | grep "v20" | tail -n 1 | sed "s/refs\/tags\/v//")
     OLLAMA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/ollama/ollama/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "\-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
     PCRE2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/PCRE2Project/pcre2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "RC" | grep "^refs/tags/pcre2-" | tail -n 1 | sed "s/refs\/tags\/pcre2\-//")
