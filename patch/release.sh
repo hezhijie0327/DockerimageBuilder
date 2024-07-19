@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.6.1
+# Current Version: 1.6.2
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -33,7 +33,7 @@ export LOBECHAT_VERSION_FIXED=""
 export LUA_VERSION_FIXED=""
 export MORTY_VERSION_FIXED=""
 export MOSDNS_VERSION_FIXED=""
-export NODEJS_VERSION_FIXED="22.4.1"
+export NODEJS_VERSION_FIXED=""
 export OLLAMA_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
 export PCRE2_VERSION_FIXED=""
