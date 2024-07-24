@@ -16,6 +16,8 @@ const CONFIG = {
         logLevel: process.env.WEBRTC_LOG_LEVEL || 'notice',
     },
     server: {
+        // Enable or disable the server, defaults to false
+        enable: process.env.ENABLE_WEBRTC_SIGNALING_SERVER || false,
         // Host to bind the server to, defaults to all interfaces
         host: process.env.WEBRTC_HOST || '0.0.0.0',
         // Port to run the server on, defaults to 3000
@@ -338,27 +340,35 @@ const handleWebSocketConnection = ( conn, req ) =>
     } )
 }
 
-// Create WebSocket server
-const wss = new WebSocket.Server( {
-    host: CONFIG.server.host,
-    port: CONFIG.server.port,
-} )
-
-// Handle new WebSocket connections
-wss.on( 'connection', ( conn, req ) =>
+if ( CONFIG.server.enable )
 {
-    handleWebSocketConnection( conn, req )
-} )
+    logMessage( 'info', 'LobeChat WebRTC Signaling Server function flag has been enabled' )
 
-// Handle WebSocket server errors
-wss.on( 'error', ( error ) =>
-{
-    logMessage( 'error', 'WebSocket server error:', error )
-} )
+    // Create WebSocket server
+    const wss = new WebSocket.Server( {
+        host: CONFIG.server.host,
+        port: CONFIG.server.port,
+    } )
 
-// Log server start and configuration
-wss.on( 'listening', () =>
+    // Handle new WebSocket connections
+    wss.on( 'connection', ( conn, req ) =>
+    {
+        handleWebSocketConnection( conn, req )
+    } )
+
+    // Handle WebSocket server errors
+    wss.on( 'error', ( error ) =>
+    {
+        logMessage( 'error', 'WebSocket server error:', error )
+    } )
+
+    // Log server start and configuration
+    wss.on( 'listening', () =>
+    {
+        logMessage( 'notice', 'LobeChat WebRTC Signaling Server started' )
+        logMessage( 'notice', 'Server configuration:', CONFIG )
+    } )
+} else
 {
-    logMessage( 'notice', 'LobeChat WebRTC Signaling Server started' )
-    logMessage( 'notice', 'Server configuration:', CONFIG )
-} )
+    logMessage( 'info', 'LobeChat WebRTC Signaling Server function flag has been disabled' )
+}
