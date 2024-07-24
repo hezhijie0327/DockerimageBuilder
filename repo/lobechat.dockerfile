@@ -1,4 +1,4 @@
-# Current Version: 1.4.0
+# Current Version: 1.4.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -37,7 +37,7 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
 FROM scratch
 
 ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
-    FEATURE_FLAGS="-check_updates,-welcome_suggest" \
+    FEATURE_FLAGS="-check_updates,-welcome_suggest,+webrtc_sync" \
     HOSTNAME="0.0.0.0" PORT="3210" \
     PROXY_URL="" \
     WEBRTC_HOST="0.0.0.0" WEBRTC_PORT="3211" \
