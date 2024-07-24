@@ -1,4 +1,4 @@
-# Current Version: 1.3.9
+# Current Version: 1.4.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -40,7 +40,6 @@ ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210" \
     PROXY_URL="" \
-    ENABLE_WEBRTC_SIGNALING_SERVER="false" \
     WEBRTC_HOST="0.0.0.0" WEBRTC_PORT="3211" \
     WEBRTC_ALLOWED_TOPICS="" \
     WEBRTC_LOG_LEVEL="notice" \
@@ -51,9 +50,6 @@ COPY --from=REBASED_LOBECHAT / /
 EXPOSE 3210/tcp 3211/tcp
 
 CMD \
-    if [ "$ENABLE_WEBRTC_SIGNALING_SERVER" = "true" ] && echo "$FEATURE_FLAGS" | grep -q '+webrtc_sync'; then \
-        node /opt/lobechat/webrtc.js & \
-    fi; \
     if [ -n "$PROXY_URL" ]; then \
         echo -e "localnet 127.0.0.0/255.0.0.0\nlocalnet ::1/128\nproxy_dns\nremote_dns_subnet 224\nstrict_chain\ntcp_connect_time_out 8000\ntcp_read_time_out 15000\n[ProxyList]\n$(echo $PROXY_URL | cut -d: -f1) $(echo $PROXY_URL | cut -d/ -f3 | cut -d: -f1) $(echo $PROXY_URL | cut -d: -f3)" > /etc/proxychains/proxychains.conf; \
         proxychains -q node /opt/lobechat/server.js; \
