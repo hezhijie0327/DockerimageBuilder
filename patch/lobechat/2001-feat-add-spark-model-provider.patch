@@ -1,3 +1,16 @@
+diff --git a/Dockerfile b/Dockerfile
+index 1607bacda983..a75e2dfeedd0 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -123,6 +123,8 @@ ENV \
+     PERPLEXITY_API_KEY="" PERPLEXITY_PROXY_URL="" \
+     # Qwen
+     QWEN_API_KEY="" \
++    # Spark
++    SPARK_API_KEY="" SPARK_API_SECRET="" \
+     # Stepfun
+     STEPFUN_API_KEY="" \
+     # Taichu
 diff --git a/src/app/(main)/settings/llm/ProviderList/Spark/index.tsx b/src/app/(main)/settings/llm/ProviderList/Spark/index.tsx
 new file mode 100644
 index 000000000000..dda6e48aaad8
@@ -56,10 +69,10 @@ index 000000000000..dda6e48aaad8
 +  };
 +};
 diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-index 110e42e78f4f..5bdb8a5eadde 100644
+index 30aa944167b1..5768d444477a 100644
 --- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
 +++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-@@ -50,6 +50,7 @@ import { useAzureProvider } from './Azure';
+@@ -52,6 +52,7 @@ import { useAzureProvider } from './Azure';
  import { useBedrockProvider } from './Bedrock';
  import { useOllamaProvider } from './Ollama';
  import { useOpenAIProvider } from './OpenAI';
@@ -67,7 +80,7 @@ index 110e42e78f4f..5bdb8a5eadde 100644
  
  const BASE_DOC_URL = 'https://lobehub.com/docs/usage/providers';
  
-@@ -87,6 +88,7 @@ export const useProviderList = (): ProviderItem[] => {
+@@ -89,6 +90,7 @@ export const useProviderList = (): ProviderItem[] => {
    const ollamaProvider = useOllamaProvider();
    const openAIProvider = useOpenAIProvider();
    const bedrockProvider = useBedrockProvider();
@@ -75,7 +88,7 @@ index 110e42e78f4f..5bdb8a5eadde 100644
  
    return useMemo(
      () => [
-@@ -191,7 +193,11 @@ export const useProviderList = (): ProviderItem[] => {
+@@ -198,7 +200,11 @@ export const useProviderList = (): ProviderItem[] => {
          docUrl: urlJoin(BASE_DOC_URL, 'ai360'),
          title: <Ai360.Combine size={ 20 } type={ 'color' } />,
        },
@@ -89,10 +102,10 @@ index 110e42e78f4f..5bdb8a5eadde 100644
    );
  };
 diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
-index 45da6157e600..6ee153843e20 100644
+index e5ff047ef3fc..f731cf0231ad 100644
 --- a/src/app/api/chat/agentRuntime.ts
 +++ b/src/app/api/chat/agentRuntime.ts
-@@ -191,6 +191,16 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -198,6 +198,16 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
  
        const apiKey = apiKeyManager.pick(payload?.apiKey || AI360_API_KEY);
  
@@ -110,10 +123,10 @@ index 45da6157e600..6ee153843e20 100644
      }
    }
 diff --git a/src/components/ModelIcon/index.tsx b/src/components/ModelIcon/index.tsx
-index 6b528d462568..152725c121ca 100644
+index 5135ee8eda6a..0bca4a252341 100644
 --- a/src/components/ModelIcon/index.tsx
 +++ b/src/components/ModelIcon/index.tsx
-@@ -76,7 +76,9 @@ const ModelIcon = memo<ModelProviderIconProps>(({ model: originModel, size = 12
+@@ -78,7 +78,9 @@ const ModelIcon = memo<ModelProviderIconProps>(({ model: originModel, size = 12
      return <Baichuan.Avatar background={Baichuan.colorPrimary} size={size} />;
    if (model.includes('rwkv')) return <Rwkv.Avatar size={size} />;
    if (model.includes('ernie')) return <Wenxin.Avatar size={size} />;
@@ -125,10 +138,10 @@ index 6b528d462568..152725c121ca 100644
    // ref https://github.com/fishaudio/Bert-VITS2/blob/master/train_ms.py#L702
    if (model.startsWith('d_') || model.startsWith('g_') || model.startsWith('wd_'))
 diff --git a/src/components/ModelProviderIcon/index.tsx b/src/components/ModelProviderIcon/index.tsx
-index a4edfe5ecac4..2491291e574f 100644
+index de6270991684..a25e507f68f8 100644
 --- a/src/components/ModelProviderIcon/index.tsx
 +++ b/src/components/ModelProviderIcon/index.tsx
-@@ -16,6 +16,7 @@ import {
+@@ -17,6 +17,7 @@ import {
    OpenAI,
    OpenRouter,
    Perplexity,
@@ -136,7 +149,7 @@ index a4edfe5ecac4..2491291e574f 100644
    Stepfun,
    Together,
    Tongyi,
-@@ -129,6 +130,10 @@ const ModelProviderIcon = memo<ModelProviderIconProps>(({ provider }) => {
+@@ -134,6 +135,10 @@ const ModelProviderIcon = memo<ModelProviderIconProps>(({ provider }) => {
        return <Ai360 size={20} />;
      }
  
@@ -148,10 +161,10 @@ index a4edfe5ecac4..2491291e574f 100644
        return null;
      }
 diff --git a/src/components/ModelTag/ModelIcon.tsx b/src/components/ModelTag/ModelIcon.tsx
-index e666f77bce50..417995cef8a1 100644
+index c5d01fcd432a..b822a8e6597b 100644
 --- a/src/components/ModelTag/ModelIcon.tsx
 +++ b/src/components/ModelTag/ModelIcon.tsx
-@@ -28,6 +28,7 @@ import {
+@@ -29,6 +29,7 @@ import {
    Rwkv,
    Spark,
    Stability,
@@ -159,7 +172,7 @@ index e666f77bce50..417995cef8a1 100644
    Tongyi,
    Wenxin,
    Yi,
-@@ -39,8 +40,11 @@ interface ModelIconProps {
+@@ -40,8 +41,11 @@ interface ModelIconProps {
    size?: number;
  }
  
@@ -173,7 +186,7 @@ index e666f77bce50..417995cef8a1 100644
  
    // currently supported models, maybe not in its own provider
    if (model.startsWith('gpt')) return <OpenAI size={size} />;
-@@ -63,6 +67,7 @@ const ModelIcon = memo<ModelIconProps>(({ model, size = 12 }) => {
+@@ -65,6 +69,7 @@ const ModelIcon = memo<ModelIconProps>(({ model, size = 12 }) => {
    if (model.startsWith('openchat')) return <OpenChat size={size} />;
    if (model.includes('command')) return <Cohere size={size} />;
    if (model.includes('dbrx')) return <Dbrx size={size} />;
@@ -181,7 +194,7 @@ index e666f77bce50..417995cef8a1 100644
    if (model.includes('taichu')) return <AiMass size={size} />;
    if (model.includes('360gpt')) return <Ai360 size={size} />;
  
-@@ -70,7 +75,9 @@ const ModelIcon = memo<ModelIconProps>(({ model, size = 12 }) => {
+@@ -72,7 +77,9 @@ const ModelIcon = memo<ModelIconProps>(({ model, size = 12 }) => {
    if (model.includes('baichuan')) return <Baichuan size={size} />;
    if (model.includes('rwkv')) return <Rwkv size={size} />;
    if (model.includes('ernie')) return <Wenxin size={size} />;
@@ -193,10 +206,10 @@ index e666f77bce50..417995cef8a1 100644
    // ref https://github.com/fishaudio/Bert-VITS2/blob/master/train_ms.py#L702
    if (model.startsWith('d_') || model.startsWith('g_') || model.startsWith('wd_'))
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index 1cbc948b766b..1a9aa3a34657 100644
+index b745e7a235bc..9b05cedd2b7f 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
-@@ -91,6 +91,10 @@ export const getLLMConfig = () => {
+@@ -87,6 +87,10 @@ export const getLLMConfig = () => {
  
        ENABLED_AI360: z.boolean(),
        AI360_API_KEY: z.string().optional(),
@@ -207,7 +220,7 @@ index 1cbc948b766b..1a9aa3a34657 100644
      },
      runtimeEnv: {
        API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
-@@ -173,6 +177,10 @@ export const getLLMConfig = () => {
+@@ -171,6 +175,10 @@ export const getLLMConfig = () => {
  
        ENABLED_AI360: !!process.env.AI360_API_KEY,
        AI360_API_KEY: process.env.AI360_API_KEY,
@@ -219,10 +232,10 @@ index 1cbc948b766b..1a9aa3a34657 100644
    });
  };
 diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
-index d4dc405e903c..accc3d6f6b60 100644
+index db5ae1446e8b..2d7bb273c9f9 100644
 --- a/src/config/modelProviders/index.ts
 +++ b/src/config/modelProviders/index.ts
-@@ -16,6 +16,7 @@ import OpenAIProvider from './openai';
+@@ -17,6 +17,7 @@ import OpenAIProvider from './openai';
  import OpenRouterProvider from './openrouter';
  import PerplexityProvider from './perplexity';
  import QwenProvider from './qwen';
@@ -230,7 +243,7 @@ index d4dc405e903c..accc3d6f6b60 100644
  import StepfunProvider from './stepfun';
  import TaichuProvider from './taichu';
  import TogetherAIProvider from './togetherai';
-@@ -43,6 +44,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
+@@ -45,6 +46,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
    BaichuanProvider.chatModels,
    TaichuProvider.chatModels,
    Ai360Provider.chatModels,
@@ -238,7 +251,7 @@ index d4dc405e903c..accc3d6f6b60 100644
  ].flat();
  
  export const DEFAULT_MODEL_PROVIDER_LIST = [
-@@ -67,6 +69,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
+@@ -70,6 +72,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
    BaichuanProvider,
    TaichuProvider,
    Ai360Provider,
@@ -246,7 +259,7 @@ index d4dc405e903c..accc3d6f6b60 100644
  ];
  
  export const filterEnabledModels = (provider: ModelProviderCard) => {
-@@ -94,6 +97,7 @@ export { default as OpenAIProviderCard } from './openai';
+@@ -98,6 +101,7 @@ export { default as OpenAIProviderCard } from './openai';
  export { default as OpenRouterProviderCard } from './openrouter';
  export { default as PerplexityProviderCard } from './perplexity';
  export { default as QwenProviderCard } from './qwen';
@@ -256,7 +269,7 @@ index d4dc405e903c..accc3d6f6b60 100644
  export { default as TogetherAIProviderCard } from './togetherai';
 diff --git a/src/config/modelProviders/spark.ts b/src/config/modelProviders/spark.ts
 new file mode 100644
-index 000000000000..86b63f94f1aa
+index 000000000000..848219521363
 --- /dev/null
 +++ b/src/config/modelProviders/spark.ts
 @@ -0,0 +1,59 @@
@@ -289,7 +302,7 @@ index 000000000000..86b63f94f1aa
 +      displayName: 'Spark Pro-128K',
 +      enabled: true,
 +      functionCall: false,
-+      id: 'pro-128k',
++      id: 'Pro-128k',
 +      maxOutput: 4096,
 +      tokens: 128_000,
 +    },
@@ -333,10 +346,10 @@ index 1c0fd878dd35..949d345eb833 100644
  }
  /* eslint-enable */
 diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
-index 0a34a09f0644..8e1ff6c18917 100644
+index 1cd98e069ae8..5282996a3760 100644
 --- a/src/const/settings/llm.ts
 +++ b/src/const/settings/llm.ts
-@@ -14,6 +14,7 @@ import {
+@@ -15,6 +15,7 @@ import {
    OpenRouterProviderCard,
    PerplexityProviderCard,
    QwenProviderCard,
@@ -344,7 +357,7 @@ index 0a34a09f0644..8e1ff6c18917 100644
    StepfunProviderCard,
    TaichuProviderCard,
    TogetherAIProviderCard,
-@@ -89,6 +90,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
+@@ -94,6 +95,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
      enabled: false,
      enabledModels: filterEnabledModels(QwenProviderCard),
    },
@@ -356,10 +369,10 @@ index 0a34a09f0644..8e1ff6c18917 100644
      enabled: false,
      enabledModels: filterEnabledModels(StepfunProviderCard),
 diff --git a/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx b/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
-index d1145d464d0f..26b2e81a34a0 100644
+index 35dfda03f61c..db030b1b348c 100644
 --- a/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
 +++ b/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
-@@ -12,6 +12,7 @@ import {
+@@ -13,6 +13,7 @@ import {
    OpenAI,
    OpenRouter,
    Perplexity,
@@ -367,7 +380,7 @@ index d1145d464d0f..26b2e81a34a0 100644
    Stepfun,
    Together,
    Tongyi,
-@@ -79,6 +80,10 @@ const ProviderAvatar = memo<ProviderAvatarProps>(({ provider }) => {
+@@ -80,6 +81,10 @@ const ProviderAvatar = memo<ProviderAvatarProps>(({ provider }) => {
        return <Tongyi color={Tongyi.colorPrimary} size={56} />;
      }
  
@@ -379,10 +392,10 @@ index d1145d464d0f..26b2e81a34a0 100644
        return <Stepfun color={Stepfun.colorPrimary} size={56} />;
      }
 diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
-index 7aba68f37f97..889907eb14a0 100644
+index fdb28eb25b3f..9ab5c4994be0 100644
 --- a/src/libs/agent-runtime/AgentRuntime.ts
 +++ b/src/libs/agent-runtime/AgentRuntime.ts
-@@ -19,6 +19,7 @@ import { LobeOpenAI } from './openai';
+@@ -20,6 +20,7 @@ import { LobeOpenAI } from './openai';
  import { LobeOpenRouterAI } from './openrouter';
  import { LobePerplexityAI } from './perplexity';
  import { LobeQwenAI } from './qwen';
@@ -390,7 +403,7 @@ index 7aba68f37f97..889907eb14a0 100644
  import { LobeStepfunAI } from './stepfun';
  import { LobeTaichuAI } from './taichu';
  import { LobeTogetherAI } from './togetherai';
-@@ -120,6 +121,7 @@ class AgentRuntime {
+@@ -122,6 +123,7 @@ class AgentRuntime {
        openrouter: Partial<ClientOptions>;
        perplexity: Partial<ClientOptions>;
        qwen: Partial<ClientOptions>;
@@ -398,7 +411,7 @@ index 7aba68f37f97..889907eb14a0 100644
        stepfun: Partial<ClientOptions>;
        taichu: Partial<ClientOptions>;
        togetherai: Partial<ClientOptions>;
-@@ -240,6 +242,11 @@ class AgentRuntime {
+@@ -247,6 +249,11 @@ class AgentRuntime {
          runtimeModel = new LobeAi360AI(params.ai360 ?? {});
          break
        }
@@ -691,10 +704,10 @@ index 000000000000..8cc8dfe1e28e
 +  provider: ModelProvider.Spark,
 +});
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
-index 7d40b71ad59e..17674b2e428e 100644
+index b2ebbc83e82f..f21b96f58b63 100644
 --- a/src/libs/agent-runtime/types/type.ts
 +++ b/src/libs/agent-runtime/types/type.ts
-@@ -38,6 +38,7 @@ export enum ModelProvider {
+@@ -39,6 +39,7 @@ export enum ModelProvider {
    OpenRouter = 'openrouter',
    Perplexity = 'perplexity',
    Qwen = 'qwen',
@@ -703,10 +716,10 @@ index 7d40b71ad59e..17674b2e428e 100644
    Taichu = 'taichu',
    TogetherAI = 'togetherai',
 diff --git a/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.test.ts b/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.test.ts
-index 8c55a3c797d0..a662f132afcb 100644
+index 594f7eac59a0..39fcc764dba1 100644
 --- a/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.test.ts
 +++ b/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.test.ts
-@@ -409,6 +409,92 @@ describe('LobeOpenAICompatibleFactory', () => {
+@@ -417,6 +417,92 @@ describe('LobeOpenAICompatibleFactory', () => {
        });
      });
  
@@ -800,7 +813,7 @@ index 8c55a3c797d0..a662f132afcb 100644
        it('should cancel ongoing request correctly', async () => {
          const controller = new AbortController();
 diff --git a/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.ts b/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.ts
-index 96d952974b81..bc6bb33353dd 100644
+index 38a4b1d295f6..7ba20e409e67 100644
 --- a/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.ts
 +++ b/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.ts
 @@ -37,6 +37,7 @@ interface OpenAICompatibleFactoryOptions<T extends Record<string, any> = any> {
@@ -811,7 +824,7 @@ index 96d952974b81..bc6bb33353dd 100644
    };
    constructorOptions?: ConstructorOptions<T>;
    debug?: {
-@@ -93,7 +94,10 @@ export const LobeOpenAICompatibleFactory = <T extends Record<string, any> = any>
+@@ -146,7 +147,10 @@ export const LobeOpenAICompatibleFactory = <T extends Record<string, any> = any>
              } as OpenAI.ChatCompletionCreateParamsStreaming);
  
          const response = await this.client.chat.completions.create(
@@ -847,10 +860,10 @@ index 89a222c462f7..61404c8dda4c 100644
      title: '01.AI 零一万物',
    },
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index ddc2aa009fa6..5ac6e30207ef 100644
+index a12fa0d94f03..aeaa9106ff0f 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
-@@ -37,6 +37,7 @@ export const getServerGlobalConfig = () => {
+@@ -38,6 +38,7 @@ export const getServerGlobalConfig = () => {
      ENABLED_BAICHUAN,
      ENABLED_TAICHU,
      ENABLED_AI360,
@@ -858,7 +871,7 @@ index ddc2aa009fa6..5ac6e30207ef 100644
  
      ENABLED_AZURE_OPENAI,
      AZURE_MODEL_LIST,
-@@ -110,6 +111,7 @@ export const getServerGlobalConfig = () => {
+@@ -112,6 +113,7 @@ export const getServerGlobalConfig = () => {
        perplexity: { enabled: ENABLED_PERPLEXITY },
        qwen: { enabled: ENABLED_QWEN },
  
@@ -942,7 +955,7 @@ index 8e2acb1421ca..926b07d4432c 100644
 +  sparkConfig,
  };
 diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
-index 641f5119ff6c..5875a5a15100 100644
+index 46fc0db51254..01dd2dae4a47 100644
 --- a/src/types/user/settings/keyVaults.ts
 +++ b/src/types/user/settings/keyVaults.ts
 @@ -15,6 +15,11 @@ export interface AWSBedrockKeyVault {
@@ -957,7 +970,7 @@ index 641f5119ff6c..5875a5a15100 100644
  export interface UserKeyVaults {
    ai360?: OpenAICompatibleKeyVault;
    anthropic?: OpenAICompatibleKeyVault;
-@@ -34,6 +39,7 @@ export interface UserKeyVaults {
+@@ -35,6 +40,7 @@ export interface UserKeyVaults {
    password?: string;
    perplexity?: OpenAICompatibleKeyVault;
    qwen?: OpenAICompatibleKeyVault;
