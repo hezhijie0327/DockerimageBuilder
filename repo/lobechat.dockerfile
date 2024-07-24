@@ -1,4 +1,4 @@
-# Current Version: 1.3.4
+# Current Version: 1.3.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -16,14 +16,22 @@ COPY --from=GET_INFO /tmp/lobechat.*.autobuild /tmp/
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PNPM_HOME="/pnpm" && export PATH="${PNPM_HOME}:${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/lobechat.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.source.autobuild") "${WORKDIR}/BUILDTMP/LOBECHAT" && git clone -b $(cat "${WORKDIR}/lobechat.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export LOBECHAT_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_VERSION=$(cat "${WORKDIR}/lobechat.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_CUSTOM_VERSION="${LOBECHAT_VERSION}-ZHIJIE-${LOBECHAT_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json" && corepack enable && corepack use pnpm && pnpm i && mkdir -p "${WORKDIR}/BUILDTMP/LOBECHAT/sharp" && pnpm add sharp --prefix "${WORKDIR}/BUILDTMP/LOBECHAT/sharp" && npm run build:docker && cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/webrtc" && npm i && cp -rf "${WORKDIR}/BUILDTMP/LOBECHAT/.next/standalone" "${WORKDIR}/BUILDKIT/lobechat" && cp -rf "${WORKDIR}/BUILDTMP/LOBECHAT/.next/static" "${WORKDIR}/BUILDKIT/lobechat/.next/static" && cp -rf "${WORKDIR}/BUILDTMP/LOBECHAT/sharp/node_modules/.pnpm" "${WORKDIR}/BUILDKIT/lobechat/node_modules/.pnpm" && cp -rf "${WORKDIR}/BUILDTMP/LOBECHAT/public" "${WORKDIR}/BUILDKIT/lobechat/public" && cp -rf "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/webrtc" "${WORKDIR}/BUILDKIT/webrtc"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PNPM_HOME="/pnpm" && export PATH="${PNPM_HOME}:${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/lobechat.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.source.autobuild") "${WORKDIR}/BUILDTMP/LOBECHAT" && git clone -b $(cat "${WORKDIR}/lobechat.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export LOBECHAT_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_VERSION=$(cat "${WORKDIR}/lobechat.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_CUSTOM_VERSION="${LOBECHAT_VERSION}-ZHIJIE-${LOBECHAT_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json" && corepack enable && corepack use pnpm && pnpm i && mkdir -p "${WORKDIR}/BUILDTMP/LOBECHAT/sharp" && pnpm add sharp --prefix "${WORKDIR}/BUILDTMP/LOBECHAT/sharp" && npm run build:docker && cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/webrtc" && npm i
+
+FROM scratch AS APP_LOBECHAT
+
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/webrtc /tmp/BUILDKIT/webrtc
+
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/standalone /tmp/BUILDKIT/lobechat
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /tmp/BUILDKIT/lobechat/.next/static
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/public /tmp/BUILDKIT/lobechat/public
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/sharp/node_modules/.pnpm /tmp/BUILDKIT/lobechat/node_modules/.pnpm
 
 FROM node:current-alpine AS REBASED_LOBECHAT
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDKIT/lobechat /opt/lobechat
-COPY --from=BUILD_LOBECHAT /tmp/BUILDKIT/webrtc /opt/webrtc
+COPY --from=APP_LOBECHAT /tmp/BUILDKIT/ /opt/
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && apk update \
