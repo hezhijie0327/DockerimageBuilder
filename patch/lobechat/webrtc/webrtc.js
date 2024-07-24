@@ -1,6 +1,7 @@
-#!/usr/bin/env node
-
-import { WebSocketServer } from 'ws'
+/**
+ * LobeChat WebRTC Signaling Server
+ */
+const WebSocket = require( 'ws' )
 
 /**
  * Configuration object for the WebRTC Signaling Server
@@ -338,7 +339,7 @@ const handleWebSocketConnection = ( conn, req ) =>
 }
 
 // Create WebSocket server
-const wss = new WebSocketServer( {
+const wss = new WebSocket.Server( {
     host: CONFIG.server.host,
     port: CONFIG.server.port,
 } )
@@ -358,6 +359,6 @@ wss.on( 'error', ( error ) =>
 // Log server start and configuration
 wss.on( 'listening', () =>
 {
-    logMessage( 'notice', 'LobeChat WebRTC Signaling server started' )
+    logMessage( 'notice', 'LobeChat WebRTC Signaling Server started' )
     logMessage( 'notice', 'Server configuration:', CONFIG )
 } )
