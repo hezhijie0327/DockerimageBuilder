@@ -1,4 +1,4 @@
-# Current Version: 1.4.4
+# Current Version: 1.4.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -52,14 +52,18 @@ EXPOSE 3210/tcp 3211/tcp
 
 CMD \
     if [ -n "$PROXY_URL" ]; then \
+        IP_REGEX="^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$"; \
+        # Set proxychains command
         PROXYCHAINS="proxychains -q"; \
         host_with_port="${PROXY_URL#*//}"; \
         host="${host_with_port%%:*}"; \
         port="${PROXY_URL##*:}"; \
         protocol="${PROXY_URL%%://*}"; \
-        nslookup=$(nslookup -q="A" "$host" | tail -n +3 | grep 'Address:'); \
-        if [ ! -z "$nslookup" ]; then \
-            host=$(echo "$nslookup" | tail -n 1 | awk '{print $2}'); \
+        if ! [[ "$host" =~ $IP_REGEX ]]; then \
+            nslookup=$(nslookup -q="A" "$host" | tail -n +3 | grep 'Address:'); \
+            if [ ! -z "$nslookup" ]; then \
+                host=$(echo "$nslookup" | tail -n 1 | awk '{print $2}'); \
+            fi; \
         fi; \
         printf "%s\n" \
             'localnet 127.0.0.0/255.0.0.0' \
