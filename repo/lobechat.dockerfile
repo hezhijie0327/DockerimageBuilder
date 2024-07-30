@@ -1,4 +1,4 @@
-# Current Version: 1.4.5
+# Current Version: 1.4.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -52,19 +52,23 @@ EXPOSE 3210/tcp 3211/tcp
 
 CMD \
     if [ -n "$PROXY_URL" ]; then \
+        # Set regex for IPv4
         IP_REGEX="^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$"; \
         # Set proxychains command
         PROXYCHAINS="proxychains -q"; \
+        # Parse the proxy URL
         host_with_port="${PROXY_URL#*//}"; \
         host="${host_with_port%%:*}"; \
         port="${PROXY_URL##*:}"; \
         protocol="${PROXY_URL%%://*}"; \
+        # Resolve the host to IP address, if it's a domain
         if ! [[ "$host" =~ $IP_REGEX ]]; then \
             nslookup=$(nslookup -q="A" "$host" | tail -n +3 | grep 'Address:'); \
             if [ ! -z "$nslookup" ]; then \
                 host=$(echo "$nslookup" | tail -n 1 | awk '{print $2}'); \
             fi; \
         fi; \
+        # Generate proxychains configuration file
         printf "%s\n" \
             'localnet 127.0.0.0/255.0.0.0' \
             'localnet ::1/128' \
@@ -77,4 +81,5 @@ CMD \
             "$protocol $host $port" \
         > "/etc/proxychains/proxychains.conf"; \
     fi; \
+    # Run the server
     ${PROXYCHAINS} node "/opt/lobechat/server.js";
