@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -37,15 +37,18 @@ RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP
         USE_CRYPT_H="1" \
         USE_ENGINE="1" \
         USE_GETADDRINFO="1" \
-        USE_THREAD="1" \
-        USE_STATIC_PCRE2="1" \
-        USE_PCRE2_JIT="1" \
-        USE_PROMEX="1" \
+        USE_GZIP="1" \
         USE_LIBCRYPT="1" \
         USE_LINUX_CAP="1" \
         USE_NS="1" \
         USE_TFO="1" \
         USE_LUA="1" \
+        USE_PCRE2_JIT="1" \
+        USE_PROMEX="1" \
+        USE_QUIC="1" \
+        USE_QUIC_OPENSSL_COMPAT="1" \
+        USE_STATIC_PCRE2="1" \
+        USE_THREAD="1" \
         LUA_LIB="${PREFIX}/lib" \
         LUA_INC="${PREFIX}/include" \
         USE_OPENSSL="1" \
