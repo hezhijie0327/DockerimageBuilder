@@ -1,4 +1,4 @@
-# Current Version: 1.4.6
+# Current Version: 1.4.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -64,7 +64,7 @@ CMD \
         # Resolve the host to IP address, if it's a domain
         if ! [[ "$host" =~ $IP_REGEX ]]; then \
             nslookup=$(nslookup -q="A" "$host" | tail -n +3 | grep 'Address:'); \
-            if [ ! -z "$nslookup" ]; then \
+            if [ -n "$nslookup" ]; then \
                 host=$(echo "$nslookup" | tail -n 1 | awk '{print $2}'); \
             fi; \
         fi; \
