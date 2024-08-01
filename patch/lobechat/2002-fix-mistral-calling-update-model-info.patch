@@ -1,0 +1,227 @@
+diff --git a/src/components/ModelIcon/index.tsx b/src/components/ModelIcon/index.tsx
+index 5135ee8eda6a..15be9c148d91 100644
+--- a/src/components/ModelIcon/index.tsx
++++ b/src/components/ModelIcon/index.tsx
+@@ -62,7 +62,7 @@ const ModelIcon = memo<ModelProviderIconProps>(({ model: originModel, size = 12
+   if (model.includes('moonshot')) return <Moonshot.Avatar size={size} />;
+   if (model.includes('qwen')) return <Tongyi.Avatar background={Tongyi.colorPrimary} size={size} />;
+   if (model.includes('minmax') || model.includes('abab')) return <Minimax.Avatar size={size} />;
+-  if (model.includes('mistral') || model.includes('mixtral')) return <Mistral.Avatar size={size} />;
++  if (model.includes('mistral') || model.includes('mixtral') || model.includes('codestral')) return <Mistral.Avatar size={size} />;
+   if (model.includes('pplx') || model.includes('sonar')) return <Perplexity.Avatar size={size} />;
+   if (model.includes('yi-')) return <Yi.Avatar size={size} />;
+   if (model.startsWith('openrouter')) return <OpenRouter.Avatar size={size} />; // only for Cinematika and Auto
+diff --git a/src/components/ModelTag/ModelIcon.tsx b/src/components/ModelTag/ModelIcon.tsx
+index c5d01fcd432a..a57a157ed01d 100644
+--- a/src/components/ModelTag/ModelIcon.tsx
++++ b/src/components/ModelTag/ModelIcon.tsx
+@@ -58,7 +58,7 @@ const ModelIcon = memo<ModelIconProps>(({ model, size = 12 }) => {
+   if (model.includes('qwen')) return <Tongyi size={size} />;
+   if (model.includes('minmax')) return <Minimax size={size} />;
+   if (model.includes('abab')) return <Minimax size={size} />;
+-  if (model.includes('mistral') || model.includes('mixtral')) return <Mistral size={size} />;
++  if (model.includes('mistral') || model.includes('mixtral') || model.includes('codestral')) return <Mistral size={size} />;
+   if (model.includes('pplx') || model.includes('sonar')) return <Perplexity size={size} />;
+   if (model.includes('yi-')) return <Yi size={size} />;
+   if (model.startsWith('openrouter')) return <OpenRouter size={size} />; // only for Cinematika and Auto
+diff --git a/src/config/modelProviders/mistral.ts b/src/config/modelProviders/mistral.ts
+index 24a45f380fda..883a758584c2 100644
+--- a/src/config/modelProviders/mistral.ts
++++ b/src/config/modelProviders/mistral.ts
+@@ -1,6 +1,7 @@
+ import { ModelProviderCard } from '@/types/llm';
+ 
+ // ref https://docs.mistral.ai/getting-started/models/
++// ref https://docs.mistral.ai/capabilities/function_calling/
+ const Mistral: ModelProviderCard = {
+   chatModels: [
+     {
+@@ -24,22 +25,43 @@ const Mistral: ModelProviderCard = {
+     },
+     {
+       displayName: 'Mistral Small',
+-      enabled: true,
++      enabled: false,
++      functionCall: true,
+       id: 'mistral-small-latest',
+       tokens: 32_768,
+     },
+     {
+       displayName: 'Mistral Medium',
+-      enabled: true,
++      enabled: false,
+       id: 'mistral-medium-latest',
+       tokens: 32_768,
+     },
++    {
++      displayName: 'Mistral Nemo',
++      enabled: true,
++      functionCall: true,
++      id: 'open-mistral-nemo',
++      tokens: 128_000,
++    },
+     {
+       displayName: 'Mistral Large',
+       enabled: true,
++      functionCall: true,
+       id: 'mistral-large-latest',
++      tokens: 128_000,
++    },
++    {
++      displayName: 'Codestral',
++      enabled: true,
++      id: 'codestral-latest',
+       tokens: 32_768,
+     },
++    {
++      displayName: 'Codestral Mamba',
++      enabled: true,
++      id: 'open-codestral-mamba',
++      tokens: 256_000,
++    },
+   ],
+   checkModel: 'open-mistral-7b',
+   id: 'mistral',
+diff --git a/src/libs/agent-runtime/mistral/index.ts b/src/libs/agent-runtime/mistral/index.ts
+index 1fcdbaeb23a9..6299c91dfba6 100644
+--- a/src/libs/agent-runtime/mistral/index.ts
++++ b/src/libs/agent-runtime/mistral/index.ts
+@@ -5,14 +5,15 @@ export const LobeMistralAI = LobeOpenAICompatibleFactory({
+   baseURL: 'https://api.mistral.ai/v1',
+   chatCompletion: {
+     handlePayload: (payload) => ({
+-      max_tokens: payload.max_tokens,
++      ...payload.max_tokens !== undefined && { max_tokens: payload.max_tokens },
+       messages: payload.messages as any,
+       model: payload.model,
+       stream: true,
+       temperature: payload.temperature,
+-      tools: payload.tools,
++      ...payload.tools && { tools: payload.tools },
+       top_p: payload.top_p,
+     }),
++    noUserId: true,
+   },
+   debug: {
+     chatCompletion: () => process.env.DEBUG_MISTRAL_CHAT_COMPLETION === '1',
+diff --git a/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.test.ts b/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.test.ts
+index 594f7eac59a0..2affa79147da 100644
+--- a/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.test.ts
++++ b/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.test.ts
+@@ -417,6 +417,92 @@ describe('LobeOpenAICompatibleFactory', () => {
+       });
+     });
+ 
++    describe('noUserId option', () => {
++      it('should not add user to payload when noUserId is true', async () => {
++        const LobeMockProvider = LobeOpenAICompatibleFactory({
++          baseURL: 'https://api.mistral.ai/v1',
++          chatCompletion: {
++            noUserId: true,
++          },
++          provider: ModelProvider.Mistral,
++        });
++    
++        const instance = new LobeMockProvider({ apiKey: 'test' });
++        const mockCreateMethod = vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(new ReadableStream() as any);
++    
++        await instance.chat(
++          {
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'open-mistral-7b',
++            temperature: 0,
++          },
++          { user: 'testUser' }
++        );
++    
++        expect(mockCreateMethod).toHaveBeenCalledWith(
++          expect.not.objectContaining({
++            user: 'testUser',
++          }),
++          expect.anything()
++        );
++      });
++    
++      it('should add user to payload when noUserId is false', async () => {
++        const LobeMockProvider = LobeOpenAICompatibleFactory({
++          baseURL: 'https://api.mistral.ai/v1',
++          chatCompletion: {
++            noUserId: false,
++          },
++          provider: ModelProvider.Mistral,
++        });
++    
++        const instance = new LobeMockProvider({ apiKey: 'test' });
++        const mockCreateMethod = vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(new ReadableStream() as any);
++    
++        await instance.chat(
++          {
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'open-mistral-7b',
++            temperature: 0,
++          },
++          { user: 'testUser' }
++        );
++    
++        expect(mockCreateMethod).toHaveBeenCalledWith(
++          expect.objectContaining({
++            user: 'testUser',
++          }),
++          expect.anything()
++        );
++      });
++    
++      it('should add user to payload when noUserId is not set in chatCompletion', async () => {
++        const LobeMockProvider = LobeOpenAICompatibleFactory({
++          baseURL: 'https://api.mistral.ai/v1',
++          provider: ModelProvider.Mistral,
++        });
++    
++        const instance = new LobeMockProvider({ apiKey: 'test' });
++        const mockCreateMethod = vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(new ReadableStream() as any);
++    
++        await instance.chat(
++          {
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'open-mistral-7b',
++            temperature: 0,
++          },
++          { user: 'testUser' }
++        );
++    
++        expect(mockCreateMethod).toHaveBeenCalledWith(
++          expect.objectContaining({
++            user: 'testUser',
++          }),
++          expect.anything()
++        );
++      });
++    });
++
+     describe('cancel request', () => {
+       it('should cancel ongoing request correctly', async () => {
+         const controller = new AbortController();
+diff --git a/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.ts b/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.ts
+index 429ef34ac006..41c0bcdc24dd 100644
+--- a/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.ts
++++ b/src/libs/agent-runtime/utils/openaiCompatibleFactory/index.ts
+@@ -40,6 +40,7 @@ interface OpenAICompatibleFactoryOptions<T extends Record<string, any> = any> {
+       payload: ChatStreamPayload,
+       options: ConstructorOptions<T>,
+     ) => OpenAI.ChatCompletionCreateParamsStreaming;
++    noUserId?: boolean;
+   };
+   constructorOptions?: ConstructorOptions<T>;
+   debug?: {
+@@ -151,7 +152,10 @@ export const LobeOpenAICompatibleFactory = <T extends Record<string, any> = any>
+             } as OpenAI.ChatCompletionCreateParamsStreaming);
+ 
+         const response = await this.client.chat.completions.create(
+-          { ...postPayload, user: options?.user },
++          {
++            ...postPayload,
++            ...(chatCompletion?.noUserId ? {} : { user: options?.user }) 
++          },
+           {
+             // https://github.com/lobehub/lobe-chat/pull/318
+             headers: { Accept: '*/*' },
