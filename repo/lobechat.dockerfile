@@ -1,4 +1,4 @@
-# Current Version: 1.5.1
+# Current Version: 1.5.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -84,6 +84,7 @@ CMD \
             "$protocol $host $port" \
         > "/etc/proxychains/proxychains.conf"; \
     fi; \
+    # Run WebRTC Signaling Server
     node "/opt/lobechat/webrtc.js" & \
     # Run the server
     ${PROXYCHAINS} node "/opt/lobechat/server.js";
