@@ -1,0 +1,703 @@
+diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
+index 30aa944167b1..2a963e8b27bc 100644
+--- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
++++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
+@@ -5,6 +5,7 @@ import {
+   Baichuan,
+   Claude,
+   DeepSeek,
++  Fireworks,
+   Gemini,
+   Google,
+   Groq,
+@@ -31,6 +32,7 @@ import {
+   AnthropicProviderCard,
+   BaichuanProviderCard,
+   DeepSeekProviderCard,
++  FireworksAIProviderCard,
+   GoogleProviderCard,
+   GroqProviderCard,
+   MinimaxProviderCard,
+@@ -138,6 +140,11 @@ export const useProviderList = (): ProviderItem[] => {
+         docUrl: urlJoin(BASE_DOC_URL, 'togetherai'),
+         title: <Together.Combine size={26} type={'color'} />,
+       },
++      {
++        ...FireworksAIProviderCard,
++        docUrl: urlJoin(BASE_DOC_URL, 'fireworksai'),
++        title: <Fireworks.Combine iconProps={{ color: Fireworks.colorPrimary }} size={26} />,
++      },
+       {
+         ...QwenProviderCard,
+         docUrl: urlJoin(BASE_DOC_URL, 'qwen'),
+diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
+index e5ff047ef3fc..da6a6f964ce2 100644
+--- a/src/app/api/chat/agentRuntime.ts
++++ b/src/app/api/chat/agentRuntime.ts
+@@ -151,6 +151,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+ 
+       return { apiKey };
+     }
++    case ModelProvider.FireworksAI: {
++      const { FIREWORKSAI_API_KEY } = getLLMConfig();
++
++      const apiKey = apiKeyManager.pick(payload?.apiKey || FIREWORKSAI_API_KEY);
++
++      return { apiKey };
++    }
+     case ModelProvider.ZeroOne: {
+       const { ZEROONE_API_KEY } = getLLMConfig();
+ 
+diff --git a/src/components/ModelIcon/index.tsx b/src/components/ModelIcon/index.tsx
+index ae6ed3281bdb..4ed13503dde3 100644
+--- a/src/components/ModelIcon/index.tsx
++++ b/src/components/ModelIcon/index.tsx
+@@ -14,6 +14,7 @@ import {
+   Cohere,
+   Dbrx,
+   DeepSeek,
++  Fireworks,
+   FishAudio,
+   Gemini,
+   Gemma,
+@@ -56,6 +57,7 @@ const ModelIcon = memo<ModelProviderIconProps>(({ model: originModel, size = 12
+   if (model.includes('deepseek')) return <DeepSeek.Avatar size={size} />;
+   if (model.includes('claude')) return <Claude.Avatar size={size} />;
+   if (model.includes('titan')) return <Aws.Avatar size={size} />;
++  if (model.includes('accounts/fireworks/models/fire')) return <Fireworks.Avatar size={size} />;
+   if (model.includes('llama')) return <Meta.Avatar size={size} />;
+   if (model.includes('llava')) return <LLaVA.Avatar size={size} />;
+   if (model.includes('gemini')) return <Gemini.Avatar size={size} />;
+diff --git a/src/components/ModelProviderIcon/index.tsx b/src/components/ModelProviderIcon/index.tsx
+index de6270991684..e56620f2e715 100644
+--- a/src/components/ModelProviderIcon/index.tsx
++++ b/src/components/ModelProviderIcon/index.tsx
+@@ -6,6 +6,7 @@ import {
+   Baichuan,
+   Bedrock,
+   DeepSeek,
++  Fireworks,
+   Google,
+   Groq,
+   LobeHub,
+@@ -110,6 +111,10 @@ const ModelProviderIcon = memo<ModelProviderIconProps>(({ provider }) => {
+       return <Together size={20} />;
+     }
+ 
++    case ModelProvider.FireworksAI: {
++      return <Fireworks size={20} />;
++    }
++
+     case ModelProvider.Qwen: {
+       return <Tongyi size={20} />;
+     }
+diff --git a/src/components/ModelTag/ModelIcon.tsx b/src/components/ModelTag/ModelIcon.tsx
+index 94cc55c2a1ee..4be0d820cbe7 100644
+--- a/src/components/ModelTag/ModelIcon.tsx
++++ b/src/components/ModelTag/ModelIcon.tsx
+@@ -14,6 +14,7 @@ import {
+   Cohere,
+   Dbrx,
+   DeepSeek,
++  Fireworks,
+   FishAudio,
+   Gemini,
+   Gemma,
+@@ -55,6 +56,7 @@ const ModelIcon = memo<ModelIconProps>(({ model: originModel, size = 12 }) => {
+   if (model.includes('claude')) return <Claude size={size} />;
+   if (model.includes('deepseek')) return <DeepSeek size={size} />;
+   if (model.includes('titan')) return <Aws size={size} />;
++  if (model.includes('accounts/fireworks/models/fire')) return <Fireworks size={size} />;
+   if (model.includes('llama')) return <Meta size={size} />;
+   if (model.includes('llava')) return <LLaVA size={size} />;
+   if (model.includes('gemini')) return <Gemini size={size} />;
+@@ -97,7 +99,7 @@ const ModelIcon = memo<ModelIconProps>(({ model: originModel, size = 12 }) => {
+   )
+     return <Stability size={size} />;
+ 
+-  if (model.includes('phi3') || model.includes('phi-3') || model.includes('wizardlm')) return <Azure.Avatar size={size} />;
++  if (model.includes('phi3') || model.includes('phi-3') || model.includes('wizardlm')) return <Azure size={size} />;
+   if (model.includes('firefly')) return <AdobeFirefly size={size} />;
+   if (model.includes('jamba') || model.includes('j2-')) return <Ai21 size={size} />;
+ });
+diff --git a/src/config/llm.ts b/src/config/llm.ts
+index b745e7a235bc..3b9c64794990 100644
+--- a/src/config/llm.ts
++++ b/src/config/llm.ts
+@@ -61,6 +61,10 @@ export const getLLMConfig = () => {
+       TOGETHERAI_API_KEY: z.string().optional(),
+       TOGETHERAI_MODEL_LIST: z.string().optional(),
+ 
++      ENABLED_FIREWORKSAI: z.boolean(),
++      FIREWORKSAI_API_KEY: z.string().optional(),
++      FIREWORKSAI_MODEL_LIST: z.string().optional(),
++      
+       ENABLED_AWS_BEDROCK: z.boolean(),
+       AWS_REGION: z.string().optional(),
+       AWS_ACCESS_KEY_ID: z.string().optional(),
+@@ -134,6 +138,10 @@ export const getLLMConfig = () => {
+       TOGETHERAI_API_KEY: process.env.TOGETHERAI_API_KEY,
+       TOGETHERAI_MODEL_LIST: process.env.TOGETHERAI_MODEL_LIST,
+ 
++      ENABLED_FIREWORKSAI: !!process.env.FIREWORKSAI_API_KEY,
++      FIREWORKSAI_API_KEY: process.env.FIREWORKSAI_API_KEY,
++      FIREWORKSAI_MODEL_LIST: process.env.FIREWORKSAI_MODEL_LIST,
++
+       ENABLED_MOONSHOT: !!process.env.MOONSHOT_API_KEY,
+       MOONSHOT_API_KEY: process.env.MOONSHOT_API_KEY,
+       MOONSHOT_PROXY_URL: process.env.MOONSHOT_PROXY_URL,
+diff --git a/src/config/modelProviders/fireworksai.ts b/src/config/modelProviders/fireworksai.ts
+new file mode 100644
+index 000000000000..8f3781173d4a
+--- /dev/null
++++ b/src/config/modelProviders/fireworksai.ts
+@@ -0,0 +1,95 @@
++import { ModelProviderCard } from '@/types/llm';
++
++// ref https://fireworks.ai/models?show=Serverless
++// ref https://fireworks.ai/pricing
++const FireworksAI: ModelProviderCard = {
++  chatModels: [
++    {
++      description: 'Fireworks latest and most performant function-calling model. Firefunction-v2 is based on Llama-3 and trained to excel at function-calling as well as chat and instruction-following. See blog post for more details https://fireworks.ai/blog/firefunction-v2-launch-post',
++      displayName: 'Firefunction V2',
++      enabled: true,
++      functionCall: true,
++      id: 'accounts/fireworks/models/firefunction-v2',
++      tokens: 8192,
++    },
++    {
++      description: 'Vision-language model allowing both image and text as inputs (single image is recommended), trained on OSS model generated training data and open sourced on huggingface at fireworks-ai/FireLLaVA-13b',
++      displayName: 'FireLLaVA-13B',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/firellava-13b',
++      tokens: 4096,
++      vision: true,
++    },
++    {
++      displayName: 'Llama3.1 8B Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/llama-v3p1-8b-instruct',
++      tokens: 131_072,
++    },
++    {
++      displayName: 'Llama3.1 70B Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/llama-v3p1-70b-instruct',
++      tokens: 131_072,
++    },
++    {
++      displayName: 'Llama3.1 405B Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/llama-v3p1-405b-instruct',
++      tokens: 131_072,
++    },
++    {
++      displayName: 'Gemma 2 9B Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/gemma2-9b-it',
++      tokens: 8192,
++    },
++    {
++      displayName: 'Mixtral MoE 8x7B Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/mixtral-8x7b-instruct',
++      tokens: 32_768,
++    },
++    {
++      displayName: 'Mixtral MoE 8x22B Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/mixtral-8x22b-instruct',
++      tokens: 65_536,
++    },
++    {
++      displayName: 'Phi 3 Vision 128K Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/phi-3-vision-128k-instruct',
++      tokens: 131_072,
++      vision: true,
++    },
++    {
++      displayName: 'DeepSeek Coder V2 Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/deepseek-coder-v2-instruct',
++      tokens: 131_072,
++    },
++    {
++      displayName: 'Qwen2 72b Instruct',
++      enabled: true,
++      functionCall: false,
++      id: 'accounts/fireworks/models/qwen2-72b-instruct',
++      tokens: 32_768,
++    },
++  ],
++  checkModel: 'accounts/fireworks/models/firefunction-v2',
++  id: 'fireworksai',
++  modelList: { showModelFetcher: true },
++  name: 'Fireworks AI',
++};
++
++export default FireworksAI;
+diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
+index db5ae1446e8b..0b67305334cb 100644
+--- a/src/config/modelProviders/index.ts
++++ b/src/config/modelProviders/index.ts
+@@ -6,6 +6,7 @@ import AzureProvider from './azure';
+ import BaichuanProvider from './baichuan';
+ import BedrockProvider from './bedrock';
+ import DeepSeekProvider from './deepseek';
++import FireworksAIProvider from './fireworksai';
+ import GoogleProvider from './google';
+ import GroqProvider from './groq';
+ import MinimaxProvider from './minimax';
+@@ -37,6 +38,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
+   OllamaProvider.chatModels,
+   OpenRouterProvider.chatModels,
+   TogetherAIProvider.chatModels,
++  FireworksAIProvider.chatModels,
+   PerplexityProvider.chatModels,
+   AnthropicProvider.chatModels,
+   ZeroOneProvider.chatModels,
+@@ -57,6 +59,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
+   GoogleProvider,
+   OpenRouterProvider,
+   TogetherAIProvider,
++  FireworksAIProvider,
+   BedrockProvider,
+   PerplexityProvider,
+   MinimaxProvider,
+@@ -87,6 +90,7 @@ export { default as AzureProviderCard } from './azure';
+ export { default as BaichuanProviderCard } from './baichuan';
+ export { default as BedrockProviderCard } from './bedrock';
+ export { default as DeepSeekProviderCard } from './deepseek';
++export { default as FireworksAIProviderCard } from './fireworksai';
+ export { default as GoogleProviderCard } from './google';
+ export { default as GroqProviderCard } from './groq';
+ export { default as MinimaxProviderCard } from './minimax';
+diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
+index 1cd98e069ae8..ed57fef116ee 100644
+--- a/src/const/settings/llm.ts
++++ b/src/const/settings/llm.ts
+@@ -4,6 +4,7 @@ import {
+   BaichuanProviderCard,
+   BedrockProviderCard,
+   DeepSeekProviderCard,
++  FireworksAIProviderCard,
+   GoogleProviderCard,
+   GroqProviderCard,
+   MinimaxProviderCard,
+@@ -49,6 +50,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
+     enabled: false,
+     enabledModels: filterEnabledModels(DeepSeekProviderCard),
+   },
++  fireworksai: {
++    enabled: false,
++    enabledModels: filterEnabledModels(FireworksAIProviderCard),
++  },
+   google: {
+     enabled: false,
+     enabledModels: filterEnabledModels(GoogleProviderCard),
+diff --git a/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx b/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
+index 35dfda03f61c..1c2ec81d89a0 100644
+--- a/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
++++ b/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
+@@ -4,6 +4,7 @@ import {
+   Anthropic,
+   Baichuan,
+   DeepSeek,
++  Fireworks,
+   Google,
+   Groq,
+   Minimax,
+@@ -92,6 +93,10 @@ const ProviderAvatar = memo<ProviderAvatarProps>(({ provider }) => {
+       return <Together color={Together.colorPrimary} size={56} />;
+     }
+ 
++    case ModelProvider.FireworksAI: {
++      return <Fireworks color={Fireworks.colorPrimary} size={56} />;
++    }
++
+     case ModelProvider.ZeroOne: {
+       return <ZeroOne color={ZeroOne.colorPrimary} size={56} />;
+     }
+diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
+index fdb28eb25b3f..f657594124b2 100644
+--- a/src/libs/agent-runtime/AgentRuntime.ts
++++ b/src/libs/agent-runtime/AgentRuntime.ts
+@@ -9,6 +9,7 @@ import { LobeAzureOpenAI } from './azureOpenai';
+ import { LobeBaichuanAI } from './baichuan';
+ import { LobeBedrockAI, LobeBedrockAIParams } from './bedrock';
+ import { LobeDeepSeekAI } from './deepseek';
++import { LobeFireworksAI } from './fireworksai';
+ import { LobeGoogleAI } from './google';
+ import { LobeGroq } from './groq';
+ import { LobeMinimaxAI } from './minimax';
+@@ -111,6 +112,7 @@ class AgentRuntime {
+       baichuan: Partial<ClientOptions>;
+       bedrock: Partial<LobeBedrockAIParams>;
+       deepseek: Partial<ClientOptions>;
++      fireworksai: Partial<ClientOptions>;
+       google: { apiKey?: string; baseURL?: string };
+       groq: Partial<ClientOptions>;
+       minimax: Partial<ClientOptions>;
+@@ -213,6 +215,11 @@ class AgentRuntime {
+         break;
+       }
+ 
++      case ModelProvider.FireworksAI: {
++        runtimeModel = new LobeFireworksAI(params.fireworksai);
++        break
++      }
++
+       case ModelProvider.ZeroOne: {
+         runtimeModel = new LobeZeroOneAI(params.zeroone);
+         break;
+diff --git a/src/libs/agent-runtime/fireworksai/index.test.ts b/src/libs/agent-runtime/fireworksai/index.test.ts
+new file mode 100644
+index 000000000000..16c4c4e64065
+--- /dev/null
++++ b/src/libs/agent-runtime/fireworksai/index.test.ts
+@@ -0,0 +1,255 @@
++// @vitest-environment node
++import OpenAI from 'openai';
++import { Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++import {
++  ChatStreamCallbacks,
++  LobeOpenAICompatibleRuntime,
++  ModelProvider,
++} from '@/libs/agent-runtime';
++
++import * as debugStreamModule from '../utils/debugStream';
++import { LobeFireworksAI } from './index';
++
++const provider = ModelProvider.FireworksAI;
++const defaultBaseURL = 'https://api.fireworks.ai/inference/v1';
++
++const bizErrorType = 'ProviderBizError';
++const invalidErrorType = 'InvalidProviderAPIKey';
++
++// Mock the console.error to avoid polluting test output
++vi.spyOn(console, 'error').mockImplementation(() => {});
++
++let instance: LobeOpenAICompatibleRuntime;
++
++beforeEach(() => {
++  instance = new LobeFireworksAI({ apiKey: 'test' });
++
++  // 使用 vi.spyOn 来模拟 chat.completions.create 方法
++  vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
++    new ReadableStream() as any,
++  );
++});
++
++afterEach(() => {
++  vi.clearAllMocks();
++});
++
++describe('LobeFireworksAI', () => {
++  describe('init', () => {
++    it('should correctly initialize with an API key', async () => {
++      const instance = new LobeFireworksAI({ apiKey: 'test_api_key' });
++      expect(instance).toBeInstanceOf(LobeFireworksAI);
++      expect(instance.baseURL).toEqual(defaultBaseURL);
++    });
++  });
++
++  describe('chat', () => {
++    describe('Error', () => {
++      it('should return OpenAIBizError with an openai error response when OpenAI.APIError is thrown', async () => {
++        // Arrange
++        const apiError = new OpenAI.APIError(
++          400,
++          {
++            status: 400,
++            error: {
++              message: 'Bad Request',
++            },
++          },
++          'Error message',
++          {},
++        );
++
++        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++
++        // Act
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'accounts/fireworks/models/firefunction-v2',
++            temperature: 0,
++          });
++        } catch (e) {
++          expect(e).toEqual({
++            endpoint: defaultBaseURL,
++            error: {
++              error: { message: 'Bad Request' },
++              status: 400,
++            },
++            errorType: bizErrorType,
++            provider,
++          });
++        }
++      });
++
++      it('should throw AgentRuntimeError with NoOpenAIAPIKey if no apiKey is provided', async () => {
++        try {
++          new LobeFireworksAI({});
++        } catch (e) {
++          expect(e).toEqual({ errorType: invalidErrorType });
++        }
++      });
++
++      it('should return OpenAIBizError with the cause when OpenAI.APIError is thrown with cause', async () => {
++        // Arrange
++        const errorInfo = {
++          stack: 'abc',
++          cause: {
++            message: 'api is undefined',
++          },
++        };
++        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
++
++        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++
++        // Act
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'accounts/fireworks/models/firefunction-v2',
++            temperature: 0,
++          });
++        } catch (e) {
++          expect(e).toEqual({
++            endpoint: defaultBaseURL,
++            error: {
++              cause: { message: 'api is undefined' },
++              stack: 'abc',
++            },
++            errorType: bizErrorType,
++            provider,
++          });
++        }
++      });
++
++      it('should return OpenAIBizError with an cause response with desensitize Url', async () => {
++        // Arrange
++        const errorInfo = {
++          stack: 'abc',
++          cause: { message: 'api is undefined' },
++        };
++        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
++
++        instance = new LobeFireworksAI({
++          apiKey: 'test',
++
++          baseURL: 'https://api.abc.com/v1',
++        });
++
++        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++
++        // Act
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'accounts/fireworks/models/firefunction-v2',
++            temperature: 0,
++          });
++        } catch (e) {
++          expect(e).toEqual({
++            endpoint: 'https://api.***.com/v1',
++            error: {
++              cause: { message: 'api is undefined' },
++              stack: 'abc',
++            },
++            errorType: bizErrorType,
++            provider,
++          });
++        }
++      });
++
++      it('should throw an InvalidFireworksAIAPIKey error type on 401 status code', async () => {
++        // Mock the API call to simulate a 401 error
++        const error = new Error('Unauthorized') as any;
++        error.status = 401;
++        vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(error);
++
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'accounts/fireworks/models/firefunction-v2',
++            temperature: 0,
++          });
++        } catch (e) {
++          // Expect the chat method to throw an error with InvalidFireworksAIAPIKey
++          expect(e).toEqual({
++            endpoint: defaultBaseURL,
++            error: new Error('Unauthorized'),
++            errorType: invalidErrorType,
++            provider,
++          });
++        }
++      });
++
++      it('should return AgentRuntimeError for non-OpenAI errors', async () => {
++        // Arrange
++        const genericError = new Error('Generic Error');
++
++        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(genericError);
++
++        // Act
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'accounts/fireworks/models/firefunction-v2',
++            temperature: 0,
++          });
++        } catch (e) {
++          expect(e).toEqual({
++            endpoint: defaultBaseURL,
++            errorType: 'AgentRuntimeError',
++            provider,
++            error: {
++              name: genericError.name,
++              cause: genericError.cause,
++              message: genericError.message,
++              stack: genericError.stack,
++            },
++          });
++        }
++      });
++    });
++
++    describe('DEBUG', () => {
++      it('should call debugStream and return StreamingTextResponse when DEBUG_FIREWORKSAI_CHAT_COMPLETION is 1', async () => {
++        // Arrange
++        const mockProdStream = new ReadableStream() as any; // 模拟的 prod 流
++        const mockDebugStream = new ReadableStream({
++          start(controller) {
++            controller.enqueue('Debug stream content');
++            controller.close();
++          },
++        }) as any;
++        mockDebugStream.toReadableStream = () => mockDebugStream; // 添加 toReadableStream 方法
++
++        // 模拟 chat.completions.create 返回值，包括模拟的 tee 方法
++        (instance['client'].chat.completions.create as Mock).mockResolvedValue({
++          tee: () => [mockProdStream, { toReadableStream: () => mockDebugStream }],
++        });
++
++        // 保存原始环境变量值
++        const originalDebugValue = process.env.DEBUG_FIREWORKSAI_CHAT_COMPLETION;
++
++        // 模拟环境变量
++        process.env.DEBUG_FIREWORKSAI_CHAT_COMPLETION = '1';
++        vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
++
++        // 执行测试
++        // 运行你的测试函数，确保它会在条件满足时调用 debugStream
++        // 假设的测试函数调用，你可能需要根据实际情况调整
++        await instance.chat({
++          messages: [{ content: 'Hello', role: 'user' }],
++          model: 'accounts/fireworks/models/firefunction-v2',
++          stream: true,
++          temperature: 0,
++        });
++
++        // 验证 debugStream 被调用
++        expect(debugStreamModule.debugStream).toHaveBeenCalled();
++
++        // 恢复原始环境变量值
++        process.env.DEBUG_FIREWORKSAI_CHAT_COMPLETION = originalDebugValue;
++      });
++    });
++  });
++});
+diff --git a/src/libs/agent-runtime/fireworksai/index.ts b/src/libs/agent-runtime/fireworksai/index.ts
+new file mode 100644
+index 000000000000..3f3fe872d8fb
+--- /dev/null
++++ b/src/libs/agent-runtime/fireworksai/index.ts
+@@ -0,0 +1,10 @@
++import { ModelProvider } from '../types';
++import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
++
++export const LobeFireworksAI = LobeOpenAICompatibleFactory({
++  baseURL: 'https://api.fireworks.ai/inference/v1',
++  debug: {
++    chatCompletion: () => process.env.DEBUG_FIREWORKSAI_CHAT_COMPLETION === '1',
++  },
++  provider: ModelProvider.FireworksAI,
++});
+diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
+index b2ebbc83e82f..eb619ad181a8 100644
+--- a/src/libs/agent-runtime/types/type.ts
++++ b/src/libs/agent-runtime/types/type.ts
+@@ -28,6 +28,7 @@ export enum ModelProvider {
+   Baichuan = 'baichuan',
+   Bedrock = 'bedrock',
+   DeepSeek = 'deepseek',
++  FireworksAI = 'fireworksai',
+   Google = 'google',
+   Groq = 'groq',
+   Minimax = 'minimax',
+diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
+index a12fa0d94f03..46caf5a50c6f 100644
+--- a/src/server/globalConfig/index.ts
++++ b/src/server/globalConfig/index.ts
+@@ -7,6 +7,7 @@ import {
+   OpenAIProviderCard,
+   OpenRouterProviderCard,
+   TogetherAIProviderCard,
++  FireworksAIProviderCard,
+ } from '@/config/modelProviders';
+ import { enableNextAuth } from '@/const/auth';
+ import { parseSystemAgent } from '@/server/globalConfig/parseSystemAgent';
+@@ -52,6 +53,9 @@ export const getServerGlobalConfig = () => {
+     ENABLED_ZEROONE,
+     ENABLED_TOGETHERAI,
+     TOGETHERAI_MODEL_LIST,
++
++    ENABLED_FIREWORKSAI,
++    FIREWORKSAI_MODEL_LIST,
+   } = getLLMConfig();
+ 
+   const config: GlobalServerConfig = {
+@@ -78,6 +82,16 @@ export const getServerGlobalConfig = () => {
+       baichuan: { enabled: ENABLED_BAICHUAN },
+       bedrock: { enabled: ENABLED_AWS_BEDROCK },
+       deepseek: { enabled: ENABLED_DEEPSEEK },
++
++      fireworksai: {
++        enabled: ENABLED_FIREWORKSAI,
++        enabledModels: extractEnabledModels(FIREWORKSAI_MODEL_LIST),
++        serverModelCards: transformToChatModelCards({
++          defaultChatModels: FireworksAIProviderCard.chatModels,
++          modelString: FIREWORKSAI_MODEL_LIST,
++        }),
++      },
++
+       google: { enabled: ENABLED_GOOGLE },
+       groq: { enabled: ENABLED_GROQ },
+       minimax: { enabled: ENABLED_MINIMAX },
+diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
+index 46fc0db51254..9f91fde3229a 100644
+--- a/src/types/user/settings/keyVaults.ts
++++ b/src/types/user/settings/keyVaults.ts
+@@ -22,6 +22,7 @@ export interface UserKeyVaults {
+   baichuan?: OpenAICompatibleKeyVault;
+   bedrock?: AWSBedrockKeyVault;
+   deepseek?: OpenAICompatibleKeyVault;
++  fireworksai?: OpenAICompatibleKeyVault;
+   google?: OpenAICompatibleKeyVault;
+   groq?: OpenAICompatibleKeyVault;
+   lobehub?: any;
