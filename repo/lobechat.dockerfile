@@ -1,4 +1,4 @@
-# Current Version: 1.5.2
+# Current Version: 1.5.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -32,7 +32,7 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/webrt
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && apk update \
-    && apk add --no-cache proxychains-ng \
+    && apk add --no-cache bind-tools proxychains-ng \
     && apk upgrade --no-cache \
     && rm -rf /tmp/* /var/cache/apk/*
 
