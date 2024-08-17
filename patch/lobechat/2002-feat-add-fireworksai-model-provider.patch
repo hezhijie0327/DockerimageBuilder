@@ -1,18 +1,5 @@
-diff --git a/Dockerfile b/Dockerfile
-index 9e4de8373165..b7dc546b829b 100644
---- a/Dockerfile
-+++ b/Dockerfile
-@@ -116,6 +116,8 @@ ENV \
-     BAICHUAN_API_KEY="" \
-     # DeepSeek
-     DEEPSEEK_API_KEY="" \
-+    # Fireworks AI
-+    FIREWORKSAI_API_KEY="" FIREWORKSAI_MODEL_LIST="" \
-     # Google
-     GOOGLE_API_KEY="" GOOGLE_PROXY_URL="" \
-     # Groq
 diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-index 30aa944167b1..2a963e8b27bc 100644
+index 6a0711780db2..4b6e702f2dbb 100644
 --- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
 +++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
 @@ -5,6 +5,7 @@ import {
@@ -23,7 +10,7 @@ index 30aa944167b1..2a963e8b27bc 100644
    Gemini,
    Google,
    Groq,
-@@ -31,6 +32,7 @@ import {
+@@ -32,6 +33,7 @@ import {
    AnthropicProviderCard,
    BaichuanProviderCard,
    DeepSeekProviderCard,
@@ -31,7 +18,7 @@ index 30aa944167b1..2a963e8b27bc 100644
    GoogleProviderCard,
    GroqProviderCard,
    MinimaxProviderCard,
-@@ -138,6 +140,11 @@ export const useProviderList = (): ProviderItem[] => {
+@@ -140,6 +142,11 @@ export const useProviderList = (): ProviderItem[] => {
          docUrl: urlJoin(BASE_DOC_URL, 'togetherai'),
          title: <Together.Combine size={26} type={'color'} />,
        },
@@ -44,25 +31,26 @@ index 30aa944167b1..2a963e8b27bc 100644
          ...QwenProviderCard,
          docUrl: urlJoin(BASE_DOC_URL, 'qwen'),
 diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
-index e5ff047ef3fc..da6a6f964ce2 100644
+index 71fc5ec23d84..58011ce00195 100644
 --- a/src/app/api/chat/agentRuntime.ts
 +++ b/src/app/api/chat/agentRuntime.ts
-@@ -151,6 +151,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -151,6 +151,14 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
  
        return { apiKey };
      }
 +    case ModelProvider.FireworksAI: {
-+      const { FIREWORKSAI_API_KEY } = getLLMConfig();
++      const { FIREWORKSAI_API_KEY, FIREWORKSAI_PROXY_URL } = getLLMConfig();
 +
 +      const apiKey = apiKeyManager.pick(payload?.apiKey || FIREWORKSAI_API_KEY);
++      const baseURL = payload?.endpoint || FIREWORKSAI_PROXY_URL;
 +
-+      return { apiKey };
++      return { apiKey, baseURL };
 +    }
      case ModelProvider.ZeroOne: {
        const { ZEROONE_API_KEY } = getLLMConfig();
  
 diff --git a/src/components/ModelIcon/index.tsx b/src/components/ModelIcon/index.tsx
-index ae6ed3281bdb..4ed13503dde3 100644
+index 21fbdd92761d..4371cb3920c0 100644
 --- a/src/components/ModelIcon/index.tsx
 +++ b/src/components/ModelIcon/index.tsx
 @@ -14,6 +14,7 @@ import {
@@ -82,7 +70,7 @@ index ae6ed3281bdb..4ed13503dde3 100644
    if (model.includes('llava')) return <LLaVA.Avatar size={size} />;
    if (model.includes('gemini')) return <Gemini.Avatar size={size} />;
 diff --git a/src/components/ModelProviderIcon/index.tsx b/src/components/ModelProviderIcon/index.tsx
-index de6270991684..e56620f2e715 100644
+index df480060f55e..6684d690431a 100644
 --- a/src/components/ModelProviderIcon/index.tsx
 +++ b/src/components/ModelProviderIcon/index.tsx
 @@ -6,6 +6,7 @@ import {
@@ -93,7 +81,7 @@ index de6270991684..e56620f2e715 100644
    Google,
    Groq,
    LobeHub,
-@@ -110,6 +111,10 @@ const ModelProviderIcon = memo<ModelProviderIconProps>(({ provider }) => {
+@@ -111,6 +112,10 @@ const ModelProviderIcon = memo<ModelProviderIconProps>(({ provider }) => {
        return <Together size={20} />;
      }
  
@@ -125,37 +113,39 @@ index 7e7b58ba837c..4be0d820cbe7 100644
    if (model.includes('llava')) return <LLaVA size={size} />;
    if (model.includes('gemini')) return <Gemini size={size} />;
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index b745e7a235bc..3b9c64794990 100644
+index 0fd194624290..9797487e99e5 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
-@@ -61,6 +61,10 @@ export const getLLMConfig = () => {
+@@ -61,6 +61,11 @@ export const getLLMConfig = () => {
        TOGETHERAI_API_KEY: z.string().optional(),
        TOGETHERAI_MODEL_LIST: z.string().optional(),
  
 +      ENABLED_FIREWORKSAI: z.boolean(),
 +      FIREWORKSAI_API_KEY: z.string().optional(),
 +      FIREWORKSAI_MODEL_LIST: z.string().optional(),
++      FIREWORKSAI_PROXY_URL: z.string().optional(),
 +      
        ENABLED_AWS_BEDROCK: z.boolean(),
        AWS_REGION: z.string().optional(),
        AWS_ACCESS_KEY_ID: z.string().optional(),
-@@ -134,6 +138,10 @@ export const getLLMConfig = () => {
+@@ -137,6 +142,11 @@ export const getLLMConfig = () => {
        TOGETHERAI_API_KEY: process.env.TOGETHERAI_API_KEY,
        TOGETHERAI_MODEL_LIST: process.env.TOGETHERAI_MODEL_LIST,
  
 +      ENABLED_FIREWORKSAI: !!process.env.FIREWORKSAI_API_KEY,
 +      FIREWORKSAI_API_KEY: process.env.FIREWORKSAI_API_KEY,
 +      FIREWORKSAI_MODEL_LIST: process.env.FIREWORKSAI_MODEL_LIST,
++      FIREWORKSAI_PROXY_URL: process.env.FIREWORKSAI_PROXY_URL,
 +
        ENABLED_MOONSHOT: !!process.env.MOONSHOT_API_KEY,
        MOONSHOT_API_KEY: process.env.MOONSHOT_API_KEY,
        MOONSHOT_PROXY_URL: process.env.MOONSHOT_PROXY_URL,
 diff --git a/src/config/modelProviders/fireworksai.ts b/src/config/modelProviders/fireworksai.ts
 new file mode 100644
-index 000000000000..8f3781173d4a
+index 000000000000..9c81e8d34ab0
 --- /dev/null
 +++ b/src/config/modelProviders/fireworksai.ts
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,98 @@
 +import { ModelProviderCard } from '@/types/llm';
 +
 +// ref https://fireworks.ai/models?show=Serverless
@@ -248,11 +238,14 @@ index 000000000000..8f3781173d4a
 +  id: 'fireworksai',
 +  modelList: { showModelFetcher: true },
 +  name: 'Fireworks AI',
++  proxyUrl: {
++    placeholder: 'https://api.fireworks.ai/inference/v1',
++  },
 +};
 +
 +export default FireworksAI;
 diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
-index db5ae1446e8b..0b67305334cb 100644
+index d5d54f79bf8d..9ff09cc01bf7 100644
 --- a/src/config/modelProviders/index.ts
 +++ b/src/config/modelProviders/index.ts
 @@ -6,6 +6,7 @@ import AzureProvider from './azure';
@@ -263,7 +256,7 @@ index db5ae1446e8b..0b67305334cb 100644
  import GoogleProvider from './google';
  import GroqProvider from './groq';
  import MinimaxProvider from './minimax';
-@@ -37,6 +38,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
+@@ -38,6 +39,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
    OllamaProvider.chatModels,
    OpenRouterProvider.chatModels,
    TogetherAIProvider.chatModels,
@@ -271,7 +264,7 @@ index db5ae1446e8b..0b67305334cb 100644
    PerplexityProvider.chatModels,
    AnthropicProvider.chatModels,
    ZeroOneProvider.chatModels,
-@@ -57,6 +59,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
+@@ -59,6 +61,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
    GoogleProvider,
    OpenRouterProvider,
    TogetherAIProvider,
@@ -279,7 +272,7 @@ index db5ae1446e8b..0b67305334cb 100644
    BedrockProvider,
    PerplexityProvider,
    MinimaxProvider,
-@@ -87,6 +90,7 @@ export { default as AzureProviderCard } from './azure';
+@@ -90,6 +93,7 @@ export { default as AzureProviderCard } from './azure';
  export { default as BaichuanProviderCard } from './baichuan';
  export { default as BedrockProviderCard } from './bedrock';
  export { default as DeepSeekProviderCard } from './deepseek';
@@ -288,7 +281,7 @@ index db5ae1446e8b..0b67305334cb 100644
  export { default as GroqProviderCard } from './groq';
  export { default as MinimaxProviderCard } from './minimax';
 diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
-index 1cd98e069ae8..ed57fef116ee 100644
+index 4491d9ad0f9c..3fc49c98e9d8 100644
 --- a/src/const/settings/llm.ts
 +++ b/src/const/settings/llm.ts
 @@ -4,6 +4,7 @@ import {
@@ -299,7 +292,7 @@ index 1cd98e069ae8..ed57fef116ee 100644
    GoogleProviderCard,
    GroqProviderCard,
    MinimaxProviderCard,
-@@ -49,6 +50,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
+@@ -50,6 +51,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
      enabled: false,
      enabledModels: filterEnabledModels(DeepSeekProviderCard),
    },
@@ -334,7 +327,7 @@ index 35dfda03f61c..1c2ec81d89a0 100644
        return <ZeroOne color={ZeroOne.colorPrimary} size={56} />;
      }
 diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
-index fdb28eb25b3f..f657594124b2 100644
+index a19319533c7c..0a806fa2862d 100644
 --- a/src/libs/agent-runtime/AgentRuntime.ts
 +++ b/src/libs/agent-runtime/AgentRuntime.ts
 @@ -9,6 +9,7 @@ import { LobeAzureOpenAI } from './azureOpenai';
@@ -345,7 +338,7 @@ index fdb28eb25b3f..f657594124b2 100644
  import { LobeGoogleAI } from './google';
  import { LobeGroq } from './groq';
  import { LobeMinimaxAI } from './minimax';
-@@ -111,6 +112,7 @@ class AgentRuntime {
+@@ -119,6 +120,7 @@ class AgentRuntime {
        baichuan: Partial<ClientOptions>;
        bedrock: Partial<LobeBedrockAIParams>;
        deepseek: Partial<ClientOptions>;
@@ -353,7 +346,7 @@ index fdb28eb25b3f..f657594124b2 100644
        google: { apiKey?: string; baseURL?: string };
        groq: Partial<ClientOptions>;
        minimax: Partial<ClientOptions>;
-@@ -213,6 +215,11 @@ class AgentRuntime {
+@@ -222,6 +224,11 @@ class AgentRuntime {
          break;
        }
  
@@ -651,7 +644,7 @@ index 000000000000..3c86b71d9c5b
 +  provider: ModelProvider.FireworksAI,
 +});
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
-index b2ebbc83e82f..eb619ad181a8 100644
+index f8ecd3232aaf..d69140cd3bce 100644
 --- a/src/libs/agent-runtime/types/type.ts
 +++ b/src/libs/agent-runtime/types/type.ts
 @@ -28,6 +28,7 @@ export enum ModelProvider {
@@ -663,7 +656,7 @@ index b2ebbc83e82f..eb619ad181a8 100644
    Groq = 'groq',
    Minimax = 'minimax',
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index e001538cc229..581d2d6cb2ae 100644
+index af6904dc38c2..c3103774f785 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
 @@ -8,6 +8,7 @@ import {
@@ -674,7 +667,7 @@ index e001538cc229..581d2d6cb2ae 100644
  } from '@/config/modelProviders';
  import { enableNextAuth } from '@/const/auth';
  import { parseSystemAgent } from '@/server/globalConfig/parseSystemAgent';
-@@ -53,6 +54,9 @@ export const getServerGlobalConfig = () => {
+@@ -54,6 +55,9 @@ export const getServerGlobalConfig = () => {
      ENABLED_ZEROONE,
      ENABLED_TOGETHERAI,
      TOGETHERAI_MODEL_LIST,
@@ -684,7 +677,7 @@ index e001538cc229..581d2d6cb2ae 100644
    } = getLLMConfig();
  
    const config: GlobalServerConfig = {
-@@ -79,6 +83,16 @@ export const getServerGlobalConfig = () => {
+@@ -80,6 +84,16 @@ export const getServerGlobalConfig = () => {
        baichuan: { enabled: ENABLED_BAICHUAN },
        bedrock: { enabled: ENABLED_AWS_BEDROCK },
        deepseek: { enabled: ENABLED_DEEPSEEK },
@@ -702,7 +695,7 @@ index e001538cc229..581d2d6cb2ae 100644
        groq: { enabled: ENABLED_GROQ },
        minimax: { enabled: ENABLED_MINIMAX },
 diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
-index 46fc0db51254..9f91fde3229a 100644
+index 080b4ba64a92..d10a5af65e35 100644
 --- a/src/types/user/settings/keyVaults.ts
 +++ b/src/types/user/settings/keyVaults.ts
 @@ -22,6 +22,7 @@ export interface UserKeyVaults {
