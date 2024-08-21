@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.6.6
+# Current Version: 1.6.7
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -15,7 +15,7 @@ export DNSPROXY_VERSION_FIXED=""
 export DOTNET_VERSION_FIXED=""
 export EXPAT_VERSION_FIXED=""
 export FILEBROWSER_VERSION_FIXED=""
-export GOLANG_VERSION_FIXED="1.22.5"
+export GOLANG_VERSION_FIXED="1.22.6"
 export GOST_VERSION_FIXED=""
 export GPERFTOOLS_VERSION_FIXED=""
 export HAPROXY_VERSION_FIXED=""
@@ -31,6 +31,7 @@ export LIBSODIUM_VERSION_FIXED=""
 export LIBUV_VERSION_FIXED=""
 export LOBECHAT_VERSION_FIXED=""
 export LUA_VERSION_FIXED=""
+export MINIO_VERSION_FIXED=""
 export MORTY_VERSION_FIXED=""
 export MOSDNS_VERSION_FIXED=""
 export NODEJS_VERSION_FIXED=""
@@ -79,6 +80,7 @@ function GetLatestVersion() {
     LIBUV_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libuv/libuv/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     LOBECHAT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lobehub/lobe-chat/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     LUA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lua/lua/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    MINIO_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/minio/minio/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/RELEASE\." | tail -n 1 | sed "s/refs\/tags\/RELEASE\.//")
     MORTY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/asciimoo/morty/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     MOSDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/IrineSistiana/mosdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     NODEJS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nodejs/node/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "\-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
@@ -128,6 +130,7 @@ function GenerateReplacements() {
         "s/{LIBUV_VERSION}/${LIBUV_VERSION_FIXED:-${LIBUV_VERSION}}/g"
         "s/{LOBECHAT_VERSION}/${LOBECHAT_VERSION_FIXED:-${LOBECHAT_VERSION}}/g"
         "s/{LUA_VERSION}/${LUA_VERSION_FIXED:-${LUA_VERSION}}/g"
+        "s/{MINIO_VERSION}/${MINIO_VERSION_FIXED:-${MINIO_VERSION}}/g"
         "s/{MORTY_VERSION}/${MORTY_VERSION_FIXED:-${MORTY_VERSION}}/g"
         "s/{MOSDNS_VERSION}/${MOSDNS_VERSION_FIXED:-${MOSDNS_VERSION}}/g"
         "s/{NODEJS_VERSION}/${NODEJS_VERSION_FIXED:-${NODEJS_VERSION}}/g"
