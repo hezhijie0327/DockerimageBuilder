@@ -1,4 +1,4 @@
-# Current Version: 1.5.3
+# Current Version: 1.5.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -24,10 +24,12 @@ COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/standalone /opt/lobechat
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /opt/lobechat/.next/static
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/node_modules/ws /opt/lobechat/node_modules/ws
+
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/public /opt/lobechat/public
+
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/sharp/node_modules/.pnpm /opt/lobechat/node_modules/.pnpm
 
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/node_modules/ws /opt/lobechat/node_modules/ws
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/webrtc/webrtc.js /opt/lobechat/webrtc.js
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
