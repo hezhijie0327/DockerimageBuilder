@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -92,5 +92,7 @@ CMD \
     fi; \
     # Run migration
     node "/opt/lobechat/docker.cjs"; \
-    # Run the server
-    ${PROXYCHAINS} node "/opt/lobechat/server.js";
+    if [ "$?" -eq "0" ]; then \
+      # Run the server
+      ${PROXYCHAINS} node "/opt/lobechat/server.js"; \
+    fi;
