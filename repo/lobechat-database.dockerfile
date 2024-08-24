@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -17,6 +17,7 @@ COPY --from=GET_INFO /tmp/lobechat.*.autobuild /tmp/
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
 ENV NEXT_PUBLIC_SERVICE_MODE="server" \
+    APP_URL="http://app.com" \
     DATABASE_DRIVER="node" \
     DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
     KEY_VAULTS_SECRET="use-for-build"
