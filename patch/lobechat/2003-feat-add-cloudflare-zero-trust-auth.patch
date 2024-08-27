@@ -1,0 +1,88 @@
+diff --git a/src/config/auth.ts b/src/config/auth.ts
+index aa490a411e4e..f40f01b85329 100644
+--- a/src/config/auth.ts
++++ b/src/config/auth.ts
+@@ -86,6 +86,11 @@ export const getAuthConfig = () => {
+       AUTHELIA_CLIENT_SECRET: z.string().optional(),
+       AUTHELIA_ISSUER: z.string().optional(),
+ 
++      // Cloudflare Zero Trust
++      CLOUDFLARE_ZERO_TRUST_CLIENT_ID: z.string().optional(),
++      CLOUDFLARE_ZERO_TRUST_CLIENT_SECRET: z.string().optional(),
++      CLOUDFLARE_ZERO_TRUST_ISSUER: z.string().optional(),
++      
+       // ZITADEL
+       ZITADEL_CLIENT_ID: z.string().optional(),
+       ZITADEL_CLIENT_SECRET: z.string().optional(),
+@@ -128,6 +133,11 @@ export const getAuthConfig = () => {
+       AUTHELIA_CLIENT_SECRET: process.env.AUTHELIA_CLIENT_SECRET,
+       AUTHELIA_ISSUER: process.env.AUTHELIA_ISSUER,
+ 
++      // Cloudflare Zero Trust
++      CLOUDFLARE_ZERO_TRUST_CLIENT_ID: process.env.CLOUDFLARE_ZERO_TRUST_CLIENT_ID,
++      CLOUDFLARE_ZERO_TRUST_CLIENT_SECRET: process.env.CLOUDFLARE_ZERO_TRUST_CLIENT_SECRET,
++      CLOUDFLARE_ZERO_TRUST_ISSUER: process.env.CLOUDFLARE_ZERO_TRUST_ISSUER,
++      
+       // ZITADEL
+       ZITADEL_CLIENT_ID: process.env.ZITADEL_CLIENT_ID,
+       ZITADEL_CLIENT_SECRET: process.env.ZITADEL_CLIENT_SECRET,
+diff --git a/src/libs/next-auth/sso-providers/cloudflare-zero-trust.ts b/src/libs/next-auth/sso-providers/cloudflare-zero-trust.ts
+new file mode 100644
+index 000000000000..16d72f5b7217
+--- /dev/null
++++ b/src/libs/next-auth/sso-providers/cloudflare-zero-trust.ts
+@@ -0,0 +1,40 @@
++import type { OIDCConfig } from '@auth/core/providers';
++
++import { authEnv } from '@/config/auth';
++
++import { CommonProviderConfig } from './sso.config';
++
++export type CloudflareZeroTrustProfile = {
++  // The users display name
++  email: string; 
++  // The users email
++  groups: string[]; 
++  // The username the user used to login with
++  name: string; 
++  preferred_username: string; // The users groups
++  sub: string; // The users id
++};
++
++const provider = {
++  id: 'cloudflare-zero-trust',
++  provider: {
++    ...CommonProviderConfig,
++    authorization: { params: { scope: 'openid email profile' } },
++    checks: ['state', 'pkce'],
++    clientId: authEnv.CLOUDFLARE_ZERO_TRUST_CLIENT_ID,
++    clientSecret: authEnv.CLOUDFLARE_ZERO_TRUST_CLIENT_SECRET,
++    id: 'cloudflare-zero-trust',
++    issuer: authEnv.CLOUDFLARE_ZERO_TRUST_ISSUER,
++    name: 'Cloudflare Zero Trust',
++    profile(profile) {
++      return {
++        email: profile.email,
++        name: profile.name,
++        providerAccountId: profile.sub,
++      };
++    },
++    type: 'oidc',
++  } satisfies OIDCConfig<CloudflareZeroTrustProfile>,
++};
++
++export default provider;
+diff --git a/src/libs/next-auth/sso-providers/index.ts b/src/libs/next-auth/sso-providers/index.ts
+index b3d05b177342..ef929e135bb9 100644
+--- a/src/libs/next-auth/sso-providers/index.ts
++++ b/src/libs/next-auth/sso-providers/index.ts
+@@ -2,7 +2,8 @@ import Auth0 from './auth0';
+ import Authelia from './authelia';
+ import Authentik from './authentik';
+ import AzureAD from './azure-ad';
++import CloudflareZeroTrust from './cloudflare-zero-trust';
+ import Github from './github';
+ import Zitadel from './zitadel';
+ 
+-export const ssoProviders = [Auth0, Authentik, AzureAD, Github, Zitadel, Authelia];
++export const ssoProviders = [Auth0, Authentik, AzureAD, Github, Zitadel, Authelia, CloudflareZeroTrust];
