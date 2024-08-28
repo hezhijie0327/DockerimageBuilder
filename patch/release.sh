@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.7.3
+# Current Version: 1.7.4
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -8,7 +8,6 @@
 ## Parameter
 export ADGUARDHOME_VERSION_FIXED=""
 export ARIA2_VERSION_FIXED=""
-export AUTHELIA_VERSION_FIXED=""
 export CADDY_VERSION_FIXED=""
 export CLOUDFLARED_VERSION_FIXED=""
 export C_ARES_VERSION_FIXED=""
@@ -58,7 +57,6 @@ export ZLIB_NG_VERSION_FIXED=""
 function GetLatestVersion() {
     ADGUARDHOME_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AdguardTeam/AdGuardHome/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     ARIA2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/aria2/aria2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release\-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
-    AUTHELIA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/authelia/authelia/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     CADDY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/caddyserver/caddy/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\/v//")
     CLOUDFLARED_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/cloudflare/cloudflared/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
     C_ARES_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/c-ares/c-ares/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/cares\-\|^refs/tags/v" | grep -v "rc" | tail -n 1 | sed "s/refs\/tags\/cares\-//;s/refs\/tags\/v//" | tr "_" ".")
@@ -108,7 +106,6 @@ function GenerateReplacements() {
     replacement_list=(
         "s/{ADGUARDHOME_VERSION}/${ADGUARDHOME_VERSION_FIXED:-${ADGUARDHOME_VERSION}}/g"
         "s/{ARIA2_VERSION}/${ARIA2_VERSION_FIXED:-${ARIA2_VERSION}}/g"
-        "s/{AUTHELIA_VERSION}/${AUTHELIA_VERSION_FIXED:-${AUTHELIA_VERSION}}/g"
         "s/{CADDY_VERSION}/${CADDY_VERSION_FIXED:-${CADDY_VERSION}}/g"
         "s/{CLOUDFLARED_VERSION}/${CLOUDFLARED_VERSION_FIXED:-${CLOUDFLARED_VERSION}}/g"
         "s/{C_ARES_VERSION}/${C_ARES_VERSION_FIXED:-${C_ARES_VERSION}}/g"
