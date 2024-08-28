@@ -28,53 +28,42 @@ index 0dbbd06123a7..fa28c94e9a0e 100644
        ZITADEL_CLIENT_ID: process.env.ZITADEL_CLIENT_ID,
 diff --git a/src/libs/next-auth/sso-providers/generic-oidc.ts b/src/libs/next-auth/sso-providers/generic-oidc.ts
 new file mode 100644
-index 000000000000..7f06f37ef0e4
+index 000000000000..7b218633446e
 --- /dev/null
 +++ b/src/libs/next-auth/sso-providers/generic-oidc.ts
-@@ -0,0 +1,46 @@
-+import { OIDCConfig, OIDCUserConfig } from '@auth/core/providers';
+@@ -0,0 +1,35 @@
++import type { OIDCConfig } from '@auth/core/providers';
 +
 +import { authEnv } from '@/config/auth';
 +
 +import { CommonProviderConfig } from './sso.config';
 +
-+interface GenericOIDCProfile extends Record<string, any> {
++export type GenericOIDCProfile = {
 +  email: string;
-+  id: string;
 +  name?: string;
-+  picture?: string;
 +  sub: string;
-+  username?: string;
-+}
++};
 +
-+function LobeGenericOIDCProvider(config: OIDCUserConfig<GenericOIDCProfile>): OIDCConfig<GenericOIDCProfile> {
-+  return {
++const provider = {
++  id: 'generic-oidc',
++  provider: {
 +    ...CommonProviderConfig,
-+    ...config,
++    authorization: { params: { scope: 'email openid profile' } },
++    checks: ['state', 'pkce'],
++    clientId: authEnv.GENERIC_OIDC_CLIENT_ID,
++    clientSecret: authEnv.GENERIC_OIDC_CLIENT_SECRET,
 +    id: 'generic-oidc',
++    issuer: authEnv.GENERIC_OIDC_ISSUER,
 +    name: 'Generic OIDC',
 +    profile(profile) {
 +      return {
 +        email: profile.email,
-+        id: profile.sub,
-+        image: profile.picture ? profile.picture : undefined,
-+        name: profile.name ?? profile.username ?? profile.email,
++        name: profile.name ?? profile.email, // use profile.email instead of profile.name if not exsit.
 +        providerAccountId: profile.sub,
 +      };
 +    },
 +    type: 'oidc',
-+  };
-+}
-+
-+const provider = {
-+  id: 'generic-oidc',
-+  provider: LobeGenericOIDCProvider({
-+    authorization: { params: { scope: 'email offline_access openid profile' } }, // exclude: address, phone
-+    checks: ['pkce', 'state'],
-+    clientId: authEnv.GENERIC_OIDC_CLIENT_ID,
-+    clientSecret: authEnv.GENERIC_OIDC_CLIENT_SECRET,
-+    issuer: authEnv.GENERIC_OIDC_ISSUER,
-+  }),
++  } satisfies OIDCConfig<GenericOIDCProfile>,
 +};
 +
 +export default provider;
