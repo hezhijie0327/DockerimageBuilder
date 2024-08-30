@@ -19,58 +19,55 @@ index 59c1f46d7eaf..15b25cad2e68 100644
        DeepSeekProviderCard,
        MinimaxProviderCard,
 diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
-index c3532301a7c8..85691abad080 100644
+index c3532301a7c8..817645e3d8b6 100644
 --- a/src/app/api/chat/agentRuntime.ts
 +++ b/src/app/api/chat/agentRuntime.ts
-@@ -151,6 +151,14 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -151,6 +151,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
  
        return { apiKey };
      }
 +    case ModelProvider.FireworksAI: {
-+      const { FIREWORKSAI_API_KEY, FIREWORKSAI_PROXY_URL } = getLLMConfig();
++      const { FIREWORKSAI_API_KEY } = getLLMConfig();
 +
 +      const apiKey = apiKeyManager.pick(payload?.apiKey || FIREWORKSAI_API_KEY);
-+      const baseURL = payload?.endpoint || FIREWORKSAI_PROXY_URL;
 +
-+      return { apiKey, baseURL };
++      return { apiKey };
 +    }
      case ModelProvider.ZeroOne: {
        const { ZEROONE_API_KEY } = getLLMConfig();
  
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index a13b9b46fc21..bd02e5893bde 100644
+index a13b9b46fc21..59400fee1421 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
-@@ -62,6 +62,11 @@ export const getLLMConfig = () => {
+@@ -62,6 +62,10 @@ export const getLLMConfig = () => {
        TOGETHERAI_API_KEY: z.string().optional(),
        TOGETHERAI_MODEL_LIST: z.string().optional(),
  
 +      ENABLED_FIREWORKSAI: z.boolean(),
 +      FIREWORKSAI_API_KEY: z.string().optional(),
 +      FIREWORKSAI_MODEL_LIST: z.string().optional(),
-+      FIREWORKSAI_PROXY_URL: z.string().optional(),
-+      
++
        ENABLED_AWS_BEDROCK: z.boolean(),
        AWS_REGION: z.string().optional(),
        AWS_ACCESS_KEY_ID: z.string().optional(),
-@@ -141,6 +146,11 @@ export const getLLMConfig = () => {
+@@ -141,6 +145,10 @@ export const getLLMConfig = () => {
        TOGETHERAI_API_KEY: process.env.TOGETHERAI_API_KEY,
        TOGETHERAI_MODEL_LIST: process.env.TOGETHERAI_MODEL_LIST,
  
 +      ENABLED_FIREWORKSAI: !!process.env.FIREWORKSAI_API_KEY,
 +      FIREWORKSAI_API_KEY: process.env.FIREWORKSAI_API_KEY,
 +      FIREWORKSAI_MODEL_LIST: process.env.FIREWORKSAI_MODEL_LIST,
-+      FIREWORKSAI_PROXY_URL: process.env.FIREWORKSAI_PROXY_URL,
 +
        ENABLED_MOONSHOT: !!process.env.MOONSHOT_API_KEY,
        MOONSHOT_API_KEY: process.env.MOONSHOT_API_KEY,
        MOONSHOT_PROXY_URL: process.env.MOONSHOT_PROXY_URL,
 diff --git a/src/config/modelProviders/fireworksai.ts b/src/config/modelProviders/fireworksai.ts
 new file mode 100644
-index 000000000000..9c81e8d34ab0
+index 000000000000..8f3781173d4a
 --- /dev/null
 +++ b/src/config/modelProviders/fireworksai.ts
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,95 @@
 +import { ModelProviderCard } from '@/types/llm';
 +
 +// ref https://fireworks.ai/models?show=Serverless
@@ -163,9 +160,6 @@ index 000000000000..9c81e8d34ab0
 +  id: 'fireworksai',
 +  modelList: { showModelFetcher: true },
 +  name: 'Fireworks AI',
-+  proxyUrl: {
-+    placeholder: 'https://api.fireworks.ai/inference/v1',
-+  },
 +};
 +
 +export default FireworksAI;
