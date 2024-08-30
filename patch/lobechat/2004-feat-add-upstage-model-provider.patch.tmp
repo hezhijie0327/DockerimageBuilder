@@ -19,47 +19,44 @@ index 59c1f46d7eaf..645c7d336796 100644
      [AzureProvider, OllamaProvider, OpenAIProvider, BedrockProvider],
    );
 diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
-index c3532301a7c8..ad973801dbf7 100644
+index c3532301a7c8..05571c96ef0e 100644
 --- a/src/app/api/chat/agentRuntime.ts
 +++ b/src/app/api/chat/agentRuntime.ts
-@@ -206,6 +206,14 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
-       const apiKey = apiKeyManager.pick(payload?.apiKey || SILICONCLOUD_API_KEY);
-       const baseURL = payload?.endpoint || SILICONCLOUD_PROXY_URL;
+@@ -208,6 +208,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
  
-+      return { apiKey, baseURL };
-+    }
-+    case ModelProvider.Upstage: {
-+      const { UPSTAGE_API_KEY, UPSTAGE_PROXY_URL } = getLLMConfig();
-+
-+      const apiKey = apiKeyManager.pick(payload?.apiKey || UPSTAGE_API_KEY);
-+      const baseURL = payload?.endpoint || UPSTAGE_PROXY_URL;
-+
        return { apiKey, baseURL };
      }
++    case ModelProvider.Upstage: {
++      const { UPSTAGE_API_KEY } = getLLMConfig();
++
++      const apiKey = apiKeyManager.pick(payload?.apiKey || UPSTAGE_API_KEY);
++
++      return { apiKey };
++    }
    }
+ };
+ 
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index a13b9b46fc21..cc5fdbdafa31 100644
+index a13b9b46fc21..ed280847650a 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
-@@ -93,6 +93,10 @@ export const getLLMConfig = () => {
+@@ -93,6 +93,9 @@ export const getLLMConfig = () => {
        SILICONCLOUD_API_KEY: z.string().optional(),
        SILICONCLOUD_MODEL_LIST: z.string().optional(),
        SILICONCLOUD_PROXY_URL: z.string().optional(),
 +
 +      ENABLED_UPSTAGE: z.boolean(),
 +      UPSTAGE_API_KEY: z.string().optional(),
-+      UPSTAGE_PROXY_URL: z.string().optional(),
      },
      runtimeEnv: {
        API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
-@@ -183,6 +187,10 @@ export const getLLMConfig = () => {
+@@ -183,6 +186,9 @@ export const getLLMConfig = () => {
        SILICONCLOUD_API_KEY: process.env.SILICONCLOUD_API_KEY,
        SILICONCLOUD_MODEL_LIST: process.env.SILICONCLOUD_MODEL_LIST,
        SILICONCLOUD_PROXY_URL: process.env.SILICONCLOUD_PROXY_URL,
 +
 +      ENABLED_UPSTAGE: !!process.env.UPSTAGE_API_KEY,
 +      UPSTAGE_API_KEY: process.env.UPSTAGE_API_KEY,
-+      UPSTAGE_PROXY_URL: process.env.UPSTAGE_PROXY_URL,
      },
    });
  };
@@ -100,10 +97,10 @@ index d5d54f79bf8d..f2f382f17b9b 100644
  export { default as ZhiPuProviderCard } from './zhipu';
 diff --git a/src/config/modelProviders/upstage.ts b/src/config/modelProviders/upstage.ts
 new file mode 100644
-index 000000000000..e082955dc17b
+index 000000000000..6d991b4bbb57
 --- /dev/null
 +++ b/src/config/modelProviders/upstage.ts
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,45 @@
 +import { ModelProviderCard } from '@/types/llm';
 +
 +// ref https://developers.upstage.ai/docs/getting-started/models
@@ -141,22 +138,11 @@ index 000000000000..e082955dc17b
 +      id: 'solar-1-mini-translate-koen',
 +      tokens: 32_768,
 +    },
-+    {
-+      description: 'Solar-based groundedness check model with a 32k context limit. solar-1-mini-groundedness-check is alias for our latest solar-1-mini-groundedness-check model. (Currently solar-1-mini-groundedness-check-240502)',
-+      displayName: 'Solar 1 Mini Groundedness Check',
-+      enabled: false,
-+      functionCall: false,
-+      id: 'solar-1-mini-groundedness-check',
-+      tokens: 32_768,
-+    },
 +  ],
 +  checkModel: 'solar-1-mini-chat',
 +  id: 'upstage',
 +  modelList: { showModelFetcher: true },
 +  name: 'Upstage',
-+  proxyUrl: {
-+    placeholder: 'https://api.upstage.ai/v1/solar',
-+  },
 +};
 +
 +export default Upstage;
