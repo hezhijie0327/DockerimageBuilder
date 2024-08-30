@@ -1,5 +1,5 @@
 diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-index 59c1f46d7eaf..de7daeb362d8 100644
+index 645c7d336796..bd1f1b93d5ac 100644
 --- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
 +++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
 @@ -15,6 +15,7 @@ import {
@@ -10,50 +10,50 @@ index 59c1f46d7eaf..de7daeb362d8 100644
    StepfunProviderCard,
    TaichuProviderCard,
    TogetherAIProviderCard,
-@@ -59,6 +60,7 @@ export const useProviderList = (): ProviderItem[] => {
-       TaichuProviderCard,
+@@ -61,6 +62,7 @@ export const useProviderList = (): ProviderItem[] => {
        Ai360ProviderCard,
        SiliconCloudProviderCard,
+       UpstageProviderCard,
 +      SparkProviderCard,
      ],
      [AzureProvider, OllamaProvider, OpenAIProvider, BedrockProvider],
    );
 diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
-index c3532301a7c8..cd8f5541e9a2 100644
+index 05571c96ef0e..2bcc089f6898 100644
 --- a/src/app/api/chat/agentRuntime.ts
 +++ b/src/app/api/chat/agentRuntime.ts
-@@ -208,6 +208,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -213,6 +213,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
  
-       return { apiKey, baseURL };
-     }
+       const apiKey = apiKeyManager.pick(payload?.apiKey || UPSTAGE_API_KEY);
+ 
++      return { apiKey };
++    }
 +    case ModelProvider.Spark: {
 +      const { SPARK_API_KEY } = getLLMConfig();
 +
 +      const apiKey = apiKeyManager.pick(payload?.apiKey || SPARK_API_KEY);
 +
-+      return { apiKey };
-+    }
+       return { apiKey };
+     }
    }
- };
- 
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index a13b9b46fc21..cf46a60830fa 100644
+index ed280847650a..770d157e5930 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
-@@ -93,6 +93,9 @@ export const getLLMConfig = () => {
-       SILICONCLOUD_API_KEY: z.string().optional(),
-       SILICONCLOUD_MODEL_LIST: z.string().optional(),
-       SILICONCLOUD_PROXY_URL: z.string().optional(),
+@@ -96,6 +96,9 @@ export const getLLMConfig = () => {
+ 
+       ENABLED_UPSTAGE: z.boolean(),
+       UPSTAGE_API_KEY: z.string().optional(),
 +
 +      ENABLED_SPARK: z.boolean(),
 +      SPARK_API_KEY: z.string().optional(),
      },
      runtimeEnv: {
        API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
-@@ -183,6 +186,9 @@ export const getLLMConfig = () => {
-       SILICONCLOUD_API_KEY: process.env.SILICONCLOUD_API_KEY,
-       SILICONCLOUD_MODEL_LIST: process.env.SILICONCLOUD_MODEL_LIST,
-       SILICONCLOUD_PROXY_URL: process.env.SILICONCLOUD_PROXY_URL,
+@@ -189,6 +192,9 @@ export const getLLMConfig = () => {
+ 
+       ENABLED_UPSTAGE: !!process.env.UPSTAGE_API_KEY,
+       UPSTAGE_API_KEY: process.env.UPSTAGE_API_KEY,
 +
 +      ENABLED_SPARK: !!process.env.SPARK_API_KEY,
 +      SPARK_API_KEY: process.env.SPARK_API_KEY,
@@ -61,7 +61,7 @@ index a13b9b46fc21..cf46a60830fa 100644
    });
  };
 diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
-index d5d54f79bf8d..1769f453faaa 100644
+index f2f382f17b9b..3840cc6cee68 100644
 --- a/src/config/modelProviders/index.ts
 +++ b/src/config/modelProviders/index.ts
 @@ -18,6 +18,7 @@ import OpenRouterProvider from './openrouter';
@@ -72,23 +72,23 @@ index d5d54f79bf8d..1769f453faaa 100644
  import StepfunProvider from './stepfun';
  import TaichuProvider from './taichu';
  import TogetherAIProvider from './togetherai';
-@@ -47,6 +48,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
-   TaichuProvider.chatModels,
+@@ -49,6 +50,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
    Ai360Provider.chatModels,
    SiliconCloudProvider.chatModels,
+   UpstageProvider.chatModels,
 +  SparkProvider.chatModels,
  ].flat();
  
  export const DEFAULT_MODEL_PROVIDER_LIST = [
-@@ -73,6 +75,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
-   TaichuProvider,
+@@ -76,6 +78,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
    Ai360Provider,
    SiliconCloudProvider,
+   UpstageProvider,
 +  SparkProvider,
  ];
  
  export const filterEnabledModels = (provider: ModelProviderCard) => {
-@@ -102,6 +105,7 @@ export { default as OpenRouterProviderCard } from './openrouter';
+@@ -105,6 +108,7 @@ export { default as OpenRouterProviderCard } from './openrouter';
  export { default as PerplexityProviderCard } from './perplexity';
  export { default as QwenProviderCard } from './qwen';
  export { default as SiliconCloudProviderCard } from './siliconcloud';
@@ -162,7 +162,7 @@ index 000000000000..848219521363
 +
 +export default Spark;
 diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
-index 4491d9ad0f9c..09f0747e51eb 100644
+index 6056265a074f..fc875f669f86 100644
 --- a/src/const/settings/llm.ts
 +++ b/src/const/settings/llm.ts
 @@ -16,6 +16,7 @@ import {
@@ -173,7 +173,7 @@ index 4491d9ad0f9c..09f0747e51eb 100644
    StepfunProviderCard,
    TaichuProviderCard,
    TogetherAIProviderCard,
-@@ -99,6 +100,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
+@@ -100,6 +101,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
      enabled: false,
      enabledModels: filterEnabledModels(SiliconCloudProviderCard),
    },
@@ -185,7 +185,7 @@ index 4491d9ad0f9c..09f0747e51eb 100644
      enabled: false,
      enabledModels: filterEnabledModels(StepfunProviderCard),
 diff --git a/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx b/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
-index 35dfda03f61c..db030b1b348c 100644
+index 1b6f7ee60fac..f2ca17ff8e65 100644
 --- a/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
 +++ b/src/features/Conversation/Error/APIKeyForm/ProviderAvatar.tsx
 @@ -13,6 +13,7 @@ import {
@@ -196,7 +196,7 @@ index 35dfda03f61c..db030b1b348c 100644
    Stepfun,
    Together,
    Tongyi,
-@@ -80,6 +81,10 @@ const ProviderAvatar = memo<ProviderAvatarProps>(({ provider }) => {
+@@ -81,6 +82,10 @@ const ProviderAvatar = memo<ProviderAvatarProps>(({ provider }) => {
        return <Tongyi color={Tongyi.colorPrimary} size={56} />;
      }
  
@@ -208,7 +208,7 @@ index 35dfda03f61c..db030b1b348c 100644
        return <Stepfun color={Stepfun.colorPrimary} size={56} />;
      }
 diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
-index a19319533c7c..964ac8671c91 100644
+index 0454e3bbde0a..41e99c9ca0e6 100644
 --- a/src/libs/agent-runtime/AgentRuntime.ts
 +++ b/src/libs/agent-runtime/AgentRuntime.ts
 @@ -21,6 +21,7 @@ import { LobeOpenRouterAI } from './openrouter';
@@ -219,7 +219,7 @@ index a19319533c7c..964ac8671c91 100644
  import { LobeStepfunAI } from './stepfun';
  import { LobeTaichuAI } from './taichu';
  import { LobeTogetherAI } from './togetherai';
-@@ -131,6 +132,7 @@ class AgentRuntime {
+@@ -132,6 +133,7 @@ class AgentRuntime {
        perplexity: Partial<ClientOptions>;
        qwen: Partial<ClientOptions>;
        siliconcloud: Partial<ClientOptions>;
@@ -227,11 +227,11 @@ index a19319533c7c..964ac8671c91 100644
        stepfun: Partial<ClientOptions>;
        taichu: Partial<ClientOptions>;
        togetherai: Partial<ClientOptions>;
-@@ -261,6 +263,11 @@ class AgentRuntime {
-         runtimeModel = new LobeSiliconCloudAI(params.siliconcloud ?? {});
-         break;
+@@ -268,6 +270,11 @@ class AgentRuntime {
+         runtimeModel = new LobeUpstageAI(params.upstage);
+         break
        }
-+        
++
 +      case ModelProvider.Spark: {
 +        runtimeModel = new LobeSparkAI(params.spark);
 +        break
@@ -520,7 +520,7 @@ index 000000000000..8cc8dfe1e28e
 +  provider: ModelProvider.Spark,
 +});
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
-index f8ecd3232aaf..834be0bc5883 100644
+index 8c0999f9c120..2a6c6a09f938 100644
 --- a/src/libs/agent-runtime/types/type.ts
 +++ b/src/libs/agent-runtime/types/type.ts
 @@ -40,6 +40,7 @@ export enum ModelProvider {
@@ -532,19 +532,21 @@ index f8ecd3232aaf..834be0bc5883 100644
    Taichu = 'taichu',
    TogetherAI = 'togetherai',
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index bf5a808ca1d2..c60a96264247 100644
+index 32772dffbf30..cf66ff42bdd9 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
-@@ -47,6 +47,8 @@ export const getServerGlobalConfig = () => {
-     ENABLED_SILICONCLOUD,
+@@ -48,7 +48,9 @@ export const getServerGlobalConfig = () => {
      SILICONCLOUD_MODEL_LIST,
  
+     ENABLED_UPSTAGE,
+-    
++
 +    ENABLED_SPARK,
 +
      ENABLED_AZURE_OPENAI,
      AZURE_MODEL_LIST,
  
-@@ -127,6 +129,7 @@ export const getServerGlobalConfig = () => {
+@@ -129,6 +131,7 @@ export const getServerGlobalConfig = () => {
            modelString: SILICONCLOUD_MODEL_LIST,
          }),
        },
@@ -553,7 +555,7 @@ index bf5a808ca1d2..c60a96264247 100644
  
        taichu: { enabled: ENABLED_TAICHU },
 diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
-index 080b4ba64a92..10399cbbf45e 100644
+index 523a1e8aa0c5..6b250fcc60fa 100644
 --- a/src/types/user/settings/keyVaults.ts
 +++ b/src/types/user/settings/keyVaults.ts
 @@ -36,6 +36,7 @@ export interface UserKeyVaults {
