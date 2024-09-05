@@ -1,23 +1,3 @@
-diff --git a/src/config/llm.ts b/src/config/llm.ts
-index a477eeaf9226..43f54ef2827a 100644
---- a/src/config/llm.ts
-+++ b/src/config/llm.ts
-@@ -65,6 +65,7 @@ export const getLLMConfig = () => {
-       TOGETHERAI_MODEL_LIST: z.string().optional(),
- 
-       ENABLED_AWS_BEDROCK: z.boolean(),
-+      AWS_BEDROCK_MODEL_LIST: z.string().optional(),
-       AWS_REGION: z.string().optional(),
-       AWS_ACCESS_KEY_ID: z.string().optional(),
-       AWS_SECRET_ACCESS_KEY: z.string().optional(),
-@@ -162,6 +163,7 @@ export const getLLMConfig = () => {
-       ZEROONE_MODEL_LIST: process.env.ZEROONE_MODEL_LIST,
- 
-       ENABLED_AWS_BEDROCK: process.env.ENABLED_AWS_BEDROCK === '1',
-+      AWS_BEDROCK_MODEL_LIST: process.env.AWS_BEDROCK_MODEL_LIST,
-       AWS_REGION: process.env.AWS_REGION,
-       AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
-       AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
 diff --git a/src/config/modelProviders/bedrock.ts b/src/config/modelProviders/bedrock.ts
 index a67ffdeda08f..2db5dd65d754 100644
 --- a/src/config/modelProviders/bedrock.ts
@@ -275,40 +255,3 @@ index a67ffdeda08f..2db5dd65d754 100644
    ],
    checkModel: 'anthropic.claude-instant-v1',
    id: 'bedrock',
-diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index 6f4a9dd3c828..baa5f9d04982 100644
---- a/src/server/globalConfig/index.ts
-+++ b/src/server/globalConfig/index.ts
-@@ -4,6 +4,7 @@ import { fileEnv } from '@/config/file';
- import { langfuseEnv } from '@/config/langfuse';
- import { getLLMConfig } from '@/config/llm';
- import {
-+  BedrockProviderCard,
-   GroqProviderCard,
-   NovitaProviderCard,
-   OllamaProviderCard,
-@@ -34,6 +35,8 @@ export const getServerGlobalConfig = () => {
-     ZHIPU_MODEL_LIST,
- 
-     ENABLED_AWS_BEDROCK,
-+    AWS_BEDROCK_MODEL_LIST,
-+
-     ENABLED_GOOGLE,
- 
-     ENABLED_GROQ,
-@@ -100,7 +103,14 @@ export const getServerGlobalConfig = () => {
-         }),
-       },
-       baichuan: { enabled: ENABLED_BAICHUAN },
--      bedrock: { enabled: ENABLED_AWS_BEDROCK },
-+      bedrock: {
-+        enabled: ENABLED_AWS_BEDROCK,
-+        enabledModels: extractEnabledModels(AWS_BEDROCK_MODEL_LIST),
-+        serverModelCards: transformToChatModelCards({
-+          defaultChatModels: BedrockProviderCard.chatModels,
-+          modelString: AWS_BEDROCK_MODEL_LIST,
-+        }),
-+      },
-       deepseek: { enabled: ENABLED_DEEPSEEK },
-       google: { enabled: ENABLED_GOOGLE },
-       groq: {
