@@ -540,23 +540,15 @@ index 000000000000..16c4c4e64065
 +});
 diff --git a/src/libs/agent-runtime/fireworksai/index.ts b/src/libs/agent-runtime/fireworksai/index.ts
 new file mode 100644
-index 000000000000..3c86b71d9c5b
+index 000000000000..3f3fe872d8fb
 --- /dev/null
 +++ b/src/libs/agent-runtime/fireworksai/index.ts
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,10 @@
 +import { ModelProvider } from '../types';
 +import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
 +
 +export const LobeFireworksAI = LobeOpenAICompatibleFactory({
 +  baseURL: 'https://api.fireworks.ai/inference/v1',
-+  chatCompletion: {
-+    handlePayload: (payload) => {
-+      return {
-+        ...payload,
-+        stream: !payload.tools,
-+      } as any;
-+    },
-+  },
 +  debug: {
 +    chatCompletion: () => process.env.DEBUG_FIREWORKSAI_CHAT_COMPLETION === '1',
 +  },
@@ -574,6 +566,41 @@ index 8c0999f9c120..11af2942570a 100644
    Google = 'google',
    Groq = 'groq',
    Minimax = 'minimax',
+diff --git a/src/libs/agent-runtime/utils/streams/openai.ts b/src/libs/agent-runtime/utils/streams/openai.ts
+index 52f81a776f08..ca372eb6249c 100644
+--- a/src/libs/agent-runtime/utils/streams/openai.ts
++++ b/src/libs/agent-runtime/utils/streams/openai.ts
+@@ -23,15 +23,14 @@ export const transformOpenAIStream = (chunk: OpenAI.ChatCompletionChunk): Stream
+       return { data: chunk, id: chunk.id, type: 'data' };
+     }
+ 
+-    if (typeof item.delta?.content === 'string') {
+-      return { data: item.delta.content, id: chunk.id, type: 'text' };
+-    }
+-
+     if (item.delta?.tool_calls) {
+       return {
+         data: item.delta.tool_calls.map(
+           (value, index): StreamToolCallChunkData => ({
+-            function: value.function,
++            function: {
++              arguments: value.function?.arguments ?? '',
++              name: value.function?.name ?? null,
++            },
+             id: value.id || generateToolCallId(index, value.function?.name),
+ 
+             // mistral's tool calling don't have index and function field, it's data like:
+@@ -55,6 +54,10 @@ export const transformOpenAIStream = (chunk: OpenAI.ChatCompletionChunk): Stream
+       return { data: item.finish_reason, id: chunk.id, type: 'stop' };
+     }
+ 
++    if (typeof item.delta?.content === 'string') {
++      return { data: item.delta.content, id: chunk.id, type: 'text' };
++    }
++
+     if (item.delta?.content === null) {
+       return { data: item.delta, id: chunk.id, type: 'data' };
+     }
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
 index baa5f9d04982..30d68fc25407 100644
 --- a/src/server/globalConfig/index.ts
