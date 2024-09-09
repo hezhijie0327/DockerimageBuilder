@@ -1,4 +1,4 @@
-# Current Version: 1.5.6
+# Current Version: 1.5.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -85,6 +85,13 @@ CMD \
             '[ProxyList]' \
             "$protocol $host $port" \
         > "/etc/proxychains/proxychains.conf"; \
+    fi; \
+    # Fix DNS resolving issue in Docker Compose
+    if [ -f "/etc/resolv.conf" ]; then \
+        resolv_conf=$(grep '^nameserver' "/etc/resolv.conf" | awk '{print "nameserver " $2}'); \
+        printf "%s\n" \
+            "$resolv_conf" \
+        > "/etc/resolv.conf"; \
     fi; \
     # Run WebRTC Signaling Server
     node "/opt/lobechat/webrtc.js" & \
