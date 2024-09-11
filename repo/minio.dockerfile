@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -16,7 +16,7 @@ COPY --from=GET_INFO /tmp/minio.*.autobuild /tmp/
 
 COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/minio.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/minio.source.autobuild") "${WORKDIR}/BUILDTMP/MINIO" && git clone -b $(cat "${WORKDIR}/minio.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/minio.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export MINIO_SHA=$(cd "${WORKDIR}/BUILDTMP/MINIO" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MINIO_VERSION=$(cat "${WORKDIR}/minio.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MINIO_CUSTOM_VERSION="${MINIO_VERSION}-ZHIJIE-${MINIO_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/MINIO" && go mod tidy && go get -u && go mod download && go mod vendor && go mod edit -require=github.com/minio/kms-go/kms@v0.4.0 && go mod tidy && go mod vendor && export CGO_ENABLED=0 && go build -o minio -trimpath -ldflags "$(go run buildscripts/gen-ldflags.go) -X github.com/minio/minio/cmd.ReleaseTag=DEVELOPMENT.${MINIO_CUSTOM_VERSION}" && cp -rf "${WORKDIR}/BUILDTMP/MINIO/minio" "${WORKDIR}/BUILDKIT/minio"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/minio.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/minio.source.autobuild") "${WORKDIR}/BUILDTMP/MINIO" && git clone -b $(cat "${WORKDIR}/minio.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/minio.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export MINIO_SHA=$(cd "${WORKDIR}/BUILDTMP/MINIO" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MINIO_VERSION=$(cat "${WORKDIR}/minio.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export MINIO_CUSTOM_VERSION="${MINIO_VERSION}-ZHIJIE-${MINIO_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/MINIO" && export CGO_ENABLED=0 && go build -o minio -trimpath -ldflags "$(go run buildscripts/gen-ldflags.go) -X github.com/minio/minio/cmd.ReleaseTag=DEVELOPMENT.${MINIO_CUSTOM_VERSION}" && cp -rf "${WORKDIR}/BUILDTMP/MINIO/minio" "${WORKDIR}/BUILDKIT/minio"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
