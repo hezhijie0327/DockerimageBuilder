@@ -1,4 +1,4 @@
-# Current Version: 1.5.8
+# Current Version: 1.5.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -32,7 +32,7 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/sharp/node_modules/.pnpm /opt/
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/node_modules/ws /opt/lobechat/node_modules/ws
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/webrtc/webrtc.js /opt/lobechat/webrtc.js
 
-FROM hezhijie0327/lobechat-base:latest
+FROM hezhijie0327/lobechat:base
 
 ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest,+webrtc_sync" \
