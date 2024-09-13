@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -50,7 +50,7 @@ ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
     DEFAULT_AGENT_CONFIG="" SYSTEM_AGENT="" \
     PROXY_URL=""
 
-COPY --from=REBASED_LOBECHAT / /
+COPY --from=REBASED_LOBECHAT --chown=nextjs:nodejs /opt/lobechat /opt/lobechat
 
 USER nextjs
 
