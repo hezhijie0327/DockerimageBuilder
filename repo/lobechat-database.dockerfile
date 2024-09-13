@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -24,7 +24,7 @@ ENV NEXT_PUBLIC_SERVICE_MODE="server" \
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PNPM_HOME="/pnpm" && export PATH="${PNPM_HOME}:${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/lobechat.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.source.autobuild") "${WORKDIR}/BUILDTMP/LOBECHAT" && git clone -b $(cat "${WORKDIR}/lobechat.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export LOBECHAT_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_VERSION=$(cat "${WORKDIR}/lobechat.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_CUSTOM_VERSION="${LOBECHAT_VERSION}-ZHIJIE-${LOBECHAT_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json" && corepack enable && corepack use pnpm && pnpm i && mkdir -p "${WORKDIR}/BUILDTMP/LOBECHAT/deps" && pnpm add sharp pg drizzle-orm --prefix "${WORKDIR}/BUILDTMP/LOBECHAT/deps" && npm run build:docker
 
-FROM node:lts-alpine AS REBASED_LOBECHAT
+FROM scratch AS REBASED_LOBECHAT
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
@@ -41,13 +41,7 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/src/database/server/migrations
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/docker.cjs /opt/lobechat/docker.cjs
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/errorHint.js /opt/lobechat/errorHint.js
 
-RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
-    && apk update \
-    && apk add --no-cache bind-tools proxychains-ng \
-    && apk upgrade --no-cache \
-    && rm -rf /tmp/* /var/cache/apk/*
-
-FROM scratch
+FROM hezhijie0327/lobechat:base
 
 ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
     DATABASE_DRIVER="node" \
@@ -56,7 +50,9 @@ ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
     DEFAULT_AGENT_CONFIG="" SYSTEM_AGENT="" \
     PROXY_URL=""
 
-COPY --from=REBASED_LOBECHAT / /
+COPY --from=REBASED_LOBECHAT --chown=nextjs:nodejs /opt/lobechat /opt/lobechat
+
+USER nextjs
 
 EXPOSE 3210/tcp 3211/tcp
 
@@ -65,7 +61,7 @@ CMD \
         # Set regex for IPv4
         IP_REGEX="^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$"; \
         # Set proxychains command
-        PROXYCHAINS="proxychains -q"; \
+        PROXYCHAINS="proxychains -f /etc/proxychains/proxychains.conf -q"; \
         # Parse the proxy URL
         host_with_port="${PROXY_URL#*//}"; \
         host="${host_with_port%%:*}"; \
@@ -90,13 +86,6 @@ CMD \
             '[ProxyList]' \
             "$protocol $host $port" \
         > "/etc/proxychains/proxychains.conf"; \
-    fi; \
-    # Fix DNS resolving issue in Docker Compose
-    if [ -f "/etc/resolv.conf" ]; then \
-        resolv_conf=$(grep '^nameserver' "/etc/resolv.conf" | awk '{print "nameserver " $2}'); \
-        printf "%s\n" \
-            "$resolv_conf" \
-        > "/etc/resolv.conf"; \
     fi; \
     # Run migration
     node "/opt/lobechat/docker.cjs"; \
