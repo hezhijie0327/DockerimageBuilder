@@ -1,4 +1,4 @@
-# Current Version: 1.5.9
+# Current Version: 1.6.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -45,7 +45,7 @@ ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
     WEBRTC_LOG_LEVEL="notice" \
     WEBRTC_PING_TIMEOUT="30000"
 
-COPY --from=REBASED_LOBECHAT / /
+COPY --from=REBASED_LOBECHAT --chown=nextjs:nodejs /opt/lobechat /opt/lobechat
 
 USER nextjs
 
