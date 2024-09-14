@@ -1,4 +1,4 @@
-# Current Version: 1.6.1
+# Current Version: 1.6.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -56,7 +56,7 @@ CMD \
         # Set regex for IPv4
         IP_REGEX="^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$"; \
         # Set proxychains command
-        PROXYCHAINS="proxychains -f /etc/proxychains/proxychains.conf -q"; \
+        PROXYCHAINS="proxychains -q"; \
         # Parse the proxy URL
         host_with_port="${PROXY_URL#*//}"; \
         host="${host_with_port%%:*}"; \
@@ -80,7 +80,7 @@ CMD \
             'tcp_read_time_out 15000' \
             '[ProxyList]' \
             "$protocol $host $port" \
-        > "/etc/proxychains/proxychains.conf"; \
+        > "/etc/proxychains4.conf"; \
     fi; \
     # Run WebRTC Signaling Server
     node "/opt/lobechat/webrtc.js" & \
