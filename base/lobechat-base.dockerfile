@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ## Base image for all the stages
 FROM node:20-slim AS base
@@ -21,6 +21,7 @@ RUN \
     && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
     && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
     && cp /usr/bin/proxychains4 /distroless/bin/proxychains \
+    && cp /etc/proxychains4.conf /distroless/etc/proxychains4.conf \
     # Copy node to distroless
     && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
     && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
@@ -44,7 +45,5 @@ RUN \
     # Add nextjs:nodejs to run the app
     addgroup -S -g 1001 nodejs \
     && adduser -D -G nodejs -H -S -h /app -u 1001 nextjs \
-    # Create required directory
-    && mkdir -p "/etc/proxychains" \
     # Set permission for nextjs:nodejs
-    && chown -R nextjs:nodejs /etc/proxychains
+    && chown -R nextjs:nodejs /etc/proxychains4.conf
