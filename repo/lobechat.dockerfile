@@ -1,4 +1,4 @@
-# Current Version: 1.6.2
+# Current Version: 1.6.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -22,67 +22,27 @@ FROM scratch AS REBASED_LOBECHAT
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/standalone /opt/lobechat
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /opt/lobechat/.next/static
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/standalone /app
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /app/.next/static
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/public /opt/lobechat/public
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/public /app/public
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/sharp/node_modules/.pnpm /opt/lobechat/node_modules/.pnpm
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/sharp/node_modules/.pnpm /app/node_modules/.pnpm
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/node_modules/ws /opt/lobechat/node_modules/ws
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/webrtc/webrtc.js /opt/lobechat/webrtc.js
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/serverLauncher/startServer.js /app/startServer.js
 
 FROM hezhijie0327/lobechat:base
 
 ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
-    FEATURE_FLAGS="-check_updates,-welcome_suggest,+webrtc_sync" \
+    FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210" \
     DEFAULT_AGENT_CONFIG="" SYSTEM_AGENT="" \
-    PROXY_URL="" \
-    ENABLE_WEBRTC_SIGNALING_SERVER="false" \
-    WEBRTC_HOST="0.0.0.0" WEBRTC_PORT="3211" \
-    WEBRTC_ALLOWED_TOPICS="" \
-    WEBRTC_LOG_LEVEL="notice" \
-    WEBRTC_PING_TIMEOUT="30000"
+    PROXY_URL=""
 
-COPY --from=REBASED_LOBECHAT --chown=nextjs:nodejs /opt/lobechat /opt/lobechat
+COPY --from=REBASED_LOBECHAT --chown=nextjs:nodejs /app /app
 
 USER nextjs
 
-EXPOSE 3210/tcp 3211/tcp
+EXPOSE 3210/tcp
 
-CMD \
-    if [ -n "$PROXY_URL" ]; then \
-        # Set regex for IPv4
-        IP_REGEX="^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$"; \
-        # Set proxychains command
-        PROXYCHAINS="proxychains -q"; \
-        # Parse the proxy URL
-        host_with_port="${PROXY_URL#*//}"; \
-        host="${host_with_port%%:*}"; \
-        port="${PROXY_URL##*:}"; \
-        protocol="${PROXY_URL%%://*}"; \
-        # Resolve to IP address if the host is a domain
-        if ! [[ "$host" =~ "$IP_REGEX" ]]; then \
-            nslookup=$(nslookup -q="A" "$host" | tail -n +3 | grep 'Address:'); \
-            if [ -n "$nslookup" ]; then \
-                host=$(echo "$nslookup" | tail -n 1 | awk '{print $2}'); \
-            fi; \
-        fi; \
-        # Generate proxychains configuration file
-        printf "%s\n" \
-            'localnet 127.0.0.0/255.0.0.0' \
-            'localnet ::1/128' \
-            'proxy_dns' \
-            'remote_dns_subnet 224' \
-            'strict_chain' \
-            'tcp_connect_time_out 8000' \
-            'tcp_read_time_out 15000' \
-            '[ProxyList]' \
-            "$protocol $host $port" \
-        > "/etc/proxychains4.conf"; \
-    fi; \
-    # Run WebRTC Signaling Server
-    node "/opt/lobechat/webrtc.js" & \
-    # Run the server
-    ${PROXYCHAINS} node "/opt/lobechat/server.js";
+CMD ["node", "/app/startServer.js"]
