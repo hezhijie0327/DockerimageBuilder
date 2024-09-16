@@ -1,4 +1,4 @@
-# Current Version: 1.1.0
+# Current Version: 1.1.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -28,18 +28,20 @@ FROM scratch AS REBASED_LOBECHAT
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/standalone /opt/lobechat
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /opt/lobechat/.next/static
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/standalone /app
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /app/.next/static
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/public /opt/lobechat/public
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/public /app/public
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/.pnpm /opt/lobechat/node_modules/.pnpm
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/drizzle-orm /opt/lobechat/node_modules/drizzle-orm
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/pg /opt/lobechat/node_modules/pg
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/.pnpm /app/node_modules/.pnpm
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/pg /app/node_modules/pg
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/src/database/server/migrations /opt/lobechat/migrations
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/docker.cjs /opt/lobechat/docker.cjs
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/errorHint.js /opt/lobechat/errorHint.js
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/src/database/server/migrations /app/migrations
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/docker.cjs /app/docker.cjs
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/errorHint.js /app/errorHint.js
+
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/serverLauncher/startServer.js /app/startServer.js
 
 FROM hezhijie0327/lobechat:base
 
@@ -50,46 +52,10 @@ ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
     DEFAULT_AGENT_CONFIG="" SYSTEM_AGENT="" \
     PROXY_URL=""
 
-COPY --from=REBASED_LOBECHAT --chown=nextjs:nodejs /opt/lobechat /opt/lobechat
+COPY --from=REBASED_LOBECHAT --chown=nextjs:nodejs /app /app
 
 USER nextjs
 
 EXPOSE 3210/tcp 3211/tcp
 
-CMD \
-    if [ -n "$PROXY_URL" ]; then \
-        # Set regex for IPv4
-        IP_REGEX="^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$"; \
-        # Set proxychains command
-        PROXYCHAINS="proxychains -q"; \
-        # Parse the proxy URL
-        host_with_port="${PROXY_URL#*//}"; \
-        host="${host_with_port%%:*}"; \
-        port="${PROXY_URL##*:}"; \
-        protocol="${PROXY_URL%%://*}"; \
-        # Resolve to IP address if the host is a domain
-        if ! [[ "$host" =~ "$IP_REGEX" ]]; then \
-            nslookup=$(nslookup -q="A" "$host" | tail -n +3 | grep 'Address:'); \
-            if [ -n "$nslookup" ]; then \
-                host=$(echo "$nslookup" | tail -n 1 | awk '{print $2}'); \
-            fi; \
-        fi; \
-        # Generate proxychains configuration file
-        printf "%s\n" \
-            'localnet 127.0.0.0/255.0.0.0' \
-            'localnet ::1/128' \
-            'proxy_dns' \
-            'remote_dns_subnet 224' \
-            'strict_chain' \
-            'tcp_connect_time_out 8000' \
-            'tcp_read_time_out 15000' \
-            '[ProxyList]' \
-            "$protocol $host $port" \
-        > "/etc/proxychains4.conf"; \
-    fi; \
-    # Run migration
-    node "/opt/lobechat/docker.cjs"; \
-    if [ "$?" -eq "0" ]; then \
-      # Run the server
-      ${PROXYCHAINS} node "/opt/lobechat/server.js"; \
-    fi;
+CMD ["node", "/app/startServer.js"]
