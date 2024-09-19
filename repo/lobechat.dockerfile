@@ -1,4 +1,4 @@
-# Current Version: 1.7.0
+# Current Version: 1.7.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -39,6 +39,8 @@ FROM busybox:latest AS REBASED_LOBECHAT
 
 COPY --from=BUILD_BASEOS /distroless/ /
 
+COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/standalone /app
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /app/.next/static
 
@@ -58,6 +60,7 @@ RUN \
 FROM scratch
 
 ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="1" \
+    NODE_OPTIONS="--use-openssl-ca" NODE_EXTRA_CA_CERTS="/etc/ssl/certs/ca-certificates.crt" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
