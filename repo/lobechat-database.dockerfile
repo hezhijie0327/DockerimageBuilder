@@ -1,4 +1,4 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -45,6 +45,8 @@ FROM scratch AS REBASED_LOBECHAT
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
+COPY --from=BUILD_BASEOS /distroless/ /
+
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/standalone /app
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /app/.next/static
 
@@ -60,27 +62,25 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/errorH
 
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/serverLauncher/startServer.js /app/startServer.js
 
-FROM busybox:latest
+RUN \
+    # Add nextjs:nodejs to run the app
+    addgroup -S -g 1001 nodejs \
+    && adduser -D -G nodejs -H -S -h /app -u 1001 nextjs \
+    # Set permission for nextjs:nodejs
+    && chown -R nextjs:nodejs /app /etc/proxychains4.conf
+
+FROM scratch
 
 ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="1" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210" \
     DATABASE_DRIVER="node"
 
-COPY --from=BUILD_BASEOS /distroless/ /
-
-COPY --from=REBASED_LOBECHAT --chown=nextjs:nodejs /app /app
-
-RUN \
-    # Add nextjs:nodejs to run the app
-    addgroup -S -g 1001 nodejs \
-    && adduser -D -G nodejs -H -S -h /app -u 1001 nextjs \
-    # Set permission for nextjs:nodejs
-    && chown -R nextjs:nodejs /etc/proxychains4.conf
+COPY --from=REBASED_LOBECHAT / /
 
 USER nextjs
 
-EXPOSE 3210/tcp 3211/tcp
+EXPOSE 3210/tcp
 
 CMD \
     if [ -n "$PROXY_URL" ]; then \
