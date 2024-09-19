@@ -1,9 +1,9 @@
 diff --git a/scripts/serverLauncher/startServer.js b/scripts/serverLauncher/startServer.js
 new file mode 100644
-index 000000000000..aaa19e606b06
+index 000000000000..9e6980d4d8a9
 --- /dev/null
 +++ b/scripts/serverLauncher/startServer.js
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,179 @@
 +const dns = require('dns').promises;
 +const fs = require('fs');
 +const tls = require('tls');
@@ -58,6 +58,16 @@ index 000000000000..aaa19e606b06
 +  });
 +}
 +
++// Function to get env vars by keyword
++function getEnvVarsByKeyword(keyword) {
++  const value = Object.keys(process.env)
++    .filter(key => key.includes(keyword) && process.env[key]) // filter by keywords & exclude empty value
++    .map(key => process.env[key]) // get matched keys
++    .shift(); // get the first value
++
++  return value || null;
++}
++
 +// Function to parse protocol, host and port from a URL
 +function parseUrl(url) {
 +    const urlObj = new URL(url);
@@ -81,6 +91,17 @@ index 000000000000..aaa19e606b06
 +      }
 +    });
 +  });
++}
++
++// Function to run OSS connection checker
++async function runOSSConnChecker() {
++  isValidSSL(process.env.S3_ENDPOINT);
++  isValidSSL(process.env.S3_PUBLIC_DOMAIN);
++}
++
++// Function to run auth issuer connection checker
++async function runAuthIssuerConnChecker() {
++  isValidSSL(getEnvVarsByKeyword("_ISSUER"));
 +}
 +
 +// Function to run ProxyChains conf generator
@@ -148,6 +169,12 @@ index 000000000000..aaa19e606b06
 +  if (process.env.DATABASE_DRIVER) {
 +    // Run the DB Migration script first
 +    await runDBMigrationScript();
++
++    // Run OSS Connection Checker
++    await runOSSConnChecker();
++
++    // Run Auth Issuer Connection Checker
++    await runAuthIssuerConnChecker();
 +
 +    // If successful, proceed to run the server
 +    runServer();
