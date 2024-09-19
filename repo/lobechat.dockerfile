@@ -1,4 +1,4 @@
-# Current Version: 1.6.6
+# Current Version: 1.6.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -53,7 +53,7 @@ RUN \
     addgroup -S -g 1001 nodejs \
     && adduser -D -G nodejs -H -S -h /app -u 1001 nextjs \
     # Set permission for nextjs:nodejs
-    && chown -R nextjs:nodejs /etc/proxychains4.conf
+    && chown -R nextjs:nodejs /app /etc/proxychains4.conf
 
 FROM scratch
 
