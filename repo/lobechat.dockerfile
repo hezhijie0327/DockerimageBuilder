@@ -1,4 +1,4 @@
-# Current Version: 1.6.4
+# Current Version: 1.6.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -48,11 +48,9 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/sharp/node_modules/.pnpm /app/
 
 FROM busybox:latest
 
-ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
+ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="1" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest" \
-    HOSTNAME="0.0.0.0" PORT="3210" \
-    DEFAULT_AGENT_CONFIG="" SYSTEM_AGENT="" \
-    PROXY_URL=""
+    HOSTNAME="0.0.0.0" PORT="3210"
 
 COPY --from=BUILD_BASEOS /distroless/ /
 
