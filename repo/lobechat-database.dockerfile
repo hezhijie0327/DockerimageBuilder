@@ -1,4 +1,4 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -24,7 +24,7 @@ ENV NEXT_PUBLIC_SERVICE_MODE="server" \
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PNPM_HOME="/pnpm" && export PATH="${PNPM_HOME}:${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/lobechat.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.source.autobuild") "${WORKDIR}/BUILDTMP/LOBECHAT" && git clone -b $(cat "${WORKDIR}/lobechat.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export LOBECHAT_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_VERSION=$(cat "${WORKDIR}/lobechat.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export LOBECHAT_CUSTOM_VERSION="${LOBECHAT_VERSION}-ZHIJIE-${LOBECHAT_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json" && corepack enable && corepack use pnpm && pnpm i && mkdir -p "${WORKDIR}/BUILDTMP/LOBECHAT/deps" && pnpm add sharp pg drizzle-orm --prefix "${WORKDIR}/BUILDTMP/LOBECHAT/deps" && npm run build:docker
 
-FROM node:20-slim AS BUILD_BASEOS
+FROM node:lts-slim AS BUILD_BASEOS
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
@@ -60,6 +60,8 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/src/database/server/migrations
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/docker.cjs /app/docker.cjs
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/errorHint.js /app/errorHint.js
 
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/serverLauncher/startServer.js /app/startServer.js
+
 RUN \
     # Add nextjs:nodejs to run the app
     addgroup -S -g 1001 nodejs \
@@ -80,40 +82,4 @@ USER nextjs
 
 EXPOSE 3210/tcp
 
-CMD \
-    if [ -n "$PROXY_URL" ]; then \
-        # Set regex for IPv4
-        IP_REGEX="^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$"; \
-        # Set proxychains command
-        PROXYCHAINS="proxychains -q"; \
-        # Parse the proxy URL
-        host_with_port="${PROXY_URL#*//}"; \
-        host="${host_with_port%%:*}"; \
-        port="${PROXY_URL##*:}"; \
-        protocol="${PROXY_URL%%://*}"; \
-        # Resolve to IP address if the host is a domain
-        if ! [[ "$host" =~ "$IP_REGEX" ]]; then \
-            nslookup=$(nslookup -q="A" "$host" | tail -n +3 | grep 'Address:'); \
-            if [ -n "$nslookup" ]; then \
-                host=$(echo "$nslookup" | tail -n 1 | awk '{print $2}'); \
-            fi; \
-        fi; \
-        # Generate proxychains configuration file
-        printf "%s\n" \
-            'localnet 127.0.0.0/255.0.0.0' \
-            'localnet ::1/128' \
-            'proxy_dns' \
-            'remote_dns_subnet 224' \
-            'strict_chain' \
-            'tcp_connect_time_out 8000' \
-            'tcp_read_time_out 15000' \
-            '[ProxyList]' \
-            "$protocol $host $port" \
-        > "/etc/proxychains4.conf"; \
-    fi; \
-    # Run migration
-    node "/app/docker.cjs"; \
-    if [ "$?" -eq "0" ]; then \
-      # Run the server
-      ${PROXYCHAINS} node "/app/server.js"; \
-    fi;
+CMD ["node", "/app/startServer.js"]
