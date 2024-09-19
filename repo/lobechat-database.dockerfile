@@ -1,4 +1,4 @@
-# Current Version: 1.1.4
+# Current Version: 1.1.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -59,8 +59,6 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/pg /app/node
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/src/database/server/migrations /app/migrations
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/docker.cjs /app/docker.cjs
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/errorHint.js /app/errorHint.js
-
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/serverLauncher/startServer.js /app/startServer.js
 
 RUN \
     # Add nextjs:nodejs to run the app
