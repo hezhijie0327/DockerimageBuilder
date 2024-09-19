@@ -1,4 +1,4 @@
-# Current Version: 1.1.7
+# Current Version: 1.1.8
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -31,7 +31,7 @@ ENV DEBIAN_FRONTEND="noninteractive"
 RUN sed -i "s/deb.debian.org/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list.d/debian.sources" \
     && apt update \
     && apt install proxychains-ng -qy \
-    && mkdir -p /distroless/bin /distroless/lib /distroless/etc/ssl/certs \
+    && mkdir -p /distroless/bin /distroless/etc /distroless/lib \
     && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
     && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
     && cp /usr/bin/proxychains4 /distroless/bin/proxychains \
