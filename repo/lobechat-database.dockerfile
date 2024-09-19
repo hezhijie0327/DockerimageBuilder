@@ -1,4 +1,4 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -62,12 +62,10 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/serverLauncher/startSe
 
 FROM busybox:latest
 
-ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="0" \
-    DATABASE_DRIVER="node" \
+ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="1" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210" \
-    DEFAULT_AGENT_CONFIG="" SYSTEM_AGENT="" \
-    PROXY_URL=""
+    DATABASE_DRIVER="node"
 
 COPY --from=BUILD_BASEOS /distroless/ /
 
