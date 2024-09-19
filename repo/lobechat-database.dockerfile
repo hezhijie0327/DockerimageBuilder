@@ -1,4 +1,4 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -41,7 +41,7 @@ RUN sed -i "s/deb.debian.org/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list.d/deb
     && cp /usr/local/bin/node /distroless/bin/node \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
-FROM scratch AS REBASED_LOBECHAT
+FROM busybox:latest AS REBASED_LOBECHAT
 
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
