@@ -1,4 +1,4 @@
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -83,4 +83,6 @@ USER nextjs
 
 EXPOSE 3210/tcp
 
-CMD ["node", "/app/startServer.js"]
+ENTRYPOINT ["/bin/node"]
+
+CMD ["/app/startServer.js"]
