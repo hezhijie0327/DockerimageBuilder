@@ -1,0 +1,560 @@
+diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
+index 932992954f7a..4d4a0ca9adfd 100644
+--- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
++++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
+@@ -9,6 +9,7 @@ import {
+   FireworksAIProviderCard,
+   GoogleProviderCard,
+   GroqProviderCard,
++  HunyuanProviderCard,
+   MinimaxProviderCard,
+   MistralProviderCard,
+   MoonshotProviderCard,
+@@ -70,6 +71,7 @@ export const useProviderList = (): ProviderItem[] => {
+       Ai360ProviderCard,
+       TaichuProviderCard,
+       SiliconCloudProviderCard,
++      HunyuanProviderCard,
+     ],
+     [AzureProvider, OllamaProvider, OpenAIProvider, BedrockProvider, GithubProvider],
+   );
+diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
+index 5b3f0e98e12c..f215a6ea0004 100644
+--- a/src/app/api/chat/agentRuntime.ts
++++ b/src/app/api/chat/agentRuntime.ts
+@@ -244,6 +244,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+ 
+       const apiKey = apiKeyManager.pick(payload?.apiKey || AI21_API_KEY);
+ 
++      return { apiKey };
++    }
++    case ModelProvider.Hunyuan: {
++      const { HUNYUAN_API_KEY } = getLLMConfig();
++
++      const apiKey = apiKeyManager.pick(payload?.apiKey || HUNYUAN_API_KEY);
++
+       return { apiKey };
+     }
+   }
+diff --git a/src/config/llm.ts b/src/config/llm.ts
+index 1c2219ac2666..638562543871 100644
+--- a/src/config/llm.ts
++++ b/src/config/llm.ts
+@@ -117,6 +117,9 @@ export const getLLMConfig = () => {
+ 
+       ENABLED_AI21: z.boolean(),
+       AI21_API_KEY: z.string().optional(),
++
++      ENABLED_HUNYUAN: z.boolean(),
++      HUNYUAN_API_KEY: z.string().optional(),
+     },
+     runtimeEnv: {
+       API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
+@@ -231,6 +234,9 @@ export const getLLMConfig = () => {
+ 
+       ENABLED_AI21: !!process.env.AI21_API_KEY,
+       AI21_API_KEY: process.env.AI21_API_KEY,
++
++      ENABLED_HUNYUAN: !!process.env.HUNYUAN_API_KEY,
++      HUNYUAN_API_KEY: process.env.HUNYUAN_API_KEY,
+     },
+   });
+ };
+diff --git a/src/config/modelProviders/hunyuan.ts b/src/config/modelProviders/hunyuan.ts
+new file mode 100644
+index 000000000000..6bd4056ff3a5
+--- /dev/null
++++ b/src/config/modelProviders/hunyuan.ts
+@@ -0,0 +1,79 @@
++import { ModelProviderCard } from '@/types/llm';
++
++// ref https://cloud.tencent.com/document/product/1729/104753
++const Hunyuan: ModelProviderCard = {
++  chatModels: [
++    {
++      description: '混元全新一代大语言模型的预览版，采用全新的混合专家模型（MoE）结构，相比hunyuan-pro推理效率更快，效果表现更强。',
++      displayName: 'Hunyuan Turbo',
++      enabled: true,
++      id: 'hunyuan-turbo',
++      tokens: 28_000,
++    },
++    {
++      description: '万亿级参数规模 MOE-32K 长文模型。在各种 benchmark 上达到绝对领先的水平，复杂指令和推理，具备复杂数学能力，支持 functioncall，在多语言翻译、金融法律医疗等领域应用重点优化。',
++      displayName: 'Hunyuan Pro',
++      enabled: true,
++      functionCall: true,
++      id: 'hunyuan-pro',
++      tokens: 28_000,
++    },
++    {
++      description: '采用更优的路由策略，同时缓解了负载均衡和专家趋同的问题。长文方面，大海捞针指标达到99.9%。MOE-32K 性价比相对更高，在平衡效果、价格的同时，可对实现对长文本输入的处理。',
++      displayName: 'Hunyuan Standard 32K',
++      enabled: true,
++      id: 'hunyuan-standard-32K',
++      tokens: 30_000,
++    },
++    {
++      description: '采用更优的路由策略，同时缓解了负载均衡和专家趋同的问题。长文方面，大海捞针指标达到99.9%。MOE-256K 在长度和效果上进一步突破，极大的扩展了可输入长度。',
++      displayName: 'Hunyuan Standard 256K',
++      enabled: true,
++      id: 'hunyuan-standard-256K',
++      tokens: 250_000,
++    },
++    {
++      description: '升级为 MOE 结构，上下文窗口为 256k ，在 NLP，代码，数学，行业等多项评测集上领先众多开源模型。',
++      displayName: 'Hunyuan Lite',
++      enabled: true,
++      id: 'hunyuan-lite',
++      tokens: 250_000,
++    },
++    {
++      description: '混元最新版角色扮演模型，混元官方精调训练推出的角色扮演模型，基于混元模型结合角色扮演场景数据集进行增训，在角色扮演场景具有更好的基础效果。',
++      displayName: 'Hunyuan Role',
++      id: 'hunyuan-role',
++      tokens: 4000,
++    },
++    {
++      description: '混元最新 MOE 架构 FunctionCall 模型，经过高质量的 FunctionCall 数据训练，上下文窗口达 32K，在多个维度的评测指标上处于领先。',
++      displayName: 'Hunyuan FunctionCall',
++      functionCall: true,
++      id: 'hunyuan-functioncall',
++      tokens: 28_000,
++    },
++    {
++      description: '混元最新代码生成模型，经过 200B 高质量代码数据增训基座模型，迭代半年高质量 SFT 数据训练，上下文长窗口长度增大到 8K，五大语言代码生成自动评测指标上位居前列；五大语言10项考量各方面综合代码任务人工高质量评测上，性能处于第一梯队',
++      displayName: 'Hunyuan Code',
++      enabled: true,
++      id: 'hunyuan-code',
++      tokens: 4000,
++    },
++    {
++      description: '混元最新多模态模型，支持图片+文本输入生成文本内容。',
++      displayName: 'Hunyuan Vision',
++      enabled: true,
++      id: 'hunyuan-vision',
++      tokens: 4000,
++      vision: true,
++    },
++  ],
++  checkModel: 'hunyuan-lite',
++  id: 'hunyuan',
++  modelList: { showModelFetcher: true },
++  modelsUrl: 'https://cloud.tencent.com/document/product/1729/104753',
++  name: 'Hunyuan',
++  url: 'https://hunyuan.tencent.com',
++};
++
++export default Hunyuan;
+diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
+index 27094172b378..27b372633768 100644
+--- a/src/config/modelProviders/index.ts
++++ b/src/config/modelProviders/index.ts
+@@ -11,6 +11,7 @@ import FireworksAIProvider from './fireworksai';
+ import GithubProvider from './github';
+ import GoogleProvider from './google';
+ import GroqProvider from './groq';
++import HunyuanProvider from './hunyuan';
+ import MinimaxProvider from './minimax';
+ import MistralProvider from './mistral';
+ import MoonshotProvider from './moonshot';
+@@ -57,6 +58,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
+   UpstageProvider.chatModels,
+   SparkProvider.chatModels,
+   Ai21Provider.chatModels,
++  HunyuanProvider.chatModels,
+ ].flat();
+ 
+ export const DEFAULT_MODEL_PROVIDER_LIST = [
+@@ -88,6 +90,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
+   Ai360Provider,
+   TaichuProvider,
+   SiliconCloudProvider,
++  HunyuanProvider,
+ ];
+ 
+ export const filterEnabledModels = (provider: ModelProviderCard) => {
+@@ -110,6 +113,7 @@ export { default as FireworksAIProviderCard } from './fireworksai';
+ export { default as GithubProviderCard } from './github';
+ export { default as GoogleProviderCard } from './google';
+ export { default as GroqProviderCard } from './groq';
++export { default as HunyuanProviderCard } from './hunyuan';
+ export { default as MinimaxProviderCard } from './minimax';
+ export { default as MistralProviderCard } from './mistral';
+ export { default as MoonshotProviderCard } from './moonshot';
+diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
+index df2c9cadcf88..77d4eb61441d 100644
+--- a/src/const/settings/llm.ts
++++ b/src/const/settings/llm.ts
+@@ -9,6 +9,7 @@ import {
+   GithubProviderCard,
+   GoogleProviderCard,
+   GroqProviderCard,
++  HunyuanProviderCard,
+   MinimaxProviderCard,
+   MistralProviderCard,
+   MoonshotProviderCard,
+@@ -75,6 +76,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
+     enabled: false,
+     enabledModels: filterEnabledModels(GroqProviderCard),
+   },
++  hunyuan: {
++    enabled: false,
++    enabledModels: filterEnabledModels(HunyuanProviderCard),
++  },
+   minimax: {
+     enabled: false,
+     enabledModels: filterEnabledModels(MinimaxProviderCard),
+diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
+index 6a7fedba0329..68ea3ade7cd7 100644
+--- a/src/libs/agent-runtime/AgentRuntime.ts
++++ b/src/libs/agent-runtime/AgentRuntime.ts
+@@ -14,6 +14,7 @@ import { LobeFireworksAI } from './fireworksai';
+ import { LobeGithubAI } from './github';
+ import { LobeGoogleAI } from './google';
+ import { LobeGroq } from './groq';
++import { LobeHunyuanAI } from './hunyuan';
+ import { LobeMinimaxAI } from './minimax';
+ import { LobeMistralAI } from './mistral';
+ import { LobeMoonshotAI } from './moonshot';
+@@ -133,6 +134,7 @@ class AgentRuntime {
+       github: Partial<ClientOptions>;
+       google: { apiKey?: string; baseURL?: string };
+       groq: Partial<ClientOptions>;
++      hunyuan: Partial<ClientOptions>;
+       minimax: Partial<ClientOptions>;
+       mistral: Partial<ClientOptions>;
+       moonshot: Partial<ClientOptions>;
+@@ -300,6 +302,11 @@ class AgentRuntime {
+         runtimeModel = new LobeAi21AI(params.ai21);
+         break;
+       }
++
++      case ModelProvider.Hunyuan: {
++        runtimeModel = new LobeHunyuanAI(params.hunyuan);
++        break;
++      }
+     }
+ 
+     return new AgentRuntime(runtimeModel);
+diff --git a/src/libs/agent-runtime/hunyuan/index.test.ts b/src/libs/agent-runtime/hunyuan/index.test.ts
+new file mode 100644
+index 000000000000..8582071760cc
+--- /dev/null
++++ b/src/libs/agent-runtime/hunyuan/index.test.ts
+@@ -0,0 +1,255 @@
++// @vitest-environment node
++import OpenAI from 'openai';
++import { Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++import {
++  ChatStreamCallbacks,
++  LobeOpenAICompatibleRuntime,
++  ModelProvider,
++} from '@/libs/agent-runtime';
++
++import * as debugStreamModule from '../utils/debugStream';
++import { LobeHunyuanAI } from './index';
++
++const provider = ModelProvider.Hunyuan;
++const defaultBaseURL = 'https://api.hunyuan.cloud.tencent.com/v1';
++
++const bizErrorType = 'ProviderBizError';
++const invalidErrorType = 'InvalidProviderAPIKey';
++
++// Mock the console.error to avoid polluting test output
++vi.spyOn(console, 'error').mockImplementation(() => {});
++
++let instance: LobeOpenAICompatibleRuntime;
++
++beforeEach(() => {
++  instance = new LobeHunyuanAI({ apiKey: 'test' });
++
++  // 使用 vi.spyOn 来模拟 chat.completions.create 方法
++  vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
++    new ReadableStream() as any,
++  );
++});
++
++afterEach(() => {
++  vi.clearAllMocks();
++});
++
++describe('LobeHunyuanAI', () => {
++  describe('init', () => {
++    it('should correctly initialize with an API key', async () => {
++      const instance = new LobeHunyuanAI({ apiKey: 'test_api_key' });
++      expect(instance).toBeInstanceOf(LobeHunyuanAI);
++      expect(instance.baseURL).toEqual(defaultBaseURL);
++    });
++  });
++
++  describe('chat', () => {
++    describe('Error', () => {
++      it('should return OpenAIBizError with an openai error response when OpenAI.APIError is thrown', async () => {
++        // Arrange
++        const apiError = new OpenAI.APIError(
++          400,
++          {
++            status: 400,
++            error: {
++              message: 'Bad Request',
++            },
++          },
++          'Error message',
++          {},
++        );
++
++        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++
++        // Act
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'hunyuan-lite',
++            temperature: 0,
++          });
++        } catch (e) {
++          expect(e).toEqual({
++            endpoint: defaultBaseURL,
++            error: {
++              error: { message: 'Bad Request' },
++              status: 400,
++            },
++            errorType: bizErrorType,
++            provider,
++          });
++        }
++      });
++
++      it('should throw AgentRuntimeError with NoOpenAIAPIKey if no apiKey is provided', async () => {
++        try {
++          new LobeHunyuanAI({});
++        } catch (e) {
++          expect(e).toEqual({ errorType: invalidErrorType });
++        }
++      });
++
++      it('should return OpenAIBizError with the cause when OpenAI.APIError is thrown with cause', async () => {
++        // Arrange
++        const errorInfo = {
++          stack: 'abc',
++          cause: {
++            message: 'api is undefined',
++          },
++        };
++        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
++
++        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++
++        // Act
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'hunyuan-lite',
++            temperature: 0,
++          });
++        } catch (e) {
++          expect(e).toEqual({
++            endpoint: defaultBaseURL,
++            error: {
++              cause: { message: 'api is undefined' },
++              stack: 'abc',
++            },
++            errorType: bizErrorType,
++            provider,
++          });
++        }
++      });
++
++      it('should return OpenAIBizError with an cause response with desensitize Url', async () => {
++        // Arrange
++        const errorInfo = {
++          stack: 'abc',
++          cause: { message: 'api is undefined' },
++        };
++        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
++
++        instance = new LobeHunyuanAI({
++          apiKey: 'test',
++
++          baseURL: 'https://api.abc.com/v1',
++        });
++
++        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++
++        // Act
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'hunyuan-lite',
++            temperature: 0,
++          });
++        } catch (e) {
++          expect(e).toEqual({
++            endpoint: 'https://api.***.com/v1',
++            error: {
++              cause: { message: 'api is undefined' },
++              stack: 'abc',
++            },
++            errorType: bizErrorType,
++            provider,
++          });
++        }
++      });
++
++      it('should throw an InvalidHunyuanAPIKey error type on 401 status code', async () => {
++        // Mock the API call to simulate a 401 error
++        const error = new Error('Unauthorized') as any;
++        error.status = 401;
++        vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(error);
++
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'hunyuan-lite',
++            temperature: 0,
++          });
++        } catch (e) {
++          // Expect the chat method to throw an error with InvalidHunyuanAPIKey
++          expect(e).toEqual({
++            endpoint: defaultBaseURL,
++            error: new Error('Unauthorized'),
++            errorType: invalidErrorType,
++            provider,
++          });
++        }
++      });
++
++      it('should return AgentRuntimeError for non-OpenAI errors', async () => {
++        // Arrange
++        const genericError = new Error('Generic Error');
++
++        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(genericError);
++
++        // Act
++        try {
++          await instance.chat({
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'hunyuan-lite',
++            temperature: 0,
++          });
++        } catch (e) {
++          expect(e).toEqual({
++            endpoint: defaultBaseURL,
++            errorType: 'AgentRuntimeError',
++            provider,
++            error: {
++              name: genericError.name,
++              cause: genericError.cause,
++              message: genericError.message,
++              stack: genericError.stack,
++            },
++          });
++        }
++      });
++    });
++
++    describe('DEBUG', () => {
++      it('should call debugStream and return StreamingTextResponse when DEBUG_HUNYUAN_CHAT_COMPLETION is 1', async () => {
++        // Arrange
++        const mockProdStream = new ReadableStream() as any; // 模拟的 prod 流
++        const mockDebugStream = new ReadableStream({
++          start(controller) {
++            controller.enqueue('Debug stream content');
++            controller.close();
++          },
++        }) as any;
++        mockDebugStream.toReadableStream = () => mockDebugStream; // 添加 toReadableStream 方法
++
++        // 模拟 chat.completions.create 返回值，包括模拟的 tee 方法
++        (instance['client'].chat.completions.create as Mock).mockResolvedValue({
++          tee: () => [mockProdStream, { toReadableStream: () => mockDebugStream }],
++        });
++
++        // 保存原始环境变量值
++        const originalDebugValue = process.env.DEBUG_HUNYUAN_CHAT_COMPLETION;
++
++        // 模拟环境变量
++        process.env.DEBUG_HUNYUAN_CHAT_COMPLETION = '1';
++        vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
++
++        // 执行测试
++        // 运行你的测试函数，确保它会在条件满足时调用 debugStream
++        // 假设的测试函数调用，你可能需要根据实际情况调整
++        await instance.chat({
++          messages: [{ content: 'Hello', role: 'user' }],
++          model: 'hunyuan-lite',
++          stream: true,
++          temperature: 0,
++        });
++
++        // 验证 debugStream 被调用
++        expect(debugStreamModule.debugStream).toHaveBeenCalled();
++
++        // 恢复原始环境变量值
++        process.env.DEBUG_HUNYUAN_CHAT_COMPLETION = originalDebugValue;
++      });
++    });
++  });
++});
+diff --git a/src/libs/agent-runtime/hunyuan/index.ts b/src/libs/agent-runtime/hunyuan/index.ts
+new file mode 100644
+index 000000000000..1744ecef4734
+--- /dev/null
++++ b/src/libs/agent-runtime/hunyuan/index.ts
+@@ -0,0 +1,10 @@
++import { ModelProvider } from '../types';
++import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
++
++export const LobeHunyuanAI = LobeOpenAICompatibleFactory({
++  baseURL: 'https://api.hunyuan.cloud.tencent.com/v1',
++  debug: {
++    chatCompletion: () => process.env.DEBUG_HUNYUAN_CHAT_COMPLETION === '1',
++  },
++  provider: ModelProvider.Hunyuan,
++});
+diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
+index ac8e9b2e46bf..ae94893af796 100644
+--- a/src/libs/agent-runtime/types/type.ts
++++ b/src/libs/agent-runtime/types/type.ts
+@@ -33,6 +33,7 @@ export enum ModelProvider {
+   Github = 'github',
+   Google = 'google',
+   Groq = 'groq',
++  Hunyuan = 'hunyuan',
+   Minimax = 'minimax',
+   Mistral = 'mistral',
+   Moonshot = 'moonshot',
+diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
+index 6f03a44fa9d2..f02e44671023 100644
+--- a/src/server/globalConfig/index.ts
++++ b/src/server/globalConfig/index.ts
+@@ -49,6 +49,8 @@ export const getServerGlobalConfig = () => {
+     ENABLED_GITHUB,
+     GITHUB_MODEL_LIST,
+ 
++    ENABLED_HUNYUAN,
++    
+     ENABLED_DEEPSEEK,
+     ENABLED_PERPLEXITY,
+     ENABLED_ANTHROPIC,
+@@ -160,6 +162,7 @@ export const getServerGlobalConfig = () => {
+           modelString: GROQ_MODEL_LIST,
+         }),
+       },
++      hunyuan: { enabled: ENABLED_HUNYUAN },
+       minimax: { enabled: ENABLED_MINIMAX },
+       mistral: { enabled: ENABLED_MISTRAL },
+       moonshot: { enabled: ENABLED_MOONSHOT },
+diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
+index 8fe21885f606..3a0c6c4f0e4b 100644
+--- a/src/types/user/settings/keyVaults.ts
++++ b/src/types/user/settings/keyVaults.ts
+@@ -28,6 +28,7 @@ export interface UserKeyVaults {
+   github?: OpenAICompatibleKeyVault;
+   google?: OpenAICompatibleKeyVault;
+   groq?: OpenAICompatibleKeyVault;
++  hunyuan?: OpenAICompatibleKeyVault;
+   lobehub?: any;
+   minimax?: OpenAICompatibleKeyVault;
+   mistral?: OpenAICompatibleKeyVault;
