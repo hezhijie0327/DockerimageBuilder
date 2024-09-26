@@ -37,45 +37,86 @@ index 5b3f0e98e12c..f215a6ea0004 100644
      }
    }
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index 1c2219ac2666..638562543871 100644
+index 1c2219ac2666..f967c108c156 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
-@@ -117,6 +117,9 @@ export const getLLMConfig = () => {
+@@ -117,6 +117,10 @@ export const getLLMConfig = () => {
  
        ENABLED_AI21: z.boolean(),
        AI21_API_KEY: z.string().optional(),
 +
 +      ENABLED_HUNYUAN: z.boolean(),
 +      HUNYUAN_API_KEY: z.string().optional(),
++      HUNYUAN_MODEL_LIST: z.string().optional(),
      },
      runtimeEnv: {
        API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
-@@ -231,6 +234,9 @@ export const getLLMConfig = () => {
+@@ -231,6 +235,10 @@ export const getLLMConfig = () => {
  
        ENABLED_AI21: !!process.env.AI21_API_KEY,
        AI21_API_KEY: process.env.AI21_API_KEY,
 +
 +      ENABLED_HUNYUAN: !!process.env.HUNYUAN_API_KEY,
 +      HUNYUAN_API_KEY: process.env.HUNYUAN_API_KEY,
++      HUNYUAN_MODEL_LIST: process.env.HUNYUAN_MODEL_LIST,
      },
    });
  };
 diff --git a/src/config/modelProviders/hunyuan.ts b/src/config/modelProviders/hunyuan.ts
 new file mode 100644
-index 000000000000..6bd4056ff3a5
+index 000000000000..164a3a7e4710
 --- /dev/null
 +++ b/src/config/modelProviders/hunyuan.ts
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,130 @@
 +import { ModelProviderCard } from '@/types/llm';
 +
 +// ref https://cloud.tencent.com/document/product/1729/104753
 +const Hunyuan: ModelProviderCard = {
 +  chatModels: [
 +    {
++      description: '升级为 MOE 结构，上下文窗口为 256k ，在 NLP，代码，数学，行业等多项评测集上领先众多开源模型。',
++      displayName: 'Hunyuan Lite',
++      enabled: true,
++      id: 'hunyuan-lite',
++      maxOutput: 6000,
++      tokens: 250_000,
++    },
++    {
++      description: '采用更优的路由策略，同时缓解了负载均衡和专家趋同的问题。长文方面，大海捞针指标达到99.9%。MOE-32K 性价比相对更高，在平衡效果、价格的同时，可对实现对长文本输入的处理。',
++      displayName: 'Hunyuan Standard',
++      enabled: true,
++      id: 'hunyuan-standard',
++      maxOutput: 2000,
++      pricing: {
++        currency: 'CNY',
++        input: 4.5,
++        output: 5,
++      },
++      tokens: 30_000,
++    },
++    {
++      description: '采用更优的路由策略，同时缓解了负载均衡和专家趋同的问题。长文方面，大海捞针指标达到99.9%。MOE-256K 在长度和效果上进一步突破，极大的扩展了可输入长度。',
++      displayName: 'Hunyuan Standard 256K',
++      id: 'hunyuan-standard-256K',
++      maxOutput: 6000,
++      pricing: {
++        currency: 'CNY',
++        input: 15,
++        output: 60,
++      },
++      tokens: 250_000,
++    },
++    {
 +      description: '混元全新一代大语言模型的预览版，采用全新的混合专家模型（MoE）结构，相比hunyuan-pro推理效率更快，效果表现更强。',
 +      displayName: 'Hunyuan Turbo',
 +      enabled: true,
 +      id: 'hunyuan-turbo',
++      maxOutput: 4000,
++      pricing: {
++        currency: 'CNY',
++        input: 15,
++        output: 50,
++      },
 +      tokens: 28_000,
 +    },
 +    {
@@ -84,40 +125,12 @@ index 000000000000..6bd4056ff3a5
 +      enabled: true,
 +      functionCall: true,
 +      id: 'hunyuan-pro',
-+      tokens: 28_000,
-+    },
-+    {
-+      description: '采用更优的路由策略，同时缓解了负载均衡和专家趋同的问题。长文方面，大海捞针指标达到99.9%。MOE-32K 性价比相对更高，在平衡效果、价格的同时，可对实现对长文本输入的处理。',
-+      displayName: 'Hunyuan Standard 32K',
-+      enabled: true,
-+      id: 'hunyuan-standard-32K',
-+      tokens: 30_000,
-+    },
-+    {
-+      description: '采用更优的路由策略，同时缓解了负载均衡和专家趋同的问题。长文方面，大海捞针指标达到99.9%。MOE-256K 在长度和效果上进一步突破，极大的扩展了可输入长度。',
-+      displayName: 'Hunyuan Standard 256K',
-+      enabled: true,
-+      id: 'hunyuan-standard-256K',
-+      tokens: 250_000,
-+    },
-+    {
-+      description: '升级为 MOE 结构，上下文窗口为 256k ，在 NLP，代码，数学，行业等多项评测集上领先众多开源模型。',
-+      displayName: 'Hunyuan Lite',
-+      enabled: true,
-+      id: 'hunyuan-lite',
-+      tokens: 250_000,
-+    },
-+    {
-+      description: '混元最新版角色扮演模型，混元官方精调训练推出的角色扮演模型，基于混元模型结合角色扮演场景数据集进行增训，在角色扮演场景具有更好的基础效果。',
-+      displayName: 'Hunyuan Role',
-+      id: 'hunyuan-role',
-+      tokens: 4000,
-+    },
-+    {
-+      description: '混元最新 MOE 架构 FunctionCall 模型，经过高质量的 FunctionCall 数据训练，上下文窗口达 32K，在多个维度的评测指标上处于领先。',
-+      displayName: 'Hunyuan FunctionCall',
-+      functionCall: true,
-+      id: 'hunyuan-functioncall',
++      maxOutput: 4000,
++      pricing: {
++        currency: 'CNY',
++        input: 30,
++        output: 100,
++      },
 +      tokens: 28_000,
 +    },
 +    {
@@ -125,6 +138,12 @@ index 000000000000..6bd4056ff3a5
 +      displayName: 'Hunyuan Code',
 +      enabled: true,
 +      id: 'hunyuan-code',
++      maxOutput: 4000,
++      pricing: {
++        currency: 'CNY',
++        input: 4,
++        output: 8,
++      },
 +      tokens: 4000,
 +    },
 +    {
@@ -132,11 +151,45 @@ index 000000000000..6bd4056ff3a5
 +      displayName: 'Hunyuan Vision',
 +      enabled: true,
 +      id: 'hunyuan-vision',
++      maxOutput: 4000,
++      pricing: {
++        currency: 'CNY',
++        input: 18,
++        output: 18,
++      },
 +      tokens: 4000,
 +      vision: true,
 +    },
++    {
++      description: '混元最新 MOE 架构 FunctionCall 模型，经过高质量的 FunctionCall 数据训练，上下文窗口达 32K，在多个维度的评测指标上处于领先。',
++      displayName: 'Hunyuan FunctionCall',
++      functionCall: true,
++      id: 'hunyuan-functioncall',
++      maxOutput: 4000,
++      pricing: {
++        currency: 'CNY',
++        input: 4,
++        output: 8,
++      },
++      tokens: 28_000,
++    },
++    {
++      description: '混元最新版角色扮演模型，混元官方精调训练推出的角色扮演模型，基于混元模型结合角色扮演场景数据集进行增训，在角色扮演场景具有更好的基础效果。',
++      displayName: 'Hunyuan Role',
++      id: 'hunyuan-role',
++      maxOutput: 4000,
++      pricing: {
++        currency: 'CNY',
++        input: 4,
++        output: 8,
++      },
++      tokens: 4000,
++    },
 +  ],
 +  checkModel: 'hunyuan-lite',
++  description:
++    '由腾讯研发的大语言模型，具备强大的中文创作能力，复杂语境下的逻辑推理能力，以及可靠的任务执行能力',
++  disableBrowserRequest: true,
 +  id: 'hunyuan',
 +  modelList: { showModelFetcher: true },
 +  modelsUrl: 'https://cloud.tencent.com/document/product/1729/104753',
@@ -526,23 +579,39 @@ index ac8e9b2e46bf..ae94893af796 100644
    Mistral = 'mistral',
    Moonshot = 'moonshot',
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index 6f03a44fa9d2..f02e44671023 100644
+index 6f03a44fa9d2..c53f7be3ce1b 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
-@@ -49,6 +49,8 @@ export const getServerGlobalConfig = () => {
+@@ -9,6 +9,7 @@ import {
+   GithubProviderCard,
+   GoogleProviderCard,
+   GroqProviderCard,
++  HunyuanProviderCard,
+   NovitaProviderCard,
+   OllamaProviderCard,
+   OpenAIProviderCard,
+@@ -49,6 +50,9 @@ export const getServerGlobalConfig = () => {
      ENABLED_GITHUB,
      GITHUB_MODEL_LIST,
  
 +    ENABLED_HUNYUAN,
++    HUNYUAN_MODEL_LIST,
 +    
      ENABLED_DEEPSEEK,
      ENABLED_PERPLEXITY,
      ENABLED_ANTHROPIC,
-@@ -160,6 +162,7 @@ export const getServerGlobalConfig = () => {
+@@ -160,6 +164,14 @@ export const getServerGlobalConfig = () => {
            modelString: GROQ_MODEL_LIST,
          }),
        },
-+      hunyuan: { enabled: ENABLED_HUNYUAN },
++      hunyuan: {
++        enabled: ENABLED_HUNYUAN,
++        enabledModels: extractEnabledModels(HUNYUAN_MODEL_LIST),
++        serverModelCards: transformToChatModelCards({
++          defaultChatModels: HunyuanProviderCard.chatModels,
++          modelString: HUNYUAN_MODEL_LIST,
++        }),
++      },
        minimax: { enabled: ENABLED_MINIMAX },
        mistral: { enabled: ENABLED_MISTRAL },
        moonshot: { enabled: ENABLED_MOONSHOT },
