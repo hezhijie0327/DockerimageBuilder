@@ -1,72 +1,157 @@
+diff --git a/src/app/(main)/settings/llm/ProviderList/SenseCore/index.tsx b/src/app/(main)/settings/llm/ProviderList/SenseCore/index.tsx
+new file mode 100644
+index 000000000000..339f8d00f7db
+--- /dev/null
++++ b/src/app/(main)/settings/llm/ProviderList/SenseCore/index.tsx
+@@ -0,0 +1,46 @@
++'use client';
++
++import { Hunyuan } from '@lobehub/icons'; // TODO: 
++import { Input } from 'antd';
++import { useTranslation } from 'react-i18next';
++
++import { SenseCoreProviderCard } from '@/config/modelProviders';
++import { GlobalLLMProviderKey } from '@/types/user/settings';
++
++import { KeyVaultsConfigKey } from '../../const';
++import { ProviderItem } from '../../type';
++
++const providerKey: GlobalLLMProviderKey = 'sensecore';
++
++export const useSenseCoreProvider = (): ProviderItem => {
++  const { t } = useTranslation('modelProvider');
++
++  return {
++    ...SenseCoreProviderCard,
++    apiKeyItems: [
++      {
++        children: (
++          <Input.Password
++            autoComplete={'new-password'}
++            placeholder={t(`${providerKey}.sensecoreAccessKeyID.placeholder`)}
++          />
++        ),
++        desc: t(`${providerKey}.sensecoreAccessKeyID.desc`),
++        label: t(`${providerKey}.sensecoreAccessKeyID.title`),
++        name: [KeyVaultsConfigKey, providerKey, 'sensecoreAccessKeyID'],
++      },
++      {
++        children: (
++          <Input.Password
++            autoComplete={'new-password'}
++            placeholder={t(`${providerKey}.sensecoreAccessKeySecret.placeholder`)}
++          />
++        ),
++        desc: t(`${providerKey}.sensecoreAccessKeySecret.desc`),
++        label: t(`${providerKey}.sensecoreAccessKeySecret.title`),
++        name: [KeyVaultsConfigKey, providerKey, 'sensecoreAccessKeySecret'],
++      },
++    ],
++    title: <Hunyuan.Combine size={32} type={'color'} />,
++  };
++};
 diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-index 932992954f7a..987ad49518b9 100644
+index 8fb6fc359b64..e47c0a18f68f 100644
 --- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
 +++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-@@ -16,6 +16,7 @@ import {
-   OpenRouterProviderCard,
-   PerplexityProviderCard,
-   QwenProviderCard,
-+  SenseCoreProviderCard,
-   SiliconCloudProviderCard,
-   SparkProviderCard,
-   StepfunProviderCard,
-@@ -70,6 +71,7 @@ export const useProviderList = (): ProviderItem[] => {
-       Ai360ProviderCard,
+@@ -33,6 +33,7 @@ import { useBedrockProvider } from './Bedrock';
+ import { useGithubProvider } from './Github';
+ import { useOllamaProvider } from './Ollama';
+ import { useOpenAIProvider } from './OpenAI';
++import { useSenseCoreProvider } from './SenseCore';
+ 
+ export const useProviderList = (): ProviderItem[] => {
+   const AzureProvider = useAzureProvider();
+@@ -40,6 +41,7 @@ export const useProviderList = (): ProviderItem[] => {
+   const OpenAIProvider = useOpenAIProvider();
+   const BedrockProvider = useBedrockProvider();
+   const GithubProvider = useGithubProvider();
++  const SenseCoreProvider = useSenseCoreProvider();
+ 
+   return useMemo(
+     () => [
+@@ -65,6 +67,7 @@ export const useProviderList = (): ProviderItem[] => {
+       SparkProviderCard,
+       ZhiPuProviderCard,
+       ZeroOneProviderCard,
++      SenseCoreProvider,
+       StepfunProviderCard,
+       MoonshotProviderCard,
+       BaichuanProviderCard,
+@@ -73,6 +76,6 @@ export const useProviderList = (): ProviderItem[] => {
        TaichuProviderCard,
        SiliconCloudProviderCard,
-+      SenseCoreProviderCard,
      ],
-     [AzureProvider, OllamaProvider, OpenAIProvider, BedrockProvider, GithubProvider],
+-    [AzureProvider, OllamaProvider, OpenAIProvider, BedrockProvider, GithubProvider],
++    [AzureProvider, OllamaProvider, OpenAIProvider, BedrockProvider, GithubProvider, SenseCoreProvider],
    );
+ };
 diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
-index 5b3f0e98e12c..01b47edcb7c6 100644
+index f215a6ea0004..fffce23817c2 100644
 --- a/src/app/api/chat/agentRuntime.ts
 +++ b/src/app/api/chat/agentRuntime.ts
-@@ -244,6 +244,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -12,6 +12,8 @@ import { TraceClient } from '@/libs/traces';
  
-       const apiKey = apiKeyManager.pick(payload?.apiKey || AI21_API_KEY);
+ import apiKeyManager from './apiKeyManager';
  
-+      return { apiKey };
-+    }
-+    case ModelProvider.SenseCore: {
-+      const { SENSECORE_API_KEY } = getLLMConfig();
++import { encodeJwtTokenSenseCore } from '@/libs/agent-runtime/sensecore/authToken';
 +
-+      const apiKey = apiKeyManager.pick(payload?.apiKey || SENSECORE_API_KEY);
-+
+ export interface AgentChatOptions {
+   enableTrace?: boolean;
+   provider: string;
+@@ -253,6 +255,19 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+ 
        return { apiKey };
      }
++    case ModelProvider.SenseCore: {
++      const { SENSECORE_ACCESS_KEY_ID, SENSECORE_ACCESS_KEY_SECRET } = getLLMConfig();
++
++      const sensecoreAccessKeyID = payload?.sensecoreAccessKeyID || SENSECORE_ACCESS_KEY_ID;
++      const sensecoreAccessKeySecret = payload?.sensecoreAccessKeySecret || SENSECORE_ACCESS_KEY_SECRET;
++
++      return encodeJwtTokenSenseCore(sensecoreAccessKeyID, sensecoreAccessKeySecret).then(apiKey => {
++          return { apiKey };
++      }).catch(error => {
++          console.error('Error fetching SenseCore API key:', error);
++          throw error;
++      });
++    }
    }
+ };
+ 
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index 1c2219ac2666..b2c748c777cf 100644
+index f967c108c156..2573d2698bd0 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
-@@ -117,6 +117,10 @@ export const getLLMConfig = () => {
- 
-       ENABLED_AI21: z.boolean(),
-       AI21_API_KEY: z.string().optional(),
+@@ -121,6 +121,11 @@ export const getLLMConfig = () => {
+       ENABLED_HUNYUAN: z.boolean(),
+       HUNYUAN_API_KEY: z.string().optional(),
+       HUNYUAN_MODEL_LIST: z.string().optional(),
 +
 +      ENABLED_SENSECORE: z.boolean(),
-+      SENSECORE_API_KEY: z.string().optional(),
++      SENSECORE_ACCESS_KEY_ID: z.string().optional(),
++      SENSECORE_ACCESS_KEY_SECRET: z.string().optional(),
 +      SENSECORE_MODEL_LIST: z.string().optional(),
      },
      runtimeEnv: {
        API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
-@@ -231,6 +235,10 @@ export const getLLMConfig = () => {
- 
-       ENABLED_AI21: !!process.env.AI21_API_KEY,
-       AI21_API_KEY: process.env.AI21_API_KEY,
+@@ -239,6 +244,11 @@ export const getLLMConfig = () => {
+       ENABLED_HUNYUAN: !!process.env.HUNYUAN_API_KEY,
+       HUNYUAN_API_KEY: process.env.HUNYUAN_API_KEY,
+       HUNYUAN_MODEL_LIST: process.env.HUNYUAN_MODEL_LIST,
 +
-+      ENABLED_SENSECORE: !!process.env.SENSECORE_API_KEY,
-+      SENSECORE_API_KEY: process.env.SENSECORE_API_KEY,
++      ENABLED_SENSECORE: !!process.env.SENSECORE_ACCESS_KEY_ID && !!process.env.SENSECORE_ACCESS_KEY_SECRET,
++      SENSECORE_ACCESS_KEY_ID: process.env.SENSECORE_ACCESS_KEY_ID,
++      SENSECORE_ACCESS_KEY_SECRET: process.env.SENSECORE_ACCESS_KEY_SECRET,
 +      SENSECORE_MODEL_LIST: process.env.SENSECORE_MODEL_LIST,
      },
    });
  };
 diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
-index 27094172b378..a75db204988c 100644
+index 2dbd8c842b75..227a22308444 100644
 --- a/src/config/modelProviders/index.ts
 +++ b/src/config/modelProviders/index.ts
-@@ -20,6 +20,7 @@ import OpenAIProvider from './openai';
+@@ -21,6 +21,7 @@ import OpenAIProvider from './openai';
  import OpenRouterProvider from './openrouter';
  import PerplexityProvider from './perplexity';
  import QwenProvider from './qwen';
@@ -74,15 +159,15 @@ index 27094172b378..a75db204988c 100644
  import SiliconCloudProvider from './siliconcloud';
  import SparkProvider from './spark';
  import StepfunProvider from './stepfun';
-@@ -57,6 +58,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
-   UpstageProvider.chatModels,
+@@ -59,6 +60,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
    SparkProvider.chatModels,
    Ai21Provider.chatModels,
+   HunyuanProvider.chatModels,
 +  SenseCoreProvider.chatModels,
  ].flat();
  
  export const DEFAULT_MODEL_PROVIDER_LIST = [
-@@ -88,6 +90,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
+@@ -91,6 +93,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
    Ai360Provider,
    TaichuProvider,
    SiliconCloudProvider,
@@ -90,7 +175,7 @@ index 27094172b378..a75db204988c 100644
  ];
  
  export const filterEnabledModels = (provider: ModelProviderCard) => {
-@@ -119,6 +122,7 @@ export { default as OpenAIProviderCard } from './openai';
+@@ -123,6 +126,7 @@ export { default as OpenAIProviderCard } from './openai';
  export { default as OpenRouterProviderCard } from './openrouter';
  export { default as PerplexityProviderCard } from './perplexity';
  export { default as QwenProviderCard } from './qwen';
@@ -228,11 +313,24 @@ index 000000000000..5fb1919fb5d7
 +};
 +
 +export default SenseCore;
+diff --git a/src/const/auth.ts b/src/const/auth.ts
+index 102d0cee4639..b5a79f4e195f 100644
+--- a/src/const/auth.ts
++++ b/src/const/auth.ts
+@@ -42,5 +42,8 @@ export interface JWTPayload {
+    * in server db mode it's a user id
+    */
+   userId?: string;
++
++  sensecoreAccessKeyID?: string;
++  sensecoreAccessKeySecret?: string;
+ }
+ /* eslint-enable */
 diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
-index df2c9cadcf88..148ce4763f95 100644
+index 77d4eb61441d..6a32c165afbf 100644
 --- a/src/const/settings/llm.ts
 +++ b/src/const/settings/llm.ts
-@@ -18,6 +18,7 @@ import {
+@@ -19,6 +19,7 @@ import {
    OpenRouterProviderCard,
    PerplexityProviderCard,
    QwenProviderCard,
@@ -240,7 +338,7 @@ index df2c9cadcf88..148ce4763f95 100644
    SiliconCloudProviderCard,
    SparkProviderCard,
    StepfunProviderCard,
-@@ -112,6 +113,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
+@@ -117,6 +118,10 @@ export const DEFAULT_LLM_CONFIG: UserModelProviderConfig = {
      enabled: false,
      enabledModels: filterEnabledModels(QwenProviderCard),
    },
@@ -252,10 +350,10 @@ index df2c9cadcf88..148ce4763f95 100644
      enabled: false,
      enabledModels: filterEnabledModels(SiliconCloudProviderCard),
 diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
-index 6a7fedba0329..c9e333f78713 100644
+index 68ea3ade7cd7..ae9765a04c97 100644
 --- a/src/libs/agent-runtime/AgentRuntime.ts
 +++ b/src/libs/agent-runtime/AgentRuntime.ts
-@@ -23,6 +23,7 @@ import { LobeOpenAI } from './openai';
+@@ -24,6 +24,7 @@ import { LobeOpenAI } from './openai';
  import { LobeOpenRouterAI } from './openrouter';
  import { LobePerplexityAI } from './perplexity';
  import { LobeQwenAI } from './qwen';
@@ -263,7 +361,7 @@ index 6a7fedba0329..c9e333f78713 100644
  import { LobeSiliconCloudAI } from './siliconcloud';
  import { LobeSparkAI } from './spark';
  import { LobeStepfunAI } from './stepfun';
-@@ -142,6 +143,7 @@ class AgentRuntime {
+@@ -144,6 +145,7 @@ class AgentRuntime {
        openrouter: Partial<ClientOptions>;
        perplexity: Partial<ClientOptions>;
        qwen: Partial<ClientOptions>;
@@ -271,8 +369,8 @@ index 6a7fedba0329..c9e333f78713 100644
        siliconcloud: Partial<ClientOptions>;
        spark: Partial<ClientOptions>;
        stepfun: Partial<ClientOptions>;
-@@ -300,6 +302,11 @@ class AgentRuntime {
-         runtimeModel = new LobeAi21AI(params.ai21);
+@@ -307,6 +309,11 @@ class AgentRuntime {
+         runtimeModel = new LobeHunyuanAI(params.hunyuan);
          break;
        }
 +
@@ -283,6 +381,28 @@ index 6a7fedba0329..c9e333f78713 100644
      }
  
      return new AgentRuntime(runtimeModel);
+diff --git a/src/libs/agent-runtime/sensecore/authToken.ts b/src/libs/agent-runtime/sensecore/authToken.ts
+new file mode 100644
+index 000000000000..ea32a8e4cde7
+--- /dev/null
++++ b/src/libs/agent-runtime/sensecore/authToken.ts
+@@ -0,0 +1,16 @@
++import { SignJWT } from 'jose';
++
++// https://console.sensecore.cn/help/docs/model-as-a-service/nova/overview/Authorization
++export const encodeJwtTokenSenseCore = async (ak?: string, sk?: string): Promise<string> => {
++    const secret = new TextEncoder().encode(sk);
++    const jwt = await new SignJWT({
++            iss: ak,
++        })
++        .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
++        .setIssuedAt()
++        .setExpirationTime(1800)
++        .setNotBefore(-5)
++        .sign(secret);
++
++    return jwt;
++};
 diff --git a/src/libs/agent-runtime/sensecore/index.test.ts b/src/libs/agent-runtime/sensecore/index.test.ts
 new file mode 100644
 index 000000000000..665d26385436
@@ -546,7 +666,7 @@ index 000000000000..665d26385436
 +});
 diff --git a/src/libs/agent-runtime/sensecore/index.ts b/src/libs/agent-runtime/sensecore/index.ts
 new file mode 100644
-index 000000000000..2703d421ddda
+index 000000000000..462123af403c
 --- /dev/null
 +++ b/src/libs/agent-runtime/sensecore/index.ts
 @@ -0,0 +1,24 @@
@@ -560,7 +680,7 @@ index 000000000000..2703d421ddda
 +  chatCompletion: {
 +    handlePayload: (payload: ChatStreamPayload) => {
 +      const { frequency_penalty, temperature, top_p, ...rest } = payload;
-+    
++
 +      return {
 +        ...rest,
 +        frequency_penalty: (frequency_penalty !== undefined && frequency_penalty > 0 && frequency_penalty <= 2) ? frequency_penalty : undefined,
@@ -575,10 +695,10 @@ index 000000000000..2703d421ddda
 +  provider: ModelProvider.SenseCore,
 +});
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
-index ac8e9b2e46bf..0adea7ef7736 100644
+index ae94893af796..e195b34ea12f 100644
 --- a/src/libs/agent-runtime/types/type.ts
 +++ b/src/libs/agent-runtime/types/type.ts
-@@ -42,6 +42,7 @@ export enum ModelProvider {
+@@ -43,6 +43,7 @@ export enum ModelProvider {
    OpenRouter = 'openrouter',
    Perplexity = 'perplexity',
    Qwen = 'qwen',
@@ -586,11 +706,34 @@ index ac8e9b2e46bf..0adea7ef7736 100644
    SiliconCloud = 'siliconcloud',
    Spark = 'spark',
    Stepfun = 'stepfun',
+diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
+index 2bb3c7ee5c66..76be130520f2 100644
+--- a/src/locales/default/modelProvider.ts
++++ b/src/locales/default/modelProvider.ts
+@@ -115,6 +115,18 @@ export default {
+       title: '下载指定的 Ollama 模型',
+     },
+   },
++  sensecore: {
++    sensecoreAccessKeyID: {
++      desc: '填入 SenseCore Access Key ID',
++      placeholder: 'SenseCore Access Key ID',
++      title: 'SenseCore Access Key ID',
++    },
++    sensecoreAccessKeySecret: {
++      desc: '填入 SenseCore Access Key Secret',
++      placeholder: 'SenseCore Access Key Secret',
++      title: 'SenseCore Access Key Secret',
++    },
++  },
+   zeroone: {
+     title: '01.AI 零一万物',
+   },
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index 6f03a44fa9d2..021054a5b594 100644
+index c53f7be3ce1b..6a8420444d22 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
-@@ -14,6 +14,7 @@ import {
+@@ -15,6 +15,7 @@ import {
    OpenAIProviderCard,
    OpenRouterProviderCard,
    QwenProviderCard,
@@ -598,7 +741,7 @@ index 6f03a44fa9d2..021054a5b594 100644
    SiliconCloudProviderCard,
    TogetherAIProviderCard,
    ZeroOneProviderCard,
-@@ -67,6 +68,9 @@ export const getServerGlobalConfig = () => {
+@@ -71,6 +72,9 @@ export const getServerGlobalConfig = () => {
      ENABLED_AI21,
      ENABLED_AI360,
  
@@ -608,7 +751,7 @@ index 6f03a44fa9d2..021054a5b594 100644
      ENABLED_SILICONCLOUD,
      SILICONCLOUD_MODEL_LIST,
  
-@@ -206,6 +210,14 @@ export const getServerGlobalConfig = () => {
+@@ -218,6 +222,14 @@ export const getServerGlobalConfig = () => {
            modelString: QWEN_MODEL_LIST,
          }),
        },
@@ -623,15 +766,84 @@ index 6f03a44fa9d2..021054a5b594 100644
        siliconcloud: {
          enabled: ENABLED_SILICONCLOUD,
          enabledModels: extractEnabledModels(SILICONCLOUD_MODEL_LIST),
+diff --git a/src/services/_auth.ts b/src/services/_auth.ts
+index 3eacfa4603f0..2d87d1bc56c2 100644
+--- a/src/services/_auth.ts
++++ b/src/services/_auth.ts
+@@ -41,6 +41,15 @@ export const getProviderAuthPayload = (provider: string) => {
+       return { endpoint: config?.baseURL };
+     }
+ 
++    case ModelProvider.SenseCore: {
++      const config = keyVaultsConfigSelectors.sensecoreConfig(useUserStore.getState());
++
++      return { 
++        sensecoreAccessKeyID: config?.sensecoreAccessKeyID, 
++        sensecoreAccessKeySecret: config?.sensecoreAccessKeySecret, 
++      };
++    }
++
+     default: {
+       const config = keyVaultsConfigSelectors.getVaultByProvider(provider as GlobalLLMProviderKey)(
+         useUserStore.getState(),
+diff --git a/src/store/user/slices/modelList/selectors/keyVaults.ts b/src/store/user/slices/modelList/selectors/keyVaults.ts
+index 0a9bbb265b65..1bd6631032ab 100644
+--- a/src/store/user/slices/modelList/selectors/keyVaults.ts
++++ b/src/store/user/slices/modelList/selectors/keyVaults.ts
+@@ -16,6 +16,7 @@ const openAIConfig = (s: UserStore) => keyVaultsSettings(s).openai || {};
+ const bedrockConfig = (s: UserStore) => keyVaultsSettings(s).bedrock || {};
+ const ollamaConfig = (s: UserStore) => keyVaultsSettings(s).ollama || {};
+ const azureConfig = (s: UserStore) => keyVaultsSettings(s).azure || {};
++const sensecoreConfig = (s: UserStore) => keyVaultsSettings(s).sensecore || {};
+ const getVaultByProvider = (provider: GlobalLLMProviderKey) => (s: UserStore) =>
+   (keyVaultsSettings(s)[provider] || {}) as OpenAICompatibleKeyVault &
+     AzureOpenAIKeyVault &
+@@ -42,4 +43,5 @@ export const keyVaultsConfigSelectors = {
+   ollamaConfig,
+   openAIConfig,
+   password,
++  sensecoreConfig,
+ };
+diff --git a/src/store/user/slices/modelList/selectors/modelConfig.ts b/src/store/user/slices/modelList/selectors/modelConfig.ts
+index 8e2acb1421ca..9cfadd18b0a6 100644
+--- a/src/store/user/slices/modelList/selectors/modelConfig.ts
++++ b/src/store/user/slices/modelList/selectors/modelConfig.ts
+@@ -69,6 +69,7 @@ const openAIConfig = (s: UserStore) => currentLLMSettings(s).openai;
+ const bedrockConfig = (s: UserStore) => currentLLMSettings(s).bedrock;
+ const ollamaConfig = (s: UserStore) => currentLLMSettings(s).ollama;
+ const azureConfig = (s: UserStore) => currentLLMSettings(s).azure;
++const sensecoreConfig = (s: UserStore) => currentLLMSettings(s).sensecore;
+ 
+ const isAzureEnabled = (s: UserStore) => currentLLMSettings(s).azure.enabled;
+ 
+@@ -86,4 +87,6 @@ export const modelConfigSelectors = {
+ 
+   ollamaConfig,
+   openAIConfig,
++
++  sensecoreConfig,
+ };
 diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
-index 8fe21885f606..ffbf2a5995b2 100644
+index 3a0c6c4f0e4b..36d49cdcd20e 100644
 --- a/src/types/user/settings/keyVaults.ts
 +++ b/src/types/user/settings/keyVaults.ts
-@@ -39,6 +39,7 @@ export interface UserKeyVaults {
+@@ -16,6 +16,11 @@ export interface AWSBedrockKeyVault {
+   sessionToken?: string;
+ }
+ 
++export interface SenseCoreKeyVault {
++  sensecoreAccessKeyID?: string;
++  sensecoreAccessKeySecret?: string;
++}
++
+ export interface UserKeyVaults {
+   ai21?: OpenAICompatibleKeyVault;
+   ai360?: OpenAICompatibleKeyVault;
+@@ -40,6 +45,7 @@ export interface UserKeyVaults {
    password?: string;
    perplexity?: OpenAICompatibleKeyVault;
    qwen?: OpenAICompatibleKeyVault;
-+  sensecore?: OpenAICompatibleKeyVault;
++  sensecore?: SenseCoreKeyVault;
    siliconcloud?: OpenAICompatibleKeyVault;
    spark?: OpenAICompatibleKeyVault;
    stepfun?: OpenAICompatibleKeyVault;
