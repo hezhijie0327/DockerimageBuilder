@@ -1,12 +1,12 @@
 diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-index 8fb6fc359b64..bc204f1dbead 100644
+index 8fb6fc359b64..b407c442a812 100644
 --- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
 +++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
 @@ -17,6 +17,7 @@ import {
    OpenRouterProviderCard,
    PerplexityProviderCard,
    QwenProviderCard,
-+  SenseCoreProviderCard,
++  SenseNovaProviderCard,
    SiliconCloudProviderCard,
    SparkProviderCard,
    StepfunProviderCard,
@@ -14,12 +14,12 @@ index 8fb6fc359b64..bc204f1dbead 100644
        SparkProviderCard,
        ZhiPuProviderCard,
        ZeroOneProviderCard,
-+      SenseCoreProviderCard,
++      SenseNovaProviderCard,
        StepfunProviderCard,
        MoonshotProviderCard,
        BaichuanProviderCard,
 diff --git a/src/app/api/chat/agentRuntime.ts b/src/app/api/chat/agentRuntime.ts
-index f215a6ea0004..bf10720d154c 100644
+index f215a6ea0004..de7c45e2111e 100644
 --- a/src/app/api/chat/agentRuntime.ts
 +++ b/src/app/api/chat/agentRuntime.ts
 @@ -251,6 +251,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
@@ -28,16 +28,16 @@ index f215a6ea0004..bf10720d154c 100644
  
 +      return { apiKey };
 +    }
-+    case ModelProvider.SenseCore: {
-+      const { SENSECORE_API_KEY } = getLLMConfig();
++    case ModelProvider.SenseNova: {
++      const { SENSENOVA_API_KEY } = getLLMConfig();
 +
-+      const apiKey = apiKeyManager.pick(payload?.apiKey || SENSECORE_API_KEY);
++      const apiKey = apiKeyManager.pick(payload?.apiKey || SENSENOVA_API_KEY);
 +
        return { apiKey };
      }
    }
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index f967c108c156..f6f1daa781f2 100644
+index f967c108c156..3ae8c4f88099 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
 @@ -121,6 +121,10 @@ export const getLLMConfig = () => {
@@ -45,9 +45,9 @@ index f967c108c156..f6f1daa781f2 100644
        HUNYUAN_API_KEY: z.string().optional(),
        HUNYUAN_MODEL_LIST: z.string().optional(),
 +
-+      ENABLED_SENSECORE: z.boolean(),
-+      SENSECORE_API_KEY: z.string().optional(),
-+      SENSECORE_MODEL_LIST: z.string().optional(),
++      ENABLED_SENSENOVA: z.boolean(),
++      SENSENOVA_API_KEY: z.string().optional(),
++      SENSENOVA_MODEL_LIST: z.string().optional(),
      },
      runtimeEnv: {
        API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
@@ -56,21 +56,21 @@ index f967c108c156..f6f1daa781f2 100644
        HUNYUAN_API_KEY: process.env.HUNYUAN_API_KEY,
        HUNYUAN_MODEL_LIST: process.env.HUNYUAN_MODEL_LIST,
 +
-+      ENABLED_SENSECORE: !!process.env.SENSECORE_API_KEY,
-+      SENSECORE_API_KEY: process.env.SENSECORE_API_KEY,
-+      SENSECORE_MODEL_LIST: process.env.SENSECORE_MODEL_LIST,
++      ENABLED_SENSENOVA: !!process.env.SENSENOVA_API_KEY,
++      SENSENOVA_API_KEY: process.env.SENSENOVA_API_KEY,
++      SENSENOVA_MODEL_LIST: process.env.SENSENOVA_MODEL_LIST,
      },
    });
  };
 diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
-index 2dbd8c842b75..227a22308444 100644
+index 2dbd8c842b75..fbc5ee933868 100644
 --- a/src/config/modelProviders/index.ts
 +++ b/src/config/modelProviders/index.ts
 @@ -21,6 +21,7 @@ import OpenAIProvider from './openai';
  import OpenRouterProvider from './openrouter';
  import PerplexityProvider from './perplexity';
  import QwenProvider from './qwen';
-+import SenseCoreProvider from './sensecore';
++import SenseNovaProvider from './sensenova';
  import SiliconCloudProvider from './siliconcloud';
  import SparkProvider from './spark';
  import StepfunProvider from './stepfun';
@@ -78,40 +78,40 @@ index 2dbd8c842b75..227a22308444 100644
    SparkProvider.chatModels,
    Ai21Provider.chatModels,
    HunyuanProvider.chatModels,
-+  SenseCoreProvider.chatModels,
++  SenseNovaProvider.chatModels,
  ].flat();
  
  export const DEFAULT_MODEL_PROVIDER_LIST = [
-@@ -91,6 +93,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
-   Ai360Provider,
-   TaichuProvider,
-   SiliconCloudProvider,
-+  SenseCoreProvider,
- ];
- 
- export const filterEnabledModels = (provider: ModelProviderCard) => {
+@@ -84,6 +86,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
+   SparkProvider,
+   ZhiPuProvider,
+   ZeroOneProvider,
++  SenseNovaProvider,
+   StepfunProvider,
+   MoonshotProvider,
+   BaichuanProvider,
 @@ -123,6 +126,7 @@ export { default as OpenAIProviderCard } from './openai';
  export { default as OpenRouterProviderCard } from './openrouter';
  export { default as PerplexityProviderCard } from './perplexity';
  export { default as QwenProviderCard } from './qwen';
-+export { default as SenseCoreProviderCard } from './sensecore';
++export { default as SenseNovaProviderCard } from './sensenova';
  export { default as SiliconCloudProviderCard } from './siliconcloud';
  export { default as SparkProviderCard } from './spark';
  export { default as StepfunProviderCard } from './stepfun';
-diff --git a/src/config/modelProviders/sensecore.ts b/src/config/modelProviders/sensecore.ts
+diff --git a/src/config/modelProviders/sensenova.ts b/src/config/modelProviders/sensenova.ts
 new file mode 100644
-index 000000000000..5fb1919fb5d7
+index 000000000000..d2a690b5e36c
 --- /dev/null
-+++ b/src/config/modelProviders/sensecore.ts
++++ b/src/config/modelProviders/sensenova.ts
 @@ -0,0 +1,124 @@
 +import { ModelProviderCard } from '@/types/llm';
 +
-+// ref https://console.sensecore.cn/help/docs/model-as-a-service/nova/model/llm/GeneralLLM
-+// ref https://console.sensecore.cn/help/docs/model-as-a-service/nova/pricing
-+const SenseCore: ModelProviderCard = {
++// ref https://platform.sensenova.cn/pricing
++// ref https://platform.sensenova.cn/release?path=/release-202409.md
++const SenseNova: ModelProviderCard = {
 +  chatModels: [
 +    {
-+      description: '版本：V5.5。日日新系列目前的主力大模型，国内首个流式多模态交互大模型，显著提升数理逻辑和指令跟随能力，综合性能较「SenseChat-5」提升30%，交互效果和多项核心指标实现对标GPT-4o。',
++      description: '最新版本模型 (V5.5)，128K上下文长度，在数学推理、英文对话、指令跟随以及长文本理解等领域能力显著提升，比肩GPT-4o',
 +      displayName: 'SenseChat 5.5',
 +      enabled: true,
 +      functionCall: true,
@@ -124,19 +124,20 @@ index 000000000000..5fb1919fb5d7
 +      tokens: 131_072,
 +    },
 +    {
-+      description: 'SenseChat-5.0，支持128k上下文长度，在各项能力表现较为均衡，尤其在生成创作、角色扮演、安全能力、工具使用上表现较好。',
-+      displayName: 'SenseChat 5.0 128K',
++      description: '最新版本模型 (V5.5)，16K上下文长度，支持多图的输入，全面实现模型基础能力优化，在对象属性识别、空间关系、动作事件识别、场景理解、情感识别、逻辑常识推理和文本理解生成上都实现了较大提升。',
++      displayName: 'SenseChat 5.5 Vision',
 +      enabled: true,
-+      id: 'SenseChat-128K',
++      id: 'SenseChat-Vision',
 +      pricing: {
 +        currency: 'CNY',
-+        input: 60,
-+        output: 60,
++        input: 100,
++        output: 100,
 +      },
-+      tokens: 131_072,
++      tokens: 16_384,
++      vision: true,
 +    },
 +    {
-+      description: '基于SenseChat-5.0的轻量版本，模型运行速度更快，支持32k最大上下文长度。',
++      description: '适用于快速问答、模型微调场景',
 +      displayName: 'SenseChat 5.0 Turbo',
 +      enabled: true,
 +      id: 'SenseChat-Turbo',
@@ -148,20 +149,7 @@ index 000000000000..5fb1919fb5d7
 +      tokens: 32_768,
 +    },
 +    {
-+      description: '版本：5.0。图文感知能力达到全球领先水平，在多模态大模型权威综合基准测试MMBench中综合得分排名首位，在多个知名多模态榜单MathVista、AI2D、ChartQA、TextVQA、DocVQA、MMMU 取得领先成绩。',
-+      displayName: 'SenseChat 5.0 Vision',
-+      enabled: true,
-+      id: 'SenseChat-Vision',
-+      pricing: {
-+        currency: 'CNY',
-+        input: 100,
-+        output: 100,
-+      },
-+      tokens: 4096,
-+      vision: true,
-+    },
-+    {
-+      description: '基于SenseChat-5.0专门为适应粤语语种地区的对话习惯、俚语及本地知识而设计，显著提升在粤语本土化对话理解方面的能力，支持32k长文本输入。',
++      description: '32K上下文长度，在粤语的对话理解上超越了GPT-4，在知识、推理、数学及代码编写等多个领域均能与GPT-4 Turbo相媲美',
 +      displayName: 'SenseChat 5.0 Cantonese',
 +      id: 'SenseChat-5-Cantonese',
 +      pricing: {
@@ -172,7 +160,7 @@ index 000000000000..5fb1919fb5d7
 +      tokens: 32_768,
 +    },
 +    {
-+      description: 'SenseChat-4.0，支持4k上下文长度，响应快，在各项能力表现较为均衡，尤其在生成创作、角色扮演、安全能力、工具使用上表现较好。',
++      description: '基础版本模型 (V4)，4K上下文长度，通用能力强大',
 +      displayName: 'SenseChat 4.0',
 +      enabled: true,
 +      id: 'SenseChat',
@@ -184,7 +172,7 @@ index 000000000000..5fb1919fb5d7
 +      tokens: 4096,
 +    },
 +    {
-+      description: 'SenseChat-4.0，支持32k上下文长度，在各项能力表现较为均衡，尤其在生成创作、角色扮演、安全能力、工具使用上表现较好。',
++      description: '基础版本模型 (V4)，32K上下文长度，灵活应用于各类场景',
 +      displayName: 'SenseChat 4.0 32K',
 +      enabled: true,
 +      id: 'SenseChat-32K',
@@ -196,7 +184,19 @@ index 000000000000..5fb1919fb5d7
 +      tokens: 32_768,
 +    },
 +    {
-+      description: '商汤支持设置角色创建、知识库构建、多人群聊、角色其密度等能力，支持8K上下文长度。',
++      description: '基础版本模型 (V4)，128K上下文长度，在长文本理解及生成等任务中表现出色',
++      displayName: 'SenseChat 4.0 128K',
++      enabled: true,
++      id: 'SenseChat-128K',
++      pricing: {
++        currency: 'CNY',
++        input: 60,
++        output: 60,
++      },
++      tokens: 131_072,
++    },
++    {
++      description: '标准版模型，8K上下文长度，高响应速度',
 +      displayName: 'SenseChat Character',
 +      id: 'SenseChat-Character',
 +      pricing: {
@@ -207,7 +207,7 @@ index 000000000000..5fb1919fb5d7
 +      tokens: 8192,
 +    },
 +    {
-+      description: '在标准版的基础上，角色对话、人设、及剧情推动能力全面提升；支持32K上下文长度；支持中/英文对话，赋能海外拟人对话场景。',
++      description: '高级版模型，32K上下文长度，能力全面提升，支持中/英文对话',
 +      displayName: 'SenseChat Character Pro',
 +      id: 'SenseChat-Character-Pro',
 +      pricing: {
@@ -220,23 +220,23 @@ index 000000000000..5fb1919fb5d7
 +  ],
 +  checkModel: 'SenseChat-Turbo',
 +  disableBrowserRequest: true,
-+  id: 'sensecore',
++  id: 'sensenova',
 +  modelList: { showModelFetcher: true },
-+  modelsUrl: 'https://console.sensecore.cn/help/docs/model-as-a-service/nova/model/llm/GeneralLLM',
-+  name: 'SenseCore',
-+  url: 'https://console.sensecore.cn/aistudio',
++  modelsUrl: 'https://platform.sensenova.cn/pricing',
++  name: 'SenseNova',
++  url: 'https://platform.sensenova.cn/home',
 +};
 +
-+export default SenseCore;
++export default SenseNova;
 diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
-index 77d4eb61441d..6a32c165afbf 100644
+index 77d4eb61441d..e75cb045d319 100644
 --- a/src/const/settings/llm.ts
 +++ b/src/const/settings/llm.ts
 @@ -19,6 +19,7 @@ import {
    OpenRouterProviderCard,
    PerplexityProviderCard,
    QwenProviderCard,
-+  SenseCoreProviderCard,
++  SenseNovaProviderCard,
    SiliconCloudProviderCard,
    SparkProviderCard,
    StepfunProviderCard,
@@ -244,22 +244,22 @@ index 77d4eb61441d..6a32c165afbf 100644
      enabled: false,
      enabledModels: filterEnabledModels(QwenProviderCard),
    },
-+  sensecore: {
++  sensenova: {
 +    enabled: false,
-+    enabledModels: filterEnabledModels(SenseCoreProviderCard),
++    enabledModels: filterEnabledModels(SenseNovaProviderCard),
 +  },
    siliconcloud: {
      enabled: false,
      enabledModels: filterEnabledModels(SiliconCloudProviderCard),
 diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
-index 68ea3ade7cd7..ae9765a04c97 100644
+index 68ea3ade7cd7..2cc181682630 100644
 --- a/src/libs/agent-runtime/AgentRuntime.ts
 +++ b/src/libs/agent-runtime/AgentRuntime.ts
 @@ -24,6 +24,7 @@ import { LobeOpenAI } from './openai';
  import { LobeOpenRouterAI } from './openrouter';
  import { LobePerplexityAI } from './perplexity';
  import { LobeQwenAI } from './qwen';
-+import { LobeSenseCoreAI } from './sensecore';
++import { LobeSenseNovaAI } from './sensenova';
  import { LobeSiliconCloudAI } from './siliconcloud';
  import { LobeSparkAI } from './spark';
  import { LobeStepfunAI } from './stepfun';
@@ -267,7 +267,7 @@ index 68ea3ade7cd7..ae9765a04c97 100644
        openrouter: Partial<ClientOptions>;
        perplexity: Partial<ClientOptions>;
        qwen: Partial<ClientOptions>;
-+      sensecore: Partial<ClientOptions>;
++      sensenova: Partial<ClientOptions>;
        siliconcloud: Partial<ClientOptions>;
        spark: Partial<ClientOptions>;
        stepfun: Partial<ClientOptions>;
@@ -276,18 +276,18 @@ index 68ea3ade7cd7..ae9765a04c97 100644
          break;
        }
 +
-+      case ModelProvider.SenseCore: {
-+        runtimeModel = new LobeSenseCoreAI(params.sensecore);
++      case ModelProvider.SenseNova: {
++        runtimeModel = new LobeSenseNovaAI(params.sensenova);
 +        break;
 +      }
      }
  
      return new AgentRuntime(runtimeModel);
-diff --git a/src/libs/agent-runtime/sensecore/index.test.ts b/src/libs/agent-runtime/sensecore/index.test.ts
+diff --git a/src/libs/agent-runtime/sensenova/index.test.ts b/src/libs/agent-runtime/sensenova/index.test.ts
 new file mode 100644
-index 000000000000..665d26385436
+index 000000000000..b2e33e48ef67
 --- /dev/null
-+++ b/src/libs/agent-runtime/sensecore/index.test.ts
++++ b/src/libs/agent-runtime/sensenova/index.test.ts
 @@ -0,0 +1,255 @@
 +// @vitest-environment node
 +import OpenAI from 'openai';
@@ -300,9 +300,9 @@ index 000000000000..665d26385436
 +} from '@/libs/agent-runtime';
 +
 +import * as debugStreamModule from '../utils/debugStream';
-+import { LobeSenseCoreAI } from './index';
++import { LobeSenseNovaAI } from './index';
 +
-+const provider = ModelProvider.SenseCore;
++const provider = ModelProvider.SenseNova;
 +const defaultBaseURL = 'https://api.sensenova.cn/compatible-mode/v1';
 +
 +const bizErrorType = 'ProviderBizError';
@@ -314,7 +314,7 @@ index 000000000000..665d26385436
 +let instance: LobeOpenAICompatibleRuntime;
 +
 +beforeEach(() => {
-+  instance = new LobeSenseCoreAI({ apiKey: 'test' });
++  instance = new LobeSenseNovaAI({ apiKey: 'test' });
 +
 +  // 使用 vi.spyOn 来模拟 chat.completions.create 方法
 +  vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
@@ -326,11 +326,11 @@ index 000000000000..665d26385436
 +  vi.clearAllMocks();
 +});
 +
-+describe('LobeSenseCoreAI', () => {
++describe('LobeSenseNovaAI', () => {
 +  describe('init', () => {
 +    it('should correctly initialize with an API key', async () => {
-+      const instance = new LobeSenseCoreAI({ apiKey: 'test_api_key' });
-+      expect(instance).toBeInstanceOf(LobeSenseCoreAI);
++      const instance = new LobeSenseNovaAI({ apiKey: 'test_api_key' });
++      expect(instance).toBeInstanceOf(LobeSenseNovaAI);
 +      expect(instance.baseURL).toEqual(defaultBaseURL);
 +    });
 +  });
@@ -375,7 +375,7 @@ index 000000000000..665d26385436
 +
 +      it('should throw AgentRuntimeError with NoOpenAIAPIKey if no apiKey is provided', async () => {
 +        try {
-+          new LobeSenseCoreAI({});
++          new LobeSenseNovaAI({});
 +        } catch (e) {
 +          expect(e).toEqual({ errorType: invalidErrorType });
 +        }
@@ -421,7 +421,7 @@ index 000000000000..665d26385436
 +        };
 +        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
 +
-+        instance = new LobeSenseCoreAI({
++        instance = new LobeSenseNovaAI({
 +          apiKey: 'test',
 +
 +          baseURL: 'https://api.abc.com/v1',
@@ -449,7 +449,7 @@ index 000000000000..665d26385436
 +        }
 +      });
 +
-+      it('should throw an InvalidSenseCoreAPIKey error type on 401 status code', async () => {
++      it('should throw an InvalidSenseNovaAPIKey error type on 401 status code', async () => {
 +        // Mock the API call to simulate a 401 error
 +        const error = new Error('Unauthorized') as any;
 +        error.status = 401;
@@ -462,7 +462,7 @@ index 000000000000..665d26385436
 +            temperature: 0,
 +          });
 +        } catch (e) {
-+          // Expect the chat method to throw an error with InvalidSenseCoreAPIKey
++          // Expect the chat method to throw an error with InvalidSenseNovaAPIKey
 +          expect(e).toEqual({
 +            endpoint: defaultBaseURL,
 +            error: new Error('Unauthorized'),
@@ -502,7 +502,7 @@ index 000000000000..665d26385436
 +    });
 +
 +    describe('DEBUG', () => {
-+      it('should call debugStream and return StreamingTextResponse when DEBUG_SENSECORE_CHAT_COMPLETION is 1', async () => {
++      it('should call debugStream and return StreamingTextResponse when DEBUG_SENSENOVA_CHAT_COMPLETION is 1', async () => {
 +        // Arrange
 +        const mockProdStream = new ReadableStream() as any; // 模拟的 prod 流
 +        const mockDebugStream = new ReadableStream({
@@ -519,10 +519,10 @@ index 000000000000..665d26385436
 +        });
 +
 +        // 保存原始环境变量值
-+        const originalDebugValue = process.env.DEBUG_SENSECORE_CHAT_COMPLETION;
++        const originalDebugValue = process.env.DEBUG_SENSENOVA_CHAT_COMPLETION;
 +
 +        // 模拟环境变量
-+        process.env.DEBUG_SENSECORE_CHAT_COMPLETION = '1';
++        process.env.DEBUG_SENSENOVA_CHAT_COMPLETION = '1';
 +        vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
 +
 +        // 执行测试
@@ -539,23 +539,23 @@ index 000000000000..665d26385436
 +        expect(debugStreamModule.debugStream).toHaveBeenCalled();
 +
 +        // 恢复原始环境变量值
-+        process.env.DEBUG_SENSECORE_CHAT_COMPLETION = originalDebugValue;
++        process.env.DEBUG_SENSENOVA_CHAT_COMPLETION = originalDebugValue;
 +      });
 +    });
 +  });
 +});
-diff --git a/src/libs/agent-runtime/sensecore/index.ts b/src/libs/agent-runtime/sensecore/index.ts
+diff --git a/src/libs/agent-runtime/sensenova/index.ts b/src/libs/agent-runtime/sensenova/index.ts
 new file mode 100644
-index 000000000000..462123af403c
+index 000000000000..a9dd5200654c
 --- /dev/null
-+++ b/src/libs/agent-runtime/sensecore/index.ts
++++ b/src/libs/agent-runtime/sensenova/index.ts
 @@ -0,0 +1,24 @@
 +import OpenAI from 'openai';
 +
 +import { ChatStreamPayload, ModelProvider } from '../types';
 +import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
 +
-+export const LobeSenseCoreAI = LobeOpenAICompatibleFactory({
++export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
 +  baseURL: 'https://api.sensenova.cn/compatible-mode/v1',
 +  chatCompletion: {
 +    handlePayload: (payload: ChatStreamPayload) => {
@@ -570,31 +570,31 @@ index 000000000000..462123af403c
 +    }
 +  },
 +  debug: {
-+    chatCompletion: () => process.env.DEBUG_SENSECORE_CHAT_COMPLETION === '1',
++    chatCompletion: () => process.env.DEBUG_SENSENOVA_CHAT_COMPLETION === '1',
 +  },
-+  provider: ModelProvider.SenseCore,
++  provider: ModelProvider.SenseNova,
 +});
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
-index ae94893af796..e195b34ea12f 100644
+index ae94893af796..f8d7d3c97287 100644
 --- a/src/libs/agent-runtime/types/type.ts
 +++ b/src/libs/agent-runtime/types/type.ts
 @@ -43,6 +43,7 @@ export enum ModelProvider {
    OpenRouter = 'openrouter',
    Perplexity = 'perplexity',
    Qwen = 'qwen',
-+  SenseCore = 'sensecore',
++  SenseNova = 'sensenova',
    SiliconCloud = 'siliconcloud',
    Spark = 'spark',
    Stepfun = 'stepfun',
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index c53f7be3ce1b..6a8420444d22 100644
+index c53f7be3ce1b..a30fdaba5718 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
 @@ -15,6 +15,7 @@ import {
    OpenAIProviderCard,
    OpenRouterProviderCard,
    QwenProviderCard,
-+  SenseCoreProviderCard,
++  SenseNovaProviderCard,
    SiliconCloudProviderCard,
    TogetherAIProviderCard,
    ZeroOneProviderCard,
@@ -602,8 +602,8 @@ index c53f7be3ce1b..6a8420444d22 100644
      ENABLED_AI21,
      ENABLED_AI360,
  
-+    ENABLED_SENSECORE,
-+    SENSECORE_MODEL_LIST,
++    ENABLED_SENSENOVA,
++    SENSENOVA_MODEL_LIST,
 +
      ENABLED_SILICONCLOUD,
      SILICONCLOUD_MODEL_LIST,
@@ -612,26 +612,26 @@ index c53f7be3ce1b..6a8420444d22 100644
            modelString: QWEN_MODEL_LIST,
          }),
        },
-+      sensecore: {
-+        enabled: ENABLED_SENSECORE,
-+        enabledModels: extractEnabledModels(SENSECORE_MODEL_LIST),
++      sensenova: {
++        enabled: ENABLED_SENSENOVA,
++        enabledModels: extractEnabledModels(SENSENOVA_MODEL_LIST),
 +        serverModelCards: transformToChatModelCards({
-+          defaultChatModels: SenseCoreProviderCard.chatModels,
-+          modelString: SENSECORE_MODEL_LIST,
++          defaultChatModels: SenseNovaProviderCard.chatModels,
++          modelString: SENSENOVA_MODEL_LIST,
 +        }),
 +      },
        siliconcloud: {
          enabled: ENABLED_SILICONCLOUD,
          enabledModels: extractEnabledModels(SILICONCLOUD_MODEL_LIST),
 diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
-index 3a0c6c4f0e4b..90f0a45117cd 100644
+index 3a0c6c4f0e4b..78e10d097cd8 100644
 --- a/src/types/user/settings/keyVaults.ts
 +++ b/src/types/user/settings/keyVaults.ts
 @@ -40,6 +40,7 @@ export interface UserKeyVaults {
    password?: string;
    perplexity?: OpenAICompatibleKeyVault;
    qwen?: OpenAICompatibleKeyVault;
-+  sensecore?: OpenAICompatibleKeyVault;
++  sensenova?: OpenAICompatibleKeyVault;
    siliconcloud?: OpenAICompatibleKeyVault;
    spark?: OpenAICompatibleKeyVault;
    stepfun?: OpenAICompatibleKeyVault;
