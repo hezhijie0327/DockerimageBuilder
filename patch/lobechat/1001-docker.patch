@@ -1,0 +1,36 @@
+diff --git a/scripts/serverLauncher/startServer.js b/scripts/serverLauncher/startServer.js
+index d980702ee7d2..1ca0b9d9f512 100644
+--- a/scripts/serverLauncher/startServer.js
++++ b/scripts/serverLauncher/startServer.js
+@@ -102,7 +102,8 @@ const resolveHostIP = async (host, version = 4) => {
+ 
+     return address;
+   } catch (err) {
+-    console.error(`❌ DNS Error: Could not resolve ${host}. Check DNS server.`, err);
++    console.error(`❌ DNS Error: Could not resolve ${host}. Check DNS server:`);
++    console.error(err);
+     process.exit(1);
+   }
+ };
+@@ -168,10 +169,19 @@ const runServer = async () => {
+ 
+   if (process.env.DATABASE_DRIVER) {
+     try {
+-      await runScript(DB_MIGRATION_SCRIPT_PATH);
++      try {
++        await fs.access(DB_MIGRATION_SCRIPT_PATH);
++
++        await runScript(DB_MIGRATION_SCRIPT_PATH);
++      } catch (error) {
++        console.log(`⚠️ DB Migration: Not found ${DB_MIGRATION_SCRIPT_PATH}. Skipping DB migration. Ensure migrate database manually.`);
++        console.log('-------------------------------------');
++      }
++
+       await checkTLSConnections();
+     } catch (err) {
+-      console.error('❌ Error during DB migration or TLS connection check:', err);
++      console.error('❌ Error during DB migration or TLS connection check:');
++      console.error(err);
+       process.exit(1);
+     }
+   }
