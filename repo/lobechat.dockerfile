@@ -1,4 +1,4 @@
-# Current Version: 1.7.2
+# Current Version: 1.7.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -59,8 +59,9 @@ RUN \
 
 FROM scratch
 
-ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="1" \
-    NODE_OPTIONS="--use-openssl-ca" NODE_EXTRA_CA_CERTS="/etc/ssl/certs/ca-certificates.crt" \
+ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="" \
+    NODE_OPTIONS="--use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
+    SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
