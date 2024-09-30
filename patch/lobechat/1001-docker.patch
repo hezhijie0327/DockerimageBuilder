@@ -1,37 +1,5 @@
-diff --git a/Dockerfile b/Dockerfile
-index 2a9b15210886..ccf8894c95a4 100644
---- a/Dockerfile
-+++ b/Dockerfile
-@@ -114,8 +114,9 @@ COPY --from=app / /
- 
- ENV NODE_ENV="production" \
-     NODE_OPTIONS="--use-openssl-ca" \
--    NODE_EXTRA_CA_CERTS="/etc/ssl/certs/ca-certificates.crt" \
--    NODE_TLS_REJECT_UNAUTHORIZED=""
-+    NODE_EXTRA_CA_CERTS="" \
-+    NODE_TLS_REJECT_UNAUTHORIZED="" \
-+    SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt"
- 
- # set hostname to localhost
- ENV HOSTNAME="0.0.0.0" \
-diff --git a/Dockerfile.database b/Dockerfile.database
-index 1aa9e411a2eb..bc91977be49c 100644
---- a/Dockerfile.database
-+++ b/Dockerfile.database
-@@ -127,8 +127,9 @@ COPY --from=app / /
- 
- ENV NODE_ENV="production" \
-     NODE_OPTIONS="--use-openssl-ca" \
--    NODE_EXTRA_CA_CERTS="/etc/ssl/certs/ca-certificates.crt" \
--    NODE_TLS_REJECT_UNAUTHORIZED=""
-+    NODE_EXTRA_CA_CERTS="" \
-+    NODE_TLS_REJECT_UNAUTHORIZED="" \
-+    SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt"
- 
- # set hostname to localhost
- ENV HOSTNAME="0.0.0.0" \
 diff --git a/scripts/serverLauncher/startServer.js b/scripts/serverLauncher/startServer.js
-index cb6f61a364af..93feeb4f6e96 100644
+index cb6f61a364af..4063b3027838 100644
 --- a/scripts/serverLauncher/startServer.js
 +++ b/scripts/serverLauncher/startServer.js
 @@ -1,6 +1,6 @@
@@ -42,7 +10,7 @@ index cb6f61a364af..93feeb4f6e96 100644
  const { spawn } = require('child_process');
  
  // Set file paths
-@@ -38,27 +38,30 @@ const isValidTLS = (url = '') => {
+@@ -38,34 +38,46 @@ const isValidTLS = (url = '') => {
      return Promise.resolve();
    }
  
@@ -50,6 +18,7 @@ index cb6f61a364af..93feeb4f6e96 100644
 +  const options = {
 +    host,
 +    port: port,
++    timeout: 3000,
 +  };
 +
    return new Promise((resolve, reject) => {
@@ -65,8 +34,10 @@ index cb6f61a364af..93feeb4f6e96 100644
      });
  
 -    socket.on('error', (err) => {
+-      const errMsg = `❌ TLS Check: Error for ${host}:${port}. Details:`;
++    const errMsg = `❌ TLS Check: Error for ${host}:${port}. Details:`;
++
 +    req.on('error', (err) => {
-       const errMsg = `❌ TLS Check: Error for ${host}:${port}. Details:`;
        switch (err.code) {
          case 'CERT_HAS_EXPIRED':
          case 'DEPTH_ZERO_SELF_SIGNED_CERT':
@@ -80,11 +51,17 @@ index cb6f61a364af..93feeb4f6e96 100644
 +          console.error(`${errMsg} Unable to verify issuer. Ensure correct mapping of ${process.env.SSL_CERT_DIR}.`);
            break;
          default:
-           console.error(`${errMsg} Network issue. Check firewall or DNS.`);
-@@ -66,6 +69,8 @@ const isValidTLS = (url = '') => {
+-          console.error(`${errMsg} Network issue. Check firewall or DNS.`);
++          console.error(`${errMsg} Unknown error. Details:`);
+           break;
        }
        reject(err);
      });
++
++    req.on('timeout', () => {
++        console.error(`${errMsg} Connection timeout. Check firewall or DNS.`);
++        req.destroy();
++    });
 +
 +    req.end();
    });
