@@ -1593,6 +1593,79 @@ index 1d1a1b1064e4..848e8b25fbde 100644
      it.skip('Wenxin AI provider: without apikey', async () => {
        const jwtPayload = {};
        const runtime = await initAgentRuntimeWithUserPayload(ModelProvider.Wenxin, jwtPayload);
+diff --git a/src/app/(backend)/api/chat/sensenova/route.test.ts b/src/app/(backend)/api/chat/sensenova/route.test.ts
+new file mode 100644
+index 000000000000..625ba8a11844
+--- /dev/null
++++ b/src/app/(backend)/api/chat/sensenova/route.test.ts
+@@ -0,0 +1,27 @@
++// @vitest-environment edge-runtime
++import { describe, expect, it, vi } from 'vitest';
++
++import { POST as UniverseRoute } from '../[provider]/route';
++import { POST, runtime } from './route';
++
++// 模拟 '../[provider]/route'
++vi.mock('../[provider]/route', () => ({
++  POST: vi.fn().mockResolvedValue('mocked response'),
++}));
++
++describe('Configuration tests', () => {
++  it('should have runtime set to "edge"', () => {
++    expect(runtime).toBe('nodejs');
++  });
++});
++
++describe('SenseNova POST function tests', () => {
++  it('should call UniverseRoute with correct parameters', async () => {
++    const mockRequest = new Request('https://example.com', { method: 'POST' });
++    await POST(mockRequest);
++    expect(UniverseRoute).toHaveBeenCalledWith(mockRequest, {
++      createRuntime: expect.anything(),
++      params: { provider: 'sensenova' },
++    });
++  });
++});
+diff --git a/src/app/(backend)/api/chat/sensenova/route.ts b/src/app/(backend)/api/chat/sensenova/route.ts
+new file mode 100644
+index 000000000000..981ea8576477
+--- /dev/null
++++ b/src/app/(backend)/api/chat/sensenova/route.ts
+@@ -0,0 +1,34 @@
++import { getLLMConfig } from '@/config/llm';
++import { AgentRuntime } from '@/libs/agent-runtime';
++import { LobeSenseNovaAI } from '@/libs/agent-runtime/sensenova';
++
++import { POST as UniverseRoute } from '../[provider]/route';
++
++import { generateJwtTokenSenseNova } from '@/libs/agent-runtime/sensenova/authToken';
++
++export const runtime = 'nodejs';
++
++export const maxDuration = 30;
++
++export const POST = async (req: Request) =>
++  UniverseRoute(req, {
++    createRuntime: (payload) => {
++      const { SENSENOVA_ACCESS_KEY_ID, SENSENOVA_ACCESS_KEY_SECRET } = getLLMConfig();
++
++      let sensenovaAccessKeyID: string | undefined = payload?.sensenovaAccessKeyID || SENSENOVA_ACCESS_KEY_ID;
++      let sensenovaAccessKeySecret: string | undefined = payload?.sensenovaAccessKeySecret || SENSENOVA_ACCESS_KEY_SECRET;
++
++      const apiKey = generateJwtTokenSenseNova(sensenovaAccessKeyID, sensenovaAccessKeySecret, 60, 15);
++
++      const params = {
++        apiKey,
++        sensenovaAccessKeyID,
++        sensenovaAccessKeySecret,
++      };
++
++      const instance = new LobeSenseNovaAI(params);
++
++      return new AgentRuntime(instance);
++    },
++    params: { provider: 'sensenova' },
++  });
 diff --git a/src/app/(main)/settings/llm/ProviderList/SenseNova/index.tsx b/src/app/(main)/settings/llm/ProviderList/SenseNova/index.tsx
 new file mode 100644
 index 000000000000..c109d5c4ee7c
@@ -1679,79 +1752,6 @@ index d07e93fe0546..47f40bf2f30d 100644
 +    [AzureProvider, OllamaProvider, OpenAIProvider, BedrockProvider, GithubProvider, WenxinProvider, SenseNovaProvider],
    );
  };
-diff --git a/src/app/api/chat/sensenova/route.test.ts b/src/app/api/chat/sensenova/route.test.ts
-new file mode 100644
-index 000000000000..625ba8a11844
---- /dev/null
-+++ b/src/app/api/chat/sensenova/route.test.ts
-@@ -0,0 +1,27 @@
-+// @vitest-environment edge-runtime
-+import { describe, expect, it, vi } from 'vitest';
-+
-+import { POST as UniverseRoute } from '../[provider]/route';
-+import { POST, runtime } from './route';
-+
-+// 模拟 '../[provider]/route'
-+vi.mock('../[provider]/route', () => ({
-+  POST: vi.fn().mockResolvedValue('mocked response'),
-+}));
-+
-+describe('Configuration tests', () => {
-+  it('should have runtime set to "edge"', () => {
-+    expect(runtime).toBe('nodejs');
-+  });
-+});
-+
-+describe('SenseNova POST function tests', () => {
-+  it('should call UniverseRoute with correct parameters', async () => {
-+    const mockRequest = new Request('https://example.com', { method: 'POST' });
-+    await POST(mockRequest);
-+    expect(UniverseRoute).toHaveBeenCalledWith(mockRequest, {
-+      createRuntime: expect.anything(),
-+      params: { provider: 'sensenova' },
-+    });
-+  });
-+});
-diff --git a/src/app/api/chat/sensenova/route.ts b/src/app/api/chat/sensenova/route.ts
-new file mode 100644
-index 000000000000..981ea8576477
---- /dev/null
-+++ b/src/app/api/chat/sensenova/route.ts
-@@ -0,0 +1,34 @@
-+import { getLLMConfig } from '@/config/llm';
-+import { AgentRuntime } from '@/libs/agent-runtime';
-+import { LobeSenseNovaAI } from '@/libs/agent-runtime/sensenova';
-+
-+import { POST as UniverseRoute } from '../[provider]/route';
-+
-+import { generateJwtTokenSenseNova } from '@/libs/agent-runtime/sensenova/authToken';
-+
-+export const runtime = 'nodejs';
-+
-+export const maxDuration = 30;
-+
-+export const POST = async (req: Request) =>
-+  UniverseRoute(req, {
-+    createRuntime: (payload) => {
-+      const { SENSENOVA_ACCESS_KEY_ID, SENSENOVA_ACCESS_KEY_SECRET } = getLLMConfig();
-+
-+      let sensenovaAccessKeyID: string | undefined = payload?.sensenovaAccessKeyID || SENSENOVA_ACCESS_KEY_ID;
-+      let sensenovaAccessKeySecret: string | undefined = payload?.sensenovaAccessKeySecret || SENSENOVA_ACCESS_KEY_SECRET;
-+
-+      const apiKey = generateJwtTokenSenseNova(sensenovaAccessKeyID, sensenovaAccessKeySecret, 60, 15);
-+
-+      const params = {
-+        apiKey,
-+        sensenovaAccessKeyID,
-+        sensenovaAccessKeySecret,
-+      };
-+
-+      const instance = new LobeSenseNovaAI(params);
-+
-+      return new AgentRuntime(instance);
-+    },
-+    params: { provider: 'sensenova' },
-+  });
 diff --git a/src/config/llm.ts b/src/config/llm.ts
 index b07ed60f6082..a14fe7c560a8 100644
 --- a/src/config/llm.ts
