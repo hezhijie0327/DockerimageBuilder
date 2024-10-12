@@ -1529,7 +1529,7 @@ index 0c5f40f61fab..94f628622354 100644
      "description": "SiliconFlow 致力於加速 AGI，以惠及人類，通過易用與成本低的 GenAI 堆疊提升大規模 AI 效率。"
    },
 diff --git a/package.json b/package.json
-index bb4754a66f7d..397e82122b73 100644
+index 70efbdcd5187..5201ab57c6fd 100644
 --- a/package.json
 +++ b/package.json
 @@ -135,6 +135,7 @@
@@ -1575,17 +1575,15 @@ index 000000000000..625ba8a11844
 +});
 diff --git a/src/app/(backend)/api/chat/sensenova/route.ts b/src/app/(backend)/api/chat/sensenova/route.ts
 new file mode 100644
-index 000000000000..981ea8576477
+index 000000000000..2f597f539950
 --- /dev/null
 +++ b/src/app/(backend)/api/chat/sensenova/route.ts
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,32 @@
 +import { getLLMConfig } from '@/config/llm';
 +import { AgentRuntime } from '@/libs/agent-runtime';
 +import { LobeSenseNovaAI } from '@/libs/agent-runtime/sensenova';
 +
 +import { POST as UniverseRoute } from '../[provider]/route';
-+
-+import { generateJwtTokenSenseNova } from '@/libs/agent-runtime/sensenova/authToken';
 +
 +export const runtime = 'nodejs';
 +
@@ -1599,7 +1597,7 @@ index 000000000000..981ea8576477
 +      let sensenovaAccessKeyID: string | undefined = payload?.sensenovaAccessKeyID || SENSENOVA_ACCESS_KEY_ID;
 +      let sensenovaAccessKeySecret: string | undefined = payload?.sensenovaAccessKeySecret || SENSENOVA_ACCESS_KEY_SECRET;
 +
-+      const apiKey = generateJwtTokenSenseNova(sensenovaAccessKeyID, sensenovaAccessKeySecret, 60, 15);
++      const apiKey = LobeSenseNovaAI.generateJWTToken(sensenovaAccessKeyID || '', sensenovaAccessKeySecret || '', 60, 15);
 +
 +      const params = {
 +        apiKey,
@@ -2038,46 +2036,18 @@ index d6efbd985615..e8c5cb2ff320 100644
      }
  
      return new AgentRuntime(runtimeModel);
-diff --git a/src/libs/agent-runtime/sensenova/authToken.ts b/src/libs/agent-runtime/sensenova/authToken.ts
-new file mode 100644
-index 000000000000..8a226e88a8f0
---- /dev/null
-+++ b/src/libs/agent-runtime/sensenova/authToken.ts
-@@ -0,0 +1,34 @@
-+import CryptoJS from 'crypto-js';
-+
-+const base64UrlEncode = (obj: object) => {
-+    return CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(JSON.stringify(obj)))
-+      .replaceAll('=', '')
-+      .replaceAll('+', '-')
-+      .replaceAll('/', '_')
-+}
-+
-+// https://console.sensecore.cn/help/docs/model-as-a-service/nova/overview/Authorization
-+export const generateJwtTokenSenseNova = (accessKeyID: string = '', accessKeySecret: string = '', expiredAfter: number = 1800, notBefore: number = 5) => {
-+      const headers = {
-+        alg: 'HS256',
-+        typ: 'JWT'
-+      }
-+
-+      const payload = {
-+        exp: Math.floor(Date.now() / 1000) + expiredAfter,
-+        iss: accessKeyID,
-+        nbf: Math.floor(Date.now() / 1000) - notBefore,
-+      }
-+
-+      const data = `${ base64UrlEncode(headers) }.${ base64UrlEncode(payload) }`
-+
-+      const signature = CryptoJS.HmacSHA256(data, accessKeySecret)
-+        .toString(CryptoJS.enc.Base64)
-+        .replaceAll('=', '')
-+        .replaceAll('+', '-')
-+        .replaceAll('/', '_')
-+
-+      const apiKey = `${ data }.${ signature }`
-+
-+      return apiKey
-+};
+diff --git a/src/libs/agent-runtime/index.ts b/src/libs/agent-runtime/index.ts
+index 308cd40ca452..5776b9451e2c 100644
+--- a/src/libs/agent-runtime/index.ts
++++ b/src/libs/agent-runtime/index.ts
+@@ -15,6 +15,7 @@ export { LobeOpenAI } from './openai';
+ export { LobeOpenRouterAI } from './openrouter';
+ export { LobePerplexityAI } from './perplexity';
+ export { LobeQwenAI } from './qwen';
++export { LobeSenseNovaAI } from './sensenova';
+ export { LobeTogetherAI } from './togetherai';
+ export * from './types';
+ export { AgentRuntimeError } from './utils/createError';
 diff --git a/src/libs/agent-runtime/sensenova/index.test.ts b/src/libs/agent-runtime/sensenova/index.test.ts
 new file mode 100644
 index 000000000000..b2e33e48ef67
@@ -2341,34 +2311,80 @@ index 000000000000..b2e33e48ef67
 +});
 diff --git a/src/libs/agent-runtime/sensenova/index.ts b/src/libs/agent-runtime/sensenova/index.ts
 new file mode 100644
-index 000000000000..a9dd5200654c
+index 000000000000..b134cfb24134
 --- /dev/null
 +++ b/src/libs/agent-runtime/sensenova/index.ts
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,70 @@
 +import OpenAI from 'openai';
++import CryptoJS from 'crypto-js';
 +
 +import { ChatStreamPayload, ModelProvider } from '../types';
 +import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
 +
-+export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
-+  baseURL: 'https://api.sensenova.cn/compatible-mode/v1',
-+  chatCompletion: {
-+    handlePayload: (payload: ChatStreamPayload) => {
-+      const { frequency_penalty, temperature, top_p, ...rest } = payload;
++// Helper function for base64 URL encoding
++const base64UrlEncode = (obj: object) => {
++  return CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(JSON.stringify(obj)))
++    .replaceAll('=', '')
++    .replaceAll('+', '-')
++    .replaceAll('/', '_');
++};
 +
-+      return {
-+        ...rest,
-+        frequency_penalty: (frequency_penalty !== undefined && frequency_penalty > 0 && frequency_penalty <= 2) ? frequency_penalty : undefined,
-+        temperature: (temperature !== undefined && temperature > 0 && temperature <= 2) ? temperature : undefined,
-+        top_p: (top_p !== undefined && top_p > 0 && top_p < 1) ? top_p : undefined,
-+      } as OpenAI.ChatCompletionCreateParamsStreaming;
-+    }
-+  },
-+  debug: {
-+    chatCompletion: () => process.env.DEBUG_SENSENOVA_CHAT_COMPLETION === '1',
-+  },
-+  provider: ModelProvider.SenseNova,
-+});
++// Function to generate JWT token
++const generateJwtTokenSenseNova = (accessKeyID: string = '', accessKeySecret: string = '', expiredAfter: number = 1800, notBefore: number = 5) => {
++  const headers = {
++    alg: 'HS256',
++    typ: 'JWT',
++  };
++
++  const payload = {
++    exp: Math.floor(Date.now() / 1000) + expiredAfter,
++    iss: accessKeyID,
++    nbf: Math.floor(Date.now() / 1000) - notBefore,
++  };
++
++  const data = `${base64UrlEncode(headers)}.${base64UrlEncode(payload)}`;
++
++  const signature = CryptoJS.HmacSHA256(data, accessKeySecret)
++    .toString(CryptoJS.enc.Base64)
++    .replaceAll('=', '')
++    .replaceAll('+', '-')
++    .replaceAll('/', '_');
++
++  const apiKey = `${data}.${signature}`;
++
++  return apiKey;
++};
++
++// LobeSenseNovaAI setup
++export const LobeSenseNovaAI = (() => {
++  // Create the factory instance using LobeOpenAICompatibleFactory
++  const factory = LobeOpenAICompatibleFactory({
++    baseURL: 'https://api.sensenova.cn/compatible-mode/v1',
++    chatCompletion: {
++      handlePayload: (payload: ChatStreamPayload) => {
++        const { frequency_penalty, temperature, top_p, ...rest } = payload;
++
++        return {
++          ...rest,
++          frequency_penalty: (frequency_penalty !== undefined && frequency_penalty > 0 && frequency_penalty <= 2) ? frequency_penalty : undefined,
++          temperature: (temperature !== undefined && temperature > 0 && temperature <= 2) ? temperature : undefined,
++          top_p: (top_p !== undefined && top_p > 0 && top_p < 1) ? top_p : undefined,
++        } as OpenAI.ChatCompletionCreateParamsStreaming;
++      },
++    },
++    debug: {
++      chatCompletion: () => process.env.DEBUG_SENSENOVA_CHAT_COMPLETION === '1',
++    },
++    provider: ModelProvider.SenseNova,
++  });
++
++  // Use Object.assign to add the generateJWTToken method
++  return Object.assign(factory, {
++    generateJWTToken: (ak: string, sk: string, expiredAfter: number = 1800, notBefore: number = 5) => {
++      return generateJwtTokenSenseNova(ak, sk, expiredAfter, notBefore);
++    },
++  });
++})();
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
 index 59a2fc03b8be..7ad9ace9d355 100644
 --- a/src/libs/agent-runtime/types/type.ts
@@ -2447,19 +2463,17 @@ index f26ddd83ae69..89231202bdd3 100644
          enabled: ENABLED_SILICONCLOUD,
          enabledModels: extractEnabledModels(SILICONCLOUD_MODEL_LIST),
 diff --git a/src/services/_auth.ts b/src/services/_auth.ts
-index 7ecfa4f64c13..098156d475bc 100644
+index 7ecfa4f64c13..a67baf37c6a0 100644
 --- a/src/services/_auth.ts
 +++ b/src/services/_auth.ts
-@@ -5,6 +5,8 @@ import { keyVaultsConfigSelectors, userProfileSelectors } from '@/store/user/sel
+@@ -1,5 +1,5 @@
+ import { JWTPayload, LOBE_CHAT_AUTH_HEADER } from '@/const/auth';
+-import { ModelProvider } from '@/libs/agent-runtime';
++import { LobeSenseNovaAI, ModelProvider } from '@/libs/agent-runtime';
+ import { useUserStore } from '@/store/user';
+ import { keyVaultsConfigSelectors, userProfileSelectors } from '@/store/user/selectors';
  import { GlobalLLMProviderKey } from '@/types/user/settings';
- import { createJWT } from '@/utils/jwt';
- 
-+import { generateJwtTokenSenseNova } from '@/libs/agent-runtime/sensenova/authToken';
-+
- export const getProviderAuthPayload = (provider: string) => {
-   switch (provider) {
-     case ModelProvider.Bedrock: {
-@@ -25,6 +27,20 @@ export const getProviderAuthPayload = (provider: string) => {
+@@ -25,6 +25,20 @@ export const getProviderAuthPayload = (provider: string) => {
        };
      }
  
@@ -2468,7 +2482,7 @@ index 7ecfa4f64c13..098156d475bc 100644
 +        useUserStore.getState(),
 +      );
 +
-+      const apiKey = generateJwtTokenSenseNova(sensenovaAccessKeyID, sensenovaAccessKeySecret, 60, 15);
++      const apiKey = LobeSenseNovaAI.generateJWTToken(sensenovaAccessKeyID || '', sensenovaAccessKeySecret || '', 60, 15);
 +
 +      return { 
 +        apiKey,
