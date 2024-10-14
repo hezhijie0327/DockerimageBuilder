@@ -1307,89 +1307,6 @@ index 2d04a8d63e82..d4eed5540c7f 100644
    "siliconcloud": {
      "description": "SiliconFlow 致力於加速 AGI，以惠及人類，通過易用與成本低的 GenAI 堆疊提升大規模 AI 效率。"
    },
-diff --git a/package.json b/package.json
-index 1fc13d761fd0..b2e22e11e55c 100644
---- a/package.json
-+++ b/package.json
-@@ -136,6 +136,7 @@
-     "@trpc/next": "next",
-     "@trpc/react-query": "next",
-     "@trpc/server": "next",
-+    "@types/crypto-js": "^4.2.0",
-     "@vercel/analytics": "^1.3.1",
-     "@vercel/edge-config": "^1.2.1",
-     "@vercel/speed-insights": "^1.0.12",
-diff --git a/src/app/(backend)/webapi/chat/sensenova/route.test.ts b/src/app/(backend)/webapi/chat/sensenova/route.test.ts
-new file mode 100644
-index 000000000000..625ba8a11844
---- /dev/null
-+++ b/src/app/(backend)/webapi/chat/sensenova/route.test.ts
-@@ -0,0 +1,27 @@
-+// @vitest-environment edge-runtime
-+import { describe, expect, it, vi } from 'vitest';
-+
-+import { POST as UniverseRoute } from '../[provider]/route';
-+import { POST, runtime } from './route';
-+
-+// 模拟 '../[provider]/route'
-+vi.mock('../[provider]/route', () => ({
-+  POST: vi.fn().mockResolvedValue('mocked response'),
-+}));
-+
-+describe('Configuration tests', () => {
-+  it('should have runtime set to "edge"', () => {
-+    expect(runtime).toBe('nodejs');
-+  });
-+});
-+
-+describe('SenseNova POST function tests', () => {
-+  it('should call UniverseRoute with correct parameters', async () => {
-+    const mockRequest = new Request('https://example.com', { method: 'POST' });
-+    await POST(mockRequest);
-+    expect(UniverseRoute).toHaveBeenCalledWith(mockRequest, {
-+      createRuntime: expect.anything(),
-+      params: { provider: 'sensenova' },
-+    });
-+  });
-+});
-diff --git a/src/app/(backend)/webapi/chat/sensenova/route.ts b/src/app/(backend)/webapi/chat/sensenova/route.ts
-new file mode 100644
-index 000000000000..2f597f539950
---- /dev/null
-+++ b/src/app/(backend)/webapi/chat/sensenova/route.ts
-@@ -0,0 +1,32 @@
-+import { getLLMConfig } from '@/config/llm';
-+import { AgentRuntime } from '@/libs/agent-runtime';
-+import { LobeSenseNovaAI } from '@/libs/agent-runtime/sensenova';
-+
-+import { POST as UniverseRoute } from '../[provider]/route';
-+
-+export const runtime = 'nodejs';
-+
-+export const maxDuration = 30;
-+
-+export const POST = async (req: Request) =>
-+  UniverseRoute(req, {
-+    createRuntime: (payload) => {
-+      const { SENSENOVA_ACCESS_KEY_ID, SENSENOVA_ACCESS_KEY_SECRET } = getLLMConfig();
-+
-+      let sensenovaAccessKeyID: string | undefined = payload?.sensenovaAccessKeyID || SENSENOVA_ACCESS_KEY_ID;
-+      let sensenovaAccessKeySecret: string | undefined = payload?.sensenovaAccessKeySecret || SENSENOVA_ACCESS_KEY_SECRET;
-+
-+      const apiKey = LobeSenseNovaAI.generateJWTToken(sensenovaAccessKeyID || '', sensenovaAccessKeySecret || '', 60, 15);
-+
-+      const params = {
-+        apiKey,
-+        sensenovaAccessKeyID,
-+        sensenovaAccessKeySecret,
-+      };
-+
-+      const instance = new LobeSenseNovaAI(params);
-+
-+      return new AgentRuntime(instance);
-+    },
-+    params: { provider: 'sensenova' },
-+  });
 diff --git a/src/app/(main)/settings/llm/ProviderList/SenseNova/index.tsx b/src/app/(main)/settings/llm/ProviderList/SenseNova/index.tsx
 new file mode 100644
 index 000000000000..c109d5c4ee7c
@@ -1784,7 +1701,7 @@ index 5ba78f4f0ba3..7b53b69d8945 100644
          <WenxinForm />
        ) : (
 diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
-index a55a811e56b0..7480eaa55757 100644
+index a55a811e56b0..ed6bc9ae16d3 100644
 --- a/src/libs/agent-runtime/AgentRuntime.ts
 +++ b/src/libs/agent-runtime/AgentRuntime.ts
 @@ -25,6 +25,7 @@ import { LobeOpenAI } from './openai';
@@ -1809,7 +1726,7 @@ index a55a811e56b0..7480eaa55757 100644
        }
 +
 +      case ModelProvider.SenseNova: {
-+        runtimeModel = new LobeSenseNovaAI(params.sensenova);
++        runtimeModel = await LobeSenseNovaAI.fromAPIKey(params.sensenova);
 +        break;
 +      }
      }
@@ -1827,343 +1744,143 @@ index 308cd40ca452..5776b9451e2c 100644
  export { LobeTogetherAI } from './togetherai';
  export * from './types';
  export { AgentRuntimeError } from './utils/createError';
-diff --git a/src/libs/agent-runtime/sensenova/index.test.ts b/src/libs/agent-runtime/sensenova/index.test.ts
+diff --git a/src/libs/agent-runtime/sensenova/authToken.ts b/src/libs/agent-runtime/sensenova/authToken.ts
 new file mode 100644
-index 000000000000..b2e33e48ef67
+index 000000000000..77e03be628a4
 --- /dev/null
-+++ b/src/libs/agent-runtime/sensenova/index.test.ts
-@@ -0,0 +1,255 @@
-+// @vitest-environment node
-+import OpenAI from 'openai';
-+import { Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++++ b/src/libs/agent-runtime/sensenova/authToken.ts
+@@ -0,0 +1,27 @@
++import { SignJWT } from 'jose';
 +
-+import {
-+  ChatStreamCallbacks,
-+  LobeOpenAICompatibleRuntime,
-+  ModelProvider,
-+} from '@/libs/agent-runtime';
++// https://console.sensecore.cn/help/docs/model-as-a-service/nova/overview/Authorization
++export const generateApiToken = async (apiKey?: string): Promise<string> => {
++  if (!apiKey) {
++    throw new Error('Invalid apiKey');
++  }
 +
-+import * as debugStreamModule from '../utils/debugStream';
-+import { LobeSenseNovaAI } from './index';
++  const [id, secret] = apiKey.split(':');
++  if (!id || !secret) {
++    throw new Error('Invalid apiKey');
++  }
 +
-+const provider = ModelProvider.SenseNova;
-+const defaultBaseURL = 'https://api.sensenova.cn/compatible-mode/v1';
-+
-+const bizErrorType = 'ProviderBizError';
-+const invalidErrorType = 'InvalidProviderAPIKey';
-+
-+// Mock the console.error to avoid polluting test output
-+vi.spyOn(console, 'error').mockImplementation(() => {});
-+
-+let instance: LobeOpenAICompatibleRuntime;
-+
-+beforeEach(() => {
-+  instance = new LobeSenseNovaAI({ apiKey: 'test' });
-+
-+  // 使用 vi.spyOn 来模拟 chat.completions.create 方法
-+  vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
-+    new ReadableStream() as any,
-+  );
-+});
-+
-+afterEach(() => {
-+  vi.clearAllMocks();
-+});
-+
-+describe('LobeSenseNovaAI', () => {
-+  describe('init', () => {
-+    it('should correctly initialize with an API key', async () => {
-+      const instance = new LobeSenseNovaAI({ apiKey: 'test_api_key' });
-+      expect(instance).toBeInstanceOf(LobeSenseNovaAI);
-+      expect(instance.baseURL).toEqual(defaultBaseURL);
-+    });
-+  });
-+
-+  describe('chat', () => {
-+    describe('Error', () => {
-+      it('should return OpenAIBizError with an openai error response when OpenAI.APIError is thrown', async () => {
-+        // Arrange
-+        const apiError = new OpenAI.APIError(
-+          400,
-+          {
-+            status: 400,
-+            error: {
-+              message: 'Bad Request',
-+            },
-+          },
-+          'Error message',
-+          {},
-+        );
-+
-+        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
-+
-+        // Act
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'SenseChat-Turbo',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          expect(e).toEqual({
-+            endpoint: defaultBaseURL,
-+            error: {
-+              error: { message: 'Bad Request' },
-+              status: 400,
-+            },
-+            errorType: bizErrorType,
-+            provider,
-+          });
-+        }
-+      });
-+
-+      it('should throw AgentRuntimeError with NoOpenAIAPIKey if no apiKey is provided', async () => {
-+        try {
-+          new LobeSenseNovaAI({});
-+        } catch (e) {
-+          expect(e).toEqual({ errorType: invalidErrorType });
-+        }
-+      });
-+
-+      it('should return OpenAIBizError with the cause when OpenAI.APIError is thrown with cause', async () => {
-+        // Arrange
-+        const errorInfo = {
-+          stack: 'abc',
-+          cause: {
-+            message: 'api is undefined',
-+          },
-+        };
-+        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
-+
-+        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
-+
-+        // Act
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'SenseChat-Turbo',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          expect(e).toEqual({
-+            endpoint: defaultBaseURL,
-+            error: {
-+              cause: { message: 'api is undefined' },
-+              stack: 'abc',
-+            },
-+            errorType: bizErrorType,
-+            provider,
-+          });
-+        }
-+      });
-+
-+      it('should return OpenAIBizError with an cause response with desensitize Url', async () => {
-+        // Arrange
-+        const errorInfo = {
-+          stack: 'abc',
-+          cause: { message: 'api is undefined' },
-+        };
-+        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
-+
-+        instance = new LobeSenseNovaAI({
-+          apiKey: 'test',
-+
-+          baseURL: 'https://api.abc.com/v1',
-+        });
-+
-+        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
-+
-+        // Act
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'SenseChat-Turbo',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          expect(e).toEqual({
-+            endpoint: 'https://api.***.com/v1',
-+            error: {
-+              cause: { message: 'api is undefined' },
-+              stack: 'abc',
-+            },
-+            errorType: bizErrorType,
-+            provider,
-+          });
-+        }
-+      });
-+
-+      it('should throw an InvalidSenseNovaAPIKey error type on 401 status code', async () => {
-+        // Mock the API call to simulate a 401 error
-+        const error = new Error('Unauthorized') as any;
-+        error.status = 401;
-+        vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(error);
-+
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'SenseChat-Turbo',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          // Expect the chat method to throw an error with InvalidSenseNovaAPIKey
-+          expect(e).toEqual({
-+            endpoint: defaultBaseURL,
-+            error: new Error('Unauthorized'),
-+            errorType: invalidErrorType,
-+            provider,
-+          });
-+        }
-+      });
-+
-+      it('should return AgentRuntimeError for non-OpenAI errors', async () => {
-+        // Arrange
-+        const genericError = new Error('Generic Error');
-+
-+        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(genericError);
-+
-+        // Act
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'SenseChat-Turbo',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          expect(e).toEqual({
-+            endpoint: defaultBaseURL,
-+            errorType: 'AgentRuntimeError',
-+            provider,
-+            error: {
-+              name: genericError.name,
-+              cause: genericError.cause,
-+              message: genericError.message,
-+              stack: genericError.stack,
-+            },
-+          });
-+        }
-+      });
-+    });
-+
-+    describe('DEBUG', () => {
-+      it('should call debugStream and return StreamingTextResponse when DEBUG_SENSENOVA_CHAT_COMPLETION is 1', async () => {
-+        // Arrange
-+        const mockProdStream = new ReadableStream() as any; // 模拟的 prod 流
-+        const mockDebugStream = new ReadableStream({
-+          start(controller) {
-+            controller.enqueue('Debug stream content');
-+            controller.close();
-+          },
-+        }) as any;
-+        mockDebugStream.toReadableStream = () => mockDebugStream; // 添加 toReadableStream 方法
-+
-+        // 模拟 chat.completions.create 返回值，包括模拟的 tee 方法
-+        (instance['client'].chat.completions.create as Mock).mockResolvedValue({
-+          tee: () => [mockProdStream, { toReadableStream: () => mockDebugStream }],
-+        });
-+
-+        // 保存原始环境变量值
-+        const originalDebugValue = process.env.DEBUG_SENSENOVA_CHAT_COMPLETION;
-+
-+        // 模拟环境变量
-+        process.env.DEBUG_SENSENOVA_CHAT_COMPLETION = '1';
-+        vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
-+
-+        // 执行测试
-+        // 运行你的测试函数，确保它会在条件满足时调用 debugStream
-+        // 假设的测试函数调用，你可能需要根据实际情况调整
-+        await instance.chat({
-+          messages: [{ content: 'Hello', role: 'user' }],
-+          model: 'SenseChat-Turbo',
-+          stream: true,
-+          temperature: 0,
-+        });
-+
-+        // 验证 debugStream 被调用
-+        expect(debugStreamModule.debugStream).toHaveBeenCalled();
-+
-+        // 恢复原始环境变量值
-+        process.env.DEBUG_SENSENOVA_CHAT_COMPLETION = originalDebugValue;
-+      });
-+    });
-+  });
-+});
-diff --git a/src/libs/agent-runtime/sensenova/index.ts b/src/libs/agent-runtime/sensenova/index.ts
-new file mode 100644
-index 000000000000..b134cfb24134
---- /dev/null
-+++ b/src/libs/agent-runtime/sensenova/index.ts
-@@ -0,0 +1,70 @@
-+import OpenAI from 'openai';
-+import CryptoJS from 'crypto-js';
-+
-+import { ChatStreamPayload, ModelProvider } from '../types';
-+import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
-+
-+// Helper function for base64 URL encoding
-+const base64UrlEncode = (obj: object) => {
-+  return CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(JSON.stringify(obj)))
-+    .replaceAll('=', '')
-+    .replaceAll('+', '-')
-+    .replaceAll('/', '_');
-+};
-+
-+// Function to generate JWT token
-+const generateJwtTokenSenseNova = (accessKeyID: string = '', accessKeySecret: string = '', expiredAfter: number = 1800, notBefore: number = 5) => {
-+  const headers = {
-+    alg: 'HS256',
-+    typ: 'JWT',
-+  };
++  const encoder = new TextEncoder();
 +
 +  const payload = {
-+    exp: Math.floor(Date.now() / 1000) + expiredAfter,
-+    iss: accessKeyID,
-+    nbf: Math.floor(Date.now() / 1000) - notBefore,
++    exp: Math.floor(Date.now() / 1000) + 60,
++    iss: id,
++    nbf: Math.floor(Date.now() / 1000) - 15,
 +  };
 +
-+  const data = `${base64UrlEncode(headers)}.${base64UrlEncode(payload)}`;
++  const jwt = await new SignJWT(payload)
++    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
++    .sign(encoder.encode(secret));
 +
-+  const signature = CryptoJS.HmacSHA256(data, accessKeySecret)
-+    .toString(CryptoJS.enc.Base64)
-+    .replaceAll('=', '')
-+    .replaceAll('+', '-')
-+    .replaceAll('/', '_');
-+
-+  const apiKey = `${data}.${signature}`;
-+
-+  return apiKey;
++  return jwt;
 +};
+diff --git a/src/libs/agent-runtime/sensenova/index.ts b/src/libs/agent-runtime/sensenova/index.ts
+new file mode 100644
+index 000000000000..59e1f592b772
+--- /dev/null
++++ b/src/libs/agent-runtime/sensenova/index.ts
+@@ -0,0 +1,98 @@
++import OpenAI, { ClientOptions } from 'openai';
 +
-+// LobeSenseNovaAI setup
-+export const LobeSenseNovaAI = (() => {
-+  // Create the factory instance using LobeOpenAICompatibleFactory
-+  const factory = LobeOpenAICompatibleFactory({
-+    baseURL: 'https://api.sensenova.cn/compatible-mode/v1',
-+    chatCompletion: {
-+      handlePayload: (payload: ChatStreamPayload) => {
-+        const { frequency_penalty, temperature, top_p, ...rest } = payload;
++import { LobeRuntimeAI } from '../BaseAI';
++import { AgentRuntimeErrorType } from '../error';
++import { ChatCompetitionOptions, ChatStreamPayload, ModelProvider } from '../types';
++import { AgentRuntimeError } from '../utils/createError';
++import { debugStream } from '../utils/debugStream';
++import { desensitizeUrl } from '../utils/desensitizeUrl';
++import { handleOpenAIError } from '../utils/handleOpenAIError';
++import { convertOpenAIMessages } from '../utils/openaiHelpers';
++import { StreamingResponse } from '../utils/response';
++import { OpenAIStream } from '../utils/streams';
++import { generateApiToken } from './authToken';
 +
-+        return {
-+          ...rest,
-+          frequency_penalty: (frequency_penalty !== undefined && frequency_penalty > 0 && frequency_penalty <= 2) ? frequency_penalty : undefined,
-+          temperature: (temperature !== undefined && temperature > 0 && temperature <= 2) ? temperature : undefined,
-+          top_p: (top_p !== undefined && top_p > 0 && top_p < 1) ? top_p : undefined,
-+        } as OpenAI.ChatCompletionCreateParamsStreaming;
-+      },
-+    },
-+    debug: {
-+      chatCompletion: () => process.env.DEBUG_SENSENOVA_CHAT_COMPLETION === '1',
-+    },
-+    provider: ModelProvider.SenseNova,
-+  });
++const DEFAULT_BASE_URL = 'https://api.sensenova.cn/compatible-mode/v1';
 +
-+  // Use Object.assign to add the generateJWTToken method
-+  return Object.assign(factory, {
-+    generateJWTToken: (ak: string, sk: string, expiredAfter: number = 1800, notBefore: number = 5) => {
-+      return generateJwtTokenSenseNova(ak, sk, expiredAfter, notBefore);
-+    },
-+  });
-+})();
++export class LobeSenseNovaAI implements LobeRuntimeAI {
++  private client: OpenAI;
++
++  baseURL: string;
++
++  constructor(oai: OpenAI) {
++    this.client = oai;
++    this.baseURL = this.client.baseURL;
++  }
++
++  static async fromAPIKey({ apiKey, baseURL = DEFAULT_BASE_URL, ...res }: ClientOptions = {}) {
++    const invalidSenseNovaAPIKey = AgentRuntimeError.createError(
++      AgentRuntimeErrorType.InvalidProviderAPIKey,
++    );
++
++    if (!apiKey) throw invalidSenseNovaAPIKey;
++
++    let token: string;
++
++    try {
++      token = await generateApiToken(apiKey);
++    } catch {
++      throw invalidSenseNovaAPIKey;
++    }
++    
++    const header = { Authorization: `Bearer ${token}` };
++
++    const llm = new OpenAI({ apiKey, baseURL, defaultHeaders: header, ...res });
++
++    return new LobeSenseNovaAI(llm);
++  }
++
++  async chat(payload: ChatStreamPayload, options?: ChatCompetitionOptions) {
++    try {
++      const params = await this.buildCompletionsParams(payload);
++
++      const response = await this.client.chat.completions.create(
++        params as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
++      );
++
++      const [prod, debug] = response.tee();
++
++      if (process.env.DEBUG_SENSENOVA_CHAT_COMPLETION === '1') {
++        debugStream(debug.toReadableStream()).catch(console.error);
++      }
++
++      return StreamingResponse(OpenAIStream(prod), {
++        headers: options?.headers,
++      });
++    } catch (error) {
++      const { errorResult, RuntimeError } = handleOpenAIError(error);
++
++      const errorType = RuntimeError || AgentRuntimeErrorType.ProviderBizError;
++      let desensitizedEndpoint = this.baseURL;
++
++      if (this.baseURL !== DEFAULT_BASE_URL) {
++        desensitizedEndpoint = desensitizeUrl(this.baseURL);
++      }
++      throw AgentRuntimeError.chat({
++        endpoint: desensitizedEndpoint,
++        error: errorResult,
++        errorType,
++        provider: ModelProvider.SenseNova,
++      });
++    }
++  }
++
++  private async buildCompletionsParams(payload: ChatStreamPayload) {
++    const { frequency_penalty, messages, temperature, top_p, ...params } = payload;
++
++    return {
++      messages: await convertOpenAIMessages(messages as any),
++      ...params,
++      frequency_penalty: (frequency_penalty !== undefined && frequency_penalty > 0 && frequency_penalty <= 2) ? frequency_penalty : undefined,
++      stream: true,
++      temperature: (temperature !== undefined && temperature > 0 && temperature <= 2) ? temperature : undefined,
++      top_p: (top_p !== undefined && top_p > 0 && top_p < 1) ? top_p : undefined,
++    };
++  }
++}
++
++export default LobeSenseNovaAI;
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
 index c870a9c462a8..db64c94f23fb 100644
 --- a/src/libs/agent-runtime/types/type.ts
@@ -2241,17 +1958,31 @@ index 4297b81c21fd..5c93d1a0727b 100644
        siliconcloud: {
          enabled: ENABLED_SILICONCLOUD,
          enabledModels: extractEnabledModels(SILICONCLOUD_MODEL_LIST),
+diff --git a/src/server/modules/AgentRuntime/index.ts b/src/server/modules/AgentRuntime/index.ts
+index 69998915c6d4..2043e97423fe 100644
+--- a/src/server/modules/AgentRuntime/index.ts
++++ b/src/server/modules/AgentRuntime/index.ts
+@@ -261,6 +261,16 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+ 
+       const apiKey = apiKeyManager.pick(payload?.apiKey || HUNYUAN_API_KEY);
+ 
++      return { apiKey };
++    }
++    case ModelProvider.SenseNova: {
++      const { SENSENOVA_ACCESS_KEY_ID, SENSENOVA_ACCESS_KEY_SECRET } = getLLMConfig();
++
++      const sensenovaAccessKeyID = apiKeyManager.pick(payload?.sensenovaAccessKeyID || SENSENOVA_ACCESS_KEY_ID);
++      const sensenovaAccessKeySecret = apiKeyManager.pick(payload?.sensenovaAccessKeySecret || SENSENOVA_ACCESS_KEY_SECRET);
++
++      const apiKey = sensenovaAccessKeyID + ':' + sensenovaAccessKeySecret;
++
+       return { apiKey };
+     }
+   }
 diff --git a/src/services/_auth.ts b/src/services/_auth.ts
-index 7ecfa4f64c13..a67baf37c6a0 100644
+index 7ecfa4f64c13..7795290e7791 100644
 --- a/src/services/_auth.ts
 +++ b/src/services/_auth.ts
-@@ -1,5 +1,5 @@
- import { JWTPayload, LOBE_CHAT_AUTH_HEADER } from '@/const/auth';
--import { ModelProvider } from '@/libs/agent-runtime';
-+import { LobeSenseNovaAI, ModelProvider } from '@/libs/agent-runtime';
- import { useUserStore } from '@/store/user';
- import { keyVaultsConfigSelectors, userProfileSelectors } from '@/store/user/selectors';
- import { GlobalLLMProviderKey } from '@/types/user/settings';
 @@ -25,6 +25,20 @@ export const getProviderAuthPayload = (provider: string) => {
        };
      }
@@ -2261,7 +1992,7 @@ index 7ecfa4f64c13..a67baf37c6a0 100644
 +        useUserStore.getState(),
 +      );
 +
-+      const apiKey = LobeSenseNovaAI.generateJWTToken(sensenovaAccessKeyID || '', sensenovaAccessKeySecret || '', 60, 15);
++      const apiKey = (sensenovaAccessKeyID || '') + ':' + (sensenovaAccessKeySecret || '')
 +
 +      return { 
 +        apiKey,
