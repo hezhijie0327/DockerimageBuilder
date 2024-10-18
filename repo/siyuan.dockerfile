@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -25,10 +25,10 @@ RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
 COPY --from=BUILD_SIYUAN /tmp/BUILDKIT /tmp/BUILDKIT/
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/appearance/ /tmp/BUILDKIT/
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage/ /tmp/BUILDKIT/
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide/ /tmp/BUILDKIT/
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs/ /tmp/BUILDKIT/
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/appearance /tmp/BUILDKIT/
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage /tmp/BUILDKIT/
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide /tmp/BUILDKIT/
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs /tmp/BUILDKIT/
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/kernel"
 
