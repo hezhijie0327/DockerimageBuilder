@@ -1,22 +1,16 @@
-diff --git a/app/electron/main.js b/app/electron/main.js
-index ac42e8632de..099cca36e2b 100644
---- a/app/electron/main.js
-+++ b/app/electron/main.js
-@@ -656,14 +656,6 @@ app.whenReady().then(() => {
-             label: mainWindow.isVisible() ? lang.hideWindow : lang.showWindow, click: () => {
-                 showHideWindow(tray, lang, mainWindow);
-             },
--        }, {
--            label: lang.officialWebsite, click: () => {
--                shell.openExternal("https://b3log.org/siyuan/");
--            },
--        }, {
--            label: lang.openSource, click: () => {
--                shell.openExternal("https://github.com/siyuan-note/siyuan");
--            },
-         }, {
-             label: lang.resetWindow, type: "checkbox", click: v => {
-                 resetWindowStateOnRestart = v.checked;
+diff --git a/app/src/config/about.ts b/app/src/config/about.ts
+index 767b0b6c3df..1b914416cc8 100644
+--- a/app/src/config/about.ts
++++ b/app/src/config/about.ts
+@@ -30,7 +30,7 @@ export const about = {
+     </div>
+     <div class="fn__space"></div>
+     <div class="fn__flex-center fn__size200 config__item-line">
+-        <button id="checkUpdateBtn" class="b3-button b3-button--outline fn__block">
++        <button id="checkUpdateBtn" class="b3-button b3-button--outline fn__block" disabled>
+             <svg><use xlink:href="#iconRefresh"></use></svg>${window.siyuan.languages.checkUpdate}
+         </button>
+     </div>
 diff --git a/app/src/config/index.ts b/app/src/config/index.ts
 index 4c246f6ef8b..0f3065d58a7 100644
 --- a/app/src/config/index.ts
@@ -29,6 +23,18 @@ index 4c246f6ef8b..0f3065d58a7 100644
      <li data-name="repos" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconCloud"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.cloud}</span></li>
      <li data-name="publish" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconLanguage"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.publish}</span></li>
      <li data-name="about" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconInfo"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.about}</span></li>
+diff --git a/app/src/config/repos.ts b/app/src/config/repos.ts
+index 0a9066b8460..7ddf820efda 100644
+--- a/app/src/config/repos.ts
++++ b/app/src/config/repos.ts
+@@ -319,7 +319,6 @@ export const repos = {
+     </div>
+     <span class="fn__space"></span>
+     <select id="syncProvider" class="b3-select fn__flex-center fn__size200">
+-        <option value="0" ${window.siyuan.config.sync.provider === 0 ? "selected" : ""}>SiYuan</option>
+         <option value="2" ${window.siyuan.config.sync.provider === 2 ? "selected" : ""}>S3</option>
+         <option value="3" ${window.siyuan.config.sync.provider === 3 ? "selected" : ""}>WebDAV</option>
+     </select>
 diff --git a/app/src/mobile/menu/index.ts b/app/src/mobile/menu/index.ts
 index 7bfe30b8896..f47d29b3399 100644
 --- a/app/src/mobile/menu/index.ts
@@ -41,21 +47,6 @@ index 7bfe30b8896..f47d29b3399 100644
      <div id="menuRecent" class="b3-menu__item">
          <svg class="b3-menu__icon"><use xlink:href="#iconList"></use></svg><span class="b3-menu__label">${window.siyuan.languages.recentDocs}</span>
      </div>
-diff --git a/app/src/sync/syncGuide.ts b/app/src/sync/syncGuide.ts
-index 43fc167b10f..d78c7045fb7 100644
---- a/app/src/sync/syncGuide.ts
-+++ b/app/src/sync/syncGuide.ts
-@@ -147,6 +147,10 @@ export const syncGuide = (app?: App) => {
-     if (window.siyuan.config.readonly) {
-         return;
-     }
-+    if (!window.siyuan.config.sync.enabled) {
-+        showMessage("请在 设置 - 云端 中配置同步信息");
-+        return;
-+    }
-     /// #if MOBILE
-     if ((0 === window.siyuan.config.sync.provider && needSubscribe()) ||
-         (0 !== window.siyuan.config.sync.provider && !isPaidUser())) {
 diff --git a/app/src/util/needSubscribe.ts b/app/src/util/needSubscribe.ts
 index 6ba7848a6b2..460ffe6e76a 100644
 --- a/app/src/util/needSubscribe.ts
@@ -86,28 +77,33 @@ index 6ba7848a6b2..460ffe6e76a 100644
 -    return window.siyuan.user && (0 === window.siyuan.user.userSiYuanSubscriptionStatus || 1 === window.siyuan.user.userSiYuanOneTimePayStatus);
 +    return true;
  };
-diff --git a/kernel/api/system.go b/kernel/api/system.go
-index c136085572a..02cc1393b11 100644
---- a/kernel/api/system.go
-+++ b/kernel/api/system.go
-@@ -185,16 +185,7 @@ func addCustomEmoji(name string, items *[]map[string]interface{}) {
+diff --git a/kernel/conf/account.go b/kernel/conf/account.go
+index 5e3b51fb8f9..d4f4e00dea0 100644
+--- a/kernel/conf/account.go
++++ b/kernel/conf/account.go
+@@ -23,7 +23,7 @@ type Account struct {
+ 
+ func NewAccount() *Account {
+ 	return &Account{
+-		DisplayTitle: true,
+-		DisplayVIP:   true,
++		DisplayTitle: false,
++		DisplayVIP:   false,
+ 	}
+ }
+diff --git a/kernel/conf/sync.go b/kernel/conf/sync.go
+index 31a7bb2d28a..94eb79cb4d6 100644
+--- a/kernel/conf/sync.go
++++ b/kernel/conf/sync.go
+@@ -36,7 +36,7 @@ func NewSync() *Sync {
+ 		Perception:          false,
+ 		Mode:                1,
+ 		GenerateConflictDoc: false,
+-		Provider:            ProviderSiYuan,
++		Provider:            ProviderS3,
+ 	}
  }
  
- func checkUpdate(c *gin.Context) {
--	ret := gulu.Ret.NewResult()
--	defer c.JSON(http.StatusOK, ret)
--
--	arg, ok := util.JsonArg(c, ret)
--	if !ok {
--		return
--	}
--
--	showMsg := arg["showMsg"].(bool)
--	model.CheckUpdate(showMsg)
-+	return
- }
- 
- func exportLog(c *gin.Context) {
 diff --git a/kernel/model/conf.go b/kernel/model/conf.go
 index a8971a5c760..8059aa68473 100644
 --- a/kernel/model/conf.go
@@ -131,53 +127,3 @@ index a8971a5c760..8059aa68473 100644
  }
  
  const (
-diff --git a/app/src/config/about.ts b/app/src/config/about.ts
-index 767b0b6c3df..1b914416cc8 100644
---- a/app/src/config/about.ts
-+++ b/app/src/config/about.ts
-@@ -30,7 +30,7 @@ export const about = {
-     </div>
-     <div class="fn__space"></div>
-     <div class="fn__flex-center fn__size200 config__item-line">
--        <button id="checkUpdateBtn" class="b3-button b3-button--outline fn__block">
-+        <button id="checkUpdateBtn" class="b3-button b3-button--outline fn__block" disabled>
-             <svg><use xlink:href="#iconRefresh"></use></svg>${window.siyuan.languages.checkUpdate}
-         </button>
-     </div>
-diff --git a/app/src/config/repos.ts b/app/src/config/repos.ts
-index 0a9066b8460..7ddf820efda 100644
---- a/app/src/config/repos.ts
-+++ b/app/src/config/repos.ts
-@@ -319,7 +319,6 @@ export const repos = {
-     </div>
-     <span class="fn__space"></span>
-     <select id="syncProvider" class="b3-select fn__flex-center fn__size200">
--        <option value="0" ${window.siyuan.config.sync.provider === 0 ? "selected" : ""}>SiYuan</option>
-         <option value="2" ${window.siyuan.config.sync.provider === 2 ? "selected" : ""}>S3</option>
-         <option value="3" ${window.siyuan.config.sync.provider === 3 ? "selected" : ""}>WebDAV</option>
-     </select>
-diff --git a/app/src/layout/topBar.ts b/app/src/layout/topBar.ts
-index 75042ff757d..9473c5afbea 100644
---- a/app/src/layout/topBar.ts
-+++ b/app/src/layout/topBar.ts
-@@ -38,7 +38,6 @@ export const initBar = (app: App) => {
-     <svg><use xlink:href="#iconForward"></use></svg>
- </button>
- <div class="fn__flex-1 fn__ellipsis" id="drag"><span class="fn__none">开发版，使用前请进行备份 Development version, please backup before use</span></div>
--<div id="toolbarVIP" class="fn__flex${window.siyuan.config.readonly ? " fn__none" : ""}"></div>
- <div id="barPlugins" class="toolbar__item ariaLabel" aria-label="${window.siyuan.languages.plugin}">
-     <svg><use xlink:href="#iconPlugin"></use></svg>
- </div>
-diff --git a/kernel/conf/sync.go b/kernel/conf/sync.go
-index 31a7bb2d28a..94eb79cb4d6 100644
---- a/kernel/conf/sync.go
-+++ b/kernel/conf/sync.go
-@@ -36,7 +36,7 @@ func NewSync() *Sync {
- 		Perception:          false,
- 		Mode:                1,
- 		GenerateConflictDoc: false,
--		Provider:            ProviderSiYuan,
-+		Provider:            ProviderS3,
- 	}
- }
- 
