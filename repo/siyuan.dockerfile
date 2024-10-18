@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -47,6 +47,6 @@ ENV SIYUAN_ACCESS_AUTH_CODE_BYPASS="true"
 
 COPY --from=REBASED_SIYUAN / /
 
-EXPOSE 6806/tcp
+EXPOSE 6806/tcp 6808/tcp
 
 ENTRYPOINT ["/opt/siyuan/kernel"]
