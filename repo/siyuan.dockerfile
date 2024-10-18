@@ -47,6 +47,6 @@ ENV SIYUAN_ACCESS_AUTH_CODE_BYPASS="true"
 
 COPY --from=REBASED_SIYUAN / /
 
-EXPOSE 6806/tcp
+EXPOSE 6806/tcp 6808/tcp
 
 ENTRYPOINT ["/opt/siyuan/kernel"]
