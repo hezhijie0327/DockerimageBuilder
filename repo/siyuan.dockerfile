@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -20,24 +20,33 @@ COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && npm install -g pnpm && git clone -b $(cat "${WORKDIR}/siyuan.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/siyuan.source.autobuild") "${WORKDIR}/BUILDTMP/SIYUAN" && git clone -b $(cat "${WORKDIR}/siyuan.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/siyuan.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export SIYUAN_SHA=$(cd "${WORKDIR}/BUILDTMP/SIYUAN" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export SIYUAN_VERSION=$(cat "${WORKDIR}/siyuan.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export SIYUAN_CUSTOM_VERSION="${SIYUAN_VERSION}-ZHIJIE-${SIYUAN_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/SIYUAN/app" && pnpm i && pnpm run build && cd "${WORKDIR}/BUILDTMP/SIYUAN/kernel" && export CGO_ENABLED=0 && go build --tags fts5 -v -ldflags "-s -w" && cp -rf "${WORKDIR}/BUILDTMP/SIYUAN/kernel/kernel" "${WORKDIR}/BUILDKIT/kernel"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/siyuan.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/siyuan.source.autobuild") "${WORKDIR}/BUILDTMP/SIYUAN" && git clone -b $(cat "${WORKDIR}/siyuan.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/siyuan.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export SIYUAN_SHA=$(cd "${WORKDIR}/BUILDTMP/SIYUAN" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export SIYUAN_VERSION=$(cat "${WORKDIR}/siyuan.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export SIYUAN_CUSTOM_VERSION="${SIYUAN_VERSION}-ZHIJIE-${SIYUAN_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/SIYUAN/app" && npm install -g pnpm && pnpm i && pnpm run build && cd "${WORKDIR}/BUILDTMP/SIYUAN/kernel" && export CGO_ENABLED="1" && go build --tags fts5 -v -ldflags "-s -w" && cp -rf "${WORKDIR}/BUILDTMP/SIYUAN/kernel/kernel" "${WORKDIR}/BUILDKIT/kernel"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
 COPY --from=BUILD_SIYUAN /tmp/BUILDKIT /tmp/BUILDKIT/
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/appearance/ /tmp/BUILDKIT/
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage/ /tmp/BUILDKIT/
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide/ /tmp/BUILDKIT/
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs/ /tmp/BUILDKIT/
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/kernel"
+
+FROM busybox:latest AS REBASED_SIYUAN
+
+WORKDIR /tmp
+
+COPY --from=GPG_SIGN /tmp/BUILDKIT/ /
+
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/appearance /opt/siyuan/appearance
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage /opt/siyuan/stage
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide /opt/siyuan/guide
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs /opt/siyuan/changelogs
+
+RUN mv /kernel /opt/siyuan/kernel && find /opt/siyuan/ -name .git | xargs rm -rf
 
 FROM scratch
 
 ENV SIYUAN_ACCESS_AUTH_CODE_BYPASS="true"
 
-COPY --from=GPG_SIGN /tmp/BUILDKIT /
+COPY --from=REBASED_SIYUAN / /
 
 EXPOSE 6806/tcp
 
-ENTRYPOINT ["/kernel"]
+ENTRYPOINT ["/opt/siyuan/kernel"]
