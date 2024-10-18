@@ -32,14 +32,14 @@ FROM busybox:latest AS REBASED_SIYUAN
 
 WORKDIR /tmp
 
-COPY --from=GPG_SIGN /tmp/BUILDKIT/kernel /opt/siyuan/kernel
+COPY --from=GPG_SIGN /tmp/BUILDKIT/ /
 
 COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/appearance /opt/siyuan/appearance
 COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage /opt/siyuan/stage
 COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide /opt/siyuan/guide
 COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs /opt/siyuan/changelogs
 
-RUN find /opt/siyuan/ -name .git | xargs rm -rf
+RUN mv /kernel /opt/siyuan/kernel && find /opt/siyuan/ -name .git | xargs rm -rf
 
 FROM scratch
 
