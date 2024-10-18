@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -26,27 +26,21 @@ FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
 COPY --from=BUILD_SIYUAN /tmp/BUILDKIT /tmp/BUILDKIT/
 
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/appearance /tmp/BUILDKIT/appearance
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage /tmp/BUILDKIT/stage
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide /tmp/BUILDKIT/guide
+COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs /tmp/BUILDKIT/changelogs
+
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/kernel"
 
-FROM busybox:latest AS REBASED_SIYUAN
-
-WORKDIR /tmp
-
-COPY --from=GPG_SIGN /tmp/BUILDKIT/ /
-
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/appearance /opt/siyuan/appearance
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage /opt/siyuan/stage
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide /opt/siyuan/guide
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs /opt/siyuan/changelogs
-
-RUN mv /kernel /opt/siyuan/kernel && find /opt/siyuan/ -name .git | xargs rm -rf
+RUN find /tmp/BUILDKIT/ -name .git | xargs rm -rf
 
 FROM scratch
 
 ENV SIYUAN_ACCESS_AUTH_CODE_BYPASS="true"
 
-COPY --from=REBASED_SIYUAN / /
+COPY --from=BUILD_SIYUAN / /
 
 EXPOSE 6806/tcp
 
-ENTRYPOINT ["/opt/siyuan/kernel"]
+ENTRYPOINT ["/kernel"]
