@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -39,7 +39,7 @@ COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage /opt/siyuan/stage
 COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide /opt/siyuan/guide
 COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs /opt/siyuan/changelogs
 
-RUN mv /kernel /opt/siyuan/kernel && find /opt/siyuan/ -name .git | xargs rm -rf
+RUN mv /kernel* /opt/siyuan/ && find /opt/siyuan/ -name .git | xargs rm -rf
 
 FROM scratch
 
