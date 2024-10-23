@@ -1,3 +1,41 @@
+diff --git a/app/src/assets/template/mobile/index.tpl b/app/src/assets/template/mobile/index.tpl
+index 40439b22aae..666f7dc7fd7 100644
+--- a/app/src/assets/template/mobile/index.tpl
++++ b/app/src/assets/template/mobile/index.tpl
+@@ -31,7 +31,6 @@
+         <svg data-type="sidebar-bookmark-tab" class="toolbar__icon"><use xlink:href="#iconBookmark"></use></svg>
+         <svg data-type="sidebar-tag-tab" class="toolbar__icon"><use xlink:href="#iconTags"></use></svg>
+         <svg data-type="sidebar-backlink-tab" class="toolbar__icon"><use xlink:href="#iconLink"></use></svg>
+-        <svg data-type="sidebar-inbox-tab" class="toolbar__icon"><use xlink:href="#iconInbox"></use></svg>
+         <svg data-menu="true" data-type="sidebar-plugin-tab" class="toolbar__icon"><use xlink:href="#iconPlugin"></use></svg>
+         <span class="fn__flex-1"></span>
+         <svg class="toolbar__icon"><use xlink:href="#iconRight"></use></svg>
+@@ -42,7 +41,6 @@
+         <div class="fn__flex-column fn__none" data-type="sidebar-bookmark"></div>
+         <div class="fn__flex-column fn__none" data-type="sidebar-tag"></div>
+         <div class="fn__flex-column fn__none" data-type="sidebar-backlink"></div>
+-        <div class="fn__flex-column fn__none" data-type="sidebar-inbox"></div>
+         <div class="fn__flex-column fn__none" data-type="sidebar-plugin"></div>
+     </div>
+ </div>
+diff --git a/app/src/boot/globalEvent/command/panel.ts b/app/src/boot/globalEvent/command/panel.ts
+index fb866502f1f..3ff7b3f9b07 100644
+--- a/app/src/boot/globalEvent/command/panel.ts
++++ b/app/src/boot/globalEvent/command/panel.ts
+@@ -49,11 +49,11 @@ export const commandPanel = (app: App) => {
+     Object.keys(window.siyuan.config.keymap.general).forEach((key) => {
+         let keys;
+         /// #if MOBILE
+-        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox", "backlinks",
++        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "backlinks",
+             "dataHistory", "editReadonly", "enter", "enterBack", "globalSearch", "lockScreen", "mainMenu", "move",
+             "newFile", "recentDocs", "replace", "riffCard", "search", "selectOpen1", "syncNow"];
+         /// #else
+-        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox", "backlinks",
++        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "backlinks",
+             "graphView", "globalGraph", "closeAll", "closeLeft", "closeOthers", "closeRight", "closeTab",
+             "closeUnmodified", "config", "dataHistory", "editReadonly", "enter", "enterBack", "globalSearch", "goBack",
+             "goForward", "goToEditTabNext", "goToEditTabPrev", "goToTab1", "goToTab2", "goToTab3", "goToTab4",
 diff --git a/app/src/config/about.ts b/app/src/config/about.ts
 index 767b0b6c3df..e8634a2df67 100644
 --- a/app/src/config/about.ts
@@ -66,6 +104,75 @@ index 6aa6496c145..278f372d50f 100644
          <option value="2" ${window.siyuan.config.sync.provider === 2 ? "selected" : ""}>S3</option>
          <option value="3" ${window.siyuan.config.sync.provider === 3 ? "selected" : ""}>WebDAV</option>
      </select>
+diff --git a/app/src/constants.ts b/app/src/constants.ts
+index 7b334e4a6b0..fba8a54e6d7 100644
+--- a/app/src/constants.ts
++++ b/app/src/constants.ts
+@@ -320,7 +320,6 @@ export abstract class Constants {
+             bookmark: {default: altNumber + "3", custom: altNumber + "3"},
+             tag: {default: altNumber + "4", custom: altNumber + "4"},
+             dailyNote: {default: altNumber + "5", custom: altNumber + "5"},
+-            inbox: {default: altNumber + "6", custom: altNumber + "6"},
+             backlinks: {default: altNumber + "7", custom: altNumber + "7"},
+             graphView: {default: altNumber + "8", custom: altNumber + "8"},
+             globalGraph: {default: altNumber + "9", custom: altNumber + "9"},
+@@ -560,12 +559,6 @@ export abstract class Constants {
+                     show: false,
+                     icon: "iconAlignCenter",
+                     hotkeyLangId: "outline",
+-                }, {
+-                    type: "inbox",
+-                    size: {width: 320, height: 0},
+-                    show: false,
+-                    icon: "iconInbox",
+-                    hotkeyLangId: "inbox",
+                 }], [{
+                     type: "bookmark",
+                     size: {width: 232, height: 0},
+diff --git a/app/src/layout/dock/index.ts b/app/src/layout/dock/index.ts
+index eaf289b2e56..4bc11ae3e16 100644
+--- a/app/src/layout/dock/index.ts
++++ b/app/src/layout/dock/index.ts
+@@ -11,7 +11,6 @@ import {Graph} from "./Graph";
+ import {Model} from "../Model";
+ import {saveLayout, setPanelFocus} from "../util";
+ import {getDockByType, resizeTabs} from "../tabUtil";
+-import {Inbox} from "./Inbox";
+ import {Protyle} from "../../protyle";
+ import {Backlink} from "./Backlink";
+ import {resetFloatDockSize} from "./util";
+@@ -20,7 +19,7 @@ import {App} from "../../index";
+ import {Plugin} from "../../plugin";
+ import {Custom} from "./Custom";
+ 
+-const TYPES = ["file", "outline", "inbox", "bookmark", "tag", "graph", "globalGraph", "backlink"];
++const TYPES = ["file", "outline", "bookmark", "tag", "graph", "globalGraph", "backlink"];
+ 
+ export class Dock {
+     public element: HTMLElement;
+@@ -335,7 +334,7 @@ export class Dock {
+                 let minSize = 227;
+                 Array.from(this.layout.element.querySelectorAll(".file-tree")).find((item) => {
+                     if (item.classList.contains("sy__backlink") || item.classList.contains("sy__graph")
+-                        || item.classList.contains("sy__globalGraph") || item.classList.contains("sy__inbox")) {
++                        || item.classList.contains("sy__globalGraph")) {
+                         if (!item.classList.contains("fn__none") && !hasClosestByClassName(item, "fn__none")) {
+                             minSize = 320;
+                             return true;
+@@ -638,13 +637,6 @@ export class Dock {
+                             }
+                         });
+                         break;
+-                    case "inbox":
+-                        tab = new Tab({
+-                            callback: (tab: Tab) => {
+-                                tab.addModel(new Inbox(this.app, tab));
+-                            }
+-                        });
+-                        break;
+                     default:
+                         tab = new Tab({
+                             callback: (tab: Tab) => {
 diff --git a/app/src/layout/status.ts b/app/src/layout/status.ts
 index 759a4220642..ae71c9830f3 100644
 --- a/app/src/layout/status.ts
@@ -103,6 +210,39 @@ index 7bfe30b8896..f47d29b3399 100644
      <div id="menuRecent" class="b3-menu__item">
          <svg class="b3-menu__icon"><use xlink:href="#iconList"></use></svg><span class="b3-menu__label">${window.siyuan.languages.recentDocs}</span>
      </div>
+diff --git a/app/src/protyle/gutter/index.ts b/app/src/protyle/gutter/index.ts
+index ac40f0458df..52f144fa4f0 100644
+--- a/app/src/protyle/gutter/index.ts
++++ b/app/src/protyle/gutter/index.ts
+@@ -8,7 +8,7 @@ import {
+ import {getIconByType} from "../../editor/getIcon";
+ import {enterBack, iframeMenu, setFold, tableMenu, videoMenu, zoomOut} from "../../menus/protyle";
+ import {MenuItem} from "../../menus/Menu";
+-import {copySubMenu, openAttr, openWechatNotify} from "../../menus/commonMenuItem";
++import {copySubMenu, openAttr} from "../../menus/commonMenuItem";
+ import {
+     copyPlainText,
+     isInAndroid,
+@@ -1799,19 +1799,6 @@ export class Gutter {
+             // this.genHeights([nodeElement], protyle);
+         }
+         window.siyuan.menus.menu.append(new MenuItem({id: "separator_4", type: "separator"}).element);
+-        if (!["NodeThematicBreak", "NodeBlockQueryEmbed", "NodeIFrame", "NodeHTMLBlock", "NodeWidget", "NodeVideo", "NodeAudio"].includes(type) &&
+-            getContenteditableElement(nodeElement)?.textContent.trim() !== "" &&
+-            (type !== "NodeCodeBlock" || (type === "NodeCodeBlock" && !nodeElement.getAttribute("data-subtype")))) {
+-            window.siyuan.menus.menu.append(new MenuItem({
+-                id: "wechatReminder",
+-                icon: "iconMp",
+-                label: window.siyuan.languages.wechatReminder,
+-                ignore: window.siyuan.config.readonly,
+-                click() {
+-                    openWechatNotify(nodeElement);
+-                }
+-            }).element);
+-        }
+         if (type !== "NodeThematicBreak" && !window.siyuan.config.readonly) {
+             window.siyuan.menus.menu.append(new MenuItem({
+                 id: "quickMakeCard",
 diff --git a/app/src/util/needSubscribe.ts b/app/src/util/needSubscribe.ts
 index 6ba7848a6b2..7d635f5b891 100644
 --- a/app/src/util/needSubscribe.ts
