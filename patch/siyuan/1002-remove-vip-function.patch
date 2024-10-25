@@ -1,0 +1,100 @@
+diff --git a/app/src/assets/template/mobile/index.tpl b/app/src/assets/template/mobile/index.tpl
+index 40439b22aae..666f7dc7fd7 100644
+--- a/app/src/assets/template/mobile/index.tpl
++++ b/app/src/assets/template/mobile/index.tpl
+@@ -31,7 +31,6 @@
+         <svg data-type="sidebar-bookmark-tab" class="toolbar__icon"><use xlink:href="#iconBookmark"></use></svg>
+         <svg data-type="sidebar-tag-tab" class="toolbar__icon"><use xlink:href="#iconTags"></use></svg>
+         <svg data-type="sidebar-backlink-tab" class="toolbar__icon"><use xlink:href="#iconLink"></use></svg>
+-        <svg data-type="sidebar-inbox-tab" class="toolbar__icon"><use xlink:href="#iconInbox"></use></svg>
+         <svg data-menu="true" data-type="sidebar-plugin-tab" class="toolbar__icon"><use xlink:href="#iconPlugin"></use></svg>
+         <span class="fn__flex-1"></span>
+         <svg class="toolbar__icon"><use xlink:href="#iconRight"></use></svg>
+@@ -42,7 +41,6 @@
+         <div class="fn__flex-column fn__none" data-type="sidebar-bookmark"></div>
+         <div class="fn__flex-column fn__none" data-type="sidebar-tag"></div>
+         <div class="fn__flex-column fn__none" data-type="sidebar-backlink"></div>
+-        <div class="fn__flex-column fn__none" data-type="sidebar-inbox"></div>
+         <div class="fn__flex-column fn__none" data-type="sidebar-plugin"></div>
+     </div>
+ </div>
+diff --git a/app/src/boot/globalEvent/command/panel.ts b/app/src/boot/globalEvent/command/panel.ts
+index fb866502f1f..3ff7b3f9b07 100644
+--- a/app/src/boot/globalEvent/command/panel.ts
++++ b/app/src/boot/globalEvent/command/panel.ts
+@@ -49,11 +49,11 @@ export const commandPanel = (app: App) => {
+     Object.keys(window.siyuan.config.keymap.general).forEach((key) => {
+         let keys;
+         /// #if MOBILE
+-        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox", "backlinks",
++        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "backlinks",
+             "dataHistory", "editReadonly", "enter", "enterBack", "globalSearch", "lockScreen", "mainMenu", "move",
+             "newFile", "recentDocs", "replace", "riffCard", "search", "selectOpen1", "syncNow"];
+         /// #else
+-        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox", "backlinks",
++        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "backlinks",
+             "graphView", "globalGraph", "closeAll", "closeLeft", "closeOthers", "closeRight", "closeTab",
+             "closeUnmodified", "config", "dataHistory", "editReadonly", "enter", "enterBack", "globalSearch", "goBack",
+             "goForward", "goToEditTabNext", "goToEditTabPrev", "goToTab1", "goToTab2", "goToTab3", "goToTab4",
+diff --git a/app/src/constants.ts b/app/src/constants.ts
+index 7b334e4a6b0..fba8a54e6d7 100644
+--- a/app/src/constants.ts
++++ b/app/src/constants.ts
+@@ -320,7 +320,6 @@ export abstract class Constants {
+             bookmark: {default: altNumber + "3", custom: altNumber + "3"},
+             tag: {default: altNumber + "4", custom: altNumber + "4"},
+             dailyNote: {default: altNumber + "5", custom: altNumber + "5"},
+-            inbox: {default: altNumber + "6", custom: altNumber + "6"},
+             backlinks: {default: altNumber + "7", custom: altNumber + "7"},
+             graphView: {default: altNumber + "8", custom: altNumber + "8"},
+             globalGraph: {default: altNumber + "9", custom: altNumber + "9"},
+@@ -560,12 +559,6 @@ export abstract class Constants {
+                     show: false,
+                     icon: "iconAlignCenter",
+                     hotkeyLangId: "outline",
+-                }, {
+-                    type: "inbox",
+-                    size: {width: 320, height: 0},
+-                    show: false,
+-                    icon: "iconInbox",
+-                    hotkeyLangId: "inbox",
+                 }], [{
+                     type: "bookmark",
+                     size: {width: 232, height: 0},
+diff --git a/app/src/layout/dock/index.ts b/app/src/layout/dock/index.ts
+index aa8d5d930aa..27c18f2f839 100644
+--- a/app/src/layout/dock/index.ts
++++ b/app/src/layout/dock/index.ts
+@@ -20,7 +20,7 @@ import {App} from "../../index";
+ import {Plugin} from "../../plugin";
+ import {Custom} from "./Custom";
+ 
+-const TYPES = ["file", "outline", "inbox", "bookmark", "tag", "graph", "globalGraph", "backlink"];
++const TYPES = ["file", "outline", "bookmark", "tag", "graph", "globalGraph", "backlink"];
+ 
+ export class Dock {
+     public element: HTMLElement;
+diff --git a/app/src/protyle/gutter/index.ts b/app/src/protyle/gutter/index.ts
+index ac40f0458df..3177e793be4 100644
+--- a/app/src/protyle/gutter/index.ts
++++ b/app/src/protyle/gutter/index.ts
+@@ -1799,19 +1799,6 @@ export class Gutter {
+             // this.genHeights([nodeElement], protyle);
+         }
+         window.siyuan.menus.menu.append(new MenuItem({id: "separator_4", type: "separator"}).element);
+-        if (!["NodeThematicBreak", "NodeBlockQueryEmbed", "NodeIFrame", "NodeHTMLBlock", "NodeWidget", "NodeVideo", "NodeAudio"].includes(type) &&
+-            getContenteditableElement(nodeElement)?.textContent.trim() !== "" &&
+-            (type !== "NodeCodeBlock" || (type === "NodeCodeBlock" && !nodeElement.getAttribute("data-subtype")))) {
+-            window.siyuan.menus.menu.append(new MenuItem({
+-                id: "wechatReminder",
+-                icon: "iconMp",
+-                label: window.siyuan.languages.wechatReminder,
+-                ignore: window.siyuan.config.readonly,
+-                click() {
+-                    openWechatNotify(nodeElement);
+-                }
+-            }).element);
+-        }
+         if (type !== "NodeThematicBreak" && !window.siyuan.config.readonly) {
+             window.siyuan.menus.menu.append(new MenuItem({
+                 id: "quickMakeCard",
