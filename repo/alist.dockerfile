@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -22,9 +22,9 @@ COPY --from=GET_INFO /tmp/alist.*.autobuild /tmp/
 
 COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
 
-COPY --from=BUILD_ALIST_WEB /BUILDKIT/alist-web /tmp/BUILDTMP/alist-web/dist
+COPY --from=BUILD_ALIST_WEB /tmp/BUILDKIT/alist-web /tmp/BUILDTMP/alist-web/dist
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/alist.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/alist.source.autobuild") "${WORKDIR}/BUILDTMP/ALIST" && git clone -b $(cat "${WORKDIR}/alist.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/alist.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export ALIST_SHA=$(cd "${WORKDIR}/BUILDTMP/ALIST" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export ALIST_VERSION=$(cat "${WORKDIR}/alist.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export ALIST_CUSTOM_VERSION="${ALIST_VERSION}-ZHIJIE-${ALIST_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/ALIST" && rm -rf "${WORKDIR}/BUILDTMP/ALIST/public/dist" && mv "${WORKDIR}/BUILDTMP/alist-web/dist" "${WORKDIR}/BUILDTMP/ALIST/public/dist" && export CGO_ENABLED=0 && go build -o "${WORKDIR}/BUILDKIT/alist" -ldflags="-w -s -X github.com/alist-org/alist/v3/internal/conf.BuiltAt=$(date +'%F %T %z') -X github.com/alist-org/alist/v3/internal/conf.GoVersion=$(go version | sed 's/go version //') -X github.com/alist-org/alist/v3/internal/conf.GitAuthor=dev -X github.com/alist-org/alist/v3/internal/conf.GitCommit=$(git log --pretty=format:'%h' -1) -X github.com/alist-org/alist/v3/internal/conf.Version=${ALIST_CUSTOM_VERSION} -X github.com/alist-org/alist/v3/internal/conf.WebVersion=${ALIST_VERSION}" -tags=jsoniter .
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b $(cat "${WORKDIR}/alist.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/alist.source.autobuild") "${WORKDIR}/BUILDTMP/ALIST" && git clone -b $(cat "${WORKDIR}/alist.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/alist.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export ALIST_SHA=$(cd "${WORKDIR}/BUILDTMP/ALIST" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export ALIST_VERSION=$(cat "${WORKDIR}/alist.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export ALIST_CUSTOM_VERSION="${ALIST_VERSION}-ZHIJIE-${ALIST_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/ALIST" && rm -rf "${WORKDIR}/BUILDTMP/ALIST/public/dist" && mv "${WORKDIR}/BUILDTMP/alist-web/dist" "${WORKDIR}/BUILDTMP/ALIST/public/dist" && ls -alh "${WORKDIR}/BUILDTMP/ALIST/public/dist" && export CGO_ENABLED=0 && go build -o "${WORKDIR}/BUILDKIT/alist" -ldflags="-w -s -X github.com/alist-org/alist/v3/internal/conf.Version=${ALIST_CUSTOM_VERSION}" -tags=jsoniter .
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
