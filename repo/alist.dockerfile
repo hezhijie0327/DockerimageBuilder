@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -44,6 +44,6 @@ FROM scratch
 
 COPY --from=REBASED_ALIST / /
 
-EXPOSE 5244/tcp
+EXPOSE 5244/tcp 5246/tcp
 
 ENTRYPOINT ["/opt/alist/alist"]
