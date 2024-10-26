@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -8,15 +8,11 @@ RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.alist" > "$
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
-FROM --platform=linux/amd64 hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
-
-FROM --platform=linux/amd64 hezhijie0327/base:ubuntu AS BUILD_ALIST_WEB
+FROM hezhijie0327/base:ubuntu AS BUILD_ALIST_WEB
 
 WORKDIR /tmp
 
-COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
-
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b "main" --depth 1 --recurse-submodules "https://github.com/alist-org/alist-web.git" "${WORKDIR}/BUILDTMP/ALIST_WEB" && cd "${WORKDIR}/BUILDTMP/ALIST_WEB" && corepack enable && corepack use pnpm && pnpm install && pnpm build && mv "${WORKDIR}/BUILDTMP/ALIST_WEB/dist" "${WORKDIR}/BUILDKIT/alist-web"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT/alist-web" && cd "${WORKDIR}/BUILDKIT/alist-web" && curl -Ls -o - "https://github.com/alist-org/alist-web/releases/latest/download/dist.tar.gz" | tar zxvf - --strip-components=1
 
 FROM hezhijie0327/base:ubuntu AS BUILD_ALIST
 
