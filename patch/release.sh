@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# Current Version: 1.7.6
+# Current Version: 1.7.7
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
 
 ## Parameter
+export ALIST_VERSION_FIXED=""
 export ADGUARDHOME_VERSION_FIXED=""
 export ARIA2_VERSION_FIXED=""
 export CADDY_VERSION_FIXED=""
@@ -56,6 +57,7 @@ export ZLIB_NG_VERSION_FIXED=""
 ## Function
 # Get Latest Version
 function GetLatestVersion() {
+    ALIST_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AlistGo/alist/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     ADGUARDHOME_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AdguardTeam/AdGuardHome/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     ARIA2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/aria2/aria2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release\-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     CADDY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/caddyserver/caddy/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\/v//")
@@ -106,6 +108,7 @@ function GetLatestVersion() {
 # Generate Replacements
 function GenerateReplacements() {
     replacement_list=(
+        "s/{ALIST_VERSION}/${ALIST_VERSION_FIXED:-${ALIST_VERSION}}/g"
         "s/{ADGUARDHOME_VERSION}/${ADGUARDHOME_VERSION_FIXED:-${ADGUARDHOME_VERSION}}/g"
         "s/{ARIA2_VERSION}/${ARIA2_VERSION_FIXED:-${ARIA2_VERSION}}/g"
         "s/{CADDY_VERSION}/${CADDY_VERSION_FIXED:-${CADDY_VERSION}}/g"
