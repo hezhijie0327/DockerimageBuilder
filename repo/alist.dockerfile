@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -38,7 +38,7 @@ WORKDIR /tmp
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT/ /
 
-RUN mkdir -p "/opt/alist" && mv /alist /opt/alist/alist
+RUN mkdir -p "/opt/alist" && mv /alist* /opt/alist/
 
 FROM scratch
 
