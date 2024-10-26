@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -16,7 +16,7 @@ WORKDIR /tmp
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" &&  && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b "main" --depth 1 --recurse-submodules "https://github.com/alist-org/alist-web.git" "${WORKDIR}/BUILDTMP/ALIST_WEB" && cd "${WORKDIR}/BUILDTMP/ALIST_WEB" && corepack enable && corepack use pnpm && pnpm install && pnpm build && mv "${WORKDIR}/BUILDTMP/ALIST_WEB/dist" "${WORKDIR}/BUILDKIT/alist-web"
+RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && git clone -b "main" --depth 1 --recurse-submodules "https://github.com/alist-org/alist-web.git" "${WORKDIR}/BUILDTMP/ALIST_WEB" && cd "${WORKDIR}/BUILDTMP/ALIST_WEB" && corepack enable && corepack use pnpm && pnpm install && pnpm build && mv "${WORKDIR}/BUILDTMP/ALIST_WEB/dist" "${WORKDIR}/BUILDKIT/alist-web"
 
 FROM hezhijie0327/base:ubuntu AS BUILD_ALIST
 
