@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -37,7 +37,6 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
         uwsgi-python3 \
         brotli \
     && export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP" "/usr/local/searxng" && git clone -b $(cat "${WORKDIR}/searxng.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/searxng.source.autobuild") "${WORKDIR}/BUILDTMP/SEARXNG" && git clone -b $(cat "${WORKDIR}/searxng.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/searxng.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export SEARXNG_SHA=$(cd "${WORKDIR}/BUILDTMP/SEARXNG" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export SEARXNG_VERSION=$(cat "${WORKDIR}/searxng.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export SEARXNG_CUSTOM_VERSION="${SEARXNG_VERSION}-ZHIJIE-${SEARXNG_SHA}${PATCH_SHA}" \
-    && export GIT_URL=$(cat "${WORKDIR}/searxng.source.autobuild") && export SEARXNG_DOCKER_TAG="${SEARXNG_CUSTOM_VERSION}" export SEARXNG_GIT_VERSION="${SEARXNG_CUSTOM_VERSION}" \
     && cp -rf "${WORKDIR}/BUILDTMP/SEARXNG/requirements.txt" "/usr/local/searxng/requirements.txt" \
     && cp -rf "${WORKDIR}/BUILDTMP/SEARXNG/dockerfiles" "/usr/local/searxng/dockerfiles" \
     && cp -rf "${WORKDIR}/BUILDTMP/SEARXNG/searx" "/usr/local/searxng/searx" \
