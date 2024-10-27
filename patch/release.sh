@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.7.9
+# Current Version: 1.8.0
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -38,6 +38,7 @@ export QBITTORRENT_VERSION_FIXED=""
 export RCLONE_VERSION_FIXED=""
 export REDIS_VERSION_FIXED=""
 export RUST_VERSION_FIXED=""
+export SEARXNG_VERSION_FIXED=""
 export SIYUAN_VERSION_FIXED=""
 export SMARTDNS_VERSION_FIXED=""
 export SQLITE_VERSION_FIXED=""
@@ -82,6 +83,7 @@ function GetLatestVersion() {
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
     PCRE2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/PCRE2Project/pcre2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "RC" | grep "^refs/tags/pcre2-" | tail -n 1 | sed "s/refs\/tags\/pcre2\-//")
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
+    SEARXNG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/searxng/searxng/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     SMARTDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/pymumu/smartdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/Release" | grep -v "\-\|RC\|Special" | tail -n 1 | sed "s/refs\/tags\/Release//")
     RCLONE_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rclone/rclone/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\/v//")
     REDIS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/redis/redis/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\///")
@@ -133,6 +135,7 @@ function GenerateReplacements() {
         "s/{RCLONE_VERSION}/${RCLONE_VERSION_FIXED:-${RCLONE_VERSION}}/g"
         "s/{REDIS_VERSION}/${REDIS_VERSION_FIXED:-${REDIS_VERSION}}/g"
         "s/{RUST_VERSION}/${RUST_VERSION_FIXED:-${RUST_VERSION}}/g"
+        "s/{SEARXNG_VERSION}/${SEARXNG_VERSION_FIXED:-${SEARXNG_VERSION}}/g"
         "s/{SIYUAN_VERSION}/${SIYUAN_VERSION_FIXED:-${SIYUAN_VERSION}}/g"
         "s/{SMARTDNS_VERSION}/${SMARTDNS_VERSION_FIXED:-${SMARTDNS_VERSION}}/g"
         "s/{SQLITE_VERSION_}/$(echo ${SQLITE_VERSION_FIXED:-${SQLITE_VERSION}} | cut -d '.' -f 1)$(echo ${SQLITE_VERSION_FIXED:-${SQLITE_VERSION}} | cut -d '.' -f 2)0$(echo ${SQLITE_VERSION_FIXED:-${SQLITE_VERSION}} | cut -d '.' -f 3)00/g"
