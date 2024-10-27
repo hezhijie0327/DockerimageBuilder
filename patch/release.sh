@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.8.0
+# Current Version: 1.8.1
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -40,7 +40,6 @@ export REDIS_VERSION_FIXED=""
 export RUST_VERSION_FIXED=""
 export SEARXNG_VERSION_FIXED=""
 export SIYUAN_VERSION_FIXED=""
-export SMARTDNS_VERSION_FIXED=""
 export SQLITE_VERSION_FIXED=""
 export SQLITE_YEAR_FIXED=""
 export UNBOUND_VERSION_FIXED=""
@@ -84,7 +83,6 @@ function GetLatestVersion() {
     PCRE2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/PCRE2Project/pcre2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "RC" | grep "^refs/tags/pcre2-" | tail -n 1 | sed "s/refs\/tags\/pcre2\-//")
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     SEARXNG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/searxng/searxng/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
-    SMARTDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/pymumu/smartdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/Release" | grep -v "\-\|RC\|Special" | tail -n 1 | sed "s/refs\/tags\/Release//")
     RCLONE_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rclone/rclone/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\/v//")
     REDIS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/redis/redis/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\///")
     RUST_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rust-lang/rust/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
@@ -137,7 +135,6 @@ function GenerateReplacements() {
         "s/{RUST_VERSION}/${RUST_VERSION_FIXED:-${RUST_VERSION}}/g"
         "s/{SEARXNG_VERSION}/${SEARXNG_VERSION_FIXED:-${SEARXNG_VERSION}}/g"
         "s/{SIYUAN_VERSION}/${SIYUAN_VERSION_FIXED:-${SIYUAN_VERSION}}/g"
-        "s/{SMARTDNS_VERSION}/${SMARTDNS_VERSION_FIXED:-${SMARTDNS_VERSION}}/g"
         "s/{SQLITE_VERSION_}/$(echo ${SQLITE_VERSION_FIXED:-${SQLITE_VERSION}} | cut -d '.' -f 1)$(echo ${SQLITE_VERSION_FIXED:-${SQLITE_VERSION}} | cut -d '.' -f 2)0$(echo ${SQLITE_VERSION_FIXED:-${SQLITE_VERSION}} | cut -d '.' -f 3)00/g"
         "s/{SQLITE_VERSION}/${SQLITE_VERSION_FIXED:-${SQLITE_VERSION}}/g"
         "s/{SQLITE_YEAR}/${SQLITE_YEAR_FIXED:-${SQLITE_YEAR}}/g"
