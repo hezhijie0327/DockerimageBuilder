@@ -1,4 +1,4 @@
-# Current Version: 1.7.4
+# Current Version: 1.7.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -62,7 +62,7 @@ FROM scratch
 ENV NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="" \
     NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
     SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt" \
-    FEATURE_FLAGS="-check_updates,-welcome_suggest" \
+    FEATURE_FLAGS="-check_updates,+pin_list,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
 COPY --from=REBASED_LOBECHAT / /
