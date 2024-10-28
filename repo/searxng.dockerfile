@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -40,6 +40,7 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
     && cp -rf "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/searxng/uwsgi.ini" "/usr/local/searxng/uwsgi.ini"
     && cp -rf "${WORKDIR}/BUILDTMP/SEARXNG/requirements.txt" "/usr/local/searxng/requirements.txt" \
     && cp -rf "${WORKDIR}/BUILDTMP/SEARXNG/searx" "/usr/local/searxng/searx" \
+    && sed -i "s|ultrasecretkey|$(openssl rand -hex 32)|g" "/usr/local/searxng/searx/settings.yml" \
     && sed -i "s|VERSION_STRING = \"1.0.0\"|VERSION_STRING = \"${SEARXNG_CUSTOM_VERSION}\"|g;s|GIT_URL = \"unknow\"|GIT_URL = \"https://github.com/searxng/searxng\"|g" "/usr/local/searxng/searx/version.py" \
     && cd "/usr/local/searxng" \
     && pip config set global.index-url https://mirrors.ustc.edu.cn/pypi/simple \
@@ -56,7 +57,7 @@ COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 FROM scratch
 
 ENV BIND_ADDRESS="0.0.0.0:8080" \
-    SEARXNG_SETTINGS_PATH="/etc/searxng/settings.yml"
+    SEARXNG_SETTINGS_PATH="/usr/local/searxng/searx/settings.yml"
 
 COPY --from=BUILD_SEARXNG / /
 
