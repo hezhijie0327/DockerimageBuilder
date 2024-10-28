@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -41,7 +41,7 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
     && cp -rf "${WORKDIR}/BUILDTMP/SEARXNG/dockerfiles" "/usr/local/searxng/dockerfiles" \
     && cp -rf "${WORKDIR}/BUILDTMP/SEARXNG/searx" "/usr/local/searxng/searx" \
     && sed -i 's|gid = searxng|gid = root|g;s|uid = searxng|uid = root|g' "/usr/local/searxng/dockerfiles/uwsgi.ini" \
-    && sed -i "s|1.0.0|${SEARXNG_CUSTOM_VERSION}|g" "/usr/local/searxng/searx/version.py" \
+    && sed -i "s|VERSION_STRING = \"1.0.0\"|VERSION_STRING = \"${SEARXNG_CUSTOM_VERSION}\"|g;s|GIT_URL = \"unknow\"|GIT_URL = \"https://github.com/searxng/searxng\"|g" "/usr/local/searxng/searx/version.py" \
     && cd "/usr/local/searxng" \
     && pip config set global.index-url https://mirrors.ustc.edu.cn/pypi/simple \
     && pip install --no-cache --break-system-packages -r requirements.txt \
