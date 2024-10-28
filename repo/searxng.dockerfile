@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -56,7 +56,7 @@ COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 FROM scratch
 
 ENV BIND_ADDRESS="0.0.0.0:8080" \
-    SEARXNG_SETTINGS_PATH="/usr/local/searxng/searx/settings.yml"
+    SEARXNG_SETTINGS_PATH="/etc/searxng/settings.yml"
 
 COPY --from=BUILD_SEARXNG / /
 
