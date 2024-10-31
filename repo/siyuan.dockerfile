@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -43,7 +43,9 @@ RUN mv /kernel* /opt/siyuan/ && find /opt/siyuan/ -name .git | xargs rm -rf
 
 FROM scratch
 
-ENV SIYUAN_ACCESS_AUTH_CODE_BYPASS="true" SIYUAN_TESSERACT_ENABLED="false"
+ENV SIYUAN_ACCESS_AUTH_CODE_BYPASS="true" \
+    SIYUAN_TESSERACT_ENABLED="false" SIYUAN_TESSERACT_LANGS="" \
+    SIYUAN_OPENAI_API_BASE_URL="" SIYUAN_OPENAI_API_KEY="" SIYUAN_OPENAI_API_PROXY=""
 
 COPY --from=REBASED_SIYUAN / /
 
