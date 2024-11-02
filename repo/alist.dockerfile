@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -8,13 +8,13 @@ RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.alist" > "$
 
 FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
 
-FROM hezhijie0327/base:ubuntu AS BUILD_ALIST_WEB
+FROM hezhijie0327/base:alpine AS BUILD_ALIST_WEB
 
 WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT/alist-web" && cd "${WORKDIR}/BUILDKIT/alist-web" && curl -Ls -o - "https://github.com/alist-org/alist-web/releases/latest/download/dist.tar.gz" | tar zxvf - --strip-components=1
 
-FROM hezhijie0327/base:ubuntu AS BUILD_ALIST
+FROM hezhijie0327/base:alpine AS BUILD_ALIST
 
 WORKDIR /tmp
 
@@ -28,17 +28,23 @@ RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
-COPY --from=BUILD_alist /tmp/BUILDKIT /tmp/BUILDKIT/
+COPY --from=BUILD_ALIST /tmp/BUILDKIT /tmp/BUILDKIT/
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/alist"
 
-FROM busybox:latest AS REBASED_ALIST
+FROM alpine:latest AS REBASED_ALIST
 
 WORKDIR /tmp
 
 COPY --from=GPG_SIGN /tmp/BUILDKIT/ /
 
-RUN mkdir -p "/opt/alist" && mv /alist* /opt/alist/
+RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
+    && apk update \
+    && apk add --no-cache ffmpeg \
+    && apk upgrade --no-cache \
+    && mkdir -p "/opt/alist" \
+    && mv /alist* /opt/alist/ \
+    && rm -rf /tmp/* /var/cache/apk/*
 
 FROM scratch
 
