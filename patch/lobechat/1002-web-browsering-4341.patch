@@ -1599,11 +1599,143 @@ index 000000000000..1d2c6b12156e
 +);
 +
 +export default Inspector;
-diff --git a/src/tools/web-browsing/Render/SearchResultItem.tsx b/src/tools/web-browsing/Render/SearchResultItem.tsx
+diff --git a/src/tools/web-browsing/Render/SearchQuery/SearchView.tsx b/src/tools/web-browsing/Render/SearchQuery/SearchView.tsx
 new file mode 100644
-index 000000000000..169d4b0646e6
+index 000000000000..ae23dc29a701
 --- /dev/null
-+++ b/src/tools/web-browsing/Render/SearchResultItem.tsx
++++ b/src/tools/web-browsing/Render/SearchQuery/SearchView.tsx
+@@ -0,0 +1,59 @@
++import { EditableText } from '@lobehub/ui';
++import { Divider, Skeleton, Typography } from 'antd';
++import { memo } from 'react';
++import { useTranslation } from 'react-i18next';
++import { Flexbox } from 'react-layout-kit';
++
++import { useIsMobile } from '@/hooks/useIsMobile';
++
++import { EngineAvatarGroup } from '../../components/EngineAvatar';
++
++interface SearchBarProps {
++  defaultEngines: string[];
++  defaultQuery: string;
++  onEditingChange: (editing: boolean) => void;
++  resultsNumber: number;
++  searching?: boolean;
++}
++
++const SearchBar = memo<SearchBarProps>(
++  ({ defaultEngines, defaultQuery, resultsNumber, onEditingChange, searching }) => {
++    const { t } = useTranslation('tool');
++    const isMobile = useIsMobile();
++
++    return (
++      <Flexbox
++        align={isMobile ? 'flex-start' : 'center'}
++        distribution={'space-between'}
++        gap={isMobile ? 8 : 40}
++        height={isMobile ? undefined : 32}
++        horizontal={!isMobile}
++      >
++        <Flexbox align={'center'} gap={4} horizontal>
++          <Typography.Text style={{ minWidth: 60 }} type={'secondary'}>
++            {t('search.keywords')}
++          </Typography.Text>
++          <EditableText onEditingChange={onEditingChange} value={defaultQuery} />
++        </Flexbox>
++
++        <Flexbox align={'center'} horizontal>
++          <Typography.Text type={'secondary'}>{t('search.searchEngine')}</Typography.Text>
++          {searching ? (
++            <Skeleton.Button active size={'small'} />
++          ) : (
++            <EngineAvatarGroup engines={defaultEngines} />
++          )}
++
++          {!isMobile && (
++            <>
++              <Divider type={'vertical'} />
++              <Typography.Text type={'secondary'}>{t('search.searchResult')}</Typography.Text>
++              {searching ? <Skeleton.Button active size={'small'} /> : resultsNumber}
++            </>
++          )}
++        </Flexbox>
++      </Flexbox>
++    );
++  },
++);
++export default SearchBar;
+diff --git a/src/tools/web-browsing/Render/SearchQuery/index.tsx b/src/tools/web-browsing/Render/SearchQuery/index.tsx
+new file mode 100644
+index 000000000000..199241e3ca04
+--- /dev/null
++++ b/src/tools/web-browsing/Render/SearchQuery/index.tsx
+@@ -0,0 +1,61 @@
++import { ActionIcon } from '@lobehub/ui';
++import { Skeleton } from 'antd';
++import { uniq } from 'lodash-es';
++import { XIcon } from 'lucide-react';
++import { memo } from 'react';
++import { useTranslation } from 'react-i18next';
++import { Flexbox } from 'react-layout-kit';
++
++import { useChatStore } from '@/store/chat';
++import { chatToolSelectors } from '@/store/chat/selectors';
++import { SearchQuery, SearchResponse } from '@/types/tool/search';
++
++import SearchBar from '../../components/SearchBar';
++import SearchView from './SearchView';
++
++interface SearchQueryViewProps {
++  args: SearchQuery;
++  editing: boolean;
++  messageId: string;
++  pluginState?: SearchResponse;
++  setEditing: (editing: boolean) => void;
++}
++
++const SearchQueryView = memo<SearchQueryViewProps>(
++  ({ messageId, args, pluginState, setEditing, editing }) => {
++    const loading = useChatStore(chatToolSelectors.isSearXNGSearching(messageId));
++    const searchResults = pluginState?.results || [];
++
++    const { t } = useTranslation('common');
++
++    const engines = uniq(searchResults.map((result) => result.engine));
++    const defaultEngines = engines.length > 0 ? engines : args.searchEngines || [];
++
++    return !pluginState ? (
++      <Flexbox align={'center'} distribution={'space-between'} height={32} horizontal>
++        <Skeleton.Button active style={{ borderRadius: 8, height: 32, width: 180 }} />
++        <Skeleton.Button active style={{ borderRadius: 8, height: 32, width: 220 }} />
++      </Flexbox>
++    ) : editing ? (
++      <SearchBar
++        defaultEngines={defaultEngines}
++        defaultQuery={args?.query}
++        messageId={messageId}
++        onSearch={() => setEditing(false)}
++        searchAddon={
++          <ActionIcon icon={XIcon} onClick={() => setEditing(false)} title={t('cancel')} />
++        }
++      />
++    ) : (
++      <SearchView
++        defaultEngines={defaultEngines}
++        defaultQuery={args?.query}
++        onEditingChange={setEditing}
++        resultsNumber={searchResults.length}
++        searching={loading}
++      />
++    );
++  },
++);
++
++export default SearchQueryView;
+diff --git a/src/tools/web-browsing/Render/SearchResult/SearchResultItem.tsx b/src/tools/web-browsing/Render/SearchResult/SearchResultItem.tsx
+new file mode 100644
+index 000000000000..e8f2b3d21007
+--- /dev/null
++++ b/src/tools/web-browsing/Render/SearchResult/SearchResultItem.tsx
 @@ -0,0 +1,64 @@
 +import { Typography } from 'antd';
 +import { createStyles } from 'antd-style';
@@ -1613,7 +1745,7 @@ index 000000000000..169d4b0646e6
 +
 +import { SearchResult } from '@/types/tool/search';
 +
-+import { EngineAvatar } from '../components/EngineAvatar';
++import { EngineAvatar } from '../../components/EngineAvatar';
 +
 +const useStyles = createStyles(({ css, token }) => ({
 +  container: css`
@@ -1669,76 +1801,11 @@ index 000000000000..169d4b0646e6
 +});
 +
 +export default SearchResultItem;
-diff --git a/src/tools/web-browsing/Render/SearchView.tsx b/src/tools/web-browsing/Render/SearchView.tsx
+diff --git a/src/tools/web-browsing/Render/SearchResult/ShowMore.tsx b/src/tools/web-browsing/Render/SearchResult/ShowMore.tsx
 new file mode 100644
-index 000000000000..ab896098372c
+index 000000000000..f9ccbbe12ac0
 --- /dev/null
-+++ b/src/tools/web-browsing/Render/SearchView.tsx
-@@ -0,0 +1,59 @@
-+import { EditableText } from '@lobehub/ui';
-+import { Divider, Skeleton, Typography } from 'antd';
-+import { memo } from 'react';
-+import { useTranslation } from 'react-i18next';
-+import { Flexbox } from 'react-layout-kit';
-+
-+import { useIsMobile } from '@/hooks/useIsMobile';
-+
-+import { EngineAvatarGroup } from '../components/EngineAvatar';
-+
-+interface SearchBarProps {
-+  defaultEngines: string[];
-+  defaultQuery: string;
-+  onEditingChange: (editing: boolean) => void;
-+  resultsNumber: number;
-+  searching?: boolean;
-+}
-+
-+const SearchBar = memo<SearchBarProps>(
-+  ({ defaultEngines, defaultQuery, resultsNumber, onEditingChange, searching }) => {
-+    const { t } = useTranslation('tool');
-+    const isMobile = useIsMobile();
-+
-+    return (
-+      <Flexbox
-+        align={isMobile ? 'flex-start' : 'center'}
-+        distribution={'space-between'}
-+        gap={isMobile ? 8 : 40}
-+        height={isMobile ? undefined : 32}
-+        horizontal={!isMobile}
-+      >
-+        <Flexbox align={'center'} gap={4} horizontal>
-+          <Typography.Text style={{ minWidth: 60 }} type={'secondary'}>
-+            {t('search.keywords')}
-+          </Typography.Text>
-+          <EditableText onEditingChange={onEditingChange} value={defaultQuery} />
-+        </Flexbox>
-+
-+        <Flexbox align={'center'} horizontal>
-+          <Typography.Text type={'secondary'}>{t('search.searchEngine')}</Typography.Text>
-+          {searching ? (
-+            <Skeleton.Button active size={'small'} />
-+          ) : (
-+            <EngineAvatarGroup engines={defaultEngines} />
-+          )}
-+
-+          {!isMobile && (
-+            <>
-+              <Divider type={'vertical'} />
-+              <Typography.Text type={'secondary'}>{t('search.searchResult')}</Typography.Text>
-+              {searching ? <Skeleton.Button active size={'small'} /> : resultsNumber}
-+            </>
-+          )}
-+        </Flexbox>
-+      </Flexbox>
-+    );
-+  },
-+);
-+export default SearchBar;
-diff --git a/src/tools/web-browsing/Render/ShowMore.tsx b/src/tools/web-browsing/Render/ShowMore.tsx
-new file mode 100644
-index 000000000000..4ed3517a18f9
---- /dev/null
-+++ b/src/tools/web-browsing/Render/ShowMore.tsx
++++ b/src/tools/web-browsing/Render/SearchResult/ShowMore.tsx
 @@ -0,0 +1,68 @@
 +import { createStyles } from 'antd-style';
 +import { memo } from 'react';
@@ -1748,7 +1815,7 @@ index 000000000000..4ed3517a18f9
 +import { useChatStore } from '@/store/chat';
 +import { WebBrowsingManifest } from '@/tools/web-browsing';
 +
-+import { EngineAvatarGroup } from '../components/EngineAvatar';
++import { EngineAvatarGroup } from '../../components/EngineAvatar';
 +
 +const useStyles = createStyles(({ css, token }) => ({
 +  container: css`
@@ -1808,132 +1875,152 @@ index 000000000000..4ed3517a18f9
 +});
 +
 +export default ShowMore;
-diff --git a/src/tools/web-browsing/Render/index.tsx b/src/tools/web-browsing/Render/index.tsx
+diff --git a/src/tools/web-browsing/Render/SearchResult/index.tsx b/src/tools/web-browsing/Render/SearchResult/index.tsx
 new file mode 100644
-index 000000000000..08f4d21efeb7
+index 000000000000..2157afecde1d
 --- /dev/null
-+++ b/src/tools/web-browsing/Render/index.tsx
-@@ -0,0 +1,126 @@
-+import { ActionIcon, Icon } from '@lobehub/ui';
++++ b/src/tools/web-browsing/Render/SearchResult/index.tsx
+@@ -0,0 +1,105 @@
++import { Icon } from '@lobehub/ui';
 +import { Button, Empty, Skeleton } from 'antd';
 +import { uniq } from 'lodash-es';
-+import { Edit2Icon, XIcon } from 'lucide-react';
-+import { memo, useState } from 'react';
++import { Edit2Icon } from 'lucide-react';
++import { memo } from 'react';
 +import { useTranslation } from 'react-i18next';
 +import { Center, Flexbox } from 'react-layout-kit';
 +
 +import { useIsMobile } from '@/hooks/useIsMobile';
 +import { useChatStore } from '@/store/chat';
 +import { chatToolSelectors } from '@/store/chat/selectors';
-+import { BuiltinRenderProps } from '@/types/tool';
-+import { SearchContent, SearchQuery, SearchResponse } from '@/types/tool/search';
++import { SearchQuery, SearchResponse } from '@/types/tool/search';
 +
-+import SearchBar from '../components/SearchBar';
 +import SearchResultItem from './SearchResultItem';
-+import SearchView from './SearchView';
 +import ShowMore from './ShowMore';
 +
 +const ITEM_HEIGHT = 80;
 +const ITEM_WIDTH = 160;
 +
-+const WebBrowsing = memo<BuiltinRenderProps<SearchContent[], SearchQuery, SearchResponse>>(
-+  ({ messageId, args, pluginState }) => {
++interface SearchResultProps {
++  args: SearchQuery;
++  editing: boolean;
++  messageId: string;
++  pluginState?: SearchResponse;
++  setEditing: (editing: boolean) => void;
++}
++
++const SearchResult = memo<SearchResultProps>(
++  ({ messageId, args, pluginState, setEditing, editing }) => {
 +    const loading = useChatStore(chatToolSelectors.isSearXNGSearching(messageId));
 +    const searchResults = pluginState?.results || [];
-+    const [editing, setEditing] = useState(false);
 +    const { t } = useTranslation(['tool', 'common']);
 +
 +    const engines = uniq(searchResults.map((result) => result.engine));
 +    const defaultEngines = engines.length > 0 ? engines : args.searchEngines || [];
 +    const isMobile = useIsMobile();
++
++    if (loading || !pluginState)
++      return (
++        <Flexbox gap={12} horizontal>
++          {['1', '2', '3', '4'].map((id) => (
++            <Skeleton.Button
++              active
++              key={id}
++              style={{ borderRadius: 8, height: ITEM_HEIGHT, width: ITEM_WIDTH }}
++            />
++          ))}
++        </Flexbox>
++      );
++
++    if (searchResults.length === 0)
++      return (
++        <Center>
++          <Empty
++            description={
++              <Flexbox gap={8}>
++                <div>{t('search.emptyResult')}</div>
++                {!editing && (
++                  <div>
++                    <Button
++                      icon={<Icon icon={Edit2Icon} />}
++                      onClick={() => {
++                        setEditing(true);
++                      }}
++                      type={'primary'}
++                    >
++                      {t('edit', { ns: 'common' })}
++                    </Button>
++                  </div>
++                )}
++              </Flexbox>
++            }
++            image={Empty.PRESENTED_IMAGE_SIMPLE}
++          />
++        </Center>
++      );
++
++    return (
++      <Flexbox gap={8}>
++        <Flexbox
++          gap={12}
++          horizontal
++          style={{ minHeight: ITEM_HEIGHT, overflowX: 'scroll', width: '100%' }}
++        >
++          {searchResults.slice(0, 5).map((result) => (
++            <div key={result.url} style={{ minWidth: ITEM_WIDTH, width: ITEM_WIDTH }}>
++              <SearchResultItem {...result} />
++            </div>
++          ))}
++          {!isMobile && searchResults.length > 5 && (
++            <div style={{ minWidth: ITEM_WIDTH }}>
++              <ShowMore
++                engines={defaultEngines}
++                messageId={messageId}
++                resultsNumber={searchResults.length - 5}
++              />
++            </div>
++          )}
++        </Flexbox>
++      </Flexbox>
++    );
++  },
++);
++
++export default SearchResult;
+diff --git a/src/tools/web-browsing/Render/index.tsx b/src/tools/web-browsing/Render/index.tsx
+new file mode 100644
+index 000000000000..9e34e1adcbf1
+--- /dev/null
++++ b/src/tools/web-browsing/Render/index.tsx
+@@ -0,0 +1,35 @@
++import { memo, useState } from 'react';
++import { Flexbox } from 'react-layout-kit';
++
++import { BuiltinRenderProps } from '@/types/tool';
++import { SearchContent, SearchQuery, SearchResponse } from '@/types/tool/search';
++
++import SearchQueryView from './SearchQuery';
++import SearchResult from './SearchResult';
++
++const WebBrowsing = memo<BuiltinRenderProps<SearchContent[], SearchQuery, SearchResponse>>(
++  ({ messageId, args, pluginState }) => {
++    const [editing, setEditing] = useState(false);
++
 +    return (
 +      <Flexbox gap={16}>
-+        {!pluginState ? (
-+          <Flexbox align={'center'} distribution={'space-between'} height={32} horizontal>
-+            <Skeleton.Button active style={{ borderRadius: 8, height: 32, width: 180 }} />
-+            <Skeleton.Button active style={{ borderRadius: 8, height: 32, width: 220 }} />
-+          </Flexbox>
-+        ) : editing ? (
-+          <SearchBar
-+            defaultEngines={defaultEngines}
-+            defaultQuery={args?.query}
-+            messageId={messageId}
-+            onSearch={() => setEditing(false)}
-+            searchAddon={
-+              <ActionIcon
-+                icon={XIcon}
-+                onClick={() => setEditing(false)}
-+                title={t('cancel', { ns: 'common' })}
-+              />
-+            }
-+          />
-+        ) : (
-+          <SearchView
-+            defaultEngines={defaultEngines}
-+            defaultQuery={args?.query}
-+            onEditingChange={setEditing}
-+            resultsNumber={searchResults.length}
-+            searching={loading}
-+          />
-+        )}
-+        {loading || !pluginState ? (
-+          <Flexbox gap={12} horizontal>
-+            {['1', '2', '3', '4'].map((id) => (
-+              <Skeleton.Button
-+                active
-+                key={id}
-+                style={{ borderRadius: 8, height: ITEM_HEIGHT, width: ITEM_WIDTH }}
-+              />
-+            ))}
-+          </Flexbox>
-+        ) : searchResults.length === 0 ? (
-+          <Center>
-+            <Empty
-+              description={
-+                <Flexbox gap={8}>
-+                  <div>{t('search.emptyResult')}</div>
-+                  {!editing && (
-+                    <div>
-+                      <Button
-+                        icon={<Icon icon={Edit2Icon} />}
-+                        onClick={() => {
-+                          setEditing(true);
-+                        }}
-+                        type={'primary'}
-+                      >
-+                        {t('edit', { ns: 'common' })}
-+                      </Button>
-+                    </div>
-+                  )}
-+                </Flexbox>
-+              }
-+              image={Empty.PRESENTED_IMAGE_SIMPLE}
-+            />
-+          </Center>
-+        ) : (
-+          <Flexbox gap={8}>
-+            <Flexbox
-+              gap={12}
-+              horizontal
-+              style={{ minHeight: ITEM_HEIGHT, overflowX: 'scroll', width: '100%' }}
-+            >
-+              {searchResults.slice(0, 5).map((result) => (
-+                <div key={result.url} style={{ minWidth: ITEM_WIDTH, width: ITEM_WIDTH }}>
-+                  <SearchResultItem {...result} />
-+                </div>
-+              ))}
-+              {!isMobile && searchResults.length > 5 && (
-+                <div style={{ minWidth: ITEM_WIDTH }}>
-+                  <ShowMore
-+                    engines={defaultEngines}
-+                    messageId={messageId}
-+                    resultsNumber={searchResults.length - 5}
-+                  />
-+                </div>
-+              )}
-+            </Flexbox>
-+          </Flexbox>
-+        )}
++        <SearchQueryView
++          args={args}
++          editing={editing}
++          messageId={messageId}
++          pluginState={pluginState}
++          setEditing={setEditing}
++        />
++        <SearchResult
++          args={args}
++          editing={editing}
++          messageId={messageId}
++          pluginState={pluginState}
++          setEditing={setEditing}
++        />
 +      </Flexbox>
 +    );
 +  },
