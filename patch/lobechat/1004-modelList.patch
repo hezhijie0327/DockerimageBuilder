@@ -1,11 +1,12 @@
 diff --git a/src/server/globalConfig/generateLLMConfig.test.ts b/src/server/globalConfig/generateLLMConfig.test.ts
 new file mode 100644
-index 000000000000..51a5b997d110
+index 000000000000..0f0404fe41be
 --- /dev/null
 +++ b/src/server/globalConfig/generateLLMConfig.test.ts
-@@ -0,0 +1,68 @@
-+import { generateLLMConfig } from './generateLLMConfig';
+@@ -0,0 +1,75 @@
 +import { describe, expect, it, vi } from 'vitest';
++
++import { generateLLMConfig } from './generateLLMConfig';
 +
 +// Mock ModelProvider enum
 +vi.mock('@/libs/agent-runtime', () => ({
@@ -44,8 +45,14 @@ index 000000000000..51a5b997d110
 +
 +// Mock parse models utils
 +vi.mock('@/utils/parseModels', () => ({
-+  extractEnabledModels: (modelString: string, withDeploymentName?: boolean) => [modelString],
-+  transformToChatModelCards: ({ defaultChatModels, modelString, withDeploymentName }: any) => defaultChatModels,
++  extractEnabledModels: (modelString: string, withDeploymentName?: boolean) => {
++    // Returns different format if withDeploymentName is true
++    return withDeploymentName ? [`${modelString}_withDeployment`] : [modelString];
++  },
++  transformToChatModelCards: ({ defaultChatModels, modelString, withDeploymentName }: any) => {
++    // Simulate transformation based on withDeploymentName
++    return withDeploymentName ? [`${modelString}_transformed`] : defaultChatModels;
++  },
 +}));
 +
 +describe('generateLLMConfig', () => {
@@ -54,8 +61,8 @@ index 000000000000..51a5b997d110
 +    
 +    expect(config.azure).toEqual({
 +      enabled: true,
-+      enabledModels: ['azureModels'],
-+      serverModelCards: [],
++      enabledModels: ['azureModels_withDeployment'],
++      serverModelCards: ['azureModels_transformed'],
 +    });
 +
 +    expect(config.bedrock).toEqual({
@@ -74,10 +81,10 @@ index 000000000000..51a5b997d110
 +});
 diff --git a/src/server/globalConfig/generateLLMConfig.ts b/src/server/globalConfig/generateLLMConfig.ts
 new file mode 100644
-index 000000000000..197256f78c75
+index 000000000000..3cdf1ffa5651
 --- /dev/null
 +++ b/src/server/globalConfig/generateLLMConfig.ts
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,45 @@
 +import { getLLMConfig } from '@/config/llm';
 +import * as ProviderCards from '@/config/modelProviders';
 +import { ModelProvider } from '@/libs/agent-runtime';
@@ -87,28 +94,37 @@ index 000000000000..197256f78c75
 +export const generateLLMConfig = () => {
 +  const llmConfig = getLLMConfig() as Record<string, any>;
 +
++  const specificConfig: Record<any, any> = {
++    azure: {
++      enabledKey: 'ENABLED_AZURE_OPENAI',
++      withDeploymentName: true,
++    },
++    bedrock: {
++      enabledKey: 'ENABLED_AWS_BEDROCK',
++      modelListKey: 'AWS_BEDROCK_MODEL_LIST',
++    },
++    ollama: {
++      fetchOnClient: !llmConfig.OLLAMA_PROXY_URL,
++    },
++  };
++
 +  return Object.values(ModelProvider).reduce((config, provider) => {
-+    const providerCard = ProviderCards[`${provider}ProviderCard` as keyof typeof ProviderCards];
++    const providerUpperCase = provider.toUpperCase();
++    const providerCard = ProviderCards[`${provider}ProviderCard` as keyof typeof ProviderCards] as ModelProviderCard;
++    const providerConfig = specificConfig[provider as keyof typeof specificConfig] || {};
 +
 +    config[provider] = {
-+      enabled: provider === ModelProvider.Azure
-+        ? llmConfig.ENABLED_AZURE_OPENAI
-+        : provider === ModelProvider.Bedrock
-+        ? llmConfig.ENABLED_AWS_BEDROCK
-+        : llmConfig[`ENABLED_${provider.toUpperCase()}`],
-+      enabledModels: provider === ModelProvider.Azure
-+        ? extractEnabledModels(llmConfig.AZURE_MODEL_LIST, true)
-+        : provider === ModelProvider.Bedrock
-+        ? extractEnabledModels(llmConfig.AWS_BEDROCK_MODEL_LIST)
-+        : extractEnabledModels(llmConfig[`${provider.toUpperCase()}_MODEL_LIST`]),
++      enabled: llmConfig[providerConfig.enabledKey || `ENABLED_${providerUpperCase}`],
++      enabledModels: extractEnabledModels(
++        llmConfig[providerConfig.modelListKey || `${providerUpperCase}_MODEL_LIST`],
++        providerConfig.withDeploymentName || false,
++      ),
 +      serverModelCards: transformToChatModelCards({
 +        defaultChatModels: (providerCard as ModelProviderCard)?.chatModels || [],
-+        modelString: llmConfig[`${provider.toUpperCase()}_MODEL_LIST`],
-+        ...(provider === ModelProvider.Azure && { withDeploymentName: true }),
++        modelString: llmConfig[providerConfig.modelListKey || `${providerUpperCase}_MODEL_LIST`],
++        withDeploymentName: providerConfig.withDeploymentName || false,
 +      }),
-+      ...(provider === ModelProvider.Ollama && {
-+        fetchOnClient: !llmConfig.OLLAMA_PROXY_URL,
-+      }),
++      ...(providerConfig.fetchOnClient !== undefined && { fetchOnClient: providerConfig.fetchOnClient }),
 +    };
 +
 +    return config;
