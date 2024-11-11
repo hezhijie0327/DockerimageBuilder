@@ -1,14 +1,15 @@
 diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
-index 9c478db2e95b..839563c93829 100644
+index 4aa0edb245e8..839563c93829 100644
 --- a/src/const/settings/llm.ts
 +++ b/src/const/settings/llm.ts
-@@ -1,170 +1,8 @@
+@@ -1,180 +1,8 @@
 -import {
 -  Ai21ProviderCard,
 -  Ai360ProviderCard,
 -  AnthropicProviderCard,
 -  BaichuanProviderCard,
 -  BedrockProviderCard,
+-  CloudflareProviderCard,
 -  DeepSeekProviderCard,
 -  FireworksAIProviderCard,
 -  GithubProviderCard,
@@ -33,6 +34,7 @@ index 9c478db2e95b..839563c93829 100644
 -  TogetherAIProviderCard,
 -  UpstageProviderCard,
 -  WenxinProviderCard,
+-  XAIProviderCard,
 -  ZeroOneProviderCard,
 -  ZhiPuProviderCard,
 -  filterEnabledModels,
@@ -63,6 +65,10 @@ index 9c478db2e95b..839563c93829 100644
 -  bedrock: {
 -    enabled: false,
 -    enabledModels: filterEnabledModels(BedrockProviderCard),
+-  },
+-  cloudflare: {
+-    enabled: false,
+-    enabledModels: filterEnabledModels(CloudflareProviderCard),
 -  },
 -  deepseek: {
 -    enabled: false,
@@ -161,6 +167,10 @@ index 9c478db2e95b..839563c93829 100644
 -    enabled: false,
 -    enabledModels: filterEnabledModels(WenxinProviderCard),
 -  },
+-  xai: {
+-    enabled: false,
+-    enabledModels: filterEnabledModels(XAIProviderCard),
+-  },
 -  zeroone: {
 -    enabled: false,
 -    enabledModels: filterEnabledModels(ZeroOneProviderCard),
@@ -177,10 +187,10 @@ index 9c478db2e95b..839563c93829 100644
  export const DEFAULT_MODEL = 'gpt-4o-mini';
  export const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index 7c4704cda103..996bbca20dab 100644
+index 6fec71178d7b..996bbca20dab 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
-@@ -2,149 +2,17 @@ import { appEnv, getAppConfig } from '@/config/app';
+@@ -2,156 +2,17 @@ import { appEnv, getAppConfig } from '@/config/app';
  import { authEnv } from '@/config/auth';
  import { fileEnv } from '@/config/file';
  import { langfuseEnv } from '@/config/langfuse';
@@ -215,6 +225,7 @@ index 7c4704cda103..996bbca20dab 100644
 -  TogetherAIProviderCard,
 -  UpstageProviderCard,
 -  WenxinProviderCard,
+-  XAIProviderCard,
 -  ZeroOneProviderCard,
 -  ZhiPuProviderCard,
 -} from '@/config/modelProviders';
@@ -283,6 +294,9 @@ index 7c4704cda103..996bbca20dab 100644
 -    BAICHUAN_MODEL_LIST,
 -
 -    ENABLED_TAICHU,
+-
+-    ENABLED_CLOUDFLARE,
+-
 -    TAICHU_MODEL_LIST,
 -
 -    ENABLED_AI21,
@@ -327,12 +341,15 @@ index 7c4704cda103..996bbca20dab 100644
 -
 -    ENABLED_HUGGINGFACE,
 -    HUGGINGFACE_MODEL_LIST,
+-
+-    ENABLED_XAI,
+-    XAI_MODEL_LIST,
 -  } = getLLMConfig();
 -
    const config: GlobalServerConfig = {
      defaultAgent: {
        config: parseAgentConfig(DEFAULT_AGENT_CONFIG),
-@@ -152,266 +20,7 @@ export const getServerGlobalConfig = () => {
+@@ -159,275 +20,7 @@ export const getServerGlobalConfig = () => {
      enableUploadFileToServer: !!fileEnv.S3_SECRET_ACCESS_KEY,
      enabledAccessCode: ACCESS_CODES?.length > 0,
      enabledOAuthSSO: enableNextAuth,
@@ -386,6 +403,7 @@ index 7c4704cda103..996bbca20dab 100644
 -          modelString: AWS_BEDROCK_MODEL_LIST,
 -        }),
 -      },
+-      cloudflare: { enabled: ENABLED_CLOUDFLARE },
 -      deepseek: {
 -        enabled: ENABLED_DEEPSEEK,
 -        enabledModels: extractEnabledModels(DEEPSEEK_MODEL_LIST),
@@ -577,6 +595,14 @@ index 7c4704cda103..996bbca20dab 100644
 -        serverModelCards: transformToChatModelCards({
 -          defaultChatModels: WenxinProviderCard.chatModels,
 -          modelString: WENXIN_MODEL_LIST,
+-        }),
+-      },
+-      xai: {
+-        enabled: ENABLED_XAI,
+-        enabledModels: extractEnabledModels(XAI_MODEL_LIST),
+-        serverModelCards: transformToChatModelCards({
+-          defaultChatModels: XAIProviderCard.chatModels,
+-          modelString: XAI_MODEL_LIST,
 -        }),
 -      },
 -      zeroone: {
