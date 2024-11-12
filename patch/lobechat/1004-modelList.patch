@@ -1,8 +1,8 @@
 diff --git a/src/const/settings/llm.ts b/src/const/settings/llm.ts
-index 4aa0edb245e8..839563c93829 100644
+index 4aa0edb245e8..c17f80e411ed 100644
 --- a/src/const/settings/llm.ts
 +++ b/src/const/settings/llm.ts
-@@ -1,180 +1,8 @@
+@@ -1,180 +1,16 @@
 -import {
 -  Ai21ProviderCard,
 -  Ai360ProviderCard,
@@ -114,13 +114,16 @@ index 4aa0edb245e8..839563c93829 100644
 -    enabled: false,
 -    enabledModels: filterEnabledModels(NovitaProviderCard),
 -  },
--  ollama: {
--    enabled: true,
++import { genUserLLMConfig } from '@/utils/genUserLLMConfig'
++
++export const DEFAULT_LLM_CONFIG = genUserLLMConfig({
+   ollama: {
+     enabled: true,
 -    enabledModels: filterEnabledModels(OllamaProviderCard),
--    fetchOnClient: true,
--  },
--  openai: {
--    enabled: true,
+     fetchOnClient: true,
+   },
+   openai: {
+     enabled: true,
 -    enabledModels: filterEnabledModels(OpenAIProviderCard),
 -  },
 -  openrouter: {
@@ -178,23 +181,156 @@ index 4aa0edb245e8..839563c93829 100644
 -  zhipu: {
 -    enabled: false,
 -    enabledModels: filterEnabledModels(ZhiPuProviderCard),
--  },
+   },
 -};
-+import { genUserLLMConfig } from '@/utils/genLLMConfig'
-+
-+export const DEFAULT_LLM_CONFIG = genUserLLMConfig();
++});
  
  export const DEFAULT_MODEL = 'gpt-4o-mini';
  export const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
+diff --git a/src/server/globalConfig/genServerLLMConfig.test.ts b/src/server/globalConfig/genServerLLMConfig.test.ts
+new file mode 100644
+index 000000000000..12723f8eeaf8
+--- /dev/null
++++ b/src/server/globalConfig/genServerLLMConfig.test.ts
+@@ -0,0 +1,90 @@
++import { describe, expect, it, vi } from 'vitest';
++
++import { genServerLLMConfig } from './genServerLLMConfig';
++
++import { getLLMConfig } from '@/config/llm';
++
++// Mock ModelProvider enum
++vi.mock('@/libs/agent-runtime', () => ({
++  ModelProvider: {
++    Azure: 'azure',
++    Bedrock: 'bedrock',
++    Ollama: 'ollama',
++  }
++}));
++
++// Mock ProviderCards
++vi.mock('@/config/modelProviders', () => ({
++  azureProviderCard: {
++    chatModels: [],
++  },
++  bedrockProviderCard: {
++    chatModels: ['bedrockModel1', 'bedrockModel2'],
++  },
++  ollamaProviderCard: {
++    chatModels: ['ollamaModel1', 'ollamaModel2'],
++  },
++}));
++
++// Mock LLM config
++vi.mock('@/config/llm', () => ({
++  getLLMConfig: () => ({
++    ENABLED_AZURE_OPENAI: true,
++    ENABLED_AWS_BEDROCK: true,
++    ENABLED_OLLAMA: true,
++    AZURE_MODEL_LIST: 'azureModels',
++    AWS_BEDROCK_MODEL_LIST: 'bedrockModels',
++    OLLAMA_MODEL_LIST: 'ollamaModels',
++    OLLAMA_PROXY_URL: '',
++  }),
++}));
++
++// Mock parse models utils
++vi.mock('@/utils/parseModels', () => ({
++  extractEnabledModels: (modelString: string, withDeploymentName?: boolean) => {
++    // Returns different format if withDeploymentName is true
++    return withDeploymentName ? [`${modelString}_withDeployment`] : [modelString];
++  },
++  transformToChatModelCards: ({ defaultChatModels, modelString, withDeploymentName }: any) => {
++    // Simulate transformation based on withDeploymentName
++    return withDeploymentName ? [`${modelString}_transformed`] : defaultChatModels;
++  },
++}));
++
++describe('genServerLLMConfig', () => {
++  it('should generate correct LLM config for Azure, Bedrock, and Ollama', () => {
++    const specificConfig = {
++      azure: {
++        enabledKey: 'ENABLED_AZURE_OPENAI',
++        withDeploymentName: true,
++      },
++      bedrock: {
++        enabledKey: 'ENABLED_AWS_BEDROCK',
++        modelListKey: 'AWS_BEDROCK_MODEL_LIST',
++      },
++      ollama: {
++        fetchOnClient: !getLLMConfig().OLLAMA_PROXY_URL,
++      },
++    };
++    const config = genServerLLMConfig(specificConfig);
++    
++    expect(config.azure).toEqual({
++      enabled: true,
++      enabledModels: ['azureModels_withDeployment'],
++      serverModelCards: ['azureModels_transformed'],
++    });
++
++    expect(config.bedrock).toEqual({
++      enabled: true,
++      enabledModels: ['bedrockModels'],
++      serverModelCards: ['bedrockModel1', 'bedrockModel2'],
++    });
++
++    expect(config.ollama).toEqual({
++      enabled: true,
++      enabledModels: ['ollamaModels'], 
++      fetchOnClient: true,
++      serverModelCards: ['ollamaModel1', 'ollamaModel2'],
++    });
++  });
++});
+diff --git a/src/server/globalConfig/genServerLLMConfig.ts b/src/server/globalConfig/genServerLLMConfig.ts
+new file mode 100644
+index 000000000000..21b5ecc94ccc
+--- /dev/null
++++ b/src/server/globalConfig/genServerLLMConfig.ts
+@@ -0,0 +1,34 @@
++import { getLLMConfig } from '@/config/llm';
++import * as ProviderCards from '@/config/modelProviders';
++
++import { ModelProvider } from '@/libs/agent-runtime';
++
++import { extractEnabledModels, transformToChatModelCards } from '@/utils/parseModels';
++
++import { ModelProviderCard } from '@/types/llm';
++
++export const genServerLLMConfig = (specificConfig: Record<any, any>) => {
++  const llmConfig = getLLMConfig() as Record<string, any>;
++
++  return Object.values(ModelProvider).reduce((config, provider) => {
++    const providerUpperCase = provider.toUpperCase();
++    const providerCard = ProviderCards[`${provider}ProviderCard` as keyof typeof ProviderCards] as ModelProviderCard;
++    const providerConfig = specificConfig[provider as keyof typeof specificConfig] || {};
++
++    config[provider] = {
++      enabled: llmConfig[providerConfig.enabledKey || `ENABLED_${providerUpperCase}`],
++      enabledModels: extractEnabledModels(
++        llmConfig[providerConfig.modelListKey || `${providerUpperCase}_MODEL_LIST`],
++        providerConfig.withDeploymentName || false,
++      ),
++      serverModelCards: transformToChatModelCards({
++        defaultChatModels: (providerCard as ModelProviderCard)?.chatModels || [],
++        modelString: llmConfig[providerConfig.modelListKey || `${providerUpperCase}_MODEL_LIST`],
++        withDeploymentName: providerConfig.withDeploymentName || false,
++      }),
++      ...(providerConfig.fetchOnClient !== undefined && { fetchOnClient: providerConfig.fetchOnClient }),
++    };
++
++    return config;
++  }, {} as Record<ModelProvider, any>);
++};
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index 6fec71178d7b..996bbca20dab 100644
+index 6fec71178d7b..65822bd171b1 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
-@@ -2,156 +2,17 @@ import { appEnv, getAppConfig } from '@/config/app';
- import { authEnv } from '@/config/auth';
+@@ -3,155 +3,17 @@ import { authEnv } from '@/config/auth';
  import { fileEnv } from '@/config/file';
  import { langfuseEnv } from '@/config/langfuse';
--import { getLLMConfig } from '@/config/llm';
+ import { getLLMConfig } from '@/config/llm';
 -import {
 -  Ai21ProviderCard,
 -  Ai360ProviderCard,
@@ -236,7 +372,7 @@ index 6fec71178d7b..996bbca20dab 100644
  
  import { parseAgentConfig } from './parseDefaultAgent';
  
-+import { genServerLLMConfig } from '@/utils/genLLMConfig'
++import { genServerLLMConfig } from './genServerLLMConfig'
 +
  export const getServerGlobalConfig = () => {
    const { ACCESS_CODES, DEFAULT_AGENT_CONFIG } = getAppConfig();
@@ -349,7 +485,7 @@ index 6fec71178d7b..996bbca20dab 100644
    const config: GlobalServerConfig = {
      defaultAgent: {
        config: parseAgentConfig(DEFAULT_AGENT_CONFIG),
-@@ -159,275 +20,7 @@ export const getServerGlobalConfig = () => {
+@@ -159,275 +21,19 @@ export const getServerGlobalConfig = () => {
      enableUploadFileToServer: !!fileEnv.S3_SECRET_ACCESS_KEY,
      enabledAccessCode: ACCESS_CODES?.length > 0,
      enabledOAuthSSO: enableNextAuth,
@@ -378,7 +514,8 @@ index 6fec71178d7b..996bbca20dab 100644
 -          modelString: ANTHROPIC_MODEL_LIST,
 -        }),
 -      },
--      azure: {
++    languageModel: genServerLLMConfig({
+       azure: {
 -        enabled: ENABLED_AZURE_OPENAI,
 -        enabledModels: extractEnabledModels(AZURE_MODEL_LIST, true),
 -        serverModelCards: transformToChatModelCards({
@@ -394,8 +531,10 @@ index 6fec71178d7b..996bbca20dab 100644
 -          defaultChatModels: BaichuanProviderCard.chatModels,
 -          modelString: BAICHUAN_MODEL_LIST,
 -        }),
--      },
--      bedrock: {
++        enabledKey: 'ENABLED_AZURE_OPENAI',
++        withDeploymentName: true,
+       },
+       bedrock: {
 -        enabled: ENABLED_AWS_BEDROCK,
 -        enabledModels: extractEnabledModels(AWS_BEDROCK_MODEL_LIST),
 -        serverModelCards: transformToChatModelCards({
@@ -491,8 +630,10 @@ index 6fec71178d7b..996bbca20dab 100644
 -          defaultChatModels: NovitaProviderCard.chatModels,
 -          modelString: NOVITA_MODEL_LIST,
 -        }),
--      },
--      ollama: {
++        enabledKey: 'ENABLED_AWS_BEDROCK',
++        modelListKey: 'AWS_BEDROCK_MODEL_LIST',
+       },
+       ollama: {
 -        enabled: ENABLED_OLLAMA,
 -        enabledModels: extractEnabledModels(OLLAMA_MODEL_LIST),
 -        fetchOnClient: !OLLAMA_PROXY_URL,
@@ -500,7 +641,8 @@ index 6fec71178d7b..996bbca20dab 100644
 -          defaultChatModels: OllamaProviderCard.chatModels,
 -          modelString: OLLAMA_MODEL_LIST,
 -        }),
--      },
++        fetchOnClient: !getLLMConfig().OLLAMA_PROXY_URL,
+       },
 -      openai: {
 -        enabled: ENABLED_OPENAI,
 -        enabledModels: extractEnabledModels(OPENAI_MODEL_LIST),
@@ -622,158 +764,75 @@ index 6fec71178d7b..996bbca20dab 100644
 -        }),
 -      },
 -    },
-+    languageModel: genServerLLMConfig(),
++    }),
      oAuthSSOProviders: authEnv.NEXT_AUTH_SSO_PROVIDERS.trim().split(/[,，]/),
      systemAgent: parseSystemAgent(appEnv.SYSTEM_AGENT),
      telemetry: {
-diff --git a/src/utils/genLLMConfig.test.ts b/src/utils/genLLMConfig.test.ts
+diff --git a/src/utils/genUserLLMConfig.test.ts b/src/utils/genUserLLMConfig.test.ts
 new file mode 100644
-index 000000000000..226e5a6d03b7
+index 000000000000..1ee8d7b338ca
 --- /dev/null
-+++ b/src/utils/genLLMConfig.test.ts
-@@ -0,0 +1,75 @@
++++ b/src/utils/genUserLLMConfig.test.ts
+@@ -0,0 +1,45 @@
 +import { describe, expect, it, vi } from 'vitest';
 +
-+import { genServerLLMConfig } from './genLLMConfig';
++import { genUserLLMConfig } from './genUserLLMConfig';
++
++import { ModelProviderCard } from '@/types/llm';
 +
 +// Mock ModelProvider enum
 +vi.mock('@/libs/agent-runtime', () => ({
 +  ModelProvider: {
-+    Azure: 'azure',
-+    Bedrock: 'bedrock',
 +    Ollama: 'ollama',
++    OpenAI: 'openai',
 +  }
 +}));
 +
-+// Mock ProviderCards
++// Mock ProviderCards and filterEnabledModels
 +vi.mock('@/config/modelProviders', () => ({
-+  azureProviderCard: {
-+    chatModels: [],
-+  },
-+  bedrockProviderCard: {
-+    chatModels: ['bedrockModel1', 'bedrockModel2'],
-+  },
-+  ollamaProviderCard: {
++  OllamaProviderCard: {
 +    chatModels: ['ollamaModel1', 'ollamaModel2'],
 +  },
-+}));
-+
-+// Mock LLM config
-+vi.mock('@/config/llm', () => ({
-+  getLLMConfig: () => ({
-+    ENABLED_AZURE_OPENAI: true,
-+    ENABLED_AWS_BEDROCK: true,
-+    ENABLED_OLLAMA: true,
-+    AZURE_MODEL_LIST: 'azureModels',
-+    AWS_BEDROCK_MODEL_LIST: 'bedrockModels',
-+    OLLAMA_MODEL_LIST: 'ollamaModels',
-+    OLLAMA_PROXY_URL: '',
-+  }),
-+}));
-+
-+// Mock parse models utils
-+vi.mock('@/utils/parseModels', () => ({
-+  extractEnabledModels: (modelString: string, withDeploymentName?: boolean) => {
-+    // Returns different format if withDeploymentName is true
-+    return withDeploymentName ? [`${modelString}_withDeployment`] : [modelString];
++  OpenAIProviderCard: {
++    chatModels: ['openaiModel1', 'openaiModel2'],
 +  },
-+  transformToChatModelCards: ({ defaultChatModels, modelString, withDeploymentName }: any) => {
-+    // Simulate transformation based on withDeploymentName
-+    return withDeploymentName ? [`${modelString}_transformed`] : defaultChatModels;
-+  },
++  filterEnabledModels: (providerCard: ModelProviderCard) => providerCard.chatModels,
 +}));
 +
-+describe('genServerLLMConfig', () => {
-+  it('should generate correct LLM config for Azure, Bedrock, and Ollama', () => {
-+    const config = genServerLLMConfig();
-+    
-+    expect(config.azure).toEqual({
-+      enabled: true,
-+      enabledModels: ['azureModels_withDeployment'],
-+      serverModelCards: ['azureModels_transformed'],
-+    });
-+
-+    expect(config.bedrock).toEqual({
-+      enabled: true,
-+      enabledModels: ['bedrockModels'],
-+      serverModelCards: ['bedrockModel1', 'bedrockModel2'],
-+    });
++describe('genUserLLMConfig', () => {
++  it('should generate correct LLM config for Ollama and OpenAI', () => {
++    const specificConfig = {
++      ollama: { enabled: true, fetchOnClient: true },
++      openai: { enabled: true }
++    };
++    const config = genUserLLMConfig(specificConfig);
 +
 +    expect(config.ollama).toEqual({
 +      enabled: true,
-+      enabledModels: ['ollamaModels'], 
++      enabledModels: ['ollamaModel1', 'ollamaModel2'],
 +      fetchOnClient: true,
-+      serverModelCards: ['ollamaModel1', 'ollamaModel2'],
++    });
++
++    expect(config.openai).toEqual({
++      enabled: true,
++      enabledModels: ['openaiModel1', 'openaiModel2'],
 +    });
 +  });
 +});
-diff --git a/src/utils/genLLMConfig.ts b/src/utils/genLLMConfig.ts
+diff --git a/src/utils/genUserLLMConfig.ts b/src/utils/genUserLLMConfig.ts
 new file mode 100644
-index 000000000000..26503ba07152
+index 000000000000..685e6698525b
 --- /dev/null
-+++ b/src/utils/genLLMConfig.ts
-@@ -0,0 +1,75 @@
-+import { getLLMConfig } from '@/config/llm';
++++ b/src/utils/genUserLLMConfig.ts
+@@ -0,0 +1,22 @@
 +import * as ProviderCards from '@/config/modelProviders';
 +
 +import { ModelProvider } from '@/libs/agent-runtime';
 +
-+import { extractEnabledModels, transformToChatModelCards } from '@/utils/parseModels';
-+
 +import { ModelProviderCard } from '@/types/llm';
 +import { UserModelProviderConfig } from '@/types/user/settings';
 +
-+export const genServerLLMConfig = () => {
-+  const llmConfig = getLLMConfig() as Record<string, any>;
-+
-+  const specificConfig: Record<any, any> = {
-+    azure: {
-+      enabledKey: 'ENABLED_AZURE_OPENAI',
-+      withDeploymentName: true,
-+    },
-+    bedrock: {
-+      enabledKey: 'ENABLED_AWS_BEDROCK',
-+      modelListKey: 'AWS_BEDROCK_MODEL_LIST',
-+    },
-+    ollama: {
-+      fetchOnClient: !llmConfig.OLLAMA_PROXY_URL,
-+    },
-+  };
-+
-+  return Object.values(ModelProvider).reduce((config, provider) => {
-+    const providerUpperCase = provider.toUpperCase();
-+    const providerCard = ProviderCards[`${provider}ProviderCard` as keyof typeof ProviderCards] as ModelProviderCard;
-+    const providerConfig = specificConfig[provider as keyof typeof specificConfig] || {};
-+
-+    config[provider] = {
-+      enabled: llmConfig[providerConfig.enabledKey || `ENABLED_${providerUpperCase}`],
-+      enabledModels: extractEnabledModels(
-+        llmConfig[providerConfig.modelListKey || `${providerUpperCase}_MODEL_LIST`],
-+        providerConfig.withDeploymentName || false,
-+      ),
-+      serverModelCards: transformToChatModelCards({
-+        defaultChatModels: (providerCard as ModelProviderCard)?.chatModels || [],
-+        modelString: llmConfig[providerConfig.modelListKey || `${providerUpperCase}_MODEL_LIST`],
-+        withDeploymentName: providerConfig.withDeploymentName || false,
-+      }),
-+      ...(providerConfig.fetchOnClient !== undefined && { fetchOnClient: providerConfig.fetchOnClient }),
-+    };
-+
-+    return config;
-+  }, {} as Record<ModelProvider, any>);
-+};
-+
-+export const genUserLLMConfig = (): UserModelProviderConfig => {
-+  const specificConfig: Record<any, any> = {
-+    ollama: {
-+      enabled: true,
-+      fetchOnClient: true,
-+    },
-+    openai: {
-+      enabled: true,
-+    },
-+  };
-+
++export const genUserLLMConfig = (specificConfig: Record<any, any>): UserModelProviderConfig => {
 +  return Object.keys(ModelProvider).reduce((config, providerKey) => {
 +    const provider = ModelProvider[providerKey as keyof typeof ModelProvider];
 +    const providerCard = ProviderCards[`${providerKey}ProviderCard` as keyof typeof ProviderCards] as ModelProviderCard;
