@@ -1,0 +1,162 @@
+From 1c9b28968d79a1cecfc578adfd015068967879ce Mon Sep 17 00:00:00 2001
+From: Markus Heiser <markus.heiser@darmarit.de>
+Date: Sun, 27 Oct 2024 13:17:40 +0100
+Subject: [PATCH] [mod] botdetection: HTTP Fetch Metadata Request Headers
+
+HTTP Fetch Metadata Request Headers [1][2] are used to detect bot requests. Bots
+with invalid *Fetch Metadata* will be redirected to the intro (`index`)  page.
+
+[1] https://www.w3.org/TR/fetch-metadata/
+[2] https://developer.mozilla.org/en-US/docs/Glossary/Fetch_metadata_request_header
+
+Signed-off-by: Markus Heiser <markus.heiser@darmarit.de>
+---
+ docs/src/searx.botdetection.rst      |  3 ++
+ searx/botdetection/_helpers.py       |  3 ++
+ searx/botdetection/http_sec_fetch.py | 59 ++++++++++++++++++++++++++++
+ searx/limiter.py                     | 11 ++++--
+ 4 files changed, 73 insertions(+), 3 deletions(-)
+ create mode 100644 searx/botdetection/http_sec_fetch.py
+
+diff --git a/docs/src/searx.botdetection.rst b/docs/src/searx.botdetection.rst
+index 04cb81dfdf0..1c3e12dad27 100644
+--- a/docs/src/searx.botdetection.rst
++++ b/docs/src/searx.botdetection.rst
+@@ -53,6 +53,9 @@ Probe HTTP headers
+ .. automodule:: searx.botdetection.http_user_agent
+   :members:
+ 
++.. automodule:: searx.botdetection.sec_fetch
++  :members:
++
+ .. _botdetection config:
+ 
+ Config
+diff --git a/searx/botdetection/_helpers.py b/searx/botdetection/_helpers.py
+index 5387fe5cc41..f3e20bca8b7 100644
+--- a/searx/botdetection/_helpers.py
++++ b/searx/botdetection/_helpers.py
+@@ -31,6 +31,9 @@ def dump_request(request: flask.Request):
+         + " || Content-Length: %s" % request.headers.get('Content-Length')
+         + " || Connection: %s" % request.headers.get('Connection')
+         + " || User-Agent: %s" % request.headers.get('User-Agent')
++        + " || Sec-Fetch-Site: %s" % request.headers.get('Sec-Fetch-Site')
++        + " || Sec-Fetch-Mode: %s" % request.headers.get('Sec-Fetch-Mode')
++        + " || Sec-Fetch-Dest: %s" % request.headers.get('Sec-Fetch-Dest')
+     )
+ 
+ 
+diff --git a/searx/botdetection/http_sec_fetch.py b/searx/botdetection/http_sec_fetch.py
+new file mode 100644
+index 00000000000..9ece38540ca
+--- /dev/null
++++ b/searx/botdetection/http_sec_fetch.py
+@@ -0,0 +1,59 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""
++Method ``http_sec_fetch``
++-------------------------
++
++The ``http_sec_fetch`` method protect resources from web attacks with `Fetch
++Metadata`_.  A request is filtered out in case of:
++
++- http header Sec-Fetch-Mode_ is invalid
++- http header Sec-Fetch-Dest_ is invalid
++
++.. _Fetch Metadata:
++   https://developer.mozilla.org/en-US/docs/Glossary/Fetch_metadata_request_header
++
++.. Sec-Fetch-Dest:
++   https://developer.mozilla.org/en-US/docs/Web/API/Request/destination
++
++.. Sec-Fetch-Mode:
++   https://developer.mozilla.org/en-US/docs/Web/API/Request/mode
++
++
++"""
++# pylint: disable=unused-argument
++
++from __future__ import annotations
++from ipaddress import (
++    IPv4Network,
++    IPv6Network,
++)
++
++import flask
++import werkzeug
++
++from . import config
++from ._helpers import logger
++
++
++def filter_request(
++    network: IPv4Network | IPv6Network,
++    request: flask.Request,
++    cfg: config.Config,
++) -> werkzeug.Response | None:
++
++    val = request.headers.get("Sec-Fetch-Mode", "")
++    if val != "navigate":
++        logger.debug("invalid Sec-Fetch-Mode '%s'", val)
++        return flask.redirect(flask.url_for('index'), code=302)
++
++    val = request.headers.get("Sec-Fetch-Site", "")
++    if val not in ('same-origin', 'same-site', 'none'):
++        logger.debug("invalid Sec-Fetch-Site '%s'", val)
++        flask.redirect(flask.url_for('index'), code=302)
++
++    val = request.headers.get("Sec-Fetch-Dest", "")
++    if val != "document":
++        logger.debug("invalid Sec-Fetch-Dest '%s'", val)
++        flask.redirect(flask.url_for('index'), code=302)
++
++    return None
+diff --git a/searx/limiter.py b/searx/limiter.py
+index 93070dac5d8..5adf9517269 100644
+--- a/searx/limiter.py
++++ b/searx/limiter.py
+@@ -111,6 +111,7 @@
+     http_accept_encoding,
+     http_accept_language,
+     http_user_agent,
++    http_sec_fetch,
+     ip_limit,
+     ip_lists,
+     get_network,
+@@ -177,16 +178,17 @@ def filter_request(request: flask.Request) -> werkzeug.Response | None:
+         logger.error("BLOCK %s: matched BLOCKLIST - %s", network.compressed, msg)
+         return flask.make_response(('IP is on BLOCKLIST - %s' % msg, 429))
+ 
+-    # methods applied on /
++    # methods applied on all requests
+ 
+     for func in [
+         http_user_agent,
+     ]:
+         val = func.filter_request(network, request, cfg)
+         if val is not None:
++            logger.debug(f"NOT OK ({func.__name__}): {network}: %s", dump_request(flask.request))
+             return val
+ 
+-    # methods applied on /search
++    # methods applied on /search requests
+ 
+     if request.path == '/search':
+ 
+@@ -195,12 +197,15 @@ def filter_request(request: flask.Request) -> werkzeug.Response | None:
+             http_accept_encoding,
+             http_accept_language,
+             http_user_agent,
++            http_sec_fetch,
+             ip_limit,
+         ]:
+             val = func.filter_request(network, request, cfg)
+             if val is not None:
++                logger.debug(f"NOT OK ({func.__name__}): {network}: %s", dump_request(flask.request))
+                 return val
+-    logger.debug(f"OK {network}: %s", dump_request(flask.request))
++        logger.debug(f"OK: {network}: %s", dump_request(flask.request))
++
+     return None
+ 
+ 

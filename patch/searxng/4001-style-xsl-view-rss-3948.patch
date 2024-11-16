@@ -1,0 +1,127 @@
+diff --git a/searx/static/themes/simple/xsl/rss.xsl b/searx/static/themes/simple/xsl/rss.xsl
+new file mode 100644
+index 00000000000..7de7f8037be
+--- /dev/null
++++ b/searx/static/themes/simple/xsl/rss.xsl
+@@ -0,0 +1,39 @@
++<?xml version="1.0"?>
++<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
++  <xsl:output method="html" version="5" encoding="UTF-8" indent="yes" />
++  <xsl:template match="rss">
++    <html xmlns="http://www.w3.org/1999/xhtml">
++      <head>
++        <title><xsl:value-of select="channel/title" />RSS Feed</title>
++        <meta charset="UTF-8" />
++        <meta http-equiv="x-ua-compatible" content="IE=edge,chrome=1" />
++        <meta name="viewport" content="width=device-width,initial-scale=1" />
++      </head>
++      <body>
++        <header>
++          <h2>
++            <xsl:value-of select="channel/description" />
++          </h2>
++        </header>
++	<hr />
++        <main>
++          <xsl:for-each select="channel/item">
++            <article>
++              <h3>
++                <a hreflang="en" target="_blank">
++                  <xsl:attribute name="href">
++                    <xsl:value-of select="link" />
++                  </xsl:attribute>
++                  <xsl:value-of select="title" />
++                </a>
++              </h3>
++              <time><xsl:value-of select="pubDate" /></time>
++	      <p><xsl:value-of select="description" /></p>
++	      <hr />
++            </article>
++          </xsl:for-each>
++        </main>
++      </body>
++    </html>
++  </xsl:template>
++</xsl:stylesheet>
+diff --git a/searx/templates/simple/opensearch_response_rss.xml b/searx/templates/simple/opensearch_response_rss.xml
+index 82d3f7c4e15..574f32e690c 100644
+--- a/searx/templates/simple/opensearch_response_rss.xml
++++ b/searx/templates/simple/opensearch_response_rss.xml
+@@ -1,11 +1,12 @@
+ <?xml version="1.0" encoding="UTF-8"?>
++<?xml-stylesheet href="{{ url_for('static', filename='xsl/rss.xsl') }}" type="text/xsl"?>
+ <rss version="2.0"
+      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"
+      xmlns:atom="http://www.w3.org/2005/Atom">
+   <channel>
+-    <title>Searx search: {{ q|e }}</title>
++    <title>SearXNG search: {{ q|e }}</title>
+     <link>{{ url_for('search', _external=True) }}?q={{ q|e }}</link>
+-    <description>Search results for "{{ q|e }}" - searx</description>
++    <description>Search results for "{{ q|e }}" - SearXNG</description>
+     <opensearch:totalResults>{{ number_of_results }}</opensearch:totalResults>
+     <opensearch:startIndex>1</opensearch:startIndex>
+     <opensearch:itemsPerPage>{{ number_of_results }}</opensearch:itemsPerPage>
+@@ -20,34 +21,11 @@
+     {% for r in results %}
+     <item>
+       <title>{{ r.title }}</title>
++      <type>result</type>
+       <link>{{ r.url }}</link>
+       <description>{{ r.content }}</description>
+       {% if r.pubdate %}<pubDate>{{ r.pubdate }}</pubDate>{% endif %}
+     </item>
+     {% endfor %}
+-    {% if answers %}
+-      {% for a in answers %}
+-      <item>
+-        <title>{{ a }}</title>
+-        <type>answer</type>
+-      </item>
+-      {% endfor %}
+-    {% endif %}
+-    {% if corrections %}
+-      {% for a in corrections %}
+-      <item>
+-        <title>{{ a }}</title>
+-        <type>correction</type>
+-      </item>
+-      {% endfor %}
+-    {% endif %}
+-    {% if suggestions %}
+-      {% for a in suggestions %}
+-      <item>
+-        <title>{{ a }}</title>
+-        <type>suggestion</type>
+-      </item>
+-      {% endfor %}
+-    {% endif %}
+   </channel>
+ </rss>
+diff --git a/searx/webapp.py b/searx/webapp.py
+index 19c47779471..21f678ce5b1 100755
+--- a/searx/webapp.py
++++ b/searx/webapp.py
+@@ -740,9 +740,6 @@ def search():
+         response_rss = render(
+             'opensearch_response_rss.xml',
+             results=results,
+-            answers=result_container.answers,
+-            corrections=result_container.corrections,
+-            suggestions=result_container.suggestions,
+             q=request.form['q'],
+             number_of_results=result_container.number_of_results,
+         )
+diff --git a/tests/unit/test_webapp.py b/tests/unit/test_webapp.py
+index 31bfdec3dd0..65705d1645b 100644
+--- a/tests/unit/test_webapp.py
++++ b/tests/unit/test_webapp.py
+@@ -180,7 +180,7 @@ def test_index_rss(self):
+     def test_search_rss(self):
+         result = self.app.post('/search', data={'q': 'test', 'format': 'rss'})
+ 
+-        self.assertIn(b'<description>Search results for "test" - searx</description>', result.data)
++        self.assertIn(b'<description>Search results for "test" - SearXNG</description>', result.data)
+ 
+         self.assertIn(b'<opensearch:totalResults>3</opensearch:totalResults>', result.data)
+ 
