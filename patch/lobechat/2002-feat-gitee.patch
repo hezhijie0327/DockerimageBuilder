@@ -44,10 +44,10 @@ index 0d34d4f8da1d..8713caef478a 100644
  
 diff --git a/src/config/modelProviders/gitee.ts b/src/config/modelProviders/gitee.ts
 new file mode 100644
-index 000000000000..cb9fb492c49b
+index 000000000000..02b35ffc8e33
 --- /dev/null
 +++ b/src/config/modelProviders/gitee.ts
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,63 @@
 +import { ModelProviderCard } from '@/types/llm';
 +
 +const Gitee: ModelProviderCard = {
@@ -102,6 +102,7 @@ index 000000000000..cb9fb492c49b
 +  checkModel: 'Qwen2-7B-Instruct',
 +  description:
 +    'Gitee AI 的 Serverless API 为 AI 开发者提供开箱即用的大模型推理 API 服务。',
++  disableBrowserRequest: true,
 +  id: 'gitee',
 +  modelList: { showModelFetcher: true },
 +  modelsUrl: 'https://ai.gitee.com/docs/openapi/v1#tag/serverless/POST/chat/completions',
@@ -441,15 +442,29 @@ index 000000000000..c8771d5d262b
 +});
 diff --git a/src/libs/agent-runtime/gitee/index.ts b/src/libs/agent-runtime/gitee/index.ts
 new file mode 100644
-index 000000000000..926cb400c5ef
+index 000000000000..28ddd7fc87db
 --- /dev/null
 +++ b/src/libs/agent-runtime/gitee/index.ts
-@@ -0,0 +1,10 @@
-+import { ModelProvider } from '../types';
+@@ -0,0 +1,24 @@
++import OpenAI from 'openai';
++
++import { ChatStreamPayload, ModelProvider } from '../types';
 +import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
 +
 +export const LobeGiteeAI = LobeOpenAICompatibleFactory({
 +  baseURL: 'https://ai.gitee.com/v1',
++  chatCompletion: {
++    handlePayload: ({ model, top_p, ...payload }: ChatStreamPayload) =>
++      ({
++        ...payload,
++        model,
++        ...(model === "code-raccoon-v1" ? {
++          top_p: (top_p !== undefined && top_p > 0 && top_p < 1) ? top_p : undefined,
++        } : {
++          top_p,
++        }),
++      }) as OpenAI.ChatCompletionCreateParamsStreaming,
++  },
 +  debug: {
 +    chatCompletion: () => process.env.DEBUG_GITEE_CHAT_COMPLETION === '1',
 +  },
