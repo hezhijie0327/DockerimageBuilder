@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -64,4 +64,4 @@ COPY --from=BUILD_SEARXNG / /
 
 EXPOSE 8080/tcp
 
-CMD ["sh", "-c", "uwsgi --http-socket ${BIND_ADDRESS} '/usr/local/searxng/uwsgi.ini'"]
+CMD ["sh", "-c", "uwsgi --tcp-fast-open --tcp-fastopen-client --http11-socket ${BIND_ADDRESS} '/usr/local/searxng/uwsgi.ini'"]
