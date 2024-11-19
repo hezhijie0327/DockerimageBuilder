@@ -1,12 +1,12 @@
 diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-index f49cdd22cea1..09b514a97f4d 100644
+index f49cdd22cea1..1e90871fce22 100644
 --- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
 +++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
 @@ -7,6 +7,7 @@ import {
    BaichuanProviderCard,
    DeepSeekProviderCard,
    FireworksAIProviderCard,
-+  GiteeProviderCard,
++  GiteeAIProviderCard,
    GoogleProviderCard,
    GroqProviderCard,
    HunyuanProviderCard,
@@ -14,20 +14,20 @@ index f49cdd22cea1..09b514a97f4d 100644
        TaichuProviderCard,
        InternLMProviderCard,
        SiliconCloudProviderCard,
-+      GiteeProviderCard,
++      GiteeAIProviderCard,
      ],
      [
        AzureProvider,
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index 4c9a831d4843..89f57610c191 100644
+index 4c9a831d4843..46c433fc3cc7 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
 @@ -102,6 +102,9 @@ export const getLLMConfig = () => {
        SILICONCLOUD_API_KEY: z.string().optional(),
        SILICONCLOUD_PROXY_URL: z.string().optional(),
  
-+      ENABLED_GITEE: z.boolean(),
-+      GITEE_API_KEY: z.string().optional(),
++      ENABLED_GITEE_AI: z.boolean(),
++      GITEE_AI_API_KEY: z.string().optional(),
 +
        ENABLED_UPSTAGE: z.boolean(),
        UPSTAGE_API_KEY: z.string().optional(),
@@ -36,22 +36,22 @@ index 4c9a831d4843..89f57610c191 100644
        SILICONCLOUD_API_KEY: process.env.SILICONCLOUD_API_KEY,
        SILICONCLOUD_PROXY_URL: process.env.SILICONCLOUD_PROXY_URL,
  
-+      ENABLED_GITEE: !!process.env.GITEE_API_KEY,
-+      GITEE_API_KEY: process.env.GITEE_API_KEY,
++      ENABLED_GITEE_AI: !!process.env.GITEE_AI_API_KEY,
++      GITEE_AI_API_KEY: process.env.GITEE_AI_API_KEY,
 +
        ENABLED_UPSTAGE: !!process.env.UPSTAGE_API_KEY,
        UPSTAGE_API_KEY: process.env.UPSTAGE_API_KEY,
  
-diff --git a/src/config/modelProviders/gitee.ts b/src/config/modelProviders/gitee.ts
+diff --git a/src/config/modelProviders/giteeai.ts b/src/config/modelProviders/giteeai.ts
 new file mode 100644
-index 000000000000..45619d913777
+index 000000000000..49f997b2f2a4
 --- /dev/null
-+++ b/src/config/modelProviders/gitee.ts
++++ b/src/config/modelProviders/giteeai.ts
 @@ -0,0 +1,66 @@
 +import { ModelProviderCard } from '@/types/llm';
 +
 +// ref: https://ai.gitee.com/serverless-api/packages/1493
-+const Gitee: ModelProviderCard = {
++const GiteeAI: ModelProviderCard = {
 +  chatModels: [
 +    {
 +      description: 'Qwen2.5-72B-Instruct  支持 16k 上下文, 生成长文本超过 8K 。支持 function call 与外部系统无缝交互，极大提升了灵活性和扩展性。模型知识明显增加，并且大大提高了编码和数学能力, 多语言支持超过 29 种',
@@ -106,23 +106,23 @@ index 000000000000..45619d913777
 +  description:
 +    'Gitee AI 的 Serverless API 为 AI 开发者提供开箱即用的大模型推理 API 服务。',
 +  disableBrowserRequest: true,
-+  id: 'gitee',
++  id: 'giteeai',
 +  modelList: { showModelFetcher: true },
 +  modelsUrl: 'https://ai.gitee.com/docs/openapi/v1#tag/serverless/POST/chat/completions',
 +  name: 'Gitee AI',
 +  url: 'https://ai.gitee.com',
 +};
 +
-+export default Gitee;
++export default GiteeAI;
 diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
-index c79ee701497f..eb22a5af2703 100644
+index c79ee701497f..961736a34fff 100644
 --- a/src/config/modelProviders/index.ts
 +++ b/src/config/modelProviders/index.ts
 @@ -9,6 +9,7 @@ import BedrockProvider from './bedrock';
  import CloudflareProvider from './cloudflare';
  import DeepSeekProvider from './deepseek';
  import FireworksAIProvider from './fireworksai';
-+import GiteeProvider from './gitee';
++import GiteeAIProvider from './giteeai';
  import GithubProvider from './github';
  import GoogleProvider from './google';
  import GroqProvider from './groq';
@@ -130,7 +130,7 @@ index c79ee701497f..eb22a5af2703 100644
    CloudflareProvider.chatModels,
    Ai360Provider.chatModels,
    SiliconCloudProvider.chatModels,
-+  GiteeProvider.chatModels,
++  GiteeAIProvider.chatModels,
    UpstageProvider.chatModels,
    SparkProvider.chatModels,
    Ai21Provider.chatModels,
@@ -138,7 +138,7 @@ index c79ee701497f..eb22a5af2703 100644
    TaichuProvider,
    InternLMProvider,
    SiliconCloudProvider,
-+  GiteeProvider,
++  GiteeAIProvider,
  ];
  
  export const filterEnabledModels = (provider: ModelProviderCard) => {
@@ -146,19 +146,19 @@ index c79ee701497f..eb22a5af2703 100644
  export { default as CloudflareProviderCard } from './cloudflare';
  export { default as DeepSeekProviderCard } from './deepseek';
  export { default as FireworksAIProviderCard } from './fireworksai';
-+export { default as GiteeProviderCard } from './gitee';
++export { default as GiteeAIProviderCard } from './giteeai';
  export { default as GithubProviderCard } from './github';
  export { default as GoogleProviderCard } from './google';
  export { default as GroqProviderCard } from './groq';
 diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
-index 8ee4a61b2d62..fb0dff7c4185 100644
+index 8ee4a61b2d62..6cc1d0332943 100644
 --- a/src/libs/agent-runtime/AgentRuntime.ts
 +++ b/src/libs/agent-runtime/AgentRuntime.ts
 @@ -12,6 +12,7 @@ import { LobeBedrockAI, LobeBedrockAIParams } from './bedrock';
  import { LobeCloudflareAI, LobeCloudflareParams } from './cloudflare';
  import { LobeDeepSeekAI } from './deepseek';
  import { LobeFireworksAI } from './fireworksai';
-+import { LobeGiteeAI } from './gitee';
++import { LobeGiteeAI } from './giteeai';
  import { LobeGithubAI } from './github';
  import { LobeGoogleAI } from './google';
  import { LobeGroq } from './groq';
@@ -166,7 +166,7 @@ index 8ee4a61b2d62..fb0dff7c4185 100644
        cloudflare: Partial<LobeCloudflareParams>;
        deepseek: Partial<ClientOptions>;
        fireworksai: Partial<ClientOptions>;
-+      gitee: Partial<ClientOptions>;
++      giteeai: Partial<ClientOptions>;
        github: Partial<ClientOptions>;
        google: { apiKey?: string; baseURL?: string };
        groq: Partial<ClientOptions>;
@@ -174,19 +174,19 @@ index 8ee4a61b2d62..fb0dff7c4185 100644
          break;
        }
  
-+      case ModelProvider.Gitee: {
-+        runtimeModel = new LobeGiteeAI(params.gitee);
++      case ModelProvider.GiteeAI: {
++        runtimeModel = new LobeGiteeAI(params.giteeai);
 +        break;
 +      }
 +
        case ModelProvider.Upstage: {
          runtimeModel = new LobeUpstageAI(params.upstage);
          break;
-diff --git a/src/libs/agent-runtime/gitee/index.test.ts b/src/libs/agent-runtime/gitee/index.test.ts
+diff --git a/src/libs/agent-runtime/giteeai/index.test.ts b/src/libs/agent-runtime/giteeai/index.test.ts
 new file mode 100644
-index 000000000000..c8771d5d262b
+index 000000000000..f9c2866afe59
 --- /dev/null
-+++ b/src/libs/agent-runtime/gitee/index.test.ts
++++ b/src/libs/agent-runtime/giteeai/index.test.ts
 @@ -0,0 +1,255 @@
 +// @vitest-environment node
 +import OpenAI from 'openai';
@@ -201,7 +201,7 @@ index 000000000000..c8771d5d262b
 +import * as debugStreamModule from '../utils/debugStream';
 +import { LobeGiteeAI } from './index';
 +
-+const provider = ModelProvider.Gitee;
++const provider = ModelProvider.GiteeAI;
 +const defaultBaseURL = 'https://ai.gitee.com/v1';
 +
 +const bizErrorType = 'ProviderBizError';
@@ -401,7 +401,7 @@ index 000000000000..c8771d5d262b
 +    });
 +
 +    describe('DEBUG', () => {
-+      it('should call debugStream and return StreamingTextResponse when DEBUG_GITEE_CHAT_COMPLETION is 1', async () => {
++      it('should call debugStream and return StreamingTextResponse when DEBUG_GITEE_AI_CHAT_COMPLETION is 1', async () => {
 +        // Arrange
 +        const mockProdStream = new ReadableStream() as any; // 模拟的 prod 流
 +        const mockDebugStream = new ReadableStream({
@@ -418,10 +418,10 @@ index 000000000000..c8771d5d262b
 +        });
 +
 +        // 保存原始环境变量值
-+        const originalDebugValue = process.env.DEBUG_GITEE_CHAT_COMPLETION;
++        const originalDebugValue = process.env.DEBUG_GITEE_AI_CHAT_COMPLETION;
 +
 +        // 模拟环境变量
-+        process.env.DEBUG_GITEE_CHAT_COMPLETION = '1';
++        process.env.DEBUG_GITEE_AI_CHAT_COMPLETION = '1';
 +        vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
 +
 +        // 执行测试
@@ -438,16 +438,16 @@ index 000000000000..c8771d5d262b
 +        expect(debugStreamModule.debugStream).toHaveBeenCalled();
 +
 +        // 恢复原始环境变量值
-+        process.env.DEBUG_GITEE_CHAT_COMPLETION = originalDebugValue;
++        process.env.DEBUG_GITEE_AI_CHAT_COMPLETION = originalDebugValue;
 +      });
 +    });
 +  });
 +});
-diff --git a/src/libs/agent-runtime/gitee/index.ts b/src/libs/agent-runtime/gitee/index.ts
+diff --git a/src/libs/agent-runtime/giteeai/index.ts b/src/libs/agent-runtime/giteeai/index.ts
 new file mode 100644
-index 000000000000..926cb400c5ef
+index 000000000000..a84af7571a5f
 --- /dev/null
-+++ b/src/libs/agent-runtime/gitee/index.ts
++++ b/src/libs/agent-runtime/giteeai/index.ts
 @@ -0,0 +1,10 @@
 +import { ModelProvider } from '../types';
 +import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
@@ -455,9 +455,9 @@ index 000000000000..926cb400c5ef
 +export const LobeGiteeAI = LobeOpenAICompatibleFactory({
 +  baseURL: 'https://ai.gitee.com/v1',
 +  debug: {
-+    chatCompletion: () => process.env.DEBUG_GITEE_CHAT_COMPLETION === '1',
++    chatCompletion: () => process.env.DEBUG_GITEE_AI_CHAT_COMPLETION === '1',
 +  },
-+  provider: ModelProvider.Gitee,
++  provider: ModelProvider.GiteeAI,
 +});
 diff --git a/src/libs/agent-runtime/togetherai/__snapshots__/index.test.ts.snap b/src/libs/agent-runtime/togetherai/__snapshots__/index.test.ts.snap
 index 4a969451ce8d..7e7a2edf7cd3 100644
@@ -473,29 +473,44 @@ index 4a969451ce8d..7e7a2edf7cd3 100644
      "id": "zero-one-ai/Yi-34B-Chat",
      "maxOutput": 4096,
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
-index 6629f2bf9920..8f02639a9804 100644
+index 6629f2bf9920..16f0b4f72948 100644
 --- a/src/libs/agent-runtime/types/type.ts
 +++ b/src/libs/agent-runtime/types/type.ts
 @@ -31,6 +31,7 @@ export enum ModelProvider {
    Cloudflare = 'cloudflare',
    DeepSeek = 'deepseek',
    FireworksAI = 'fireworksai',
-+  Gitee = 'gitee',
++  GiteeAI = 'giteeai',
    Github = 'github',
    Google = 'google',
    Groq = 'groq',
+diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
+index 65822bd171b1..6f7e369ccd2d 100644
+--- a/src/server/globalConfig/index.ts
++++ b/src/server/globalConfig/index.ts
+@@ -30,6 +30,10 @@ export const getServerGlobalConfig = () => {
+         enabledKey: 'ENABLED_AWS_BEDROCK',
+         modelListKey: 'AWS_BEDROCK_MODEL_LIST',
+       },
++      giteeai: {
++        enabledKey: 'ENABLED_GITEE_AI',
++        modelListKey: 'GITEE_AI_MODEL_LIST',
++      },
+       ollama: {
+         fetchOnClient: !getLLMConfig().OLLAMA_PROXY_URL,
+       },
 diff --git a/src/server/modules/AgentRuntime/index.ts b/src/server/modules/AgentRuntime/index.ts
-index 8134bed5c7a2..0e5e4993a73e 100644
+index 8134bed5c7a2..fb4522b635ca 100644
 --- a/src/server/modules/AgentRuntime/index.ts
 +++ b/src/server/modules/AgentRuntime/index.ts
 @@ -236,6 +236,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
  
        return { apiKey, baseURL };
      }
-+    case ModelProvider.Gitee: {
-+      const { GITEE_API_KEY } = getLLMConfig();
++    case ModelProvider.GiteeAI: {
++      const { GITEE_AI_API_KEY } = getLLMConfig();
 +
-+      const apiKey = apiKeyManager.pick(payload?.apiKey || GITEE_API_KEY);
++      const apiKey = apiKeyManager.pick(payload?.apiKey || GITEE_AI_API_KEY);
 +
 +      return { apiKey };
 +    }
@@ -503,14 +518,14 @@ index 8134bed5c7a2..0e5e4993a73e 100644
      case ModelProvider.HuggingFace: {
        const { HUGGINGFACE_PROXY_URL, HUGGINGFACE_API_KEY } = getLLMConfig();
 diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
-index 492cf7449834..f0f0ebb1b468 100644
+index 492cf7449834..f6156c22363a 100644
 --- a/src/types/user/settings/keyVaults.ts
 +++ b/src/types/user/settings/keyVaults.ts
 @@ -41,6 +41,7 @@ export interface UserKeyVaults {
    cloudflare?: CloudflareKeyVault;
    deepseek?: OpenAICompatibleKeyVault;
    fireworksai?: OpenAICompatibleKeyVault;
-+  gitee?: OpenAICompatibleKeyVault;
++  giteeai?: OpenAICompatibleKeyVault;
    github?: OpenAICompatibleKeyVault;
    google?: OpenAICompatibleKeyVault;
    groq?: OpenAICompatibleKeyVault;
