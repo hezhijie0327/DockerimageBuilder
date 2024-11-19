@@ -1,8 +1,8 @@
 diff --git a/src/app/(main)/settings/llm/ProviderList/providers.tsx b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-index d67e56fa1242..09b514a97f4d 100644
+index f49cdd22cea1..09b514a97f4d 100644
 --- a/src/app/(main)/settings/llm/ProviderList/providers.tsx
 +++ b/src/app/(main)/settings/llm/ProviderList/providers.tsx
-@@ -7,9 +7,11 @@ import {
+@@ -7,6 +7,7 @@ import {
    BaichuanProviderCard,
    DeepSeekProviderCard,
    FireworksAIProviderCard,
@@ -10,22 +10,16 @@ index d67e56fa1242..09b514a97f4d 100644
    GoogleProviderCard,
    GroqProviderCard,
    HunyuanProviderCard,
-+  InternLMProviderCard,
-   MinimaxProviderCard,
-   MistralProviderCard,
-   MoonshotProviderCard,
-@@ -85,7 +87,9 @@ export const useProviderList = (): ProviderItem[] => {
-       MinimaxProviderCard,
-       Ai360ProviderCard,
+@@ -88,6 +89,7 @@ export const useProviderList = (): ProviderItem[] => {
        TaichuProviderCard,
-+      InternLMProviderCard,
+       InternLMProviderCard,
        SiliconCloudProviderCard,
 +      GiteeProviderCard,
      ],
      [
        AzureProvider,
 diff --git a/src/config/llm.ts b/src/config/llm.ts
-index 0d34d4f8da1d..89f57610c191 100644
+index 4c9a831d4843..89f57610c191 100644
 --- a/src/config/llm.ts
 +++ b/src/config/llm.ts
 @@ -102,6 +102,9 @@ export const getLLMConfig = () => {
@@ -38,17 +32,7 @@ index 0d34d4f8da1d..89f57610c191 100644
        ENABLED_UPSTAGE: z.boolean(),
        UPSTAGE_API_KEY: z.string().optional(),
  
-@@ -124,6 +127,9 @@ export const getLLMConfig = () => {
- 
-       ENABLED_XAI: z.boolean(),
-       XAI_API_KEY: z.string().optional(),
-+
-+      ENABLED_INTERNLM: z.boolean(),
-+      INTERNLM_API_KEY: z.string().optional(),
-     },
-     runtimeEnv: {
-       API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
-@@ -224,6 +230,9 @@ export const getLLMConfig = () => {
+@@ -227,6 +230,9 @@ export const getLLMConfig = () => {
        SILICONCLOUD_API_KEY: process.env.SILICONCLOUD_API_KEY,
        SILICONCLOUD_PROXY_URL: process.env.SILICONCLOUD_PROXY_URL,
  
@@ -58,19 +42,9 @@ index 0d34d4f8da1d..89f57610c191 100644
        ENABLED_UPSTAGE: !!process.env.UPSTAGE_API_KEY,
        UPSTAGE_API_KEY: process.env.UPSTAGE_API_KEY,
  
-@@ -246,6 +255,9 @@ export const getLLMConfig = () => {
- 
-       ENABLED_XAI: !!process.env.XAI_API_KEY,
-       XAI_API_KEY: process.env.XAI_API_KEY,
-+
-+      ENABLED_INTERNLM: !!process.env.INTERNLM_API_KEY,
-+      INTERNLM_API_KEY: process.env.INTERNLM_API_KEY,
-     },
-   });
- };
 diff --git a/src/config/modelProviders/gitee.ts b/src/config/modelProviders/gitee.ts
 new file mode 100644
-index 000000000000..042f3ab3e9d8
+index 000000000000..45619d913777
 --- /dev/null
 +++ b/src/config/modelProviders/gitee.ts
 @@ -0,0 +1,66 @@
@@ -141,10 +115,10 @@ index 000000000000..042f3ab3e9d8
 +
 +export default Gitee;
 diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
-index 3fa1e590c1e5..eb22a5af2703 100644
+index c79ee701497f..eb22a5af2703 100644
 --- a/src/config/modelProviders/index.ts
 +++ b/src/config/modelProviders/index.ts
-@@ -9,11 +9,13 @@ import BedrockProvider from './bedrock';
+@@ -9,6 +9,7 @@ import BedrockProvider from './bedrock';
  import CloudflareProvider from './cloudflare';
  import DeepSeekProvider from './deepseek';
  import FireworksAIProvider from './fireworksai';
@@ -152,13 +126,7 @@ index 3fa1e590c1e5..eb22a5af2703 100644
  import GithubProvider from './github';
  import GoogleProvider from './google';
  import GroqProvider from './groq';
- import HuggingFaceProvider from './huggingface';
- import HunyuanProvider from './hunyuan';
-+import InternLMProvider from './internlm';
- import MinimaxProvider from './minimax';
- import MistralProvider from './mistral';
- import MoonshotProvider from './moonshot';
-@@ -63,12 +65,14 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
+@@ -64,6 +65,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
    CloudflareProvider.chatModels,
    Ai360Provider.chatModels,
    SiliconCloudProvider.chatModels,
@@ -166,24 +134,15 @@ index 3fa1e590c1e5..eb22a5af2703 100644
    UpstageProvider.chatModels,
    SparkProvider.chatModels,
    Ai21Provider.chatModels,
-   HunyuanProvider.chatModels,
-   WenxinProvider.chatModels,
-   SenseNovaProvider.chatModels,
-+  InternLMProvider.chatModels,
- ].flat();
- 
- export const DEFAULT_MODEL_PROVIDER_LIST = [
-@@ -105,7 +109,9 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
-   MinimaxProvider,
-   Ai360Provider,
+@@ -109,6 +111,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
    TaichuProvider,
-+  InternLMProvider,
+   InternLMProvider,
    SiliconCloudProvider,
 +  GiteeProvider,
  ];
  
  export const filterEnabledModels = (provider: ModelProviderCard) => {
-@@ -126,11 +132,13 @@ export { default as BedrockProviderCard } from './bedrock';
+@@ -129,6 +132,7 @@ export { default as BedrockProviderCard } from './bedrock';
  export { default as CloudflareProviderCard } from './cloudflare';
  export { default as DeepSeekProviderCard } from './deepseek';
  export { default as FireworksAIProviderCard } from './fireworksai';
@@ -191,65 +150,11 @@ index 3fa1e590c1e5..eb22a5af2703 100644
  export { default as GithubProviderCard } from './github';
  export { default as GoogleProviderCard } from './google';
  export { default as GroqProviderCard } from './groq';
- export { default as HuggingFaceProviderCard } from './huggingface';
- export { default as HunyuanProviderCard } from './hunyuan';
-+export { default as InternLMProviderCard } from './internlm';
- export { default as MinimaxProviderCard } from './minimax';
- export { default as MistralProviderCard } from './mistral';
- export { default as MoonshotProviderCard } from './moonshot';
-diff --git a/src/config/modelProviders/internlm.ts b/src/config/modelProviders/internlm.ts
-new file mode 100644
-index 000000000000..07e07117ea47
---- /dev/null
-+++ b/src/config/modelProviders/internlm.ts
-@@ -0,0 +1,42 @@
-+import { ModelProviderCard } from '@/types/llm';
-+
-+const InternLM: ModelProviderCard = {
-+  chatModels: [
-+    {
-+      description: '我们最新的模型系列，有着卓越的推理性能，支持 1M 的上下文长度以及更强的指令跟随和工具调用能力。',
-+      displayName: 'InternLM2.5',
-+      enabled: true,
-+      functionCall: true,
-+      id: 'internlm2.5-latest',
-+      maxOutput: 4096,
-+      pricing: {
-+        input: 0,
-+        output: 0,
-+      },
-+      tokens: 32_768,
-+    },
-+    {
-+      description: '我们仍在维护的老版本模型，有 7B、20B 多种模型参数量可选。',
-+      displayName: 'InternLM2 Pro Chat',
-+      functionCall: true,
-+      id: 'internlm2-pro-chat',
-+      maxOutput: 4096,
-+      pricing: {
-+        input: 0,
-+        output: 0,
-+      },
-+      tokens: 32_768,
-+    },
-+  ],
-+  checkModel: 'internlm2.5-latest',
-+  description:
-+    '致力于大模型研究与开发工具链的开源组织。为所有 AI 开发者提供高效、易用的开源平台，让最前沿的大模型与算法技术触手可及',
-+  disableBrowserRequest: true,
-+  id: 'internlm',
-+  modelList: { showModelFetcher: true },
-+  modelsUrl: 'https://internlm.intern-ai.org.cn/doc/docs/Models#%E8%8E%B7%E5%8F%96%E6%A8%A1%E5%9E%8B%E5%88%97%E8%A1%A8',
-+  name: 'InternLM',
-+  url: 'https://internlm.intern-ai.org.cn',
-+};
-+
-+export default InternLM;
 diff --git a/src/libs/agent-runtime/AgentRuntime.ts b/src/libs/agent-runtime/AgentRuntime.ts
-index 7f54ec1abd8e..fb0dff7c4185 100644
+index 8ee4a61b2d62..fb0dff7c4185 100644
 --- a/src/libs/agent-runtime/AgentRuntime.ts
 +++ b/src/libs/agent-runtime/AgentRuntime.ts
-@@ -12,11 +12,13 @@ import { LobeBedrockAI, LobeBedrockAIParams } from './bedrock';
+@@ -12,6 +12,7 @@ import { LobeBedrockAI, LobeBedrockAIParams } from './bedrock';
  import { LobeCloudflareAI, LobeCloudflareParams } from './cloudflare';
  import { LobeDeepSeekAI } from './deepseek';
  import { LobeFireworksAI } from './fireworksai';
@@ -257,13 +162,7 @@ index 7f54ec1abd8e..fb0dff7c4185 100644
  import { LobeGithubAI } from './github';
  import { LobeGoogleAI } from './google';
  import { LobeGroq } from './groq';
- import { LobeHuggingFaceAI } from './huggingface';
- import { LobeHunyuanAI } from './hunyuan';
-+import { LobeInternLMAI } from './internlm';
- import { LobeMinimaxAI } from './minimax';
- import { LobeMistralAI } from './mistral';
- import { LobeMoonshotAI } from './moonshot';
-@@ -136,11 +138,13 @@ class AgentRuntime {
+@@ -137,6 +138,7 @@ class AgentRuntime {
        cloudflare: Partial<LobeCloudflareParams>;
        deepseek: Partial<ClientOptions>;
        fireworksai: Partial<ClientOptions>;
@@ -271,13 +170,7 @@ index 7f54ec1abd8e..fb0dff7c4185 100644
        github: Partial<ClientOptions>;
        google: { apiKey?: string; baseURL?: string };
        groq: Partial<ClientOptions>;
-       huggingface: { apiKey?: string; baseURL?: string };
-       hunyuan: Partial<ClientOptions>;
-+      internlm: Partial<ClientOptions>;
-       minimax: Partial<ClientOptions>;
-       mistral: Partial<ClientOptions>;
-       moonshot: Partial<ClientOptions>;
-@@ -301,6 +305,11 @@ class AgentRuntime {
+@@ -303,6 +305,11 @@ class AgentRuntime {
          break;
        }
  
@@ -289,18 +182,6 @@ index 7f54ec1abd8e..fb0dff7c4185 100644
        case ModelProvider.Upstage: {
          runtimeModel = new LobeUpstageAI(params.upstage);
          break;
-@@ -335,6 +344,11 @@ class AgentRuntime {
-         runtimeModel = new LobeCloudflareAI(params.cloudflare ?? {});
-         break;
-       }
-+
-+      case ModelProvider.InternLM: {
-+        runtimeModel = new LobeInternLMAI(params.internlm);
-+        break;
-+      }
-     }
-     return new AgentRuntime(runtimeModel);
-   }
 diff --git a/src/libs/agent-runtime/gitee/index.test.ts b/src/libs/agent-runtime/gitee/index.test.ts
 new file mode 100644
 index 000000000000..c8771d5d262b
@@ -578,291 +459,6 @@ index 000000000000..926cb400c5ef
 +  },
 +  provider: ModelProvider.Gitee,
 +});
-diff --git a/src/libs/agent-runtime/internlm/index.test.ts b/src/libs/agent-runtime/internlm/index.test.ts
-new file mode 100644
-index 000000000000..73925e4ed1f8
---- /dev/null
-+++ b/src/libs/agent-runtime/internlm/index.test.ts
-@@ -0,0 +1,255 @@
-+// @vitest-environment node
-+import OpenAI from 'openai';
-+import { Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-+
-+import {
-+  ChatStreamCallbacks,
-+  LobeOpenAICompatibleRuntime,
-+  ModelProvider,
-+} from '@/libs/agent-runtime';
-+
-+import * as debugStreamModule from '../utils/debugStream';
-+import { LobeInternLMAI } from './index';
-+
-+const provider = ModelProvider.InternLM;
-+const defaultBaseURL = 'https://internlm-chat.intern-ai.org.cn/puyu/api/v1';
-+
-+const bizErrorType = 'ProviderBizError';
-+const invalidErrorType = 'InvalidProviderAPIKey';
-+
-+// Mock the console.error to avoid polluting test output
-+vi.spyOn(console, 'error').mockImplementation(() => {});
-+
-+let instance: LobeOpenAICompatibleRuntime;
-+
-+beforeEach(() => {
-+  instance = new LobeInternLMAI({ apiKey: 'test' });
-+
-+  // 使用 vi.spyOn 来模拟 chat.completions.create 方法
-+  vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
-+    new ReadableStream() as any,
-+  );
-+});
-+
-+afterEach(() => {
-+  vi.clearAllMocks();
-+});
-+
-+describe('LobeInternLMAI', () => {
-+  describe('init', () => {
-+    it('should correctly initialize with an API key', async () => {
-+      const instance = new LobeInternLMAI({ apiKey: 'test_api_key' });
-+      expect(instance).toBeInstanceOf(LobeInternLMAI);
-+      expect(instance.baseURL).toEqual(defaultBaseURL);
-+    });
-+  });
-+
-+  describe('chat', () => {
-+    describe('Error', () => {
-+      it('should return OpenAIBizError with an openai error response when OpenAI.APIError is thrown', async () => {
-+        // Arrange
-+        const apiError = new OpenAI.APIError(
-+          400,
-+          {
-+            status: 400,
-+            error: {
-+              message: 'Bad Request',
-+            },
-+          },
-+          'Error message',
-+          {},
-+        );
-+
-+        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
-+
-+        // Act
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'internlm2.5-latest',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          expect(e).toEqual({
-+            endpoint: defaultBaseURL,
-+            error: {
-+              error: { message: 'Bad Request' },
-+              status: 400,
-+            },
-+            errorType: bizErrorType,
-+            provider,
-+          });
-+        }
-+      });
-+
-+      it('should throw AgentRuntimeError with NoOpenAIAPIKey if no apiKey is provided', async () => {
-+        try {
-+          new LobeInternLMAI({});
-+        } catch (e) {
-+          expect(e).toEqual({ errorType: invalidErrorType });
-+        }
-+      });
-+
-+      it('should return OpenAIBizError with the cause when OpenAI.APIError is thrown with cause', async () => {
-+        // Arrange
-+        const errorInfo = {
-+          stack: 'abc',
-+          cause: {
-+            message: 'api is undefined',
-+          },
-+        };
-+        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
-+
-+        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
-+
-+        // Act
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'internlm2.5-latest',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          expect(e).toEqual({
-+            endpoint: defaultBaseURL,
-+            error: {
-+              cause: { message: 'api is undefined' },
-+              stack: 'abc',
-+            },
-+            errorType: bizErrorType,
-+            provider,
-+          });
-+        }
-+      });
-+
-+      it('should return OpenAIBizError with an cause response with desensitize Url', async () => {
-+        // Arrange
-+        const errorInfo = {
-+          stack: 'abc',
-+          cause: { message: 'api is undefined' },
-+        };
-+        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
-+
-+        instance = new LobeInternLMAI({
-+          apiKey: 'test',
-+
-+          baseURL: 'https://api.abc.com/v1',
-+        });
-+
-+        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
-+
-+        // Act
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'internlm2.5-latest',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          expect(e).toEqual({
-+            endpoint: 'https://api.***.com/v1',
-+            error: {
-+              cause: { message: 'api is undefined' },
-+              stack: 'abc',
-+            },
-+            errorType: bizErrorType,
-+            provider,
-+          });
-+        }
-+      });
-+
-+      it('should throw an InvalidInternLMAIAPIKey error type on 401 status code', async () => {
-+        // Mock the API call to simulate a 401 error
-+        const error = new Error('Unauthorized') as any;
-+        error.status = 401;
-+        vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(error);
-+
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'internlm2.5-latest',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          // Expect the chat method to throw an error with InvalidInternLMAIAPIKey
-+          expect(e).toEqual({
-+            endpoint: defaultBaseURL,
-+            error: new Error('Unauthorized'),
-+            errorType: invalidErrorType,
-+            provider,
-+          });
-+        }
-+      });
-+
-+      it('should return AgentRuntimeError for non-OpenAI errors', async () => {
-+        // Arrange
-+        const genericError = new Error('Generic Error');
-+
-+        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(genericError);
-+
-+        // Act
-+        try {
-+          await instance.chat({
-+            messages: [{ content: 'Hello', role: 'user' }],
-+            model: 'internlm2.5-latest',
-+            temperature: 0,
-+          });
-+        } catch (e) {
-+          expect(e).toEqual({
-+            endpoint: defaultBaseURL,
-+            errorType: 'AgentRuntimeError',
-+            provider,
-+            error: {
-+              name: genericError.name,
-+              cause: genericError.cause,
-+              message: genericError.message,
-+              stack: genericError.stack,
-+            },
-+          });
-+        }
-+      });
-+    });
-+
-+    describe('DEBUG', () => {
-+      it('should call debugStream and return StreamingTextResponse when DEBUG_INTERNLM_CHAT_COMPLETION is 1', async () => {
-+        // Arrange
-+        const mockProdStream = new ReadableStream() as any; // 模拟的 prod 流
-+        const mockDebugStream = new ReadableStream({
-+          start(controller) {
-+            controller.enqueue('Debug stream content');
-+            controller.close();
-+          },
-+        }) as any;
-+        mockDebugStream.toReadableStream = () => mockDebugStream; // 添加 toReadableStream 方法
-+
-+        // 模拟 chat.completions.create 返回值，包括模拟的 tee 方法
-+        (instance['client'].chat.completions.create as Mock).mockResolvedValue({
-+          tee: () => [mockProdStream, { toReadableStream: () => mockDebugStream }],
-+        });
-+
-+        // 保存原始环境变量值
-+        const originalDebugValue = process.env.DEBUG_INTERNLM_CHAT_COMPLETION;
-+
-+        // 模拟环境变量
-+        process.env.DEBUG_INTERNLM_CHAT_COMPLETION = '1';
-+        vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
-+
-+        // 执行测试
-+        // 运行你的测试函数，确保它会在条件满足时调用 debugStream
-+        // 假设的测试函数调用，你可能需要根据实际情况调整
-+        await instance.chat({
-+          messages: [{ content: 'Hello', role: 'user' }],
-+          model: 'internlm2.5-latest',
-+          stream: true,
-+          temperature: 0,
-+        });
-+
-+        // 验证 debugStream 被调用
-+        expect(debugStreamModule.debugStream).toHaveBeenCalled();
-+
-+        // 恢复原始环境变量值
-+        process.env.DEBUG_INTERNLM_CHAT_COMPLETION = originalDebugValue;
-+      });
-+    });
-+  });
-+});
-diff --git a/src/libs/agent-runtime/internlm/index.ts b/src/libs/agent-runtime/internlm/index.ts
-new file mode 100644
-index 000000000000..3dfaf0edda41
---- /dev/null
-+++ b/src/libs/agent-runtime/internlm/index.ts
-@@ -0,0 +1,18 @@
-+import { ModelProvider } from '../types';
-+import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
-+
-+export const LobeInternLMAI = LobeOpenAICompatibleFactory({
-+  baseURL: 'https://internlm-chat.intern-ai.org.cn/puyu/api/v1',
-+  chatCompletion: {
-+    handlePayload: (payload) => {
-+      return {
-+        ...payload,
-+        stream: !payload.tools,
-+      } as any;
-+    },
-+  },
-+  debug: {
-+    chatCompletion: () => process.env.DEBUG_INTERNLM_CHAT_COMPLETION === '1',
-+  },
-+  provider: ModelProvider.InternLM,
-+});
 diff --git a/src/libs/agent-runtime/togetherai/__snapshots__/index.test.ts.snap b/src/libs/agent-runtime/togetherai/__snapshots__/index.test.ts.snap
 index 4a969451ce8d..7e7a2edf7cd3 100644
 --- a/src/libs/agent-runtime/togetherai/__snapshots__/index.test.ts.snap
@@ -877,10 +473,10 @@ index 4a969451ce8d..7e7a2edf7cd3 100644
      "id": "zero-one-ai/Yi-34B-Chat",
      "maxOutput": 4096,
 diff --git a/src/libs/agent-runtime/types/type.ts b/src/libs/agent-runtime/types/type.ts
-index 5a00cbc3dd9c..8f02639a9804 100644
+index 6629f2bf9920..8f02639a9804 100644
 --- a/src/libs/agent-runtime/types/type.ts
 +++ b/src/libs/agent-runtime/types/type.ts
-@@ -31,11 +31,13 @@ export enum ModelProvider {
+@@ -31,6 +31,7 @@ export enum ModelProvider {
    Cloudflare = 'cloudflare',
    DeepSeek = 'deepseek',
    FireworksAI = 'fireworksai',
@@ -888,14 +484,8 @@ index 5a00cbc3dd9c..8f02639a9804 100644
    Github = 'github',
    Google = 'google',
    Groq = 'groq',
-   HuggingFace = 'huggingface',
-   Hunyuan = 'hunyuan',
-+  InternLM = 'internlm',
-   Minimax = 'minimax',
-   Mistral = 'mistral',
-   Moonshot = 'moonshot',
 diff --git a/src/server/modules/AgentRuntime/index.ts b/src/server/modules/AgentRuntime/index.ts
-index 6d2ead94a01a..0e5e4993a73e 100644
+index 8134bed5c7a2..0e5e4993a73e 100644
 --- a/src/server/modules/AgentRuntime/index.ts
 +++ b/src/server/modules/AgentRuntime/index.ts
 @@ -236,6 +236,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
@@ -912,25 +502,11 @@ index 6d2ead94a01a..0e5e4993a73e 100644
  
      case ModelProvider.HuggingFace: {
        const { HUGGINGFACE_PROXY_URL, HUGGINGFACE_API_KEY } = getLLMConfig();
-@@ -293,6 +300,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
- 
-       const apiKey = apiKeyManager.pick(payload?.apiKey || XAI_API_KEY);
- 
-+      return { apiKey };
-+    }
-+    case ModelProvider.InternLM: {
-+      const { INTERNLM_API_KEY } = getLLMConfig();
-+
-+      const apiKey = apiKeyManager.pick(payload?.apiKey || INTERNLM_API_KEY);
-+
-       return { apiKey };
-     }
-   }
 diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
-index dec9a9c1ab7c..f0f0ebb1b468 100644
+index 492cf7449834..f0f0ebb1b468 100644
 --- a/src/types/user/settings/keyVaults.ts
 +++ b/src/types/user/settings/keyVaults.ts
-@@ -41,11 +41,13 @@ export interface UserKeyVaults {
+@@ -41,6 +41,7 @@ export interface UserKeyVaults {
    cloudflare?: CloudflareKeyVault;
    deepseek?: OpenAICompatibleKeyVault;
    fireworksai?: OpenAICompatibleKeyVault;
@@ -938,9 +514,3 @@ index dec9a9c1ab7c..f0f0ebb1b468 100644
    github?: OpenAICompatibleKeyVault;
    google?: OpenAICompatibleKeyVault;
    groq?: OpenAICompatibleKeyVault;
-   huggingface?: OpenAICompatibleKeyVault;
-   hunyuan?: OpenAICompatibleKeyVault;
-+  internlm?: OpenAICompatibleKeyVault;
-   lobehub?: any;
-   minimax?: OpenAICompatibleKeyVault;
-   mistral?: OpenAICompatibleKeyVault;
