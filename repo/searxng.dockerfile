@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -57,11 +57,11 @@ COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 
 FROM scratch
 
-ENV BIND_ADDRESS="0.0.0.0:8080" \
-    SEARXNG_SETTINGS_PATH="/usr/local/searxng/searx/settings.yml"
+ENV SEARXNG_SETTINGS_PATH="/usr/local/searxng/searx/settings.yml" \
+    UWSGI_OPTIONS="--http-socket 0.0.0.0:8080"
 
 COPY --from=BUILD_SEARXNG / /
 
 EXPOSE 8080/tcp
 
-CMD ["sh", "-c", "uwsgi --tcp-fast-open --tcp-fastopen-client --http11-socket ${BIND_ADDRESS} '/usr/local/searxng/uwsgi.ini'"]
+CMD ["sh", "-c", "uwsgi ${UWSGI_OPTIONS} '/usr/local/searxng/uwsgi.ini'"]
