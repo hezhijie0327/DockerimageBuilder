@@ -2,7 +2,7 @@ diff --git a/searx/engines/google.py b/searx/engines/google.py
 index f9215783ced..227f874ae32 100644
 --- a/searx/engines/google.py
 +++ b/searx/engines/google.py
-@@ -320,6 +320,48 @@ def _parse_data_images(dom):
+@@ -320,6 +320,51 @@ def _parse_data_images(dom):
      return data_image_map
  
  
@@ -21,6 +21,7 @@ index f9215783ced..227f874ae32 100644
 +        for element in eval_xpath(item, ' | '.join(drop_elements)):
 +            element.drop_tree()
 +        extracted_table_html = None
++        is_safe = False
 +        table_elements = eval_xpath(item, './/table')
 +        if table_elements:
 +            extracted_table = table_elements[0]
@@ -31,6 +32,7 @@ index f9215783ced..227f874ae32 100644
 +            extracted_table.set('cellspacing', '2')
 +            extracted_table.set('border', '0')
 +            extracted_table_html = html.tostring(extracted_table, pretty_print=True, encoding='unicode')
++            is_safe = True
 +        for element in eval_xpath(item, './/table'):  # Drop all remaining tables
 +            element.drop_tree()
 +        answer_content = extract_text(item)
@@ -43,6 +45,7 @@ index f9215783ced..227f874ae32 100644
 +            {
 +                'answer': answer_content,
 +                'url': url,
++                'safe': is_safe,
 +            }
 +        )
 +    return results
@@ -83,3 +86,21 @@ index f9215783ced..227f874ae32 100644
 +                break  # If it's a JS encoded answer, we only want the first one if it has bold above
  
      # parse results
+ 
+diff --git a/searx/templates/simple/results.html b/searx/templates/simple/results.html
+index 52b474c77a8..68c1fe6a921 100644
+--- a/searx/templates/simple/results.html
++++ b/searx/templates/simple/results.html
+@@ -23,7 +23,11 @@
+     <div id="answers" role="complementary" aria-labelledby="answers-title"><h4 class="title" id="answers-title">{{ _('Answers') }} : </h4>
+         {%- for answer in answers.values() -%}
+         <div class="answer">
+-        <span>{{ answer.answer }}</span>
++          {%- if answer.safe -%}
++            <span>{{ answer.answer | safe }}</span>
++          {%- else -%}
++            <span>{{ answer.answer }}</span>
++          {%- endif -%}
+           {%- if answer.url -%}
+           <a href="{{ answer.url }}" class="answer-url"
+              {%- if results_on_new_tab %} target="_blank" rel="noopener noreferrer"
