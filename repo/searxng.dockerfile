@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -39,16 +39,28 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
         -o -name '*.svg' -o -name '*.ttf' -o -name '*.eot' \) \
         -type f -exec gzip -9 -k {} \+ -exec brotli --best {} \+ \
     && apk del --purge build-dependencies \
+    && apk del --purge alpine* > /dev/null || true \
+    && apk add --no-cache busybox \
+    && apk del --purge apk* > /dev/null || true \
+    && /bin/busybox --install -s /bin \
+    && find /usr/bin -type l ! -name "python*" -delete \
+    && rm -rf /etc /lib/*apk* /root/* /sbin /usr/sbin /usr/share /var || true \
     && rm -rf /root/* /tmp/* /var/cache/apk/*
 
+FROM busybox:musl AS REBASED_SEARXNG
+
 COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+COPY --from=BUILD_SEARXNG /lib /lib
+
+COPY --from=BUILD_SEARXNG /usr /usr
 
 FROM scratch
 
 ENV PYTHONPATH="/usr/local/searxng" \
     SEARXNG_SETTINGS_PATH="/usr/local/searxng/searx/settings.yml"
 
-COPY --from=BUILD_SEARXNG / /
+COPY --from=REBASED_SEARXNG / /
 
 EXPOSE 8888/tcp
 
