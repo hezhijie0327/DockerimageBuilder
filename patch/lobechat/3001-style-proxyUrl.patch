@@ -1,19 +1,17 @@
 diff --git a/src/app/(backend)/_deprecated/createBizOpenAI/createAzureOpenai.ts b/src/app/(backend)/_deprecated/createBizOpenAI/createAzureOpenai.ts
-index cd04d63a7089..a1d8144595cc 100644
+index cd04d63a7089..fc762f8de657 100644
 --- a/src/app/(backend)/_deprecated/createBizOpenAI/createAzureOpenai.ts
 +++ b/src/app/(backend)/_deprecated/createBizOpenAI/createAzureOpenai.ts
-@@ -11,9 +11,9 @@ export const createAzureOpenai = (params: {
+@@ -11,7 +11,8 @@ export const createAzureOpenai = (params: {
    model: string;
    userApiKey?: string | null;
  }) => {
 -  const { OPENAI_PROXY_URL = '', AZURE_API_VERSION, AZURE_API_KEY } = getLLMConfig();
 +  const { AZURE_API_VERSION, AZURE_API_KEY } = getLLMConfig();
++  const OPENAI_PROXY_URL = process.env.OPENAI_PROXY_URL || '';
  
--  const endpoint = !params.endpoint ? OPENAI_PROXY_URL : params.endpoint;
-+  const endpoint = !params.endpoint ? process.env.OPENAI_PROXY_URL || '' : params.endpoint;
+   const endpoint = !params.endpoint ? OPENAI_PROXY_URL : params.endpoint;
    const baseURL = urlJoin(endpoint, `/openai/deployments/${params.model.replace('.', '')}`); // refs: https://test-001.openai.azure.com/openai/deployments/gpt-35-turbo
- 
-   const defaultApiVersion = AZURE_API_VERSION || '2023-08-01-preview';
 diff --git a/src/app/(backend)/_deprecated/createBizOpenAI/createOpenai.ts b/src/app/(backend)/_deprecated/createBizOpenAI/createOpenai.ts
 index d2ae53d432a8..19d548015278 100644
 --- a/src/app/(backend)/_deprecated/createBizOpenAI/createOpenai.ts
@@ -152,6 +150,20 @@ index 4c9a831d4843..87a364a7bef6 100644
  
        ENABLED_SENSENOVA: !!process.env.SENSENOVA_ACCESS_KEY_ID && !!process.env.SENSENOVA_ACCESS_KEY_SECRET,
        SENSENOVA_ACCESS_KEY_ID: process.env.SENSENOVA_ACCESS_KEY_ID,
+diff --git a/src/config/modelProviders/moonshot.ts b/src/config/modelProviders/moonshot.ts
+index 55e731ba64b7..313870d2ece3 100644
+--- a/src/config/modelProviders/moonshot.ts
++++ b/src/config/modelProviders/moonshot.ts
+@@ -37,6 +37,9 @@ const Moonshot: ModelProviderCard = {
+   id: 'moonshot',
+   modelsUrl: 'https://platform.moonshot.cn/docs/intro',
+   name: 'Moonshot',
++  proxyUrl: {
++    placeholder: 'https://api.moonshot.cn/v1',
++  },
+   smoothing: {
+     speed: 2,
+     text: true,
 diff --git a/src/server/globalConfig/genServerLLMConfig.test.ts b/src/server/globalConfig/genServerLLMConfig.test.ts
 index 6f5c421fc2d7..a40ecceb12a6 100644
 --- a/src/server/globalConfig/genServerLLMConfig.test.ts
@@ -187,47 +199,71 @@ index 65822bd171b1..97e1d6c1f0c4 100644
      }),
      oAuthSSOProviders: authEnv.NEXT_AUTH_SSO_PROVIDERS.trim().split(/[,，]/),
 diff --git a/src/server/modules/AgentRuntime/index.ts b/src/server/modules/AgentRuntime/index.ts
-index 8134bed5c7a2..e01d84d6d516 100644
+index 8134bed5c7a2..0cfa54ef7158 100644
 --- a/src/server/modules/AgentRuntime/index.ts
 +++ b/src/server/modules/AgentRuntime/index.ts
-@@ -30,9 +30,9 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -30,14 +30,13 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
    switch (provider) {
      default: // Use Openai options as default
      case ModelProvider.OpenAI: {
 -      const { OPENAI_API_KEY, OPENAI_PROXY_URL } = getLLMConfig();
 +      const { OPENAI_API_KEY } = getLLMConfig();
++
        const openaiApiKey = payload?.apiKey || OPENAI_API_KEY;
 -      const baseURL = payload?.endpoint || OPENAI_PROXY_URL;
 +      const baseURL = payload?.endpoint || process.env.OPENAI_PROXY_URL;
        const apiKey = apiKeyManager.pick(openaiApiKey);
-       return {
-         apiKey,
-@@ -58,20 +58,20 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
-       };
+-      return {
+-        apiKey,
+-        baseURL,
+-      };
++
++      return { apiKey, baseURL };
+     }
+     case ModelProvider.Azure: {
+       const { AZURE_API_KEY, AZURE_API_VERSION, AZURE_ENDPOINT } = getLLMConfig();
+@@ -52,27 +51,26 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+     }
+     case ModelProvider.ZhiPu: {
+       const { ZHIPU_API_KEY } = getLLMConfig();
++
+       const apiKey = apiKeyManager.pick(payload?.apiKey || ZHIPU_API_KEY);
+-      return {
+-        apiKey,
+-      };
++
++      return { apiKey };
      }
      case ModelProvider.Google: {
 -      const { GOOGLE_API_KEY, GOOGLE_PROXY_URL } = getLLMConfig();
 +      const { GOOGLE_API_KEY } = getLLMConfig();
++
        const apiKey = apiKeyManager.pick(payload?.apiKey || GOOGLE_API_KEY);
 -      const baseURL = payload?.endpoint || GOOGLE_PROXY_URL;
+-      return {
+-        apiKey,
+-        baseURL,
+-      };
 +      const baseURL = payload?.endpoint || process.env.GOOGLE_PROXY_URL;
-       return {
-         apiKey,
-         baseURL,
-       };
++
++      return { apiKey, baseURL };
      }
      case ModelProvider.Moonshot: {
 -      const { MOONSHOT_API_KEY, MOONSHOT_PROXY_URL } = getLLMConfig();
 +      const { MOONSHOT_API_KEY } = getLLMConfig();
++
        const apiKey = apiKeyManager.pick(payload?.apiKey || MOONSHOT_API_KEY);
-       return {
-         apiKey,
+-      return {
+-        apiKey,
 -        baseURL: MOONSHOT_PROXY_URL,
-+        baseURL: process.env.MOONSHOT_PROXY_URL,
-       };
+-      };
++      const baseURL = payload?.endpoint || process.env.MOONSHOT_PROXY_URL;
++
++      return { apiKey, baseURL };
      }
      case ModelProvider.Bedrock: {
-@@ -91,23 +91,22 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+       const { AWS_SECRET_ACCESS_KEY, AWS_ACCESS_KEY_ID, AWS_REGION, AWS_SESSION_TOKEN } =
+@@ -91,23 +89,22 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
        return { accessKeyId, accessKeySecret, region, sessionToken };
      }
      case ModelProvider.Ollama: {
@@ -256,7 +292,7 @@ index 8134bed5c7a2..e01d84d6d516 100644
  
        return { apiKey, baseURL };
      }
-@@ -126,10 +125,10 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -126,10 +123,10 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
        return { apiKey };
      }
      case ModelProvider.Groq: {
@@ -269,7 +305,7 @@ index 8134bed5c7a2..e01d84d6d516 100644
  
        return { apiKey, baseURL };
      }
-@@ -229,19 +228,19 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -229,19 +226,19 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
        return { apiKey };
      }
      case ModelProvider.SiliconCloud: {
@@ -293,7 +329,7 @@ index 8134bed5c7a2..e01d84d6d516 100644
  
        return { apiKey, baseURL };
      }
-@@ -292,8 +291,9 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
+@@ -292,8 +289,9 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
        const { XAI_API_KEY } = getLLMConfig();
  
        const apiKey = apiKeyManager.pick(payload?.apiKey || XAI_API_KEY);
