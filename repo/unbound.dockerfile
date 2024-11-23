@@ -1,4 +1,4 @@
-# Current Version: 1.3.5
+# Current Version: 1.3.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,19 +6,19 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.unbound" > "${WORKDIR}/unbound.json" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source" > "${WORKDIR}/unbound.source.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source_branch" > "${WORKDIR}/unbound.source_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch" > "${WORKDIR}/unbound.patch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch_branch" > "${WORKDIR}/unbound.patch_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" > "${WORKDIR}/unbound.version.autobuild" && wget -O "${WORKDIR}/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" && wget -O "${WORKDIR}/root.hints" "https://www.internic.net/domain/named.cache"
 
-FROM hezhijie0327/module:glibc-expat AS BUILD_EXPAT
+FROM hezhijie0327/module:expat AS BUILD_EXPAT
 
-FROM hezhijie0327/module:glibc-libevent AS BUILD_LIBEVENT
+FROM hezhijie0327/module:libevent AS BUILD_LIBEVENT
 
-FROM hezhijie0327/module:glibc-libhiredis AS BUILD_LIBHIREDIS
+FROM hezhijie0327/module:libhiredis AS BUILD_LIBHIREDIS
 
-FROM hezhijie0327/module:glibc-libmnl AS BUILD_LIBMNL
+FROM hezhijie0327/module:libmnl AS BUILD_LIBMNL
 
-FROM hezhijie0327/module:glibc-libnghttp2 AS BUILD_LIBNGHTTP2
+FROM hezhijie0327/module:libnghttp2 AS BUILD_LIBNGHTTP2
 
-FROM hezhijie0327/module:glibc-libsodium AS BUILD_LIBSODIUM
+FROM hezhijie0327/module:libsodium AS BUILD_LIBSODIUM
 
-FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
 
 FROM hezhijie0327/base:ubuntu AS BUILD_UNBOUND
 
