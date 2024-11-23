@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,9 +6,9 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.siyuan" > "${WORKDIR}/siyuan.json" && cat "${WORKDIR}/siyuan.json" | jq -Sr ".version" && cat "${WORKDIR}/siyuan.json" | jq -Sr ".source" > "${WORKDIR}/siyuan.source.autobuild" && cat "${WORKDIR}/siyuan.json" | jq -Sr ".source_branch" > "${WORKDIR}/siyuan.source_branch.autobuild" && cat "${WORKDIR}/siyuan.json" | jq -Sr ".patch" > "${WORKDIR}/siyuan.patch.autobuild" && cat "${WORKDIR}/siyuan.json" | jq -Sr ".patch_branch" > "${WORKDIR}/siyuan.patch_branch.autobuild" && cat "${WORKDIR}/siyuan.json" | jq -Sr ".version" > "${WORKDIR}/siyuan.version.autobuild"
 
-FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
+FROM hezhijie0327/module:golang AS BUILD_GOLANG
 
-FROM hezhijie0327/module:binary-nodejs AS BUILD_NODEJS
+FROM hezhijie0327/module:nodejs AS BUILD_NODEJS
 
 FROM hezhijie0327/base:ubuntu AS BUILD_SIYUAN
 

@@ -1,4 +1,4 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,7 +6,7 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".module.libevent" > "${WORKDIR}/libevent.json" && cat "${WORKDIR}/libevent.json" | jq -Sr ".version" && cat "${WORKDIR}/libevent.json" | jq -Sr ".source" > "${WORKDIR}/libevent.autobuild"
 
-FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
 
 FROM hezhijie0327/base:ubuntu AS BUILD_LIBEVENT
 
