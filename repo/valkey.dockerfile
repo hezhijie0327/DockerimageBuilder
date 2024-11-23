@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,7 +6,7 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.valkey" > "${WORKDIR}/valkey.json" && cat "${WORKDIR}/valkey.json" | jq -Sr ".version" && cat "${WORKDIR}/valkey.json" | jq -Sr ".source" > "${WORKDIR}/valkey.source.autobuild" && cat "${WORKDIR}/valkey.json" | jq -Sr ".source_branch" > "${WORKDIR}/valkey.source_branch.autobuild" && cat "${WORKDIR}/valkey.json" | jq -Sr ".patch" > "${WORKDIR}/valkey.patch.autobuild" && cat "${WORKDIR}/valkey.json" | jq -Sr ".patch_branch" > "${WORKDIR}/valkey.patch_branch.autobuild" && cat "${WORKDIR}/valkey.json" | jq -Sr ".version" > "${WORKDIR}/valkey.version.autobuild"
 
-FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
 
 FROM hezhijie0327/base:ubuntu AS BUILD_VALKEY
 
