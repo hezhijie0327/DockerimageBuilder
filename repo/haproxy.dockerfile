@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -37,7 +37,6 @@ RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP
         USE_CRYPT_H="1" \
         USE_ENGINE="1" \
         USE_GETADDRINFO="1" \
-        USE_GZIP="1" \
         USE_LIBCRYPT="1" \
         USE_LINUX_CAP="1" \
         USE_NS="1" \
