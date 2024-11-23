@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,13 +6,13 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.haproxy" > "${WORKDIR}/haproxy.json" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source" > "${WORKDIR}/haproxy.source.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source_branch" > "${WORKDIR}/haproxy.source_branch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch" > "${WORKDIR}/haproxy.patch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/haproxy.patch_branch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" > "${WORKDIR}/haproxy.version.autobuild"
 
-FROM hezhijie0327/module:glibc-lua AS BUILD_LUA
+FROM hezhijie0327/module:lua AS BUILD_LUA
 
-FROM hezhijie0327/module:glibc-openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
 
-FROM hezhijie0327/module:glibc-pcre2 AS BUILD_PCRE2
+FROM hezhijie0327/module:pcre2 AS BUILD_PCRE2
 
-FROM hezhijie0327/module:glibc-zlibng AS BUILD_ZLIB_NG
+FROM hezhijie0327/module:zlibng AS BUILD_ZLIB_NG
 
 FROM hezhijie0327/base:ubuntu AS BUILD_HAPROXY
 
