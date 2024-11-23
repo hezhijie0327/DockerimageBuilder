@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,7 +6,7 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.rclone" > "${WORKDIR}/rclone.json" && cat "${WORKDIR}/rclone.json" | jq -Sr ".version" && cat "${WORKDIR}/rclone.json" | jq -Sr ".source" > "${WORKDIR}/rclone.source.autobuild" && cat "${WORKDIR}/rclone.json" | jq -Sr ".source_branch" > "${WORKDIR}/rclone.source_branch.autobuild" && cat "${WORKDIR}/rclone.json" | jq -Sr ".patch" > "${WORKDIR}/rclone.patch.autobuild" && cat "${WORKDIR}/rclone.json" | jq -Sr ".patch_branch" > "${WORKDIR}/rclone.patch_branch.autobuild" && cat "${WORKDIR}/rclone.json" | jq -Sr ".version" > "${WORKDIR}/rclone.version.autobuild"
 
-FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
+FROM hezhijie0327/module:golang AS BUILD_GOLANG
 
 FROM hezhijie0327/base:ubuntu AS BUILD_RCLONE
 
