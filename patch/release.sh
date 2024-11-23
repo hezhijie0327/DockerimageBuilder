@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.8.8
+# Current Version: 1.8.9
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -29,6 +29,7 @@ export NODEJS_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
 export PCRE2_VERSION_FIXED=""
 export QBITTORRENT_VERSION_FIXED=""
+export QUICTLS_VERSION_FIXED=""
 export RCLONE_VERSION_FIXED=""
 export RUST_VERSION_FIXED=""
 export SEARXNG_VERSION_FIXED=""
@@ -64,6 +65,7 @@ function GetLatestVersion() {
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
     PCRE2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/PCRE2Project/pcre2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "RC" | grep "^refs/tags/pcre2-" | tail -n 1 | sed "s/refs\/tags\/pcre2\-//")
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
+    QUICTLS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/quictls/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/openssl-" | grep "quic" | tail -n 1 | sed "s/refs\/tags\/openssl\-//")
     RCLONE_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rclone/rclone/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\/v//")
     RUST_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rust-lang/rust/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
     SEARXNG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/searxng/searxng/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
@@ -100,6 +102,7 @@ function GenerateReplacements() {
         "s/{OPENSSL_VERSION}/${OPENSSL_VERSION_FIXED:-${OPENSSL_VERSION}}/g"
         "s/{PCRE2_VERSION}/${PCRE2_VERSION_FIXED:-${PCRE2_VERSION}}/g"
         "s/{QBITTORRENT_VERSION}/${QBITTORRENT_VERSION_FIXED:-${QBITTORRENT_VERSION}}/g"
+        "s/{QUICTLS_VERSION}/${QUICTLS_VERSION_FIXED:-${QUICTLS_VERSION}}/g"
         "s/{RCLONE_VERSION}/${RCLONE_VERSION_FIXED:-${RCLONE_VERSION}}/g"
         "s/{RUST_VERSION}/${RUST_VERSION_FIXED:-${RUST_VERSION}}/g"
         "s/{SEARXNG_VERSION}/${SEARXNG_VERSION_FIXED:-${SEARXNG_VERSION}}/g"
