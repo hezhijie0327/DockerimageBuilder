@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 1.9.0
+# Current Version: 1.9.1
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -17,6 +17,7 @@ export GOLANG_VERSION_FIXED=""
 export HAPROXY_VERSION_FIXED=""
 export JELLYFIN_VERSION_FIXED=""
 export JELLYFIN_WEB_VERSION_FIXED=""
+export JEMALLOC_VERSION_FIXED=""
 export LIBEVENT_VERSION_FIXED=""
 export LIBHIREDIS_VERSION_FIXED=""
 export LIBMNL_VERSION_FIXED=""
@@ -55,6 +56,7 @@ function GetLatestVersion() {
     HAPROXY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/haproxy/haproxy/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JELLYFIN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JELLYFIN_WEB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-web/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
+    JEMALLOC_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jemalloc/jemalloc/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | tail -n 1 | sed "s/refs\/tags\///")
     LIBEVENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/libevent/libevent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release\-" | grep "stable$" | tail -n 1 | sed "s/refs\/tags\/release\-//;s/\-stable//")
     LIBHIREDIS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/redis/hiredis/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "rc" | tail -n 1 | sed "s/refs\/tags\/v//")
     LIBMNL_VERSION=$(curl -s --connect-timeout 15 "https://git.netfilter.org/libmnl/log" | grep 'release' | cut -d '<' -f 6 | cut -d ' ' -f 4 | head -n 1)
@@ -94,6 +96,7 @@ function GenerateReplacements() {
         "s/{HAPROXY_VERSION}/${HAPROXY_VERSION_FIXED:-${HAPROXY_VERSION}}/g"
         "s/{JELLYFIN_VERSION}/${JELLYFIN_VERSION_FIXED:-${JELLYFIN_VERSION}}/g"
         "s/{JELLYFIN_WEB_VERSION}/${JELLYFIN_WEB_VERSION_FIXED:-${JELLYFIN_WEB_VERSION}}/g"
+        "s/{JEMALLOC_VERSION}/${JEMALLOC_VERSION_FIXED:-${JEMALLOC_VERSION}}/g"
         "s/{LIBEVENT_VERSION}/${LIBEVENT_VERSION_FIXED:-${LIBEVENT_VERSION}}/g"
         "s/{LIBHIREDIS_VERSION}/${LIBHIREDIS_VERSION_FIXED:-${LIBHIREDIS_VERSION}}/g"
         "s/{LIBMNL_VERSION}/${LIBMNL_VERSION_FIXED:-${LIBMNL_VERSION}}/g"
