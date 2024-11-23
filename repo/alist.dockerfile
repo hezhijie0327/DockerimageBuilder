@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -6,7 +6,7 @@ WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.alist" > "${WORKDIR}/alist.json" && cat "${WORKDIR}/alist.json" | jq -Sr ".version" && cat "${WORKDIR}/alist.json" | jq -Sr ".source" > "${WORKDIR}/alist.source.autobuild" && cat "${WORKDIR}/alist.json" | jq -Sr ".source_branch" > "${WORKDIR}/alist.source_branch.autobuild" && cat "${WORKDIR}/alist.json" | jq -Sr ".patch" > "${WORKDIR}/alist.patch.autobuild" && cat "${WORKDIR}/alist.json" | jq -Sr ".patch_branch" > "${WORKDIR}/alist.patch_branch.autobuild" && cat "${WORKDIR}/alist.json" | jq -Sr ".version" > "${WORKDIR}/alist.version.autobuild"
 
-FROM hezhijie0327/module:binary-golang AS BUILD_GOLANG
+FROM hezhijie0327/module:golang AS BUILD_GOLANG
 
 FROM hezhijie0327/base:ubuntu AS BUILD_ALIST_WEB
 
