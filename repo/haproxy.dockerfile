@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -8,9 +8,9 @@ RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.haproxy" > 
 
 FROM hezhijie0327/module:lua AS BUILD_LUA
 
-FROM hezhijie0327/module:pcre2 AS BUILD_PCRE2
+FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
 
-FROM hezhijie0327/module:quictls AS BUILD_QUICTLS
+FROM hezhijie0327/module:pcre2 AS BUILD_PCRE2
 
 FROM hezhijie0327/module:zlibng AS BUILD_ZLIB_NG
 
@@ -22,9 +22,9 @@ COPY --from=GET_INFO /tmp/haproxy.*.autobuild /tmp/
 
 COPY --from=BUILD_LUA / /tmp/BUILDLIB/
 
-COPY --from=BUILD_PCRE2 / /tmp/BUILDLIB/
+COPY --from=BUILD_OPENSSL / /tmp/BUILDLIB/
 
-COPY --from=BUILD_QUICTLS / /tmp/BUILDLIB/
+COPY --from=BUILD_PCRE2 / /tmp/BUILDLIB/
 
 COPY --from=BUILD_ZLIB_NG / /tmp/BUILDLIB/
 
@@ -46,6 +46,7 @@ RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP
         USE_PCRE2_JIT="1" \
         USE_PROMEX="1" \
         USE_QUIC="1" \
+        USE_QUIC_OPENSSL_COMPAT="1" \
         USE_STATIC_PCRE2="1" \
         USE_THREAD="1" \
         USE_ZLIB="1" \
