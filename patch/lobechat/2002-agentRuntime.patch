@@ -1,27 +1,8 @@
-diff --git a/src/server/modules/AgentRuntime/index.test.ts b/src/server/modules/AgentRuntime/index.test.ts
-index 48f2062b5e16..150649baa8d4 100644
---- a/src/server/modules/AgentRuntime/index.test.ts
-+++ b/src/server/modules/AgentRuntime/index.test.ts
-@@ -360,6 +360,7 @@ describe('initAgentRuntimeWithUserPayload method', () => {
-       expect(runtime['_runtime']).toBeInstanceOf(LobeWenxinAI);
-     });
- 
-+    /*
-     it('Unknown Provider', async () => {
-       const jwtPayload = {};
-       const runtime = await initAgentRuntimeWithUserPayload('unknown', jwtPayload);
-@@ -368,5 +369,6 @@ describe('initAgentRuntimeWithUserPayload method', () => {
-       // 例如，如果默认使用 OpenAI:
-       expect(runtime['_runtime']).toBeInstanceOf(LobeOpenAI);
-     });
-+    */
-   });
- });
 diff --git a/src/server/modules/AgentRuntime/index.ts b/src/server/modules/AgentRuntime/index.ts
-index 86e54f38ba2b..730b5b3e1a93 100644
+index 86e54f38ba2b..a643b78e6019 100644
 --- a/src/server/modules/AgentRuntime/index.ts
 +++ b/src/server/modules/AgentRuntime/index.ts
-@@ -27,19 +27,20 @@ export interface AgentChatOptions {
+@@ -27,54 +27,32 @@ export interface AgentChatOptions {
   * @returns The options object.
   */
  const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
@@ -32,7 +13,11 @@ index 86e54f38ba2b..730b5b3e1a93 100644
 -    case ModelProvider.OpenAI: {
 -      const { OPENAI_API_KEY } = getLLMConfig();
 +    default: {
-+      const upperProvider = provider.toUpperCase();
++      let upperProvider = provider.toUpperCase();
++
++      if (!llmConfig[`${upperProvider}_API_KEY`]) {
++        upperProvider = ModelProvider.OpenAI.toUpperCase(); // Use OpenAI options as default
++      }
  
 -      const openaiApiKey = payload?.apiKey || OPENAI_API_KEY;
 -      const baseURL = payload?.endpoint || process.env.OPENAI_PROXY_URL;
@@ -45,24 +30,28 @@ index 86e54f38ba2b..730b5b3e1a93 100644
 +
      case ModelProvider.Azure: {
 -      const { AZURE_API_KEY, AZURE_API_VERSION, AZURE_ENDPOINT } = getLLMConfig();
+-      const apiKey = apiKeyManager.pick(payload?.apiKey || AZURE_API_KEY);
 +      const { AZURE_API_KEY, AZURE_API_VERSION, AZURE_ENDPOINT } = llmConfig;
-       const apiKey = apiKeyManager.pick(payload?.apiKey || AZURE_API_KEY);
++      const apikey = apiKeyManager.pick(payload?.apiKey || AZURE_API_KEY);
        const endpoint = payload?.endpoint || AZURE_ENDPOINT;
        const apiVersion = payload?.azureApiVersion || AZURE_API_VERSION;
-@@ -49,32 +50,9 @@ const getLlmOptionsFromPayload = (provider: string, payload: JWTPayload) => {
-         endpoint,
-       };
-     }
+-      return {
+-        apiVersion,
+-        apikey: apiKey,
+-        endpoint,
+-      };
+-    }
 -    case ModelProvider.ZhiPu: {
 -      const { ZHIPU_API_KEY } = getLLMConfig();
 -
 -      const apiKey = apiKeyManager.pick(payload?.apiKey || ZHIPU_API_KEY);
 -
 -      return { apiKey };
--    }
++      return { apiVersion, apikey, endpoint };
+     }
 -    case ModelProvider.Google: {
 -      const { GOOGLE_API_KEY } = getLLMConfig();
--
+ 
 -      const apiKey = apiKeyManager.pick(payload?.apiKey || GOOGLE_API_KEY);
 -      const baseURL = payload?.endpoint || process.env.GOOGLE_PROXY_URL;
 -
@@ -73,7 +62,7 @@ index 86e54f38ba2b..730b5b3e1a93 100644
 -
 -      const apiKey = apiKeyManager.pick(payload?.apiKey || MOONSHOT_API_KEY);
 -      const baseURL = payload?.endpoint || process.env.MOONSHOT_PROXY_URL;
- 
+-
 -      return { apiKey, baseURL };
 -    }
      case ModelProvider.Bedrock: {
@@ -166,7 +155,7 @@ index 86e54f38ba2b..730b5b3e1a93 100644
 -    }
 -    case ModelProvider.ZeroOne: {
 -      const { ZEROONE_API_KEY } = getLLMConfig();
- 
+-
 -      const apiKey = apiKeyManager.pick(payload?.apiKey || ZEROONE_API_KEY);
 -
 -      return { apiKey };
@@ -175,7 +164,7 @@ index 86e54f38ba2b..730b5b3e1a93 100644
 -      const { QWEN_API_KEY } = getLLMConfig();
 -
 -      const apiKey = apiKeyManager.pick(payload?.apiKey || QWEN_API_KEY);
--
+ 
 -      return { apiKey };
 -    }
 -    case ModelProvider.Stepfun: {
