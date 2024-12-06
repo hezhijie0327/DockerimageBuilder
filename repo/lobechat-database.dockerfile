@@ -1,4 +1,4 @@
-# Current Version: 1.2.9
+# Current Version: 1.3.0
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -56,7 +56,7 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/.pnpm /app/n
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/pg /app/node_modules/pg
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/src/database/server/migrations /app/migrations
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/src/database/migrations /app/migrations
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/docker.cjs /app/docker.cjs
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/migrateServerDB/errorHint.js /app/errorHint.js
 
