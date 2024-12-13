@@ -1,10 +1,18 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.searxng" > "${WORKDIR}/searxng.json" && cat "${WORKDIR}/searxng.json" | jq -Sr ".version" && cat "${WORKDIR}/searxng.json" | jq -Sr ".source" > "${WORKDIR}/searxng.source.autobuild" && cat "${WORKDIR}/searxng.json" | jq -Sr ".source_branch" > "${WORKDIR}/searxng.source_branch.autobuild" && cat "${WORKDIR}/searxng.json" | jq -Sr ".patch" > "${WORKDIR}/searxng.patch.autobuild" && cat "${WORKDIR}/searxng.json" | jq -Sr ".patch_branch" > "${WORKDIR}/searxng.patch_branch.autobuild" && cat "${WORKDIR}/searxng.json" | jq -Sr ".version" > "${WORKDIR}/searxng.version.autobuild"
+RUN \
+    export WORKDIR=$(pwd) \
+    && cat "/opt/package.json" | jq -Sr ".repo.searxng" > "${WORKDIR}/searxng.json" \
+    && cat "${WORKDIR}/searxng.json" | jq -Sr ".version" \
+    && cat "${WORKDIR}/searxng.json" | jq -Sr ".source" > "${WORKDIR}/searxng.source.autobuild" \
+    && cat "${WORKDIR}/searxng.json" | jq -Sr ".source_branch" > "${WORKDIR}/searxng.source_branch.autobuild" \
+    && cat "${WORKDIR}/searxng.json" | jq -Sr ".patch" > "${WORKDIR}/searxng.patch.autobuild" \
+    && cat "${WORKDIR}/searxng.json" | jq -Sr ".patch_branch" > "${WORKDIR}/searxng.patch_branch.autobuild" \
+    && cat "${WORKDIR}/searxng.json" | jq -Sr ".version" > "${WORKDIR}/searxng.version.autobuild"
 
 FROM alpine:latest AS BUILD_SEARXNG
 
@@ -12,7 +20,8 @@ WORKDIR /tmp
 
 COPY --from=GET_INFO /tmp/searxng.*.autobuild /tmp/
 
-RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
+RUN \
+    sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && apk update \
     && apk upgrade --no-cache \
     && apk add --no-cache -t build-dependencies \
@@ -57,7 +66,8 @@ COPY --from=BUILD_SEARXNG /usr /usr
 
 FROM scratch
 
-ENV PYTHONPATH="/usr/local/searxng" \
+ENV \
+    PYTHONPATH="/usr/local/searxng" \
     SEARXNG_SETTINGS_PATH="/usr/local/searxng/searx/settings.yml"
 
 COPY --from=REBASED_SEARXNG / /
