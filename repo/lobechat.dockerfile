@@ -1,4 +1,4 @@
-# Current Version: 1.8.1
+# Current Version: 1.8.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -31,8 +31,7 @@ RUN \
     && git clone -b $(cat "${WORKDIR}/lobechat.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"\
     && export LOBECHAT_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export LOBECHAT_VERSION=$(cat "${WORKDIR}/lobechat.version.autobuild") \
-    && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
-    && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
+    && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export LOBECHAT_CUSTOM_VERSION="${LOBECHAT_VERSION}-ZHIJIE-${LOBECHAT_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/LOBECHAT" \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch \
