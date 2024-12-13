@@ -1,10 +1,18 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.haproxy" > "${WORKDIR}/haproxy.json" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source" > "${WORKDIR}/haproxy.source.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source_branch" > "${WORKDIR}/haproxy.source_branch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch" > "${WORKDIR}/haproxy.patch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/haproxy.patch_branch.autobuild" && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" > "${WORKDIR}/haproxy.version.autobuild"
+RUN \
+    export WORKDIR=$(pwd) \
+    && cat "/opt/package.json" | jq -Sr ".repo.haproxy" > "${WORKDIR}/haproxy.json" \
+    && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" \
+    && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source" > "${WORKDIR}/haproxy.source.autobuild" \
+    && cat "${WORKDIR}/haproxy.json" | jq -Sr ".source_branch" > "${WORKDIR}/haproxy.source_branch.autobuild" \
+    && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch" > "${WORKDIR}/haproxy.patch.autobuild" \
+    && cat "${WORKDIR}/haproxy.json" | jq -Sr ".patch_branch" > "${WORKDIR}/haproxy.patch_branch.autobuild" \
+    && cat "${WORKDIR}/haproxy.json" | jq -Sr ".version" > "${WORKDIR}/haproxy.version.autobuild"
 
 FROM hezhijie0327/module:lua AS BUILD_LUA
 
@@ -28,7 +36,24 @@ COPY --from=BUILD_PCRE2 / /tmp/BUILDLIB/
 
 COPY --from=BUILD_ZLIB_NG / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" && export CPPFLAGS="-I${PREFIX}/include" && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" && ldconfig --verbose && git clone -b $(cat "${WORKDIR}/haproxy.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/haproxy.source.autobuild") "${WORKDIR}/BUILDTMP/HAPROXY" && git clone -b $(cat "${WORKDIR}/haproxy.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/haproxy.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export HAPROXY_SHA=$(cd "${WORKDIR}/BUILDTMP/HAPROXY" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export HAPROXY_VERSION=$(cat "${WORKDIR}/haproxy.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export HAPROXY_CUSTOM_VERSION="${HAPROXY_VERSION}-ZHIJIE-${HAPROXY_SHA}${PATCH_SHA}" && echo "${HAPROXY_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/HAPROXY/VERSION" && cd "${WORKDIR}/BUILDTMP/HAPROXY" && sed -i "s#-Wl,-Bdynamic##g" "${WORKDIR}/BUILDTMP/HAPROXY/Makefile" \
+RUN \
+    export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" \
+    && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" \
+    && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" \
+    && git clone -b $(cat "${WORKDIR}/haproxy.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/haproxy.source.autobuild") "${WORKDIR}/BUILDTMP/HAPROXY" \
+    && git clone -b $(cat "${WORKDIR}/haproxy.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/haproxy.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
+    && export HAPROXY_SHA=$(cd "${WORKDIR}/BUILDTMP/HAPROXY" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
+    && export HAPROXY_VERSION=$(cat "${WORKDIR}/haproxy.version.autobuild") \
+    && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
+    && export HAPROXY_CUSTOM_VERSION="${HAPROXY_VERSION}-ZHIJIE-${HAPROXY_SHA}${PATCH_SHA}" \
+    && cd "${WORKDIR}/BUILDTMP/HAPROXY" \
+    && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" \
+    && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" \
+    && export CPPFLAGS="-I${PREFIX}/include" \
+    && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" \
+    && ldconfig --verbose \
+    && echo "${HAPROXY_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/HAPROXY/VERSION" \
+    && sed -i "s#-Wl,-Bdynamic##g" "${WORKDIR}/BUILDTMP/HAPROXY/Makefile" \
     && make \
         CFLAGS="-O3 -march=native \$(SPEC_CFLAGS) -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2 -DLUA_C89_NUMBERS" \
         LDFLAGS="-static -pthread -ldl" \
@@ -57,7 +82,8 @@ RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP
         ZLIB_LIB="${PREFIX}/lib" \
         ZLIB_INC="${PREFIX}/include" \
         -j $(nproc) \
-    && strip -s "${WORKDIR}/BUILDTMP/HAPROXY/haproxy" && cp -rf "${WORKDIR}/BUILDTMP/HAPROXY/haproxy" "${WORKDIR}/BUILDKIT/haproxy"
+    && strip -s "${WORKDIR}/BUILDTMP/HAPROXY/haproxy" \
+    && cp -rf "${WORKDIR}/BUILDTMP/HAPROXY/haproxy" "${WORKDIR}/BUILDKIT/haproxy"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
