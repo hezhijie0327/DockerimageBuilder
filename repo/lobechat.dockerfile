@@ -1,4 +1,4 @@
-# Current Version: 1.8.2
+# Current Version: 1.8.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -36,6 +36,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LOBECHAT" \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json" \
+    && export PNPM_HOME="/pnpm" \
     && corepack enable \
     && corepack use pnpm \
     && pnpm i \
