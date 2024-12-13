@@ -1,10 +1,20 @@
-# Current Version: 1.3.5
+# Current Version: 1.3.6
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
 WORKDIR /tmp
 
-RUN export WORKDIR=$(pwd) && cat "/opt/package.json" | jq -Sr ".repo.unbound" > "${WORKDIR}/unbound.json" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source" > "${WORKDIR}/unbound.source.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".source_branch" > "${WORKDIR}/unbound.source_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch" > "${WORKDIR}/unbound.patch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch_branch" > "${WORKDIR}/unbound.patch_branch.autobuild" && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" > "${WORKDIR}/unbound.version.autobuild" && wget -O "${WORKDIR}/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" && wget -O "${WORKDIR}/root.hints" "https://www.internic.net/domain/named.cache"
+RUN \
+    export WORKDIR=$(pwd) \
+    && cat "/opt/package.json" | jq -Sr ".repo.unbound" > "${WORKDIR}/unbound.json" \
+    && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" \
+    && cat "${WORKDIR}/unbound.json" | jq -Sr ".source" > "${WORKDIR}/unbound.source.autobuild" \
+    && cat "${WORKDIR}/unbound.json" | jq -Sr ".source_branch" > "${WORKDIR}/unbound.source_branch.autobuild" \
+    && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch" > "${WORKDIR}/unbound.patch.autobuild" \
+    && cat "${WORKDIR}/unbound.json" | jq -Sr ".patch_branch" > "${WORKDIR}/unbound.patch_branch.autobuild" \
+    && cat "${WORKDIR}/unbound.json" | jq -Sr ".version" > "${WORKDIR}/unbound.version.autobuild" \
+    && wget -O "${WORKDIR}/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" \
+    && wget -O "${WORKDIR}/root.hints" "https://www.internic.net/domain/named.cache"
 
 FROM hezhijie0327/module:expat AS BUILD_EXPAT
 
@@ -42,7 +52,58 @@ COPY --from=BUILD_LIBSODIUM / /tmp/BUILDLIB/
 
 COPY --from=BUILD_OPENSSL / /tmp/BUILDLIB/
 
-RUN export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" && export CPPFLAGS="-I${PREFIX}/include" && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" && ldconfig --verbose && git clone -b $(cat "${WORKDIR}/unbound.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/unbound.source.autobuild") "${WORKDIR}/BUILDTMP/UNBOUND" && git clone -b $(cat "${WORKDIR}/unbound.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/unbound.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && export UNBOUND_SHA=$(cd "${WORKDIR}/BUILDTMP/UNBOUND" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export UNBOUND_VERSION=$(cat "${WORKDIR}/unbound.version.autobuild") && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") && export UNBOUND_CUSTOM_VERSION="${UNBOUND_VERSION}-ZHIJIE-${UNBOUND_SHA}${PATCH_SHA}" && cd "${WORKDIR}/BUILDTMP/UNBOUND" && sed -i "s/\(PACKAGE_STRING='unbound \)[0-9]\+\(\.[0-9]\+\)*'/\1${UNBOUND_CUSTOM_VERSION}'/;s/\(PACKAGE_VERSION='\)[0-9]\+\(\.[0-9]\+\)*'/\1${UNBOUND_CUSTOM_VERSION}'/" "${WORKDIR}/BUILDTMP/UNBOUND/configure" && ./configure --enable-cachedb --enable-dnscrypt --enable-dnstap --enable-fully-static --enable-ipsecmod --enable-ipset --enable-pie --enable-relro-now --enable-subnet --enable-tfo-client --enable-tfo-server --with-dynlibmodule --with-libbsd --with-libevent="${PREFIX}" --with-libexpat="${PREFIX}" --with-libhiredis="${PREFIX}" --with-libmnl="${PREFIX}" --with-libnghttp2="${PREFIX}" --with-libsodium="${PREFIX}" --without-pthreads --without-solaris-threads --with-ssl="${PREFIX}" && make -j $(nproc) && make install && "/usr/local/sbin/unbound-control-setup" -d "${WORKDIR}/BUILDKIT/etc/unbound" && rm -rf "/usr/local/sbin/unbound-control-setup" && strip -s /usr/local/sbin/unbound* && cp -rf /usr/local/sbin/unbound* ${WORKDIR}/BUILDKIT && "${WORKDIR}/BUILDKIT/unbound-anchor" -a "${WORKDIR}/BUILDKIT/etc/unbound/root.key" -c "${WORKDIR}/BUILDKIT/etc/unbound/icannbundle.pem" -f "/etc/resolv.conf" -r "${WORKDIR}/BUILDKIT/etc/unbound/root.hints" -v -R || logger "Please check root.key"
+RUN \
+    export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" \
+    && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" \
+    && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" \
+    && git clone -b $(cat "${WORKDIR}/unbound.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/unbound.source.autobuild") "${WORKDIR}/BUILDTMP/UNBOUND" \
+    && git clone -b $(cat "${WORKDIR}/unbound.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/unbound.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
+    && export UNBOUND_SHA=$(cd "${WORKDIR}/BUILDTMP/UNBOUND" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
+    && export UNBOUND_VERSION=$(cat "${WORKDIR}/unbound.version.autobuild") \
+    && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
+    && export UNBOUND_CUSTOM_VERSION="${UNBOUND_VERSION}-ZHIJIE-${UNBOUND_SHA}${PATCH_SHA}" \
+    && cd "${WORKDIR}/BUILDTMP/UNBOUND" \
+    && sed -i "s/\(PACKAGE_STRING='unbound \)[0-9]\+\(\.[0-9]\+\)*'/\1${UNBOUND_CUSTOM_VERSION}'/;s/\(PACKAGE_VERSION='\)[0-9]\+\(\.[0-9]\+\)*'/\1${UNBOUND_CUSTOM_VERSION}'/" "${WORKDIR}/BUILDTMP/UNBOUND/configure" \
+    && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" \
+    && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" \
+    && export CPPFLAGS="-I${PREFIX}/include" \
+    && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" \
+    && ldconfig --verbose \    
+    && ./configure \
+          --enable-cachedb \
+          --enable-dnscrypt \
+          --enable-dnstap \
+          --enable-fully-static \
+          --enable-ipsecmod \
+          --enable-ipset \
+          --enable-pie \
+          --enable-relro-now \
+          --enable-subnet \
+          --enable-tfo-client \
+          --enable-tfo-server \
+          --with-dynlibmodule \
+          --with-libbsd \
+          --with-libevent="${PREFIX}" \
+          --with-libexpat="${PREFIX}" \
+          --with-libhiredis="${PREFIX}" \
+          --with-libmnl="${PREFIX}" \
+          --with-libnghttp2="${PREFIX}" \
+          --with-libsodium="${PREFIX}" \
+          --without-pthreads \
+          --without-solaris-threads \
+          --with-ssl="${PREFIX}" \
+    && make -j $(nproc) \
+    && make install \
+    && "/usr/local/sbin/unbound-control-setup" -d "${WORKDIR}/BUILDKIT/etc/unbound" \
+    && rm -rf "/usr/local/sbin/unbound-control-setup" \
+    && strip -s /usr/local/sbin/unbound* \
+    && cp -rf /usr/local/sbin/unbound* ${WORKDIR}/BUILDKIT \
+    && "${WORKDIR}/BUILDKIT/unbound-anchor" \
+            -a "${WORKDIR}/BUILDKIT/etc/unbound/root.key" \
+            -c "${WORKDIR}/BUILDKIT/etc/unbound/icannbundle.pem" \
+            -f "/etc/resolv.conf" \
+            -r "${WORKDIR}/BUILDKIT/etc/unbound/root.hints" \
+            -v -R || logger "Please check root.key"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
