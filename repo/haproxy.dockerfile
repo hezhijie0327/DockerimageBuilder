@@ -1,4 +1,4 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -47,13 +47,13 @@ RUN \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export HAPROXY_CUSTOM_VERSION="${HAPROXY_VERSION}-ZHIJIE-${HAPROXY_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/HAPROXY" \
+    && echo "${HAPROXY_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/HAPROXY/VERSION" \
+    && sed -i "s#-Wl,-Bdynamic##g" "${WORKDIR}/BUILDTMP/HAPROXY/Makefile" \
     && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" \
     && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" \
     && export CPPFLAGS="-I${PREFIX}/include" \
     && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" \
     && ldconfig --verbose \
-    && echo "${HAPROXY_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/HAPROXY/VERSION" \
-    && sed -i "s#-Wl,-Bdynamic##g" "${WORKDIR}/BUILDTMP/HAPROXY/Makefile" \
     && make \
         CFLAGS="-O3 -march=native \$(SPEC_CFLAGS) -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2 -DLUA_C89_NUMBERS" \
         LDFLAGS="-static -pthread -ldl" \
