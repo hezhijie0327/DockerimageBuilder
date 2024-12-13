@@ -1,4 +1,4 @@
-# Current Version: 1.3.6
+# Current Version: 1.3.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -99,11 +99,11 @@ RUN \
     && strip -s /usr/local/sbin/unbound* \
     && cp -rf /usr/local/sbin/unbound* ${WORKDIR}/BUILDKIT \
     && "${WORKDIR}/BUILDKIT/unbound-anchor" \
-            -a "${WORKDIR}/BUILDKIT/etc/unbound/root.key" \
-            -c "${WORKDIR}/BUILDKIT/etc/unbound/icannbundle.pem" \
-            -f "/etc/resolv.conf" \
-            -r "${WORKDIR}/BUILDKIT/etc/unbound/root.hints" \
-            -v -R || logger "Please check root.key"
+          -a "${WORKDIR}/BUILDKIT/etc/unbound/root.key" \
+          -c "${WORKDIR}/BUILDKIT/etc/unbound/icannbundle.pem" \
+          -f "/etc/resolv.conf" \
+          -r "${WORKDIR}/BUILDKIT/etc/unbound/root.hints" \
+          -v -R || logger "Please check root.key"
 
 FROM hezhijie0327/gpg:latest AS GPG_SIGN
 
