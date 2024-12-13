@@ -1,4 +1,4 @@
-# Current Version: 1.8.3
+# Current Version: 1.8.4
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -40,8 +40,8 @@ RUN \
     && corepack enable \
     && corepack use pnpm \
     && pnpm i \
-    && mkdir -p "${WORKDIR}/BUILDTMP/LOBECHAT/sharp" \
-    && pnpm add sharp --prefix "${WORKDIR}/BUILDTMP/LOBECHAT/sharp" \
+    && mkdir -p "${WORKDIR}/BUILDTMP/LOBECHAT/deps" \
+    && pnpm add sharp --prefix "${WORKDIR}/BUILDTMP/LOBECHAT/deps" \
     && npm run build:docker
 
 FROM node:lts-slim AS BUILD_BASEOS
@@ -73,7 +73,7 @@ COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/.next/static /app/.next/static
 
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/public /app/public
 
-COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/sharp/node_modules/.pnpm /app/node_modules/.pnpm
+COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/deps/node_modules/.pnpm /app/node_modules/.pnpm
 
 COPY --from=BUILD_LOBECHAT /tmp/BUILDTMP/LOBECHAT/scripts/serverLauncher/startServer.js /app/startServer.js
 
