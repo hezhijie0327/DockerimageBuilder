@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -27,9 +27,7 @@ RUN \
     && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" \
     && ./configure --enable-static --prefix="${PREFIX}/EXPAT" --without-docbook --without-examples --without-tests \
     && make -j $(nproc) \
-    && make install \
-    && ldconfig --verbose \
-    && cd "${WORKDIR}"
+    && make install
 
 FROM scratch
 
