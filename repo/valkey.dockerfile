@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -35,6 +35,7 @@ RUN \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export VALKEY_CUSTOM_VERSION="${VALKEY_VERSION}-ZHIJIE-${VALKEY_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/VALKEY" \
+    && sed -i 's/\(VALKEY_VERSION "\)[0-9]\+\(\.[0-9]\+\)*"/\1'"${VALKEY_CUSTOM_VERSION}"'"/' "${WORKDIR}/BUILDTMP/VALKEY/src/version.h" \
     && export LD_LIBRARY_PATH="${PREFIX}/lib64:${PREFIX}/lib:${LD_LIBRARY_PATH}" \
     && export PKG_CONFIG_PATH="${PREFIX}/lib64/pkgconfig:${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" \
     && export CFLAGS="-I${PREFIX}/include -static" \
@@ -42,7 +43,6 @@ RUN \
     && export LDFLAGS="-L${PREFIX}/lib64 -L${PREFIX}/lib -s -static --static" \
     && export OPENSSL_PREFIX="${PREFIX}" \
     && ldconfig --verbose \
-    && sed -i 's/\(VALKEY_VERSION "\)[0-9]\+\(\.[0-9]\+\)*"/\1'"${VALKEY_CUSTOM_VERSION}"'"/' "${WORKDIR}/BUILDTMP/VALKEY/src/version.h" \
     && make BUILD_TLS="yes" MALLOC="jemalloc" \
     && make install \
     && rm -rf ${WORKDIR}/BUILDLIB/bin/valkey-check-* "${WORKDIR}/BUILDLIB/bin/valkey-sentinel" \
