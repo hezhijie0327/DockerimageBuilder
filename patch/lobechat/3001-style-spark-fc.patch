@@ -1,0 +1,572 @@
+diff --git a/src/config/modelProviders/spark.ts b/src/config/modelProviders/spark.ts
+index a3ad64c202d2..5f872fd74781 100644
+--- a/src/config/modelProviders/spark.ts
++++ b/src/config/modelProviders/spark.ts
+@@ -9,7 +9,6 @@ const Spark: ModelProviderCard = {
+         'Spark Lite 是一款轻量级大语言模型，具备极低的延迟与高效的处理能力，完全免费开放，支持实时在线搜索功能。其快速响应的特性使其在低算力设备上的推理应用和模型微调中表现出色，为用户带来出色的成本效益和智能体验，尤其在知识问答、内容生成及搜索场景下表现不俗。',
+       displayName: 'Spark Lite',
+       enabled: true,
+-      functionCall: false,
+       id: 'lite',
+       maxOutput: 4096,
+       tokens: 8192,
+@@ -19,7 +18,6 @@ const Spark: ModelProviderCard = {
+         'Spark Pro 是一款为专业领域优化的高性能大语言模型，专注数学、编程、医疗、教育等多个领域，并支持联网搜索及内置天气、日期等插件。其优化后模型在复杂知识问答、语言理解及高层次文本创作中展现出色表现和高效性能，是适合专业应用场景的理想选择。',
+       displayName: 'Spark Pro',
+       enabled: true,
+-      functionCall: false,
+       id: 'generalv3',
+       maxOutput: 8192,
+       tokens: 8192,
+@@ -29,7 +27,6 @@ const Spark: ModelProviderCard = {
+         'Spark Pro 128K 配置了特大上下文处理能力，能够处理多达128K的上下文信息，特别适合需通篇分析和长期逻辑关联处理的长文内容，可在复杂文本沟通中提供流畅一致的逻辑与多样的引用支持。',
+       displayName: 'Spark Pro 128K',
+       enabled: true,
+-      functionCall: false,
+       id: 'pro-128k',
+       maxOutput: 4096,
+       tokens: 131_072,
+@@ -39,7 +36,7 @@ const Spark: ModelProviderCard = {
+         'Spark Max 为功能最为全面的版本，支持联网搜索及众多内置插件。其全面优化的核心能力以及系统角色设定和函数调用功能，使其在各种复杂应用场景中的表现极为优异和出色。',
+       displayName: 'Spark Max',
+       enabled: true,
+-      functionCall: false,
++      functionCall: true,
+       id: 'generalv3.5',
+       maxOutput: 8192,
+       tokens: 8192,
+@@ -49,7 +46,7 @@ const Spark: ModelProviderCard = {
+         'Spark Max 32K 配置了大上下文处理能力，更强的上下文理解和逻辑推理能力，支持32K tokens的文本输入，适用于长文档阅读、私有知识问答等场景',
+       displayName: 'Spark Max 32K',
+       enabled: true,
+-      functionCall: false,
++      functionCall: true,
+       id: 'max-32k',
+       maxOutput: 8192,
+       tokens: 32_768,
+@@ -59,7 +56,7 @@ const Spark: ModelProviderCard = {
+         'Spark Ultra 是星火大模型系列中最为强大的版本，在升级联网搜索链路同时，提升对文本内容的理解和总结能力。它是用于提升办公生产力和准确响应需求的全方位解决方案，是引领行业的智能产品。',
+       displayName: 'Spark 4.0 Ultra',
+       enabled: true,
+-      functionCall: false,
++      functionCall: true,
+       id: '4.0Ultra',
+       maxOutput: 8192,
+       tokens: 8192,
+diff --git a/src/libs/agent-runtime/spark/index.test.ts b/src/libs/agent-runtime/spark/index.test.ts
+deleted file mode 100644
+index 7b6b1a2b1a06..000000000000
+--- a/src/libs/agent-runtime/spark/index.test.ts
++++ /dev/null
+@@ -1,255 +0,0 @@
+-// @vitest-environment node
+-import OpenAI from 'openai';
+-import { Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-import {
+-  ChatStreamCallbacks,
+-  LobeOpenAICompatibleRuntime,
+-  ModelProvider,
+-} from '@/libs/agent-runtime';
+-
+-import * as debugStreamModule from '../utils/debugStream';
+-import { LobeSparkAI } from './index';
+-
+-const provider = ModelProvider.Spark;
+-const defaultBaseURL = 'https://spark-api-open.xf-yun.com/v1';
+-
+-const bizErrorType = 'ProviderBizError';
+-const invalidErrorType = 'InvalidProviderAPIKey';
+-
+-// Mock the console.error to avoid polluting test output
+-vi.spyOn(console, 'error').mockImplementation(() => {});
+-
+-let instance: LobeOpenAICompatibleRuntime;
+-
+-beforeEach(() => {
+-  instance = new LobeSparkAI({ apiKey: 'test' });
+-
+-  // 使用 vi.spyOn 来模拟 chat.completions.create 方法
+-  vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
+-    new ReadableStream() as any,
+-  );
+-});
+-
+-afterEach(() => {
+-  vi.clearAllMocks();
+-});
+-
+-describe('LobeSparkAI', () => {
+-  describe('init', () => {
+-    it('should correctly initialize with an API key', async () => {
+-      const instance = new LobeSparkAI({ apiKey: 'test_api_key' });
+-      expect(instance).toBeInstanceOf(LobeSparkAI);
+-      expect(instance.baseURL).toEqual(defaultBaseURL);
+-    });
+-  });
+-
+-  describe('chat', () => {
+-    describe('Error', () => {
+-      it('should return OpenAIBizError with an openai error response when OpenAI.APIError is thrown', async () => {
+-        // Arrange
+-        const apiError = new OpenAI.APIError(
+-          400,
+-          {
+-            status: 400,
+-            error: {
+-              message: 'Bad Request',
+-            },
+-          },
+-          'Error message',
+-          {},
+-        );
+-
+-        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
+-
+-        // Act
+-        try {
+-          await instance.chat({
+-            messages: [{ content: 'Hello', role: 'user' }],
+-            model: 'general',
+-            temperature: 0,
+-          });
+-        } catch (e) {
+-          expect(e).toEqual({
+-            endpoint: defaultBaseURL,
+-            error: {
+-              error: { message: 'Bad Request' },
+-              status: 400,
+-            },
+-            errorType: bizErrorType,
+-            provider,
+-          });
+-        }
+-      });
+-
+-      it('should throw AgentRuntimeError with NoOpenAIAPIKey if no apiKey is provided', async () => {
+-        try {
+-          new LobeSparkAI({});
+-        } catch (e) {
+-          expect(e).toEqual({ errorType: invalidErrorType });
+-        }
+-      });
+-
+-      it('should return OpenAIBizError with the cause when OpenAI.APIError is thrown with cause', async () => {
+-        // Arrange
+-        const errorInfo = {
+-          stack: 'abc',
+-          cause: {
+-            message: 'api is undefined',
+-          },
+-        };
+-        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
+-
+-        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
+-
+-        // Act
+-        try {
+-          await instance.chat({
+-            messages: [{ content: 'Hello', role: 'user' }],
+-            model: 'general',
+-            temperature: 0,
+-          });
+-        } catch (e) {
+-          expect(e).toEqual({
+-            endpoint: defaultBaseURL,
+-            error: {
+-              cause: { message: 'api is undefined' },
+-              stack: 'abc',
+-            },
+-            errorType: bizErrorType,
+-            provider,
+-          });
+-        }
+-      });
+-
+-      it('should return OpenAIBizError with an cause response with desensitize Url', async () => {
+-        // Arrange
+-        const errorInfo = {
+-          stack: 'abc',
+-          cause: { message: 'api is undefined' },
+-        };
+-        const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
+-
+-        instance = new LobeSparkAI({
+-          apiKey: 'test',
+-
+-          baseURL: 'https://api.abc.com/v1',
+-        });
+-
+-        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
+-
+-        // Act
+-        try {
+-          await instance.chat({
+-            messages: [{ content: 'Hello', role: 'user' }],
+-            model: 'general',
+-            temperature: 0,
+-          });
+-        } catch (e) {
+-          expect(e).toEqual({
+-            endpoint: 'https://api.***.com/v1',
+-            error: {
+-              cause: { message: 'api is undefined' },
+-              stack: 'abc',
+-            },
+-            errorType: bizErrorType,
+-            provider,
+-          });
+-        }
+-      });
+-
+-      it('should throw an InvalidSparkAPIKey error type on 401 status code', async () => {
+-        // Mock the API call to simulate a 401 error
+-        const error = new Error('Unauthorized') as any;
+-        error.status = 401;
+-        vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(error);
+-
+-        try {
+-          await instance.chat({
+-            messages: [{ content: 'Hello', role: 'user' }],
+-            model: 'general',
+-            temperature: 0,
+-          });
+-        } catch (e) {
+-          // Expect the chat method to throw an error with InvalidSparkAPIKey
+-          expect(e).toEqual({
+-            endpoint: defaultBaseURL,
+-            error: new Error('Unauthorized'),
+-            errorType: invalidErrorType,
+-            provider,
+-          });
+-        }
+-      });
+-
+-      it('should return AgentRuntimeError for non-OpenAI errors', async () => {
+-        // Arrange
+-        const genericError = new Error('Generic Error');
+-
+-        vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(genericError);
+-
+-        // Act
+-        try {
+-          await instance.chat({
+-            messages: [{ content: 'Hello', role: 'user' }],
+-            model: 'general',
+-            temperature: 0,
+-          });
+-        } catch (e) {
+-          expect(e).toEqual({
+-            endpoint: defaultBaseURL,
+-            errorType: 'AgentRuntimeError',
+-            provider,
+-            error: {
+-              name: genericError.name,
+-              cause: genericError.cause,
+-              message: genericError.message,
+-              stack: genericError.stack,
+-            },
+-          });
+-        }
+-      });
+-    });
+-
+-    describe('DEBUG', () => {
+-      it('should call debugStream and return StreamingTextResponse when DEBUG_SPARK_CHAT_COMPLETION is 1', async () => {
+-        // Arrange
+-        const mockProdStream = new ReadableStream() as any; // 模拟的 prod 流
+-        const mockDebugStream = new ReadableStream({
+-          start(controller) {
+-            controller.enqueue('Debug stream content');
+-            controller.close();
+-          },
+-        }) as any;
+-        mockDebugStream.toReadableStream = () => mockDebugStream; // 添加 toReadableStream 方法
+-
+-        // 模拟 chat.completions.create 返回值，包括模拟的 tee 方法
+-        (instance['client'].chat.completions.create as Mock).mockResolvedValue({
+-          tee: () => [mockProdStream, { toReadableStream: () => mockDebugStream }],
+-        });
+-
+-        // 保存原始环境变量值
+-        const originalDebugValue = process.env.DEBUG_SPARK_CHAT_COMPLETION;
+-
+-        // 模拟环境变量
+-        process.env.DEBUG_SPARK_CHAT_COMPLETION = '1';
+-        vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
+-
+-        // 执行测试
+-        // 运行你的测试函数，确保它会在条件满足时调用 debugStream
+-        // 假设的测试函数调用，你可能需要根据实际情况调整
+-        await instance.chat({
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'general',
+-          stream: true,
+-          temperature: 0,
+-        });
+-
+-        // 验证 debugStream 被调用
+-        expect(debugStreamModule.debugStream).toHaveBeenCalled();
+-
+-        // 恢复原始环境变量值
+-        process.env.DEBUG_SPARK_CHAT_COMPLETION = originalDebugValue;
+-      });
+-    });
+-  });
+-});
+diff --git a/src/libs/agent-runtime/spark/index.ts b/src/libs/agent-runtime/spark/index.ts
+index 8cc8dfe1e28e..1304e5e5ec07 100644
+--- a/src/libs/agent-runtime/spark/index.ts
++++ b/src/libs/agent-runtime/spark/index.ts
+@@ -1,13 +1,89 @@
+-import { ModelProvider } from '../types';
+-import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
+-
+-export const LobeSparkAI = LobeOpenAICompatibleFactory({
+-  baseURL: 'https://spark-api-open.xf-yun.com/v1',
+-  chatCompletion: {
+-    noUserId: true,
+-  },
+-  debug: {
+-    chatCompletion: () => process.env.DEBUG_SPARK_CHAT_COMPLETION === '1',
+-  },
+-  provider: ModelProvider.Spark,
+-});
++import OpenAI, { ClientOptions } from 'openai';
++
++import { LobeRuntimeAI } from '../BaseAI';
++import { AgentRuntimeErrorType } from '../error';
++import { ChatCompetitionOptions, ChatStreamPayload, ModelProvider } from '../types';
++import { AgentRuntimeError } from '../utils/createError';
++import { debugStream } from '../utils/debugStream';
++import { desensitizeUrl } from '../utils/desensitizeUrl';
++import { handleOpenAIError } from '../utils/handleOpenAIError';
++import { convertOpenAIMessages } from '../utils/openaiHelpers';
++import { StreamingResponse } from '../utils/response';
++import { SparkAIStream } from '../utils/streams';
++import { transformSparkResponseToStream } from '../utils/streams/spark'
++
++const DEFAULT_BASE_URL = 'https://spark-api-open.xf-yun.com/v1';
++
++export class LobeSparkAI implements LobeRuntimeAI {
++  client: OpenAI;
++  baseURL: string;
++
++  constructor({
++    apiKey,
++    baseURL = DEFAULT_BASE_URL,
++    ...res
++  }: ClientOptions & Record<string, any> = {}) {
++    if (!apiKey) throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidProviderAPIKey);
++    this.client = new OpenAI({ apiKey, baseURL, ...res });
++    this.baseURL = this.client.baseURL;
++  }
++
++  async chat(payload: ChatStreamPayload, options?: ChatCompetitionOptions) {
++    try {
++      const params = await this.buildCompletionsParams(payload);
++
++      const response = await this.client.chat.completions.create(
++        params as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
++      );
++
++      if (params.stream) {
++        const [prod, debug] = response.tee();
++
++        if (process.env.DEBUG_SPARK_CHAT_COMPLETION === '1') {
++          debugStream(debug.toReadableStream()).catch(console.error);
++        }
++
++        return StreamingResponse(SparkAIStream(prod, options?.callback), {
++          headers: options?.headers,
++        });
++      }
++
++      const stream = transformSparkResponseToStream(response as unknown as OpenAI.ChatCompletion);
++
++      if (process.env.DEBUG_SPARK_CHAT_COMPLETION === '1') {
++        console.log(stream);
++      }
++
++      return StreamingResponse(SparkAIStream(stream, options?.callback), {
++        headers: options?.headers,
++      });
++    } catch (error) {
++      const { errorResult, RuntimeError } = handleOpenAIError(error);
++
++      const errorType = RuntimeError || AgentRuntimeErrorType.ProviderBizError;
++      let desensitizedEndpoint = this.baseURL;
++
++      if (this.baseURL !== DEFAULT_BASE_URL) {
++        desensitizedEndpoint = desensitizeUrl(this.baseURL);
++      }
++      throw AgentRuntimeError.chat({
++        endpoint: desensitizedEndpoint,
++        error: errorResult,
++        errorType,
++        provider: ModelProvider.Spark,
++      });
++    }
++  }
++
++  private async buildCompletionsParams(payload: ChatStreamPayload) {
++    const { messages, ...params } = payload;
++
++    return {
++      messages: await convertOpenAIMessages(messages as any),
++      ...params,
++      stream: !payload.tools,
++    };
++  }
++}
++
++export default LobeSparkAI;
+diff --git a/src/libs/agent-runtime/utils/streams/index.ts b/src/libs/agent-runtime/utils/streams/index.ts
+index e5518ce05221..a3ac8983d97e 100644
+--- a/src/libs/agent-runtime/utils/streams/index.ts
++++ b/src/libs/agent-runtime/utils/streams/index.ts
+@@ -7,3 +7,4 @@ export * from './ollama';
+ export * from './openai';
+ export * from './protocol';
+ export * from './qwen';
++export * from './spark';
+diff --git a/src/libs/agent-runtime/utils/streams/spark.ts b/src/libs/agent-runtime/utils/streams/spark.ts
+new file mode 100644
+index 000000000000..ee74f424df31
+--- /dev/null
++++ b/src/libs/agent-runtime/utils/streams/spark.ts
+@@ -0,0 +1,134 @@
++import OpenAI from 'openai';
++import type { Stream } from 'openai/streaming';
++
++import { ChatStreamCallbacks } from '../../types';
++import {
++  StreamProtocolChunk,
++  StreamProtocolToolCallChunk,
++  convertIterableToStream,
++  createCallbacksTransformer,
++  createSSEProtocolTransformer,
++  generateToolCallId,
++} from './protocol';
++
++export function transformSparkResponseToStream(data: OpenAI.ChatCompletion) {
++  return new ReadableStream({
++    start(controller) {
++      const chunk: OpenAI.ChatCompletionChunk = {
++        choices: data.choices.map((choice: OpenAI.ChatCompletion.Choice) => {
++          const toolCallsArray = choice.message.tool_calls
++            ? Array.isArray(choice.message.tool_calls)
++              ? choice.message.tool_calls
++              : [choice.message.tool_calls]
++            : []; // 如果不是数组，包装成数组
++
++          return {
++            delta: {
++              content: choice.message.content,
++              role: choice.message.role,
++              tool_calls: toolCallsArray.map(
++                (tool, index): OpenAI.ChatCompletionChunk.Choice.Delta.ToolCall => ({
++                  function: tool.function,
++                  id: tool.id,
++                  index,
++                  type: tool.type,
++                }),
++              ),
++            },
++            finish_reason: null,
++            index: choice.index,
++            logprobs: choice.logprobs,
++          };
++        }),
++        created: data.created,
++        id: data.id,
++        model: data.model,
++        object: 'chat.completion.chunk',
++      };
++
++      controller.enqueue(chunk);
++
++      controller.enqueue({
++        choices: data.choices.map((choice: OpenAI.ChatCompletion.Choice) => ({
++          delta: {
++            content: null,
++            role: choice.message.role,
++          },
++          finish_reason: choice.finish_reason,
++          index: choice.index,
++          logprobs: choice.logprobs,
++        })),
++        created: data.created,
++        id: data.id,
++        model: data.model,
++        object: 'chat.completion.chunk',
++        system_fingerprint: data.system_fingerprint,
++      } as OpenAI.ChatCompletionChunk);
++      controller.close();
++    },
++  });
++}
++
++export const transformSparkStream = (chunk: OpenAI.ChatCompletionChunk): StreamProtocolChunk => {
++  const item = chunk.choices[0];
++
++  if (!item) {
++    return { data: chunk, id: chunk.id, type: 'data' };
++  }
++
++  if (item.delta?.tool_calls) {
++    const toolCallsArray = Array.isArray(item.delta.tool_calls)
++      ? item.delta.tool_calls
++      : [item.delta.tool_calls]; // 如果不是数组，包装成数组
++
++    if (toolCallsArray.length > 0) {
++      return {
++        data: toolCallsArray.map((toolCall, index) => ({
++          function: toolCall.function,
++          id: toolCall.id || generateToolCallId(index, toolCall.function?.name),
++          index: typeof toolCall.index !== 'undefined' ? toolCall.index : index,
++          type: toolCall.type || 'function',
++        })),
++        id: chunk.id,
++        type: 'tool_calls',
++      } as StreamProtocolToolCallChunk;
++    }
++  }
++
++  if (item.finish_reason) {
++    // one-api 的流式接口，会出现既有 finish_reason ，也有 content 的情况
++    //  {"id":"demo","model":"deepl-en","choices":[{"index":0,"delta":{"role":"assistant","content":"Introduce yourself."},"finish_reason":"stop"}]}
++
++    if (typeof item.delta?.content === 'string' && !!item.delta.content) {
++      return { data: item.delta.content, id: chunk.id, type: 'text' };
++    }
++
++    return { data: item.finish_reason, id: chunk.id, type: 'stop' };
++  }
++
++  if (typeof item.delta?.content === 'string') {
++    return { data: item.delta.content, id: chunk.id, type: 'text' };
++  }
++
++  if (item.delta?.content === null) {
++    return { data: item.delta, id: chunk.id, type: 'data' };
++  }
++
++  return {
++    data: { delta: item.delta, id: chunk.id, index: item.index },
++    id: chunk.id,
++    type: 'data',
++  };
++};
++
++export const SparkAIStream = (
++  stream: Stream<OpenAI.ChatCompletionChunk> | ReadableStream,
++  callbacks?: ChatStreamCallbacks,
++) => {
++  const readableStream =
++    stream instanceof ReadableStream ? stream : convertIterableToStream(stream);
++
++  return readableStream
++    .pipeThrough(createSSEProtocolTransformer(transformSparkStream))
++    .pipeThrough(createCallbacksTransformer(callbacks));
++};
