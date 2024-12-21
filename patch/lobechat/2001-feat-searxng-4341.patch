@@ -852,10 +852,10 @@ index 3ee6f23a8dc7..2da5b282111c 100644
  export type ToolsRouter = typeof toolsRouter;
 diff --git a/src/server/routers/tools/search.ts b/src/server/routers/tools/search.ts
 new file mode 100644
-index 000000000000..aa96658f6ae5
+index 000000000000..8499905ba51e
 --- /dev/null
 +++ b/src/server/routers/tools/search.ts
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,28 @@
 +import { TRPCError } from '@trpc/server';
 +import { z } from 'zod';
 +
@@ -863,7 +863,6 @@ index 000000000000..aa96658f6ae5
 +import { isServerMode } from '@/const/version';
 +import { authedProcedure, passwordProcedure, router } from '@/libs/trpc';
 +import { SearXNGClient } from '@/server/modules/SearXNG';
-+import { SEARCH_SEARXNG_NOT_CONFIG } from '@/types/tool/search';
 +
 +const searchProcedure = isServerMode ? authedProcedure : passwordProcedure;
 +
@@ -877,7 +876,7 @@ index 000000000000..aa96658f6ae5
 +    )
 +    .query(async ({ input }) => {
 +      if (!toolsEnv.SEARXNG_URL) {
-+        throw new TRPCError({ code: 'NOT_IMPLEMENTED', message: SEARCH_SEARXNG_NOT_CONFIG });
++        throw new TRPCError({ code: 'SERVICE_UNAVAILABLE', message: 'SearXNG is not configured' });
 +      }
 +
 +      const client = new SearXNGClient(toolsEnv.SEARXNG_URL);
@@ -885,61 +884,6 @@ index 000000000000..aa96658f6ae5
 +      return await client.search(input.query, input.searchEngine);
 +    }),
 +});
-diff --git a/src/services/message/client.ts b/src/services/message/client.ts
-index 3ee501251feb..f56dcc62659e 100644
---- a/src/services/message/client.ts
-+++ b/src/services/message/client.ts
-@@ -86,6 +86,10 @@ export class ClientService implements IMessageService {
-     return MessageModel.updatePluginState(id, value);
-   }
- 
-+  async updateMessagePluginError(id: string, error: Record<string, any> | null) {
-+    return MessageModel.updatePlugin(id, { error });
-+  }
-+
-   async updateMessagePluginArguments(id: string, value: string | Record<string, any>) {
-     const args = typeof value === 'string' ? value : JSON.stringify(value);
- 
-diff --git a/src/services/message/server.ts b/src/services/message/server.ts
-index 6562b4ec3e25..23d5afb4adcb 100644
---- a/src/services/message/server.ts
-+++ b/src/services/message/server.ts
-@@ -50,9 +50,9 @@ export class ServerService implements IMessageService {
-     return lambdaClient.message.update.mutate({ id, value: { error } });
-   }
- 
--  async updateMessagePluginError(id: string, error: ChatMessageError): Promise<any> {
--    return lambdaClient.message.update.mutate({ id, value: { pluginError: error } });
--  }
-+  // async updateMessagePluginError(id: string, error: ChatMessageError): Promise<any> {
-+  //   return lambdaClient.message.update.mutate({ id, value: { pluginError: error } });
-+  // }
- 
-   async updateMessagePluginArguments(
-     id: string,
-@@ -79,6 +79,10 @@ export class ServerService implements IMessageService {
-     return lambdaClient.message.updatePluginState.mutate({ id, value });
-   }
- 
-+  updateMessagePluginError(id: string, value: any): Promise<any> {
-+    return lambdaClient.message.updateMessagePlugin.mutate({ id, value: { error: value } });
-+  }
-+
-   bindMessagesToTopic(_topicId: string, _messageIds: string[]): Promise<any> {
-     throw new Error('Method not implemented.');
-   }
-diff --git a/src/services/message/type.ts b/src/services/message/type.ts
-index d151a80aff49..764ef287f097 100644
---- a/src/services/message/type.ts
-+++ b/src/services/message/type.ts
-@@ -21,6 +21,7 @@ export interface IMessageService {
- 
-   updateMessageError(id: string, error: ChatMessageError): Promise<any>;
-   updateMessage(id: string, message: Partial<DB_Message>): Promise<any>;
-+  updateMessagePluginError(id: string, error: ChatMessageError | null): Promise<any>;
-   updateMessageTTS(id: string, tts: Partial<ChatTTS> | false): Promise<any>;
-   updateMessageTranslate(id: string, translate: Partial<ChatTranslate> | false): Promise<any>;
-   updateMessagePluginState(id: string, value: Record<string, any>): Promise<any>;
 diff --git a/src/services/search.ts b/src/services/search.ts
 new file mode 100644
 index 000000000000..dd6075691f7a
@@ -956,10 +900,10 @@ index 000000000000..dd6075691f7a
 +
 +export const searchService = new SearchService();
 diff --git a/src/store/chat/slices/builtinTool/action.ts b/src/store/chat/slices/builtinTool/action.ts
-index d6e4ee3e7b75..9dc684bb9900 100644
+index d6e4ee3e7b75..fd04f1216d38 100644
 --- a/src/store/chat/slices/builtinTool/action.ts
 +++ b/src/store/chat/slices/builtinTool/action.ts
-@@ -5,13 +5,22 @@ import { StateCreator } from 'zustand/vanilla';
+@@ -5,13 +5,17 @@ import { StateCreator } from 'zustand/vanilla';
  
  import { useClientDataSWR } from '@/libs/swr';
  import { fileService } from '@/services/file';
@@ -971,18 +915,13 @@ index d6e4ee3e7b75..9dc684bb9900 100644
  import { useFileStore } from '@/store/file';
 +import { CreateMessageParams } from '@/types/message';
  import { DallEImageItem } from '@/types/tool/dalle';
-+import {
-+  SEARCH_SEARXNG_NOT_CONFIG,
-+  SearchContent,
-+  SearchQuery,
-+  SearchResponse,
-+} from '@/types/tool/search';
++import { SearchContent, SearchQuery } from '@/types/tool/search';
  import { setNamespace } from '@/utils/storeDebug';
 +import { nanoid } from '@/utils/uuid';
  
  const n = setNamespace('tool');
  
-@@ -21,8 +30,25 @@ const SWR_FETCH_KEY = 'FetchImageItem';
+@@ -21,8 +25,25 @@ const SWR_FETCH_KEY = 'FetchImageItem';
   */
  export interface ChatBuiltinToolAction {
    generateImageFromPrompts: (items: DallEImageItem[], id: string) => Promise<void>;
@@ -1008,7 +947,7 @@ index d6e4ee3e7b75..9dc684bb9900 100644
    updateImageItem: (id: string, updater: (data: DallEImageItem[]) => void) => Promise<void>;
    useFetchDalleImageItem: (id: string) => SWRResponse;
  }
-@@ -83,12 +109,93 @@ export const chatToolSlice: StateCreator<
+@@ -83,12 +104,80 @@ export const chatToolSlice: StateCreator<
        });
      });
    },
@@ -1059,23 +998,10 @@ index d6e4ee3e7b75..9dc684bb9900 100644
 +  },
 +  searchWithSearXNG: async (id, params, aiSummary = true) => {
 +    get().toggleSearchLoading(id, true);
-+    let data: SearchResponse | undefined;
-+    try {
-+      data = await searchService.search(params.query, params.searchEngines);
-+      await get().updatePluginState(id, data);
-+    } catch (e) {
-+      if ((e as Error).message === SEARCH_SEARXNG_NOT_CONFIG) {
-+        console.log('SearXNG is not configured');
-+        await get().internal_updateMessagePluginError(id, {
-+          message: 'SearXNG is not configured',
-+          type: 'PluginSettingsInvalid',
-+        });
-+      }
-+    }
++    const data = await searchService.search(params.query, params.searchEngines);
++    await get().updatePluginState(id, data);
 +
 +    get().toggleSearchLoading(id, false);
-+
-+    if (!data) return;
 +
 +    // 只取前 5 个结果作为上下文
 +    const searchContent: SearchContent[] = data.results.slice(0, 5).map((item) => ({
@@ -1102,7 +1028,7 @@ index d6e4ee3e7b75..9dc684bb9900 100644
    toggleDallEImageLoading: (key, value) => {
      set(
        { dalleImageLoading: { ...get().dalleImageLoading, [key]: value } },
-@@ -96,6 +203,11 @@ export const chatToolSlice: StateCreator<
+@@ -96,6 +185,11 @@ export const chatToolSlice: StateCreator<
        n('toggleDallEImageLoading'),
      );
    },
@@ -1114,7 +1040,7 @@ index d6e4ee3e7b75..9dc684bb9900 100644
    updateImageItem: async (id, updater) => {
      const message = chatSelectors.getMessageById(id)(get());
      if (!message) return;
-@@ -105,6 +217,7 @@ export const chatToolSlice: StateCreator<
+@@ -105,6 +199,7 @@ export const chatToolSlice: StateCreator<
      const nextContent = produce(data, updater);
      await get().internal_updateMessageContent(id, JSON.stringify(nextContent));
    },
@@ -1153,29 +1079,6 @@ index ce1de8403eec..d87dff2d2a76 100644
    isGeneratingDallEImage,
 +  isSearXNGSearching,
  };
-diff --git a/src/store/chat/slices/message/action.ts b/src/store/chat/slices/message/action.ts
-index 7e7cdefb7ea3..3c0d46f4ea25 100644
---- a/src/store/chat/slices/message/action.ts
-+++ b/src/store/chat/slices/message/action.ts
-@@ -74,6 +74,7 @@ export interface ChatMessageAction {
-    * update the message error with optimistic update
-    */
-   internal_updateMessageError: (id: string, error: ChatMessageError | null) => Promise<void>;
-+  internal_updateMessagePluginError: (id: string, error: ChatMessageError | null) => Promise<void>;
-   /**
-    * create a message with optimistic update
-    */
-@@ -266,6 +267,10 @@ export const chatMessage: StateCreator<
-     await messageService.updateMessage(id, { error });
-     await get().refreshMessages();
-   },
-+  internal_updateMessagePluginError: async (id, error) => {
-+    await messageService.updateMessagePluginError(id, error);
-+    await get().refreshMessages();
-+  },
-   internal_updateMessageContent: async (id, content, toolCalls) => {
-     const { internal_dispatchMessage, refreshMessages, internal_transformToolCalls } = get();
- 
 diff --git a/src/tools/index.ts b/src/tools/index.ts
 index 6dc1aaf90000..1a153842978d 100644
 --- a/src/tools/index.ts
@@ -2429,15 +2332,14 @@ index 000000000000..75416e91bbab
 +};
 diff --git a/src/types/tool/search.ts b/src/types/tool/search.ts
 new file mode 100644
-index 000000000000..ed03c99785d5
+index 000000000000..4d8ea25797bc
 --- /dev/null
 +++ b/src/types/tool/search.ts
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,37 @@
 +export interface SearchQuery {
 +  query: string;
 +  searchEngines?: string[];
 +}
-+export const SEARCH_SEARXNG_NOT_CONFIG = 'SearXNG is not configured';
 +
 +export interface SearchResponse {
 +  answers: any[];
