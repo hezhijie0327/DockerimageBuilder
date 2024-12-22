@@ -334,10 +334,10 @@ index 819a30a5175d..f813686e01fb 100644
            temperature: 0.999,
          });
 diff --git a/src/libs/agent-runtime/qwen/index.ts b/src/libs/agent-runtime/qwen/index.ts
-index 0bfee54edd10..38e45330f3d1 100644
+index 0bfee54edd10..b0cc566f5b0b 100644
 --- a/src/libs/agent-runtime/qwen/index.ts
 +++ b/src/libs/agent-runtime/qwen/index.ts
-@@ -1,129 +1,32 @@
+@@ -1,129 +1,50 @@
 -import { omit } from 'lodash-es';
 -import OpenAI, { ClientOptions } from 'openai';
 +import { ModelProvider } from '../types';
@@ -469,16 +469,34 @@ index 0bfee54edd10..38e45330f3d1 100644
 -      : omit(params, 'frequency_penalty');
 -  }
 -}
++/*
++  QwenLegacyModels: A set of legacy Qwen models that do not support presence_penalty.
++  Currently, presence_penalty is only supported on Qwen commercial models and open-source models starting from Qwen 1.5 and later.
++*/
++export const QwenLegacyModels = new Set([
++  'qwen-72b-chat',
++  'qwen-14b-chat',
++  'qwen-7b-chat',
++  'qwen-1.8b-chat',
++  'qwen-1.8b-longcontext-chat',
++]);
++
 +export const LobeQwenAI = LobeOpenAICompatibleFactory({
 +  baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
 +  chatCompletion: {
 +    handlePayload: (payload) => {
-+      const { model, temperature, top_p, ...rest } = payload;
++      const { model, presence_penalty, temperature, top_p, ...rest } = payload;
 +
 +      return {
 +        ...rest,
 +        frequency_penalty: undefined,
 +        model,
++        presence_penalty:
++          QwenLegacyModels.has(model)
++            ? undefined
++            : (presence_penalty !== undefined && presence_penalty >= -2 && presence_penalty <= 2)
++              ? presence_penalty
++              : undefined,
 +        stream: !payload.tools,
 +        temperature: (temperature !== undefined && temperature >= 0 && temperature < 2) ? temperature : undefined,
 +        ...(model.startsWith('qwen-vl') ? {
