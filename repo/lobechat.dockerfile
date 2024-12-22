@@ -1,4 +1,4 @@
-# Current Version: 1.8.4
+# Current Version: 1.8.5
 
 FROM hezhijie0327/base:alpine AS GET_INFO
 
@@ -23,6 +23,8 @@ WORKDIR /tmp
 COPY --from=GET_INFO /tmp/lobechat.*.autobuild /tmp/
 
 COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
+
+ENV NEXT_PUBLIC_CLIENT_DB="pglite"
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP" \
