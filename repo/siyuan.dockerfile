@@ -1,4 +1,4 @@
-# Current Version: 1.1.4
+# Current Version: 1.1.5
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -28,9 +28,9 @@ RUN \
 
 FROM node:lts-slim AS build_siyuan_app
 
-WORKDIR /app
+WORKDIR /siyuan
 
-COPY --from=get_info /tmp/BUILDTMP/SIYUAN/app /app
+COPY --from=get_info /tmp/BUILDTMP/SIYUAN/app /siyuan
 
 RUN \
     npm install -g pnpm \
@@ -39,9 +39,9 @@ RUN \
 
 FROM golang:latest AS build_siyuan_kernel
 
-WORKDIR /kernel
+WORKDIR /siyuan
 
-COPY --from=get_info /tmp/BUILDTMP/SIYUAN/kernel /kernel
+COPY --from=get_info /tmp/BUILDTMP/SIYUAN/kernel /siyuan
 
 ENV CGO_ENABLED="1"
 
@@ -50,7 +50,7 @@ RUN \
 
 FROM hezhijie0327/gpg:latest AS gpg_sign
 
-COPY --from=build_siyuan_kernel /kernel/kernel /tmp/BUILDKIT/kernel
+COPY --from=build_siyuan_kernel /siyuan/kernel /tmp/BUILDKIT/kernel
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/kernel"
 
@@ -62,10 +62,10 @@ COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 
 COPY --from=gpg_sign /tmp/BUILDKIT/ /opt/siyuan/
 
-COPY --from=build_siyuan_app /app/appearance /opt/siyuan/appearance
-COPY --from=build_siyuan_app /app/stage /opt/siyuan/stage
-COPY --from=build_siyuan_app /app/guide /opt/siyuan/guide
-COPY --from=build_siyuan_app /app/changelogs /opt/siyuan/changelogs
+COPY --from=build_siyuan_app /siyuan/appearance /opt/siyuan/appearance
+COPY --from=build_siyuan_app /siyuan/stage /opt/siyuan/stage
+COPY --from=build_siyuan_app /siyuan/guide /opt/siyuan/guide
+COPY --from=build_siyuan_app /siyuan/changelogs /opt/siyuan/changelogs
 
 RUN find /opt/siyuan/ -name .git | xargs rm -rf
 
