@@ -1,4 +1,4 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -22,7 +22,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/XRAY" \
     && sed -i "s/Version_x, Version_y, Version_z/\"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 1)\", \"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 2)\", \"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 3)\"/g" "${WORKDIR}/BUILDTMP/XRAY/core/core.go"
 
-FROM hezhijie0327/base:ubuntu AS build_xray
+FROM golang:latest AS build_xray
 
 WORKDIR /xray
 
