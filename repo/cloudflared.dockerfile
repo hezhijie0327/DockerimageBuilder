@@ -1,4 +1,4 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -34,6 +34,8 @@ RUN \
     make cloudflared
 
 FROM hezhijie0327/gpg:latest AS gpg_sign
+
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_cloudflared /cloudflared/cloudflared /tmp/BUILDKIT/cloudflared
 
