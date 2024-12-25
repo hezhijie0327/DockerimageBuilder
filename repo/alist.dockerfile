@@ -1,4 +1,4 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -26,19 +26,17 @@ RUN \
 
 FROM golang:latest AS build_alist
 
-WORKDIR /tmp
+WORKDIR /alist
 
-COPY --from=get_info /tmp/BUILDTMP/ALIST /tmp/BUILDTMP/ALIST
-COPY --from=get_info /tmp/BUILDTMP/ALIST_WEB /tmp/BUILDTMP/ALIST/public/dist
+COPY --from=get_info /tmp/BUILDTMP/ALIST /alist
+COPY --from=get_info /tmp/BUILDTMP/ALIST_WEB /alist/public/dist
 
 RUN \
-    export WORKDIR=$(pwd) \
-    && cd "${WORKDIR}/BUILDTMP/ALIST" \
-    && go build -o "${WORKDIR}/BUILDTMP/ALIST/alist" -ldflags="-w -s -X github.com/alist-org/alist/v3/internal/conf.Version=$(cat ${WORKDIR}/BUILDTMP/ALIST/ALIST_CUSTOM_VERSION)" -tags=jsoniter .
+    go build -o ./alist -ldflags="-w -s -X github.com/alist-org/alist/v3/internal/conf.Version=$(cat /alist/ALIST_CUSTOM_VERSION)" -tags=jsoniter .
 
 FROM hezhijie0327/gpg:latest AS gpg_sign
 
-COPY --from=build_alist /tmp/BUILDTMP/ALIST/alist /tmp/BUILDKIT/alist
+COPY --from=build_alist /alist/alist /tmp/BUILDKIT/alist
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/alist"
 
