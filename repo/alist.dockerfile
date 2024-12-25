@@ -1,4 +1,4 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -43,6 +43,8 @@ RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' 
 FROM busybox:latest AS rebased_alist
 
 WORKDIR /tmp
+
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=gpg_sign /tmp/BUILDKIT /opt/alist
 
