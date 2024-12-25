@@ -1,4 +1,4 @@
-# Current Version: 1.8.6
+# Current Version: 1.8.7
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -43,7 +43,8 @@ RUN \
 
 FROM build_baseos AS build_lobechat
 
-ENV NODE_OPTIONS="--max-old-space-size=8192" \
+ENV \
+    NODE_OPTIONS="--max-old-space-size=8192" \
     NEXT_PUBLIC_CLIENT_DB="pglite"
 
 WORKDIR /app
