@@ -1,4 +1,4 @@
-# Current Version: 2.1.8
+# Current Version: 2.1.9
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -52,6 +52,8 @@ RUN \
     && make go-build VERSION="$(cat /adguardhome/ADGUARDHOME_CUSTOM_VERSION)"
 
 FROM hezhijie0327/gpg:latest AS gpg_sign
+
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_adguardhome /adguardhome/AdGuardHome /tmp/BUILDKIT/AdGuardHome
 
