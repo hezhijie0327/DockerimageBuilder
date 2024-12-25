@@ -1,6 +1,6 @@
 # Current Version: 1.8.6
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -23,7 +23,7 @@ RUN \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json"
 
-FROM node:lts-slim AS BUILD_BASEOS
+FROM node:lts-slim AS build_baseos
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
@@ -41,15 +41,15 @@ RUN \
     && cp /usr/local/bin/node /distroless/bin/node \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
-FROM BUILD_BASEOS AS BUILD_LOBECHAT
+FROM build_baseos AS build_lobechat
 
 ENV NODE_OPTIONS="--max-old-space-size=8192" \
     NEXT_PUBLIC_CLIENT_DB="pglite"
 
 WORKDIR /app
 
-COPY --from=GET_INFO /tmp/BUILDTMP/LOBECHAT/package.json ./
-COPY --from=GET_INFO /tmp/BUILDTMP/LOBECHAT/.npmrc ./
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json ./
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 
 RUN \
     export PNPM_HOME="/pnpm" \
@@ -59,23 +59,23 @@ RUN \
     && mkdir -p /deps \
     && pnpm add sharp --prefix /deps
 
-COPY --from=GET_INFO /tmp/BUILDTMP/LOBECHAT/ .
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/ .
 
 RUN npm run build:docker
 
-FROM busybox:latest AS REBASED_LOBECHAT
+FROM busybox:latest AS rebased_lobechat
 
-COPY --from=GET_INFO /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=BUILD_BASEOS /distroless/ /
+COPY --from=build_baseos /distroless/ /
 
-COPY --from=BUILD_LOBECHAT /app/public /app/public
+COPY --from=build_lobechat /app/public /app/public
 
-COPY --from=BUILD_LOBECHAT /app/.next/standalone /app/
-COPY --from=BUILD_LOBECHAT /app/.next/static /app/.next/static
-COPY --from=BUILD_LOBECHAT /deps/node_modules/.pnpm /app/node_modules/.pnpm
+COPY --from=build_lobechat /app/.next/standalone /app/
+COPY --from=build_lobechat /app/.next/static /app/.next/static
+COPY --from=build_lobechat /deps/node_modules/.pnpm /app/node_modules/.pnpm
 
-COPY --from=BUILD_LOBECHAT /app/scripts/serverLauncher/startServer.js /app/startServer.js
+COPY --from=build_lobechat /app/scripts/serverLauncher/startServer.js /app/startServer.js
 
 FROM scratch
 
@@ -86,7 +86,7 @@ ENV \
     FEATURE_FLAGS="-check_updates,+pin_list,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
-COPY --from=REBASED_LOBECHAT / /
+COPY --from=rebased_lobechat / /
 
 EXPOSE 3210/tcp
 
