@@ -1,4 +1,4 @@
-# Current Version: 1.9.7
+# Current Version: 1.9.8
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -112,7 +112,7 @@ RUN \
     && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
     && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
-    && apt install -qy jellyfin-ffmpeg6 \
+    && apt install -qy jellyfin-ffmpeg6 libssl-dev \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
