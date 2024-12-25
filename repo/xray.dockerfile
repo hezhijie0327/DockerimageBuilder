@@ -1,4 +1,4 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -35,6 +35,8 @@ RUN \
     go build -o xray -trimpath -ldflags "-s -w -buildid=" ./main
 
 FROM hezhijie0327/gpg:latest AS gpg_sign
+
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_xray /xray/xray /tmp/BUILDKIT/xray
 
