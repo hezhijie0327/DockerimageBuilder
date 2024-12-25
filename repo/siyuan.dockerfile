@@ -1,6 +1,6 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -12,26 +12,7 @@ RUN \
     && cat "${WORKDIR}/siyuan.json" | jq -Sr ".source_branch" > "${WORKDIR}/siyuan.source_branch.autobuild" \
     && cat "${WORKDIR}/siyuan.json" | jq -Sr ".patch" > "${WORKDIR}/siyuan.patch.autobuild" \
     && cat "${WORKDIR}/siyuan.json" | jq -Sr ".patch_branch" > "${WORKDIR}/siyuan.patch_branch.autobuild" \
-    && cat "${WORKDIR}/siyuan.json" | jq -Sr ".version" > "${WORKDIR}/siyuan.version.autobuild"
-
-FROM hezhijie0327/module:golang AS BUILD_GOLANG
-
-FROM hezhijie0327/module:nodejs AS BUILD_NODEJS
-
-FROM hezhijie0327/base:ubuntu AS BUILD_SIYUAN
-
-WORKDIR /tmp
-
-COPY --from=GET_INFO /tmp/siyuan.*.autobuild /tmp/
-
-COPY --from=BUILD_GOLANG / /tmp/BUILDLIB/
-
-COPY --from=BUILD_NODEJS / /tmp/BUILDLIB/
-
-RUN \
-    export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" \
-    && export PREFIX="${WORKDIR}/BUILDLIB" && export PATH="${PREFIX}/bin:${PATH}" \
-    && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" \
+    && cat "${WORKDIR}/siyuan.json" | jq -Sr ".version" > "${WORKDIR}/siyuan.version.autobuild" \
     && git clone -b $(cat "${WORKDIR}/siyuan.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/siyuan.source.autobuild") "${WORKDIR}/BUILDTMP/SIYUAN" \
     && git clone -b $(cat "${WORKDIR}/siyuan.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/siyuan.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
     && export SIYUAN_SHA=$(cd "${WORKDIR}/BUILDTMP/SIYUAN" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
@@ -42,39 +23,57 @@ RUN \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/siyuan/*.patch \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN/app" \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${SIYUAN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/SIYUAN/app/package.json" \
-    && npm install -g pnpm \
-    && pnpm i \
-    && pnpm run build \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN/kernel" \
-    && sed -i "s/\=\ \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\=\ \"${SIYUAN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/SIYUAN/kernel/util/working.go" \
-    && export CGO_ENABLED="1" \
-    && go build --tags fts5 -v -ldflags "-s -w" \
-    && cp -rf "${WORKDIR}/BUILDTMP/SIYUAN/kernel/kernel" "${WORKDIR}/BUILDKIT/kernel"
+    && sed -i "s/\=\ \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\=\ \"${SIYUAN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/SIYUAN/kernel/util/working.go"
 
-FROM hezhijie0327/gpg:latest AS GPG_SIGN
+FROM node:lts-slim AS build_siyuan_app
 
-COPY --from=BUILD_SIYUAN /tmp/BUILDKIT /tmp/BUILDKIT/
+WORKDIR /app
+
+COPY --from=get_info /tmp/BUILDTMP/SIYUAN/app /app
+
+RUN \
+    npm install -g pnpm \
+    && pnpm i \
+    && pnpm run build
+
+FROM golang:latest AS build_siyuan_kernel
+
+WORKDIR /kernel
+
+COPY --from=get_info /tmp/BUILDTMP/SIYUAN/kernel /kernel
+
+ENV CGO_ENABLED="1"
+
+RUN \
+    go build --tags fts5 -v -ldflags "-s -w"
+
+FROM hezhijie0327/gpg:latest AS gpg_sign
+
+COPY --from=build_siyuan_kernel /kernel/kernel /tmp/BUILDKIT/kernel
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/kernel"
 
-FROM busybox:latest AS REBASED_SIYUAN
+FROM busybox:latest AS rebased_siyuan
 
 WORKDIR /tmp
 
-COPY --from=GPG_SIGN /tmp/BUILDKIT/ /
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/appearance /opt/siyuan/appearance
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/stage /opt/siyuan/stage
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/guide /opt/siyuan/guide
-COPY --from=BUILD_SIYUAN /tmp/BUILDTMP/SIYUAN/app/changelogs /opt/siyuan/changelogs
+COPY --from=gpg_sign /tmp/BUILDKIT/ /opt/siyuan/
 
-RUN mv /kernel* /opt/siyuan/ && find /opt/siyuan/ -name .git | xargs rm -rf
+COPY --from=build_siyuan_app /app/appearance /opt/siyuan/appearance
+COPY --from=build_siyuan_app /app/stage /opt/siyuan/stage
+COPY --from=build_siyuan_app /app/guide /opt/siyuan/guide
+COPY --from=build_siyuan_app /app/changelogs /opt/siyuan/changelogs
+
+RUN find /opt/siyuan/ -name .git | xargs rm -rf
 
 FROM scratch
 
 ENV SIYUAN_ACCESS_AUTH_CODE_BYPASS="true"
 
-COPY --from=REBASED_SIYUAN / /
+COPY --from=rebased_siyuan / /
 
 EXPOSE 6806/tcp 6808/tcp
 
