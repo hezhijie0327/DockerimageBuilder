@@ -1,4 +1,4 @@
-# Current Version: 2.0.1
+# Current Version: 2.0.2
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -24,8 +24,8 @@ RUN \
     && cat "${WORKDIR}/jellyfin_web.json" | jq -Sr ".patch_branch" > "${WORKDIR}/jellyfin_web.patch_branch.autobuild" \
     && cat "${WORKDIR}/jellyfin_web.json" | jq -Sr ".version" > "${WORKDIR}/jellyfin_web.version.autobuild" \
     && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN" \
+    && git clone -b $(cat "${WORKDIR}/jellyfin.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
     && git clone -b $(cat "${WORKDIR}/jellyfin_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin_web.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN_WEB" \
-    && git clone -b $(cat "${WORKDIR}/jellyfin_web.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin_web.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
     && export JELLYFIN_SHA=$(cd "${WORKDIR}/BUILDTMP/JELLYFIN" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export JELLYFIN_VERSION=$(cat "${WORKDIR}/jellyfin.version.autobuild") \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
