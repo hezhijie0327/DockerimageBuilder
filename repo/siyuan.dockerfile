@@ -1,6 +1,6 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
-ARG GOLANG_VERSION="1.23"
+ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
 
 FROM hezhijie0327/base:alpine AS get_info
