@@ -1,6 +1,6 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -10,11 +10,11 @@ RUN \
     && cat "${WORKDIR}/openssl.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/openssl.json" | jq -Sr ".source" > "${WORKDIR}/openssl.autobuild"
 
-FROM hezhijie0327/base:ubuntu AS BUILD_OPENSSL
+FROM hezhijie0327/base:ubuntu AS build_openssl
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/openssl.autobuild /tmp/
+COPY --from=get_info /tmp/openssl.autobuild /tmp/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP/OPENSSL" \
@@ -31,4 +31,4 @@ RUN \
 
 FROM scratch
 
-COPY --from=BUILD_OPENSSL /tmp/BUILDLIB/OPENSSL /
+COPY --from=build_openssl /tmp/BUILDLIB/OPENSSL /
