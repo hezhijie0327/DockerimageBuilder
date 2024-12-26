@@ -1,4 +1,4 @@
-# Current Version: 2.0.0
+# Current Version: 2.0.1
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -135,6 +135,4 @@ COPY --from=rebased_jellyfin / /
 
 EXPOSE 1900/udp 7359/udp 8096/tcp 8920/tcp
 
-ENTRYPOINT ["/opt/jellyfin/jellyfin"]
-
-CMD ["--ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffmpeg", "--webdir", "/opt/jellyfin-web"]
+ENTRYPOINT ["/opt/jellyfin/jellyfin", "--ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffmpeg", "--webdir", "/opt/jellyfin-web"]
