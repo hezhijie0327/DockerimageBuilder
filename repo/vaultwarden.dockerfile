@@ -1,4 +1,6 @@
-# Current Version: 1.1.7
+# Current Version: 1.1.8
+
+ARG RUST_VERSION="1"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -26,7 +28,7 @@ RUN \
     && curl -Ls -o - "https://github.com/dani-garcia/bw_web_builds/releases/download/${latest_version}/bw_web_${latest_version}.tar.gz" | tar zxvf - --strip-components=1 \
     && sed -i "s/Promise.resolve(\"[0-9]\+\(\.[0-9]\+\)*\")/Promise.resolve(\"${VAULTWARDEN_CUSTOM_VERSION}\")/g" ${WORKDIR}/BUILDTMP/VAULTWARDEN_WEB/app/main.*.js
 
-FROM rust:alpine as build_vaultwarden
+FROM rust:${RUST_VERSION}-alpine as build_vaultwarden
 
 WORKDIR /vaultwarden
 
