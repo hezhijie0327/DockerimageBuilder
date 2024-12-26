@@ -1,4 +1,7 @@
-# Current Version: 1.9.8
+# Current Version: 1.9.9
+
+ARG DOTNET_VERSION="9.0"
+ARG NODEJS_VERSION="22"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -34,7 +37,7 @@ RUN \
     && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "${WORKDIR}/BUILDTMP/JELLYFIN/SYS_ARCH" \
     && curl -s --connect-timeout 15 "https://repo.jellyfin.org/jellyfin_team.gpg.key" | gpg --dearmor > "${WORKDIR}/BUILDTMP/JELLYFIN/jellyfin-archive-keyring.gpg"
 
-FROM --platform=linux/amd64 node:lts-slim AS build_jellyfin_web
+FROM --platform=linux/amd64 node:${NODEJS_VERSION}-slim AS build_jellyfin_web
 
 WORKDIR /jellyfin
 
@@ -46,7 +49,7 @@ RUN \
     && npm ci --no-audit --unsafe-perm \
     && npm run build:production
 
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:9.0 as build_jellyfin
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} as build_jellyfin
 
 WORKDIR /jellyfin
 

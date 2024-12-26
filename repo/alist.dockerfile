@@ -1,4 +1,6 @@
-# Current Version: 1.1.4
+# Current Version: 1.1.6
+
+ARG GOLANG_VERSION="1"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -24,7 +26,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/ALIST_WEB" \
     && curl -Ls -o - "https://github.com/alist-org/alist-web/releases/latest/download/dist.tar.gz" | tar zxvf - --strip-components=1
 
-FROM golang:latest AS build_alist
+FROM golang:${GOLANG_VERSION} AS build_alist
 
 WORKDIR /alist
 

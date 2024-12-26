@@ -1,4 +1,6 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.8
+
+ARG PYTHON_VERSION="3"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -24,7 +26,7 @@ RUN \
     && sed -i "s|ultrasecretkey|$(openssl rand -hex 32)|g;s|127.0.0.1|0.0.0.0|g" "${WORKDIR}/BUILDTMP/SEARXNG/searx/settings.yml" \
     && sed -i "s|VERSION_STRING = \"1.0.0\"|VERSION_STRING = \"${SEARXNG_CUSTOM_VERSION}\"|g;s|GIT_URL = \"unknow\"|GIT_URL = \"https://github.com/searxng/searxng\"|g" "${WORKDIR}/BUILDTMP/SEARXNG/searx/version.py"
 
-FROM python:alpine AS build_searxng
+FROM python:${PYTHON_VERSION}-alpine AS build_searxng
 
 WORKDIR /usr/local/searxng
 

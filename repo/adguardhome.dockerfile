@@ -1,4 +1,7 @@
-# Current Version: 2.1.9
+# Current Version: 2.2.1
+
+ARG GOLANG_VERSION="1"
+ARG NODEJS_VERSION="22"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -24,7 +27,7 @@ RUN \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/adguardhome/*.patch \
     && cp -r "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/adguardhome/static/zh-cn.json" "${WORKDIR}/BUILDTMP/ADGUARDHOME/client/src/__locales/zh-cn.json"
 
-FROM node:lts-slim AS build_adguardhome_web
+FROM node:${NODEJS_VERSION}-slim AS build_adguardhome_web
 
 WORKDIR /adguardhome
 
@@ -41,7 +44,7 @@ RUN \
     && make js-deps \
     && make js-build
 
-FROM golang:latest AS build_adguardhome
+FROM golang:${GOLANG_VERSION} AS build_adguardhome
 
 WORKDIR /adguardhome
 

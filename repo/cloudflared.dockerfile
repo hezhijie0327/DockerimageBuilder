@@ -1,4 +1,6 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.5
+
+ARG GOLANG_VERSION="1"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -22,7 +24,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/CLOUDFLARED" \
     && sed -i "s/\$(shell git describe --tags --always --match \"\[0-9\]\[0-9\]\[0-9\]\[0-9\].\*.\*\")/${CLOUDFLARED_CUSTOM_VERSION}/g" "${WORKDIR}/BUILDTMP/CLOUDFLARED/Makefile"
 
-FROM golang:latest AS build_cloudflared
+FROM golang:${GOLANG_VERSION} AS build_cloudflared
 
 WORKDIR /cloudflared
 
