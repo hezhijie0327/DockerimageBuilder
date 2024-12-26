@@ -1,6 +1,6 @@
-# Current Version: 1.1.7
+# Current Version: 1.1.8
 
-ARG PYTHON_VERSION="3.13"
+ARG PYTHON_VERSION="3"
 
 FROM hezhijie0327/base:alpine AS get_info
 
