@@ -1,4 +1,4 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -28,29 +28,27 @@ RUN \
     && git commit -m "Update qBittorrent version to ${QBITTORRENT_CUSTOM_VERSION}" \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
-    && echo $(uname -m) > "${WORKDIR}/arch"
+    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH"
 
 FROM --platform=linux/amd64 hezhijie0327/base:alpine AS build_qbittorrent
 
-COPY --from=get_info /tmp/arch /tmp/BUILDTMP/arch
+WORKDIR /qbittorrent
 
-COPY --from=get_info /tmp/patch /tmp/BUILDLIB/patches/qbittorrent/master/patch
-
-WORKDIR /tmp
+COPY --from=get_info /tmp/SYS_ARCH /qbittorrent/SYS_ARCH
+COPY --from=get_info /tmp/patch /qbittorrent/patches/qbittorrent/master/patch
 
 ENV qbt_qt_version="6"
 
 RUN \
-    export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" \
-    && cp -rf "/etc/ssl/certs/ca-certificates.crt" "${WORKDIR}/BUILDKIT/etc/ssl/certs/ca-certificates.crt" \
-    && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh -O "${WORKDIR}/BUILDTMP/qbittorrent-nox-static.sh" \
-    && export qbt_cross_name=$(cat "${WORKDIR}/BUILDTMP/arch") \
-    && bash "${WORKDIR}/BUILDTMP/qbittorrent-nox-static.sh" -b "${WORKDIR}/BUILDLIB" all -i -lm -qm -s -bs-p \
-    && cp -rf "${WORKDIR}/BUILDLIB/completed/qbittorrent-nox" "${WORKDIR}/BUILDKIT/qbittorrent-nox"
+    export qbt_cross_name=$(cat "/qbittorrent/SYS_ARCH") \
+    && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh \
+    && bash ./qbittorrent-nox-static.sh -b /qbittorrent all -i -lm -qm -s -bs-p
 
 FROM hezhijie0327/gpg:latest AS gpg_sign
 
-COPY --from=build_qbittorrent /tmp/BUILDKIT /tmp/BUILDKIT/
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+
+COPY --from=build_qbittorrent /qbittorrent/completed/qbittorrent-nox /tmp/BUILDKIT/qbittorrent-nox
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/qbittorrent-nox"
 
