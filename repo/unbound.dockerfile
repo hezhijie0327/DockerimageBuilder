@@ -1,6 +1,6 @@
-# Current Version: 1.3.7
+# Current Version: 1.3.8
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -16,41 +16,41 @@ RUN \
     && wget -O "${WORKDIR}/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" \
     && wget -O "${WORKDIR}/root.hints" "https://www.internic.net/domain/named.cache"
 
-FROM hezhijie0327/module:expat AS BUILD_EXPAT
+FROM hezhijie0327/module:expat AS build_expat
 
-FROM hezhijie0327/module:libevent AS BUILD_LIBEVENT
+FROM hezhijie0327/module:libevent AS build_libevent
 
-FROM hezhijie0327/module:libhiredis AS BUILD_LIBHIREDIS
+FROM hezhijie0327/module:libhiredis AS build_libhiredis
 
-FROM hezhijie0327/module:libmnl AS BUILD_LIBMNL
+FROM hezhijie0327/module:libmnl AS build_libmnl
 
-FROM hezhijie0327/module:libnghttp2 AS BUILD_LIBNGHTTP2
+FROM hezhijie0327/module:libnghttp2 AS build_libnghttp2
 
-FROM hezhijie0327/module:libsodium AS BUILD_LIBSODIUM
+FROM hezhijie0327/module:libsodium AS build_libsodium
 
-FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:openssl AS build_openssl
 
-FROM hezhijie0327/base:ubuntu AS BUILD_UNBOUND
+FROM hezhijie0327/base:ubuntu AS build_unbound
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/icannbundle.pem /tmp/BUILDKIT/etc/unbound/icannbundle.pem
-COPY --from=GET_INFO /tmp/root.hints /tmp/BUILDKIT/etc/unbound/root.hints
-COPY --from=GET_INFO /tmp/unbound.*.autobuild /tmp/
+COPY --from=get_info /tmp/icannbundle.pem /tmp/BUILDKIT/etc/unbound/icannbundle.pem
+COPY --from=get_info /tmp/root.hints /tmp/BUILDKIT/etc/unbound/root.hints
+COPY --from=get_info /tmp/unbound.*.autobuild /tmp/
 
-COPY --from=BUILD_EXPAT / /tmp/BUILDLIB/
+COPY --from=build_expat / /tmp/BUILDLIB/
 
-COPY --from=BUILD_LIBEVENT / /tmp/BUILDLIB/
+COPY --from=build_libevent / /tmp/BUILDLIB/
 
-COPY --from=BUILD_LIBHIREDIS / /tmp/BUILDLIB/
+COPY --from=build_libhiredis / /tmp/BUILDLIB/
 
-COPY --from=BUILD_LIBMNL / /tmp/BUILDLIB/
+COPY --from=build_libmnl / /tmp/BUILDLIB/
 
-COPY --from=BUILD_LIBNGHTTP2 / /tmp/BUILDLIB/
+COPY --from=build_libnghttp2 / /tmp/BUILDLIB/
 
-COPY --from=BUILD_LIBSODIUM / /tmp/BUILDLIB/
+COPY --from=build_libsodium / /tmp/BUILDLIB/
 
-COPY --from=BUILD_OPENSSL / /tmp/BUILDLIB/
+COPY --from=build_openssl / /tmp/BUILDLIB/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" \
@@ -105,15 +105,15 @@ RUN \
           -r "${WORKDIR}/BUILDKIT/etc/unbound/root.hints" \
           -v -R || logger "Please check root.key"
 
-FROM hezhijie0327/gpg:latest AS GPG_SIGN
+FROM hezhijie0327/gpg:latest AS gpg_sign
 
-COPY --from=BUILD_UNBOUND /tmp/BUILDKIT /tmp/BUILDKIT/
+COPY --from=build_unbound /tmp/BUILDKIT /tmp/BUILDKIT/
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound" && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound-anchor" && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound-checkconf" && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound-control" && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound-host"
 
 FROM scratch
 
-COPY --from=GPG_SIGN /tmp/BUILDKIT /
+COPY --from=gpg_sign /tmp/BUILDKIT /
 
 EXPOSE 443/tcp 53/tcp 53/udp 853/tcp
 
