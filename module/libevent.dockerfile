@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -31,7 +31,7 @@ RUN \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
     && ldconfig --verbose \
-    && ./configure --enable-static --prefix="${PREFIX}/LIBEVENT" \
+    && ./configure --enable-static --prefix="$PREFIX/LIBEVENT" \
     && make -j $(nproc) \
     && make install
 
