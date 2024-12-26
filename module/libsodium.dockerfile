@@ -1,6 +1,6 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -10,11 +10,11 @@ RUN \
     && cat "${WORKDIR}/libsodium.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/libsodium.json" | jq -Sr ".source" > "${WORKDIR}/libsodium.autobuild"
 
-FROM hezhijie0327/base:ubuntu AS BUILD_LIBSODIUM
+FROM hezhijie0327/base:ubuntu AS build_libsodium
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/libsodium.autobuild /tmp/
+COPY --from=get_info /tmp/libsodium.autobuild /tmp/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP/LIBSODIUM" \
@@ -31,4 +31,4 @@ RUN \
 
 FROM scratch
 
-COPY --from=BUILD_LIBSODIUM /tmp/BUILDLIB/LIBSODIUM /
+COPY --from=build_libsodium /tmp/BUILDLIB/LIBSODIUM /
