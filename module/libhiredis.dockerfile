@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -26,13 +26,13 @@ COPY --from=build_openssl / /BUILDLIB/
 RUN \
     PREFIX="/BUILDLIB" \
     && export CPPFLAGS="-I$PREFIX/include" \
-    && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
+    && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
     && export OPENSSL_PREFIX="$PREFIX" \
     && ldconfig --verbose \
-    && make -j $(nproc) USE_SSL="1" \
+    && make -j $(nproc) static USE_SSL="1" \
     && make install PREFIX="$PREFIX/LIBHIREDIS"
 
 FROM scratch
