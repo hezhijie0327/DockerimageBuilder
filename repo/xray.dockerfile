@@ -1,4 +1,6 @@
-# Current Version: 1.1.7
+# Current Version: 1.1.8
+
+ARG GOLANG_VERSION="1.23"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -22,7 +24,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/XRAY" \
     && sed -i "s/Version_x, Version_y, Version_z/\"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 1)\", \"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 2)\", \"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 3)\"/g" "${WORKDIR}/BUILDTMP/XRAY/core/core.go"
 
-FROM golang:latest AS build_xray
+FROM golang:${GOLANG_VERSION} AS build_xray
 
 WORKDIR /xray
 
