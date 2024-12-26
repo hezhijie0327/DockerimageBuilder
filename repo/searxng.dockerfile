@@ -1,4 +1,4 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -51,7 +51,6 @@ RUN \
     && apk add --no-cache busybox \
     && apk del --purge apk* > /dev/null || true \
     && /bin/busybox --install -s /bin \
-    && find /usr/bin -type l ! -name "python*" -delete \
     && rm -rf /etc /lib/*apk* /root/* /sbin /usr/sbin /usr/share /var || true \
     && rm -rf /root/* /tmp/* /var/cache/apk/*
 
@@ -60,7 +59,8 @@ FROM busybox:musl AS rebased_searxng
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_searxng /lib /lib
-COPY --from=build_searxng /usr /usr
+COPY --from=build_searxng /usr/lib /usr/lib
+COPY --from=build_searxng /usr/local /usr/local
 
 FROM scratch
 
@@ -72,6 +72,6 @@ COPY --from=rebased_searxng / /
 
 EXPOSE 8888/tcp
 
-ENTRYPOINT ["/usr/local/bin/python3"]
+ENTRYPOINT ["/usr/local/bin/python"]
 
 CMD ["/usr/local/searxng/searx/webapp.py"]
