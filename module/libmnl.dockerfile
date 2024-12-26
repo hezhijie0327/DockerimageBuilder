@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -11,7 +11,7 @@ RUN \
     && cat "${WORKDIR}/libmnl.json" | jq -Sr ".source" > "${WORKDIR}/libmnl.autobuild" \
     && mkdir -p "${WORKDIR}/BUILDTMP/LIBMNL" \
     && cd "${WORKDIR}/BUILDTMP/LIBMNL" \
-    && curl -Ls -o - $(cat "${WORKDIR}/libmnl.autobuild") | tar jxvf - --strip-components=1 \
+    && curl -Ls -o - $(cat "${WORKDIR}/libmnl.autobuild") | tar jxvf - --strip-components=1
 
 FROM hezhijie0327/base:ubuntu AS build_libmnl
 
