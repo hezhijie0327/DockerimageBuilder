@@ -1,6 +1,6 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -10,11 +10,11 @@ RUN \
     && cat "${WORKDIR}/libnghttp2.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/libnghttp2.json" | jq -Sr ".source" > "${WORKDIR}/libnghttp2.autobuild"
 
-FROM hezhijie0327/base:ubuntu AS BUILD_LIBNGHTTP2
+FROM hezhijie0327/base:ubuntu AS build_libnghttp2
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/libnghttp2.autobuild /tmp/
+COPY --from=get_info /tmp/libnghttp2.autobuild /tmp/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP/LIBNGHTTP2" \
@@ -31,4 +31,4 @@ RUN \
 
 FROM scratch
 
-COPY --from=BUILD_LIBNGHTTP2 /tmp/BUILDLIB/LIBNGHTTP2 /
+COPY --from=build_libnghttp2 /tmp/BUILDLIB/LIBNGHTTP2 /
