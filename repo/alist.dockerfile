@@ -1,6 +1,7 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 ARG GOLANG_VERSION="1"
+ARG NODEJS_VERSION="22"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -15,23 +16,45 @@ RUN \
     && cat "${WORKDIR}/alist.json" | jq -Sr ".patch" > "${WORKDIR}/alist.patch.autobuild" \
     && cat "${WORKDIR}/alist.json" | jq -Sr ".patch_branch" > "${WORKDIR}/alist.patch_branch.autobuild" \
     && cat "${WORKDIR}/alist.json" | jq -Sr ".version" > "${WORKDIR}/alist.version.autobuild" \
+    && cat "/opt/package.json" | jq -Sr ".repo.alist_web" > "${WORKDIR}/alist_web.json" \
+    && cat "${WORKDIR}/alist_web.json" | jq -Sr ".version" \
+    && cat "${WORKDIR}/alist_web.json" | jq -Sr ".source" > "${WORKDIR}/alist_web.source.autobuild" \
+    && cat "${WORKDIR}/alist_web.json" | jq -Sr ".source_branch" > "${WORKDIR}/alist_web.source_branch.autobuild" \
+    && cat "${WORKDIR}/alist_web.json" | jq -Sr ".patch" > "${WORKDIR}/alist_web.patch.autobuild" \
+    && cat "${WORKDIR}/alist_web.json" | jq -Sr ".patch_branch" > "${WORKDIR}/alist_web.patch_branch.autobuild" \
+    && cat "${WORKDIR}/alist_web.json" | jq -Sr ".version" > "${WORKDIR}/alist_web.version.autobuild" \
     && git clone -b $(cat "${WORKDIR}/alist.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/alist.source.autobuild") "${WORKDIR}/BUILDTMP/ALIST" \
     && git clone -b $(cat "${WORKDIR}/alist.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/alist.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
+    && git clone -b $(cat "${WORKDIR}/alist_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/alist_web.source.autobuild") "${WORKDIR}/BUILDTMP/ALIST_WEB" \
     && export ALIST_SHA=$(cd "${WORKDIR}/BUILDTMP/ALIST" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export ALIST_VERSION=$(cat "${WORKDIR}/alist.version.autobuild") \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export ALIST_CUSTOM_VERSION="${ALIST_VERSION}-ZHIJIE-${ALIST_SHA}${PATCH_SHA}" \
     && echo "${ALIST_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/ALIST/ALIST_CUSTOM_VERSION" \
-    && mkdir -p "${WORKDIR}/BUILDTMP/ALIST_WEB" \
     && cd "${WORKDIR}/BUILDTMP/ALIST_WEB" \
-    && curl -Ls -o - "https://github.com/alist-org/alist-web/releases/latest/download/dist.tar.gz" | tar zxvf - --strip-components=1
+    && git submodule update --init \
+    && sed -i -e "s/\"version\": \"0.0.0\"/\"version\": \"$ALIST_CUSTOM_VERSION\"/g" "${WORKDIR}/BUILDTMP/ALIST_WEB/package.json"
+
+FROM node:${NODEJS_VERSION}-slim AS build_alist_web
+
+WORKDIR /alist
+
+COPY --from=get_info /tmp/BUILDTMP/ALIST_WEB /alist
+
+RUN \
+    export PNPM_HOME="/pnpm" \
+    && corepack enable \
+    && corepack use pnpm \
+    && pnpm i \
+    && pnpm build
 
 FROM golang:${GOLANG_VERSION} AS build_alist
 
 WORKDIR /alist
 
 COPY --from=get_info /tmp/BUILDTMP/ALIST /alist
-COPY --from=get_info /tmp/BUILDTMP/ALIST_WEB /alist/public/dist
+
+COPY --from=build_alist_web /alist/dist /alist/public/dist
 
 RUN \
     go build -o ./alist -ldflags="-w -s -X github.com/alist-org/alist/v3/internal/conf.Version=$(cat /alist/ALIST_CUSTOM_VERSION)" -tags=jsoniter .
