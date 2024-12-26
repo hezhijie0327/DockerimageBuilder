@@ -1,6 +1,6 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -10,15 +10,15 @@ RUN \
     && cat "${WORKDIR}/libevent.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/libevent.json" | jq -Sr ".source" > "${WORKDIR}/libevent.autobuild"
 
-FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:openssl AS build_openssl
 
-FROM hezhijie0327/base:ubuntu AS BUILD_LIBEVENT
+FROM hezhijie0327/base:ubuntu AS build_libevent
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/libevent.autobuild /tmp/
+COPY --from=get_info /tmp/libevent.autobuild /tmp/
 
-COPY --from=BUILD_OPENSSL / /tmp/BUILDLIB/
+COPY --from=build_openssl / /tmp/BUILDLIB/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP/LIBEVENT" \
@@ -35,4 +35,4 @@ RUN \
 
 FROM scratch
 
-COPY --from=BUILD_LIBEVENT /tmp/BUILDLIB/LIBEVENT /
+COPY --from=build_libevent /tmp/BUILDLIB/LIBEVENT /
