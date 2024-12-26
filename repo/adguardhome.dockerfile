@@ -1,4 +1,4 @@
-# Current Version: 2.2.1
+# Current Version: 2.2.2
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -32,11 +32,6 @@ FROM node:${NODEJS_VERSION}-slim AS build_adguardhome_web
 WORKDIR /adguardhome
 
 COPY --from=get_info /tmp/BUILDTMP/ADGUARDHOME /adguardhome
-
-ENV \
-    NODE_OPTIONS="--openssl-legacy-provider" \
-    NPM_FLAGS="--prefix client" \
-    NPM_INSTALL_FLAGS="--quiet --no-progress --ignore-engines --ignore-optional --ignore-platform --ignore-scripts"
 
 RUN \
     apt update \
