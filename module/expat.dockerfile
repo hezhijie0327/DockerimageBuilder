@@ -1,4 +1,4 @@
-# Current Version: 1.1.0
+# Current Version: 1.1.1
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -27,7 +27,7 @@ RUN \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
     && ldconfig --verbose \
-    && ./configure --enable-static --prefix="${PREFIX}/EXPAT" --without-docbook --without-examples --without-tests \
+    && ./configure --enable-static --prefix="$PREFIX/EXPAT" --without-docbook --without-examples --without-tests \
     && make -j $(nproc) \
     && make install
 
