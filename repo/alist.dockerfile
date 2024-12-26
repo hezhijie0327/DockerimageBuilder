@@ -1,6 +1,6 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
-ARG GOLANG_VERSION="1.23"
+ARG GOLANG_VERSION="1"
 
 FROM hezhijie0327/base:alpine AS get_info
 
