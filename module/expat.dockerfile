@@ -1,6 +1,6 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -10,11 +10,11 @@ RUN \
     && cat "${WORKDIR}/expat.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/expat.json" | jq -Sr ".source" > "${WORKDIR}/expat.autobuild"
 
-FROM hezhijie0327/base:ubuntu AS BUILD_EXPAT
+FROM hezhijie0327/base:ubuntu AS build_expat
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/expat.autobuild /tmp/
+COPY --from=get_info /tmp/expat.autobuild /tmp/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP/EXPAT" \
@@ -31,4 +31,4 @@ RUN \
 
 FROM scratch
 
-COPY --from=BUILD_EXPAT /tmp/BUILDLIB/EXPAT /
+COPY --from=build_expat /tmp/BUILDLIB/EXPAT /
