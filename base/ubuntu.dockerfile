@@ -1,10 +1,10 @@
-# Current Version: 1.4.2
+# Current Version: 1.4.3
 
-FROM hezhijie0327/base:package AS GET_PACKAGE
+FROM hezhijie0327/base:package AS get_package
 
-FROM ubuntu:rolling AS REBASED_UBUNTU
+FROM ubuntu:rolling AS rebased_ubuntu
 
-COPY --from=GET_PACKAGE /package.json /opt/package.json
+COPY --from=get_package /package.json /opt/package.json
 
 RUN export DEBIAN_FRONTEND="noninteractive" \
     && export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
@@ -52,6 +52,6 @@ FROM scratch
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
-COPY --from=REBASED_UBUNTU / /
+COPY --from=rebased_ubuntu / /
 
 CMD ["/bin/bash"]
