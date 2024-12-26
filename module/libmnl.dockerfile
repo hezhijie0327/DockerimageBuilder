@@ -1,6 +1,6 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -10,11 +10,11 @@ RUN \
     && cat "${WORKDIR}/libmnl.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/libmnl.json" | jq -Sr ".source" > "${WORKDIR}/libmnl.autobuild"
 
-FROM hezhijie0327/base:ubuntu AS BUILD_LIBMNL
+FROM hezhijie0327/base:ubuntu AS build_libmnl
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/libmnl.autobuild /tmp/
+COPY --from=get_info /tmp/libmnl.autobuild /tmp/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP/LIBMNL" \
@@ -31,4 +31,4 @@ RUN \
 
 FROM scratch
 
-COPY --from=BUILD_LIBMNL /tmp/BUILDLIB/LIBMNL /
+COPY --from=build_libmnl /tmp/BUILDLIB/LIBMNL /
