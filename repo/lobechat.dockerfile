@@ -1,4 +1,6 @@
-# Current Version: 1.8.7
+# Current Version: 1.8.8
+
+ARG NODEJS_VERSION="22"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -23,7 +25,7 @@ RUN \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json"
 
-FROM node:lts-slim AS build_baseos
+FROM node:${NODEJS_VERSION}-slim AS build_baseos
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
