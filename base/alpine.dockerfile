@@ -1,10 +1,10 @@
-# Current Version: 1.1.8
+# Current Version: 1.1.9
 
-FROM hezhijie0327/base:package AS GET_PACKAGE
+FROM hezhijie0327/base:package AS get_package
 
-FROM alpine:latest AS REBASED_ALPINE
+FROM alpine:latest AS rebased_alpine
 
-COPY --from=GET_PACKAGE /package.json /opt/package.json
+COPY --from=get_package /package.json /opt/package.json
 
 RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && apk update \
@@ -15,6 +15,6 @@ RUN sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositori
 
 FROM scratch
 
-COPY --from=REBASED_ALPINE / /
+COPY --from=rebased_alpine / /
 
 CMD ["/bin/bash"]
