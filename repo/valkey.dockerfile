@@ -1,6 +1,6 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -14,15 +14,15 @@ RUN \
     && cat "${WORKDIR}/valkey.json" | jq -Sr ".patch_branch" > "${WORKDIR}/valkey.patch_branch.autobuild" \
     && cat "${WORKDIR}/valkey.json" | jq -Sr ".version" > "${WORKDIR}/valkey.version.autobuild"
 
-FROM hezhijie0327/module:openssl AS BUILD_OPENSSL
+FROM hezhijie0327/module:openssl AS build_openssl
 
-FROM hezhijie0327/base:ubuntu AS BUILD_VALKEY
+FROM hezhijie0327/base:ubuntu AS build_valkey
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/valkey.*.autobuild /tmp/
+COPY --from=get_info /tmp/valkey.*.autobuild /tmp/
 
-COPY --from=BUILD_OPENSSL / /tmp/BUILDLIB/
+COPY --from=build_openssl / /tmp/BUILDLIB/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDKIT" "${WORKDIR}/BUILDTMP" "${WORKDIR}/BUILDKIT/etc/ssl/certs" \
@@ -49,15 +49,15 @@ RUN \
     && strip -s ${WORKDIR}/BUILDLIB/bin/valkey-* \
     && cp -rf ${WORKDIR}/BUILDLIB/bin/valkey* ${WORKDIR}/BUILDKIT
 
-FROM hezhijie0327/gpg:latest AS GPG_SIGN
+FROM hezhijie0327/gpg:latest AS gpg_sign
 
-COPY --from=BUILD_VALKEY /tmp/BUILDKIT /tmp/BUILDKIT/
+COPY --from=build_valkey /tmp/BUILDKIT /tmp/BUILDKIT/
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/valkey-benchmark" && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/valkey-cli" && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/valkey-server"
 
 FROM scratch
 
-COPY --from=GPG_SIGN /tmp/BUILDKIT /
+COPY --from=gpg_sign /tmp/BUILDKIT /
 
 EXPOSE 6379/tcp
 
