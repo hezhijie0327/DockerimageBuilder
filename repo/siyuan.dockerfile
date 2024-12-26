@@ -1,4 +1,7 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
+
+ARG GOLANG_VERSION="1.23"
+ARG NODEJS_VERSION="22"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -26,7 +29,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN/kernel" \
     && sed -i "s/\=\ \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\=\ \"${SIYUAN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/SIYUAN/kernel/util/working.go"
 
-FROM node:lts-slim AS build_siyuan_app
+FROM node:${NODEJS_VERSION}-slim AS build_siyuan_app
 
 WORKDIR /siyuan
 
@@ -37,7 +40,7 @@ RUN \
     && pnpm i \
     && pnpm run build
 
-FROM golang:latest AS build_siyuan_kernel
+FROM golang:${GOLANG_VERSION} AS build_siyuan_kernel
 
 WORKDIR /siyuan
 
