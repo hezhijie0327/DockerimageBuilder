@@ -1,6 +1,6 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
-FROM alpine:latest AS BUILD_PACKAGE
+FROM alpine:latest AS build_package
 
 WORKDIR /tmp
 
@@ -12,4 +12,4 @@ RUN export WORKDIR=$(pwd) \
 
 FROM scratch
 
-COPY --from=BUILD_PACKAGE /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/package.json /package.json
+COPY --from=build_package /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/package.json /package.json
