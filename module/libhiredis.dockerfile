@@ -1,6 +1,6 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -10,11 +10,11 @@ RUN \
     && cat "${WORKDIR}/libhiredis.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/libhiredis.json" | jq -Sr ".source" > "${WORKDIR}/libhiredis.autobuild"
 
-FROM hezhijie0327/base:ubuntu AS BUILD_LIBHIREDIS
+FROM hezhijie0327/base:ubuntu AS build_libhiredis
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/libhiredis.autobuild /tmp/
+COPY --from=get_info /tmp/libhiredis.autobuild /tmp/
 
 RUN \
     export WORKDIR=$(pwd) && mkdir -p "${WORKDIR}/BUILDTMP/LIBHIREDIS" \
@@ -26,4 +26,4 @@ RUN \
 
 FROM scratch
 
-COPY --from=BUILD_LIBHIREDIS /tmp/BUILDLIB/LIBHIREDIS /
+COPY --from=build_libhiredis /tmp/BUILDLIB/LIBHIREDIS /
