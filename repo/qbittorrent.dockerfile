@@ -1,6 +1,6 @@
-# Current Version: 1.1.4
+# Current Version: 1.1.5
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -30,11 +30,11 @@ RUN \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && echo $(uname -m) > "${WORKDIR}/arch"
 
-FROM --platform=linux/amd64 hezhijie0327/base:alpine AS BUILD_QBITTORRENT
+FROM --platform=linux/amd64 hezhijie0327/base:alpine AS build_qbittorrent
 
-COPY --from=GET_INFO /tmp/arch /tmp/BUILDTMP/arch
+COPY --from=get_info /tmp/arch /tmp/BUILDTMP/arch
 
-COPY --from=GET_INFO /tmp/patch /tmp/BUILDLIB/patches/qbittorrent/master/patch
+COPY --from=get_info /tmp/patch /tmp/BUILDLIB/patches/qbittorrent/master/patch
 
 WORKDIR /tmp
 
@@ -48,15 +48,15 @@ RUN \
     && bash "${WORKDIR}/BUILDTMP/qbittorrent-nox-static.sh" -b "${WORKDIR}/BUILDLIB" all -i -lm -qm -s -bs-p \
     && cp -rf "${WORKDIR}/BUILDLIB/completed/qbittorrent-nox" "${WORKDIR}/BUILDKIT/qbittorrent-nox"
 
-FROM hezhijie0327/gpg:latest AS GPG_SIGN
+FROM hezhijie0327/gpg:latest AS gpg_sign
 
-COPY --from=BUILD_QBITTORRENT /tmp/BUILDKIT /tmp/BUILDKIT/
+COPY --from=build_qbittorrent /tmp/BUILDKIT /tmp/BUILDKIT/
 
 RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/qbittorrent-nox"
 
 FROM scratch
 
-COPY --from=GPG_SIGN /tmp/BUILDKIT /
+COPY --from=gpg_sign /tmp/BUILDKIT /
 
 EXPOSE 51413/tcp 51413/udp 6881-6889/tcp 6881-6889/udp 6969/tcp 6969/udp 8080/tcp 9000/tcp
 
