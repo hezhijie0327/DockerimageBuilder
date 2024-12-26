@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -21,7 +21,7 @@ COPY --from=get_info /tmp/BUILDTMP/EXPAT /expat
 
 RUN \
     PREFIX="/BUILDLIB" \
-    && export CPPFLAGS="-I$PREFIX/include -static" \
+    && export CPPFLAGS="-I$PREFIX/include" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
