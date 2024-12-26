@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -11,7 +11,7 @@ RUN \
     && cat "${WORKDIR}/libhiredis.json" | jq -Sr ".source" > "${WORKDIR}/libhiredis.autobuild" \
     && mkdir -p "${WORKDIR}/BUILDTMP/LIBHIREDIS" \
     && cd "${WORKDIR}/BUILDTMP/LIBHIREDIS" \
-    && curl -Ls -o - $(cat "${WORKDIR}/libhiredis.autobuild") | tar zxvf - --strip-components=1 \
+    && curl -Ls -o - $(cat "${WORKDIR}/libhiredis.autobuild") | tar zxvf - --strip-components=1
 
 FROM hezhijie0327/module:openssl AS build_openssl
 
