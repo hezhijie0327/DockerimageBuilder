@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 ARG GCC_VERSION="14"
 
@@ -15,7 +15,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBMNL" \
     && curl -Ls -o - $(cat "${WORKDIR}/libmnl.autobuild") | tar jxvf - --strip-components=1
 
-FROM ${GCC_VERSION} AS build_libmnl
+FROM gcc:${GCC_VERSION} AS build_libmnl
 
 WORKDIR /libmnl
 
