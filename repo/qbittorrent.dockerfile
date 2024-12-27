@@ -1,6 +1,6 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
-FROM hezhijie0327/base:alpine AS get_info
+FROM hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 
