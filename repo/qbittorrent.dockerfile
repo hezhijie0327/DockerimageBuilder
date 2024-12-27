@@ -1,4 +1,4 @@
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -40,7 +40,9 @@ COPY --from=get_info /tmp/patch /qbittorrent/patches/qbittorrent/master/patch
 ENV qbt_qt_version="6"
 
 RUN \
-    export qbt_cross_name=$(cat "/qbittorrent/SYS_ARCH") \
+    apk update \
+    && apk add --no-cache bash \
+    && export qbt_cross_name=$(cat "/qbittorrent/SYS_ARCH") \
     && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh \
     && bash ./qbittorrent-nox-static.sh -b /qbittorrent all -i -lm -qm -s -bs-p
 
@@ -56,6 +58,6 @@ FROM scratch
 
 COPY --from=gpg_sign /tmp/BUILDKIT /
 
-EXPOSE 51413/tcp 51413/udp 6881-6889/tcp 6881-6889/udp 6969/tcp 6969/udp 8080/tcp 9000/tcp
+EXPOSE 8080/tcp 9000/tcp
 
 ENTRYPOINT ["/qbittorrent-nox"]
