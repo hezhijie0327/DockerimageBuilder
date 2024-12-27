@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 ARG GCC_VERSION="14"
 
@@ -43,6 +43,9 @@ RUN \
     && export PATH="$PREFIX/bin:$PATH" \
     && export OPENSSL_PREFIX="$PREFIX" \
     && ldconfig --verbose \
+    && apt update \
+    && apt install -qy \
+          libjemalloc-dev \
     && make -j $(nproc) BUILD_TLS="yes" MALLOC="jemalloc" \
     && make install \
     && rm -rf /usr/local/bin/valkey-check-* "/usr/local/bin/valkey-sentinel" \
