@@ -1,4 +1,4 @@
-# Current Version: 1.4.0
+# Current Version: 1.4.1
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -27,8 +27,6 @@ RUN \
 
 FROM hezhijie0327/module:expat AS build_expat
 
-FROM hezhijie0327/module:libevent AS build_libevent
-
 FROM hezhijie0327/module:libhiredis AS build_libhiredis
 
 FROM hezhijie0327/module:libmnl AS build_libmnl
@@ -46,8 +44,6 @@ WORKDIR /unbound
 COPY --from=get_info /tmp/BUILDTMP/UNBOUND /unbound
 
 COPY --from=build_expat / /BUILDLIB/
-
-COPY --from=build_libevent / /BUILDLIB/
 
 COPY --from=build_libhiredis / /BUILDLIB/
 
@@ -81,7 +77,6 @@ RUN \
           --enable-tfo-server \
           --with-dynlibmodule \
           --with-libbsd \
-          --with-libevent=$PREFIX \
           --with-libexpat=$PREFIX \
           --with-libhiredis=$PREFIX \
           --with-libmnl=$PREFIX \
