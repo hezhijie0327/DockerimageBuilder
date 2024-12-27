@@ -1,16 +1,16 @@
-# Current Version: 1.2.0
-
-FROM hezhijie0327/base:package AS get_package
+# Current Version: 1.2.1
 
 FROM alpine:latest AS rebased_alpine
 
-COPY --from=get_package /package.json /opt/package.json
+WORKDIR /tmp
 
 RUN \
-    apk update \
-    && apk add --no-cache autoconf automake bash bash-completion build-base cmake curl git gnupg graphviz jq libtool linux-headers perl pkgconf py3-numpy py3-numpy-dev python3 python3-dev re2c ttf-freefont wget openssl-dev openssl-libs-static \
+    export WORKDIR=$(pwd) \
+    && apk update \
+    && apk add --no-cache bash curl git gnupg jq wget \
     && apk upgrade --no-cache \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
+    && git clone -b "main" --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
+    && cp "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/package.json" "/opt/package.json" \
     && sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && rm -rf /tmp/* /var/cache/apk/*
 
