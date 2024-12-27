@@ -1,4 +1,4 @@
-# Current Version: 1.4.2
+# Current Version: 1.4.3
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -25,7 +25,7 @@ RUN \
     && wget -O "${WORKDIR}/BUILDTMP/UNBOUND/etc/unbound/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" \
     && wget -O "${WORKDIR}/BUILDTMP/UNBOUND/etc/unbound/root.hints" "https://www.internic.net/domain/named.cache"
 
-FROM hezhijie0327/module:expat AS build_expat
+FROM hezhijie0327/module:libexpat AS build_libexpat
 
 FROM hezhijie0327/module:libhiredis AS build_libhiredis
 
@@ -43,7 +43,7 @@ WORKDIR /unbound
 
 COPY --from=get_info /tmp/BUILDTMP/UNBOUND /unbound
 
-COPY --from=build_expat / /BUILDLIB/
+COPY --from=build_libexpat / /BUILDLIB/
 
 COPY --from=build_libhiredis / /BUILDLIB/
 
