@@ -1,4 +1,6 @@
-# Current Version: 1.1.0
+# Current Version: 1.1.1
+
+ARG GCC_VERSION="14"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -24,7 +26,7 @@ RUN \
 
 FROM hezhijie0327/module:openssl AS build_openssl
 
-FROM hezhijie0327/base:debian AS build_valkey
+FROM gcc:${GCC_VERSION} AS build_valkey
 
 WORKDIR /valkey
 
