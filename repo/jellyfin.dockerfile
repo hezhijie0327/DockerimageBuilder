@@ -1,9 +1,9 @@
-# Current Version: 2.0.6
+# Current Version: 2.0.7
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
 
-FROM hezhijie0327/base:alpine AS get_info
+FROM hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 
