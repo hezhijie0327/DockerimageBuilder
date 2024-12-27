@@ -1,4 +1,4 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 FROM alpine:latest AS build_package
 
@@ -10,7 +10,7 @@ RUN \
     && apk add --no-cache git \
     && git clone -b "main" --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
     && sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
-    && rm -rf /tmp/* /var/cache/apk/*
+    && rm -rf /var/cache/apk/*
 
 FROM scratch
 
