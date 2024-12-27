@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -13,7 +13,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/OPENSSL" \
     && curl -Ls -o - $(cat "${WORKDIR}/openssl.autobuild") | tar zxvf - --strip-components=1
 
-FROM hezhijie0327/base:ubuntu AS build_openssl
+FROM hezhijie0327/base:debian AS build_openssl
 
 WORKDIR /openssl
 
