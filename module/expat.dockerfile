@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -13,7 +13,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/EXPAT" \
     && curl -Ls -o - $(cat "${WORKDIR}/expat.autobuild") | tar zxvf - --strip-components=1
 
-FROM hezhijie0327/base:ubuntu AS build_expat
+FROM hezhijie0327/base:debian AS build_expat
 
 WORKDIR /expat
 
