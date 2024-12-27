@@ -1,6 +1,4 @@
-# Current Version: 1.1.8
-
-ARG GCC_VERSION="14"
+# Current Version: 1.1.9
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -34,7 +32,7 @@ RUN \
 
 FROM hezhijie0327/module:openssl AS build_openssl
 
-FROM --platform=linux/amd64 gcc:${GCC_VERSION} AS build_qbittorrent
+FROM --platform=linux/amd64 alpine:latest AS build_qbittorrent
 
 WORKDIR /qbittorrent
 
