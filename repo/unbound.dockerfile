@@ -1,4 +1,4 @@
-# Current Version: 1.4.4
+# Current Version: 1.4.5
 
 ARG GCC_VERSION="14"
 
@@ -64,7 +64,12 @@ RUN \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
-    && ldconfig --verbose \    
+    && ldconfig --verbose \
+    && apt update \
+    && apt install -qy \
+          bison flex \
+          protobuf-c-compiler libprotobuf-c-dev \
+          libbsd-dev \
     && ./configure \
           --enable-cachedb \
           --enable-dnscrypt \
