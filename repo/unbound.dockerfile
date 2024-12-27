@@ -1,4 +1,4 @@
-# Current Version: 1.4.9
+# Current Version: 1.5.0
 
 ARG GCC_VERSION="14"
 
@@ -70,6 +70,7 @@ RUN \
           bison flex \
           protobuf-c-compiler libprotobuf-c-dev \
           libbsd-dev \
+          libev-libevent-dev \
     && ./configure \
           --enable-cachedb \
           --enable-dnscrypt \
@@ -84,6 +85,7 @@ RUN \
           --enable-tfo-server \
           --with-dynlibmodule \
           --with-libbsd \
+          --with-libevent \
           --with-libexpat=$PREFIX \
           --with-libhiredis=$PREFIX \
           --with-libmnl=$PREFIX \
