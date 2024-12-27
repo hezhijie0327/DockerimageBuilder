@@ -1,13 +1,15 @@
-# Current Version: 1.4.3
+# Current Version: 1.4.4
 
 FROM hezhijie0327/base:package AS get_package
 
 FROM ubuntu:rolling AS rebased_ubuntu
 
+ENV DEBIAN_FRONTEND="noninteractive"
+
 COPY --from=get_package /package.json /opt/package.json
 
-RUN export DEBIAN_FRONTEND="noninteractive" \
-    && export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
+RUN \
+    export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
     && rm -rf /etc/apt/sources.list.d/*.* \
     && if [ $( dpkg --print-architecture ) = "amd64" ]; then export MIRROR_URL="ubuntu" ; else export MIRROR_URL="ubuntu-ports" ; fi \
     && echo "deb http://mirrors.ustc.edu.cn/${MIRROR_URL} ${LSBCodename} main multiverse restricted universe" > "/etc/apt/sources.list" \
