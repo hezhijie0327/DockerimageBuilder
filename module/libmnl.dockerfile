@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -13,7 +13,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBMNL" \
     && curl -Ls -o - $(cat "${WORKDIR}/libmnl.autobuild") | tar jxvf - --strip-components=1
 
-FROM hezhijie0327/base:ubuntu AS build_libmnl
+FROM hezhijie0327/base:debian AS build_libmnl
 
 WORKDIR /libmnl
 
