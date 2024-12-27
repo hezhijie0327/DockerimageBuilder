@@ -1,4 +1,4 @@
-# Current Version: 1.1.7
+# Current Version: 1.1.8
 
 ARG GCC_VERSION="14"
 
@@ -32,12 +32,16 @@ RUN \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && echo $(uname -m) > "${WORKDIR}/SYS_ARCH"
 
+FROM hezhijie0327/module:openssl AS build_openssl
+
 FROM --platform=linux/amd64 gcc:${GCC_VERSION} AS build_qbittorrent
 
 WORKDIR /qbittorrent
 
 COPY --from=get_info /tmp/SYS_ARCH /qbittorrent/SYS_ARCH
 COPY --from=get_info /tmp/patch /qbittorrent/patches/qbittorrent/master/patch
+
+COPY --from=build_openssl / /qbittorrent/
 
 ENV qbt_qt_version="6"
 
