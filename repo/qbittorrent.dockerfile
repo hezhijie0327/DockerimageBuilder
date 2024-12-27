@@ -1,4 +1,6 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
+
+ARG GCC_VERSION="14"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -30,7 +32,7 @@ RUN \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && echo $(uname -m) > "${WORKDIR}/SYS_ARCH"
 
-FROM --platform=linux/amd64 hezhijie0327/base:alpine AS build_qbittorrent
+FROM --platform=linux/amd64 gcc:${GCC_VERSION} AS build_qbittorrent
 
 WORKDIR /qbittorrent
 
