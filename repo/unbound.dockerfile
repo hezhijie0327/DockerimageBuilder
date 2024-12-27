@@ -1,4 +1,4 @@
-# Current Version: 1.3.9
+# Current Version: 1.4.0
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -39,7 +39,7 @@ FROM hezhijie0327/module:libsodium AS build_libsodium
 
 FROM hezhijie0327/module:openssl AS build_openssl
 
-FROM hezhijie0327/base:ubuntu AS build_unbound
+FROM hezhijie0327/base:debian AS build_unbound
 
 WORKDIR /unbound
 

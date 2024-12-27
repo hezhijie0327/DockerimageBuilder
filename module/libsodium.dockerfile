@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -13,7 +13,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBSODIUM" \
     && curl -Ls -o - $(cat "${WORKDIR}/libsodium.autobuild") | tar zxvf - --strip-components=1
 
-FROM hezhijie0327/base:ubuntu AS build_libsodium
+FROM hezhijie0327/base:debian AS build_libsodium
 
 WORKDIR /libsodium
 

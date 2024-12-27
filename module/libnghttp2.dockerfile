@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -13,7 +13,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBNGHTTP2" \
     && curl -Ls -o - $(cat "${WORKDIR}/libnghttp2.autobuild") | tar zxvf - --strip-components=1
 
-FROM hezhijie0327/base:ubuntu AS build_libnghttp2
+FROM hezhijie0327/base:debian AS build_libnghttp2
 
 WORKDIR /libnghttp2
 
