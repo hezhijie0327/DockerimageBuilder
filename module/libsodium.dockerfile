@@ -1,4 +1,6 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
+
+ARG GCC_VERSION="14"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -13,7 +15,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBSODIUM" \
     && curl -Ls -o - $(cat "${WORKDIR}/libsodium.autobuild") | tar zxvf - --strip-components=1
 
-FROM hezhijie0327/base:debian AS build_libsodium
+FROM gcc:${GCC_VERSION} AS build_libsodium
 
 WORKDIR /libsodium
 
