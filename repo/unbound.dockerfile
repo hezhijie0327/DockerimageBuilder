@@ -1,4 +1,4 @@
-# Current Version: 1.4.8
+# Current Version: 1.4.9
 
 ARG GCC_VERSION="14"
 
@@ -27,8 +27,6 @@ RUN \
     && wget -O "${WORKDIR}/BUILDTMP/UNBOUND/etc/unbound/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" \
     && wget -O "${WORKDIR}/BUILDTMP/UNBOUND/etc/unbound/root.hints" "https://www.internic.net/domain/named.cache"
 
-FROM hezhijie0327/module:libevent AS build_libevent
-
 FROM hezhijie0327/module:libexpat AS build_libexpat
 
 FROM hezhijie0327/module:libhiredis AS build_libhiredis
@@ -46,8 +44,6 @@ FROM gcc:${GCC_VERSION} AS build_unbound
 WORKDIR /unbound
 
 COPY --from=get_info /tmp/BUILDTMP/UNBOUND /unbound
-
-COPY --from=build_libevent / /BUILDLIB/
 
 COPY --from=build_libexpat / /BUILDLIB/
 
@@ -88,7 +84,6 @@ RUN \
           --enable-tfo-server \
           --with-dynlibmodule \
           --with-libbsd \
-          --with-libevent=$PREFIX \
           --with-libexpat=$PREFIX \
           --with-libhiredis=$PREFIX \
           --with-libmnl=$PREFIX \
