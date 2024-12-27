@@ -1,4 +1,4 @@
-# Current Version: 2.0.4
+# Current Version: 2.0.5
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -86,8 +86,8 @@ RUN \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
+    && sed -i 's/http:/https:/g;s/deb.debian.org/mirrors.ustc.edu.cn/g' "/etc/apt/sources.list.d/debian.sources" \
     && sed -i 's/deb/# deb/g' "/etc/apt/sources.list.d/jellyfin.list" \
-    && sed -i "s/deb.debian.org/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list.d/debian.sources" \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 FROM scratch
