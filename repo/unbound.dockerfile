@@ -1,4 +1,6 @@
-# Current Version: 1.4.3
+# Current Version: 1.4.5
+
+ARG GCC_VERSION="14"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -37,7 +39,7 @@ FROM hezhijie0327/module:libsodium AS build_libsodium
 
 FROM hezhijie0327/module:openssl AS build_openssl
 
-FROM hezhijie0327/base:debian AS build_unbound
+FROM gcc:${GCC_VERSION} AS build_unbound
 
 WORKDIR /unbound
 
@@ -62,7 +64,12 @@ RUN \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
-    && ldconfig --verbose \    
+    && ldconfig --verbose \
+    && apt update \
+    && apt install -qy \
+          bison flex \
+          protobuf-c-compiler libprotobuf-c-dev \
+          libbsd-dev \
     && ./configure \
           --enable-cachedb \
           --enable-dnscrypt \
