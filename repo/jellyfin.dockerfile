@@ -1,4 +1,4 @@
-# Current Version: 2.0.3
+# Current Version: 2.0.4
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -80,8 +80,7 @@ COPY --from=build_jellyfin /jellyfin/jellyfin-archive-keyring.gpg /usr/share/key
 COPY --from=build_jellyfin_web /jellyfin/dist /opt/jellyfin-web
 
 RUN \
-    export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
-    && echo "deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/debian ${LSBCodename} main unstable" > "/etc/apt/sources.list.d/jellyfin.list" \
+    echo "deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/debian $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main unstable" > "/etc/apt/sources.list.d/jellyfin.list" \
     && apt update \
     && apt install -qy jellyfin-ffmpeg6 libssl-dev \
     && apt full-upgrade -qy \
