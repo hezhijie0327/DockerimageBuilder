@@ -1,4 +1,4 @@
-# Current Version: 1.4.1
+# Current Version: 1.4.2
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -82,7 +82,7 @@ RUN \
           --with-libmnl=$PREFIX \
           --with-libnghttp2=$PREFIX \
           --with-libsodium=$PREFIX \
-          --without-pthreads \
+          --with-pthreads \
           --without-solaris-threads \
           --with-ssl=$PREFIX \
     && make -j $(nproc) \
