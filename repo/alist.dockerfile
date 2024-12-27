@@ -1,4 +1,4 @@
-# Current Version: 1.1.7
+# Current Version: 1.1.8
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -33,7 +33,8 @@ RUN \
     && echo "${ALIST_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/ALIST/ALIST_CUSTOM_VERSION" \
     && cd "${WORKDIR}/BUILDTMP/ALIST_WEB" \
     && git submodule update --init \
-    && sed -i -e "s/\"version\": \"0.0.0\"/\"version\": \"$ALIST_CUSTOM_VERSION\"/g" "${WORKDIR}/BUILDTMP/ALIST_WEB/package.json"
+    && sed -i -e "s/\"version\": \"0.0.0\"/\"version\": \"$ALIST_CUSTOM_VERSION\"/g" "${WORKDIR}/BUILDTMP/ALIST_WEB/package.json" \
+    && cp -rf "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/alist_web/lang/zh-CN" "${WORKDIR}/BUILDTMP/ALIST_WEB/src/lang/zh-CN"
 
 FROM node:${NODEJS_VERSION}-slim AS build_alist_web
 
@@ -45,6 +46,7 @@ RUN \
     export PNPM_HOME="/pnpm" \
     && corepack enable \
     && corepack use pnpm \
+    && node ./scripts/i18n.mjs \
     && pnpm i \
     && pnpm build
 
@@ -77,6 +79,6 @@ FROM scratch
 
 COPY --from=rebased_alist / /
 
-EXPOSE 5244/tcp 5246/tcp
+EXPOSE 5221/tcp 5222/tcp 5244/tcp 5246/tcp
 
 ENTRYPOINT ["/opt/alist/alist"]
