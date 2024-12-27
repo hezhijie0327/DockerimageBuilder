@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 ARG GCC_VERSION="14"
 
@@ -15,7 +15,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBNGHTTP2" \
     && curl -Ls -o - $(cat "${WORKDIR}/libnghttp2.autobuild") | tar zxvf - --strip-components=1
 
-FROM ${GCC_VERSION} AS build_libnghttp2
+FROM gcc:${GCC_VERSION} AS build_libnghttp2
 
 WORKDIR /libnghttp2
 
