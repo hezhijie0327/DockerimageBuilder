@@ -1,4 +1,4 @@
-# Current Version: 2.0.2
+# Current Version: 2.0.3
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -80,47 +80,15 @@ COPY --from=build_jellyfin /jellyfin/jellyfin-archive-keyring.gpg /usr/share/key
 COPY --from=build_jellyfin_web /jellyfin/dist /opt/jellyfin-web
 
 RUN \
-    rm -rf /etc/apt/sources.list.d/*.* \
-    && export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
-    && echo "deb http://mirrors.ustc.edu.cn/debian-security ${LSBCodename}-security contrib main non-free non-free-firmware" > "/etc/apt/sources.list" \
-    && echo "deb http://mirrors.ustc.edu.cn/debian ${LSBCodename} contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb http://mirrors.ustc.edu.cn/debian ${LSBCodename}-backports contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb http://mirrors.ustc.edu.cn/debian ${LSBCodename}-backports-sloppy contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb http://mirrors.ustc.edu.cn/debian ${LSBCodename}-proposed-updates contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb http://mirrors.ustc.edu.cn/debian ${LSBCodename}-updates contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb-src http://mirrors.ustc.edu.cn/debian-security ${LSBCodename}-security contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb-src http://mirrors.ustc.edu.cn/debian ${LSBCodename} contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb-src http://mirrors.ustc.edu.cn/debian ${LSBCodename}-backports contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb-src http://mirrors.ustc.edu.cn/debian ${LSBCodename}-backports-sloppy contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb-src http://mirrors.ustc.edu.cn/debian ${LSBCodename}-proposed-updates contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
-    && echo "deb-src http://mirrors.ustc.edu.cn/debian ${LSBCodename}-updates contrib main non-free non-free-firmware" >> "/etc/apt/sources.list" \
+    export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
     && echo "deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/debian ${LSBCodename} main unstable" > "/etc/apt/sources.list.d/jellyfin.list" \
-    && echo "Package: *" > "/etc/apt/preferences" \
-    && echo "Pin: release a=${LSBCodename}-backports" >> "/etc/apt/preferences" \
-    && echo "Pin-Priority: 990" >> "/etc/apt/preferences" \
-    && echo "" >> "/etc/apt/preferences" \
-    && echo "Package: *" >> "/etc/apt/preferences" \
-    && echo "Pin: release a=${LSBCodename}-security" >> "/etc/apt/preferences" \
-    && echo "Pin-Priority: 500" >> "/etc/apt/preferences" \
-    && echo "" >> "/etc/apt/preferences" \
-    && echo "Package: *" >> "/etc/apt/preferences" \
-    && echo "Pin: release a=${LSBCodename}-updates" >> "/etc/apt/preferences" \
-    && echo "Pin-Priority: 500" >> "/etc/apt/preferences" \
-    && echo "" >> "/etc/apt/preferences" \
-    && echo "Package: *" >> "/etc/apt/preferences" \
-    && echo "Pin: release a=${LSBCodename}" >> "/etc/apt/preferences" \
-    && echo "Pin-Priority: 500" >> "/etc/apt/preferences" \
-    && echo "" >> "/etc/apt/preferences" \
-    && echo "Package: *" >> "/etc/apt/preferences" \
-    && echo "Pin: release a=${LSBCodename}-proposed" >> "/etc/apt/preferences" \
-    && echo "Pin-Priority: 100" >> "/etc/apt/preferences" \
     && apt update \
     && apt install -qy jellyfin-ffmpeg6 libssl-dev \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
-    && sed -i 's/http:/https:/g' "/etc/apt/sources.list" \
     && sed -i 's/deb/# deb/g' "/etc/apt/sources.list.d/jellyfin.list" \
+    && sed -i "s/deb.debian.org/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list.d/debian.sources" \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 FROM scratch
