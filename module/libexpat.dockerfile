@@ -1,4 +1,6 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
+
+ARG GCC_VERSION="14"
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -13,7 +15,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBEXPAT" \
     && curl -Ls -o - $(cat "${WORKDIR}/libexpat.autobuild") | tar zxvf - --strip-components=1
 
-FROM hezhijie0327/base:debian AS build_libexpat
+FROM gcc:${GCC_VERSION} AS build_libexpat
 
 WORKDIR /libexpat
 
