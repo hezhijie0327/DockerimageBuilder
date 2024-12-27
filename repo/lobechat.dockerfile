@@ -1,4 +1,4 @@
-# Current Version: 1.8.8
+# Current Version: 1.8.9
 
 ARG NODEJS_VERSION="22"
 
@@ -30,8 +30,7 @@ FROM node:${NODEJS_VERSION}-slim AS build_baseos
 ENV DEBIAN_FRONTEND="noninteractive"
 
 RUN \
-    sed -i "s/deb.debian.org/mirrors.ustc.edu.cn/g" "/etc/apt/sources.list.d/debian.sources" \
-    && apt update \
+    apt update \
     && apt install proxychains-ng -qy \
     && mkdir -p /distroless/bin /distroless/etc /distroless/lib \
     && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
