@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 FROM hezhijie0327/base:alpine AS get_info
 
@@ -24,7 +24,7 @@ RUN \
 
 FROM hezhijie0327/module:openssl AS build_openssl
 
-FROM hezhijie0327/base:ubuntu AS build_valkey
+FROM hezhijie0327/base:debian AS build_valkey
 
 WORKDIR /valkey
 
