@@ -1,8 +1,8 @@
-# Current Version: 1.4.5
+# Current Version: 1.4.6
 
 ARG GCC_VERSION="14"
 
-FROM hezhijie0327/base:alpine AS get_info
+FROM hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 
