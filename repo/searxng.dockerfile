@@ -1,4 +1,4 @@
-# Current Version: 1.1.8
+# Current Version: 1.1.9
 
 ARG PYTHON_VERSION="3"
 
@@ -34,15 +34,13 @@ COPY --from=get_info /tmp/BUILDTMP/SEARXNG/requirements.txt /usr/local/searxng/r
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /usr/local/searxng/searx
 
 RUN \
-    sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
-    && apk update \
+    apk update \
     && apk upgrade --no-cache \
     && apk add --no-cache -t build-dependencies \
         brotli \
         build-base \
         git \
         openssl \
-    && pip config set global.index-url https://mirrors.ustc.edu.cn/pypi/simple \
     && pip install --no-cache --break-system-packages -r requirements.txt \
     && python3 -m compileall -q searx \
     && find searx/static -a \( -name '*.html' -o -name '*.css' -o -name '*.js' \
