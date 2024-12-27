@@ -1,4 +1,4 @@
-# Current Version: 1.4.6
+# Current Version: 1.4.7
 
 ARG GCC_VERSION="14"
 
@@ -89,7 +89,7 @@ RUN \
           --with-libmnl=$PREFIX \
           --with-libnghttp2=$PREFIX \
           --with-libsodium=$PREFIX \
-          --with-pthreads \
+          --without-pthreads \
           --without-solaris-threads \
           --with-ssl=$PREFIX \
     && make -j $(nproc) \
