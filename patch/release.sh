@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 2.0.8
+# Current Version: 2.0.9
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -26,6 +26,7 @@ export SIYUAN_VERSION_FIXED=""
 export UNBOUND_VERSION_FIXED=""
 export VALKEY_VERSION_FIXED=""
 export VAULTWARDEN_VERSION_FIXED=""
+export VAULTWARDEN_WEB_VERSION_FIXED=""
 export XRAY_VERSION_FIXED=""
 
 ## Function
@@ -50,6 +51,7 @@ function GetLatestVersion() {
     UNBOUND_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/NLnetLabs/unbound/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "rc" | grep "^refs/tags/release\-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     VALKEY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/valkey-io/valkey/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\///")
     VAULTWARDEN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/dani-garcia/vaultwarden/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
+    VAULTWARDEN_WEB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/dani-garcia/bw_web_builds/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     XRAY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/XTLS/Xray-core/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
 }
 # Generate Replacements
@@ -75,6 +77,7 @@ function GenerateReplacements() {
         "s/{UNBOUND_VERSION}/${UNBOUND_VERSION_FIXED:-${UNBOUND_VERSION}}/g"
         "s/{VALKEY_VERSION}/${VALKEY_VERSION_FIXED:-${VALKEY_VERSION}}/g"
         "s/{VAULTWARDEN_VERSION}/${VAULTWARDEN_VERSION_FIXED:-${VAULTWARDEN_VERSION}}/g"
+        "s/{VAULTWARDEN_WEB_VERSION}/${VAULTWARDEN_WEB_VERSION_FIXED:-${VAULTWARDEN_WEB_VERSION}}/g"
         "s/{XRAY_VERSION}/${XRAY_VERSION_FIXED:-${XRAY_VERSION}}/g"
     )
     SED_REPLACEMENT="" && for replacement_list_task in "${!replacement_list[@]}"; do
