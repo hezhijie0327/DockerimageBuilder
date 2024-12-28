@@ -1,4 +1,4 @@
-# Current Version: 1.2.3
+# Current Version: 1.2.4
 
 FROM hezhijie0327/module:alpine AS get_info
 
@@ -30,7 +30,7 @@ RUN \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && echo $(uname -m) > "${WORKDIR}/SYS_ARCH"
 
-FROM --platform=linux/amd64 debian:stable-slim AS build_qbittorrent
+FROM --platform=linux/amd64 alpine:latest AS build_qbittorrent
 
 WORKDIR /qbittorrent
 
@@ -40,9 +40,8 @@ COPY --from=get_info /tmp/patch /qbittorrent/patches/qbittorrent/master/patch
 ENV qbt_qt_version="6"
 
 RUN \
-    apt update \
-    && apt install -qy \
-          wget \
+    apk update \
+    && apk add --no-cache bash \
     && export qbt_cross_name=$(cat "/qbittorrent/SYS_ARCH") \
     && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh \
     && bash ./qbittorrent-nox-static.sh -b /qbittorrent all -i -lm -qm -s -bs-p
