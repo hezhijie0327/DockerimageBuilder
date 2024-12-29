@@ -1,0 +1,93 @@
+From 37561d9a014c1cad10038a0b6e967c05a10f1d4b Mon Sep 17 00:00:00 2001
+From: Zhijie He <hezhijie0327@hotmail.com>
+Date: Sun, 29 Dec 2024 18:25:27 +0800
+Subject: [PATCH] test
+
+---
+ src/server/modules/SearXNG.ts                   | 3 ++-
+ src/store/chat/slices/builtinTool/action.ts     | 2 +-
+ src/tools/web-browsing/components/SearchBar.tsx | 2 +-
+ src/tools/web-browsing/index.ts                 | 9 +++++++++
+ src/types/tool/search.ts                        | 1 +
+ 5 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/src/server/modules/SearXNG.ts b/src/server/modules/SearXNG.ts
+index bfaa1e8..43373ee 100644
+--- a/src/server/modules/SearXNG.ts
++++ b/src/server/modules/SearXNG.ts
+@@ -10,12 +10,13 @@ export class SearXNGClient {
+     this.baseUrl = baseUrl;
+   }
+ 
+-  async search(query: string, engines?: string[]): Promise<SearchResponse> {
++  async search(query: string, engines?: string[], time_range?: string): Promise<SearchResponse> {
+     try {
+       const searchParams = qs.stringify({
+         engines: engines?.join(','),
+         format: 'json',
+         q: query,
++        ...(time_range ? { time_range } : {}),
+       });
+ 
+       const response = await fetch(urlJoin(this.baseUrl, `/search?${searchParams}`));
+diff --git a/src/store/chat/slices/builtinTool/action.ts b/src/store/chat/slices/builtinTool/action.ts
+index fd04f12..e690fbd 100644
+--- a/src/store/chat/slices/builtinTool/action.ts
++++ b/src/store/chat/slices/builtinTool/action.ts
+@@ -151,7 +151,7 @@ export const chatToolSlice: StateCreator<
+   },
+   searchWithSearXNG: async (id, params, aiSummary = true) => {
+     get().toggleSearchLoading(id, true);
+-    const data = await searchService.search(params.query, params.searchEngines);
++    const data = await searchService.search(params.query, params.searchEngines, params.time_range);
+     await get().updatePluginState(id, data);
+ 
+     get().toggleSearchLoading(id, false);
+diff --git a/src/tools/web-browsing/components/SearchBar.tsx b/src/tools/web-browsing/components/SearchBar.tsx
+index 2b63083..bb07556 100644
+--- a/src/tools/web-browsing/components/SearchBar.tsx
++++ b/src/tools/web-browsing/components/SearchBar.tsx
+@@ -41,7 +41,7 @@ const SearchBar = memo<SearchBarProps>(
+     const [reSearchWithSearXNG] = useChatStore((s) => [s.reSearchWithSearXNG]);
+ 
+     const updateAndSearch = async () => {
+-      const data: SearchQuery = { query, searchEngines: engines };
++      const data: SearchQuery = { query, searchEngines: engines, time_range};
+       onSearch?.(data);
+       await reSearchWithSearXNG(messageId, data, { aiSummary });
+     };
+diff --git a/src/tools/web-browsing/index.ts b/src/tools/web-browsing/index.ts
+index 75416e9..2fc14da 100644
+--- a/src/tools/web-browsing/index.ts
++++ b/src/tools/web-browsing/index.ts
+@@ -41,6 +41,15 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
+             },
+             type: 'array',
+           },
++          "time_range": {
++            "description": "Time range of search for engines, you can use:",
++            "enum": [
++              "day",
++              "month",
++              "year"
++            ],
++            "type": "string"
++          }
+         },
+         required: ['query'],
+         type: 'object',
+diff --git a/src/types/tool/search.ts b/src/types/tool/search.ts
+index 4d8ea25..10fa93f 100644
+--- a/src/types/tool/search.ts
++++ b/src/types/tool/search.ts
+@@ -1,6 +1,7 @@
+ export interface SearchQuery {
+   query: string;
+   searchEngines?: string[];
++  time_range?: string;
+ }
+ 
+ export interface SearchResponse {
+-- 
+2.47.1
+
