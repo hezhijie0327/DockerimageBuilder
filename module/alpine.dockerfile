@@ -1,4 +1,4 @@
-# Current Version: 1.2.3
+# Current Version: 1.2.4
 
 FROM alpine:latest AS rebased_alpine
 
@@ -7,7 +7,7 @@ WORKDIR /tmp
 RUN \
     export WORKDIR=$(pwd) \
     && apk update \
-    && apk add --no-cache bash curl git gnupg jq wget \
+    && apk add --no-cache bash curl git gnupg jq openssl wget \
     && apk upgrade --no-cache \
     && git clone -b "main" --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
     && cp "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/package.json" "/opt/package.json" \
