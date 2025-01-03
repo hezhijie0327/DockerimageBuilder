@@ -1,4 +1,4 @@
-# Current Version: 2.0.8
+# Current Version: 2.0.9
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -88,6 +88,10 @@ RUN \
     && apt install -qy \
           jellyfin-ffmpeg6 \
           libssl-dev \
+    && if [ $(uname -m) == "x86_64" ]; then \
+        apt install -qy \
+          mesa-va-drivers
+    fi \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
