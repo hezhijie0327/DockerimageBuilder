@@ -1,4 +1,4 @@
-# Current Version: 2.0.9
+# Current Version: 2.1.0
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -90,7 +90,7 @@ RUN \
           libssl-dev \
     && if [ $(uname -m) == "x86_64" ]; then \
         apt install -qy \
-          mesa-va-drivers
+          mesa-va-drivers \
     fi \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
