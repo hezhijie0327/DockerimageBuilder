@@ -1,4 +1,4 @@
-# Current Version: 2.0.7
+# Current Version: 2.0.8
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -45,7 +45,7 @@ COPY --from=get_info /tmp/BUILDTMP/JELLYFIN_WEB /jellyfin
 
 RUN \
     apt update \
-    && apt install git -qy \
+    && apt install fonts-noto-cjk git -qy \
     && npm ci --no-audit --unsafe-perm \
     && npm run build:production
 
@@ -79,6 +79,8 @@ COPY --from=gpg_sign /tmp/BUILDKIT/jellyfin /opt/jellyfin
 COPY --from=build_jellyfin /jellyfin/jellyfin-archive-keyring.gpg /usr/share/keyrings/jellyfin-archive-keyring.gpg
 
 COPY --from=build_jellyfin_web /jellyfin/dist /opt/jellyfin-web
+
+COPY --from=build_jellyfin_web /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc
 
 RUN \
     echo "deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/debian $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main unstable" > "/etc/apt/sources.list.d/jellyfin.list" \
