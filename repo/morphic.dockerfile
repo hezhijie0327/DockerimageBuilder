@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG BUN_VERSION="1"
 
@@ -31,11 +31,11 @@ ENV DEBIAN_FRONTEND="noninteractive"
 
 RUN \
     mkdir -p /distroless/bin /distroless/lib \
-    && cp /lib/ld-linux-$(arch).so.1 /distroless/lib/libdl.so.2 \
+    && cp /lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
     && cp /usr/local/bin/bun /distroless/bin/bun \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
-FROM base AS build_morphic
+FROM build_baseos AS build_morphic
 
 ENV \
     DOCKER="true" \
@@ -76,4 +76,4 @@ EXPOSE 3000/tcp
 
 ENTRYPOINT ["/bin/bun"]
 
-CMD ["/app/startServer.js"]
+CMD ["/app/server.js"]
