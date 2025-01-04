@@ -1,4 +1,4 @@
-# Current Version: 2.1.2
+# Current Version: 2.1.3
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -88,7 +88,7 @@ RUN \
     && apt install -qy \
           jellyfin-ffmpeg7 \
           libssl-dev \
-    && if [ $(uname -m) == "x86_64" ]; then \
+    && if [ "$(uname -m)" = "x86_64" ]; then \
         apt install -qy \
           mesa-va-drivers; \
     fi \
