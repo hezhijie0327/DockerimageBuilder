@@ -1,4 +1,4 @@
-# Current Version: 2.1.0
+# Current Version: 2.1.1
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -86,11 +86,11 @@ RUN \
     echo "deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/debian $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main unstable" > "/etc/apt/sources.list.d/jellyfin.list" \
     && apt update \
     && apt install -qy \
-          jellyfin-ffmpeg6 \
+          jellyfin-ffmpeg7 \
           libssl-dev \
     && if [ $(uname -m) == "x86_64" ]; then \
         apt install -qy \
-          mesa-va-drivers \
+          mesa-va-drivers; \
     fi \
     && apt full-upgrade -qy \
     && apt autoremove -qy \
