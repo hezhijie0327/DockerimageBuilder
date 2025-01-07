@@ -43,10 +43,10 @@ index d3eafa591d9e..000000000000
 -export const POST = async (req: Request) =>
 -  UniverseRoute(req, { params: Promise.resolve({ provider: 'minimax' }) });
 diff --git a/src/config/modelProviders/minimax.ts b/src/config/modelProviders/minimax.ts
-index 6cb4d4959f29..4fffd13f9f21 100644
+index 6cb4d4959f29..51112331b3ec 100644
 --- a/src/config/modelProviders/minimax.ts
 +++ b/src/config/modelProviders/minimax.ts
-@@ -3,6 +3,14 @@ import { ModelProviderCard } from '@/types/llm';
+@@ -3,6 +3,21 @@ import { ModelProviderCard } from '@/types/llm';
  // ref: https://platform.minimaxi.com/document/Models
  const Minimax: ModelProviderCard = {
    chatModels: [
@@ -57,10 +57,81 @@ index 6cb4d4959f29..4fffd13f9f21 100644
 +      enabled: true,
 +      functionCall: true,
 +      id: 'abab7-chat-preview',
++      maxOutput: 245_760,
++      pricing: {
++        currency: 'CNY',
++        input: 10,
++        output: 10,
++      },
++      vision: true,
 +    },
      {
        contextWindowTokens: 245_760,
        description: '适用于广泛的自然语言处理任务，包括文本生成、对话系统等。',
+@@ -10,6 +25,13 @@ const Minimax: ModelProviderCard = {
+       enabled: true,
+       functionCall: true,
+       id: 'abab6.5s-chat',
++      maxOutput: 245_760,
++      pricing: {
++        currency: 'CNY',
++        input: 1,
++        output: 1,
++      },
++      vision: true,
+     },
+     {
+       contextWindowTokens: 8192,
+@@ -18,6 +40,12 @@ const Minimax: ModelProviderCard = {
+       enabled: true,
+       functionCall: true,
+       id: 'abab6.5g-chat',
++      maxOutput: 8192,
++      pricing: {
++        currency: 'CNY',
++        input: 5,
++        output: 5,
++      },
+     },
+     {
+       contextWindowTokens: 8192,
+@@ -26,18 +54,36 @@ const Minimax: ModelProviderCard = {
+       enabled: true,
+       functionCall: true,
+       id: 'abab6.5t-chat',
++      maxOutput: 8192,
++      pricing: {
++        currency: 'CNY',
++        input: 5,
++        output: 5,
++      },
+     },
+     {
+       contextWindowTokens: 16_384,
+       description: '面向生产力场景，支持复杂任务处理和高效文本生成，适用于专业领域应用。',
+       displayName: 'abab5.5',
+       id: 'abab5.5-chat',
++      maxOutput: 16_384,
++      pricing: {
++        currency: 'CNY',
++        input: 5,
++        output: 5,
++      },
+     },
+     {
+       contextWindowTokens: 8192,
+       description: '专为中文人设对话场景设计，提供高质量的中文对话生成能力，适用于多种应用场景。',
+       displayName: 'abab5.5s',
+       id: 'abab5.5s-chat',
++      maxOutput: 8192,
++      pricing: {
++        currency: 'CNY',
++        input: 15,
++        output: 15,
++      },
+     },
+   ],
+   checkModel: 'abab6.5s-chat',
 diff --git a/src/libs/agent-runtime/minimax/index.test.ts b/src/libs/agent-runtime/minimax/index.test.ts
 deleted file mode 100644
 index 01146687f94f..000000000000
@@ -343,10 +414,10 @@ index 01146687f94f..000000000000
 -  });
 -});
 diff --git a/src/libs/agent-runtime/minimax/index.ts b/src/libs/agent-runtime/minimax/index.ts
-index 1e7b51e0c3aa..f646f8a401de 100644
+index 1e7b51e0c3aa..ab43b0aff9ff 100644
 --- a/src/libs/agent-runtime/minimax/index.ts
 +++ b/src/libs/agent-runtime/minimax/index.ts
-@@ -1,184 +1,24 @@
+@@ -1,184 +1,40 @@
 -import { isEmpty } from 'lodash-es';
 -import OpenAI from 'openai';
 -
@@ -392,24 +463,7 @@ index 1e7b51e0c3aa..f646f8a401de 100644
 -    error: {
 -      code: data.base_resp.status_code,
 -      message: data.base_resp.status_msg,
-+import { ModelProvider } from '../types';
-+import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
-+
-+export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
-+  baseURL: 'https://api.minimax.chat/v1',
-+  chatCompletion: {
-+    handlePayload: (payload) => {
-+      const { temperature, top_p, ...rest } = payload;
-+
-+      return {
-+        ...rest,
-+        frequency_penalty: undefined,
-+        presence_penalty: undefined,
-+        stream: true,
-+        temperature: temperature === undefined || temperature <= 0 ? undefined : temperature / 2,
-+        top_p: top_p !== undefined && top_p > 0 && top_p <= 1 ? top_p : undefined,
-+      } as any;
-     },
+-    },
 -    errorType: AgentRuntimeErrorType.ProviderBizError,
 -    provider: ModelProvider.Minimax,
 -  });
@@ -450,7 +504,35 @@ index 1e7b51e0c3aa..f646f8a401de 100644
 -          error: {
 -            status: response.status,
 -            statusText: response.statusText,
--          },
++import { ModelProvider } from '../types';
++import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
++
++import Minimax from '@/config/modelProviders/minimax';
++
++export const getMinimaxMaxOutputs = (modelId: string): number | undefined => {
++  const model = Minimax.chatModels.find(model => model.id === modelId);
++  return model ? model.maxOutput : undefined;
++};
++
++export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
++  baseURL: 'https://api.minimax.chat/v1',
++  chatCompletion: {
++    handlePayload: (payload) => {
++      const { temperature, top_p, ...params } = payload;
++
++      return {
++        ...params,
++        frequency_penalty: undefined,
++        max_tokens: payload.max_tokens !== undefined ? payload.max_tokens : getMinimaxMaxOutputs(payload.model),
++        presence_penalty: undefined,
++        stream: true,
++        temperature: temperature === undefined || temperature <= 0 ? undefined : temperature / 2,
++        tools: params.tools?.map((tool) => ({
++          function: {
++            description: tool.function.description,
++            name: tool.function.name,
++            parameters: JSON.stringify(tool.function.parameters),
+           },
 -          errorType: AgentRuntimeErrorType.ProviderBizError,
 -          provider: ModelProvider.Minimax,
 -        });
@@ -548,6 +630,11 @@ index 1e7b51e0c3aa..f646f8a401de 100644
 -}
 -
 -export default LobeMinimaxAI;
++          type: 'function',
++        })),
++        top_p: top_p !== undefined && top_p > 0 && top_p <= 1 ? top_p : undefined,
++      } as any;
++    },
 +  },
 +  debug: {
 +    chatCompletion: () => process.env.DEBUG_MINIMAX_CHAT_COMPLETION === '1',
