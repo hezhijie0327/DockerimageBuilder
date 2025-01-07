@@ -360,6 +360,23 @@ index 684c385b2894..6581c25e9b02 100644
    },
    url: 'https://hunyuan.tencent.com',
  };
+diff --git a/src/config/modelProviders/mistral.ts b/src/config/modelProviders/mistral.ts
+index 330efd7e0b25..4c45f53fa6a9 100644
+--- a/src/config/modelProviders/mistral.ts
++++ b/src/config/modelProviders/mistral.ts
+@@ -150,10 +150,12 @@ const Mistral: ModelProviderCard = {
+   description:
+     'Mistral 提供先进的通用、专业和研究型模型，广泛应用于复杂推理、多语言任务、代码生成等领域，通过功能调用接口，用户可以集成自定义功能，实现特定应用。',
+   id: 'mistral',
++  modelList: { showModelFetcher: true },
+   modelsUrl: 'https://docs.mistral.ai/getting-started/models',
+   name: 'Mistral',
+   settings: {
+     sdkType: 'openai',
++    showModelFetcher: true,
+   },
+   url: 'https://mistral.ai',
+ };
 diff --git a/src/config/modelProviders/moonshot.ts b/src/config/modelProviders/moonshot.ts
 index 7fbeaa9fa735..272eaebbbbf0 100644
 --- a/src/config/modelProviders/moonshot.ts
@@ -686,6 +703,49 @@ index 3dfaf0edda41..7610da9e3c2d 100644
 +    },
 +  },
    provider: ModelProvider.InternLM,
+ });
+diff --git a/src/libs/agent-runtime/mistral/index.ts b/src/libs/agent-runtime/mistral/index.ts
+index 73fb9d0461c1..723206e70e65 100644
+--- a/src/libs/agent-runtime/mistral/index.ts
++++ b/src/libs/agent-runtime/mistral/index.ts
+@@ -1,6 +1,18 @@
+ import { ModelProvider } from '../types';
+ import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
+ 
++import { LOBE_DEFAULT_MODEL_LIST } from '@/config/modelProviders';
++
++export interface MistralModelCard {
++  capabilities: {
++    function_calling: boolean;
++    vision: boolean;
++  };
++  description: string;
++  id: string;
++  max_context_length: number;
++}
++
+ export const LobeMistralAI = LobeOpenAICompatibleFactory({
+   baseURL: 'https://api.mistral.ai/v1',
+   chatCompletion: {
+@@ -18,5 +30,19 @@ export const LobeMistralAI = LobeOpenAICompatibleFactory({
+   debug: {
+     chatCompletion: () => process.env.DEBUG_MISTRAL_CHAT_COMPLETION === '1',
+   },
++  models: {
++    transformModel: (m) => {
++      const model = m as unknown as MistralModelCard;
++
++      return {
++        contextWindowTokens: model.max_context_length,
++        description: model.description,
++        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id.endsWith(m.id))?.enabled || false,
++        functionCall: model.capabilities.function_calling,
++        id: model.id,
++        vision: model.capabilities.vision,
++      };
++    },
++  },
+   provider: ModelProvider.Mistral,
  });
 diff --git a/src/libs/agent-runtime/moonshot/index.ts b/src/libs/agent-runtime/moonshot/index.ts
 index 28c976d9dcf5..9e024190762a 100644
