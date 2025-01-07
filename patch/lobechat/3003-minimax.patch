@@ -1,0 +1,664 @@
+diff --git a/src/app/(backend)/webapi/chat/minimax/route.test.ts b/src/app/(backend)/webapi/chat/minimax/route.test.ts
+deleted file mode 100644
+index 1ae4933ba2a4..000000000000
+--- a/src/app/(backend)/webapi/chat/minimax/route.test.ts
++++ /dev/null
+@@ -1,26 +0,0 @@
+-// @vitest-environment edge-runtime
+-import { describe, expect, it, vi } from 'vitest';
+-
+-import { POST as UniverseRoute } from '../[provider]/route';
+-import { POST, runtime } from './route';
+-
+-// 模拟 '../[provider]/route'
+-vi.mock('../[provider]/route', () => ({
+-  POST: vi.fn().mockResolvedValue('mocked response'),
+-}));
+-
+-describe('Configuration tests', () => {
+-  it('should have runtime set to "edge"', () => {
+-    expect(runtime).toBe('nodejs');
+-  });
+-});
+-
+-describe('Minimax POST function tests', () => {
+-  it('should call UniverseRoute with correct parameters', async () => {
+-    const mockRequest = new Request('https://example.com', { method: 'POST' });
+-    await POST(mockRequest);
+-    expect(UniverseRoute).toHaveBeenCalledWith(mockRequest, {
+-      params: Promise.resolve({ provider: 'minimax' }),
+-    });
+-  });
+-});
+diff --git a/src/app/(backend)/webapi/chat/minimax/route.ts b/src/app/(backend)/webapi/chat/minimax/route.ts
+deleted file mode 100644
+index d3eafa591d9e..000000000000
+--- a/src/app/(backend)/webapi/chat/minimax/route.ts
++++ /dev/null
+@@ -1,6 +0,0 @@
+-import { POST as UniverseRoute } from '../[provider]/route';
+-
+-export const runtime = 'nodejs';
+-
+-export const POST = async (req: Request) =>
+-  UniverseRoute(req, { params: Promise.resolve({ provider: 'minimax' }) });
+diff --git a/src/config/modelProviders/minimax.ts b/src/config/modelProviders/minimax.ts
+index 6cb4d4959f29..4fffd13f9f21 100644
+--- a/src/config/modelProviders/minimax.ts
++++ b/src/config/modelProviders/minimax.ts
+@@ -3,6 +3,14 @@ import { ModelProviderCard } from '@/types/llm';
+ // ref: https://platform.minimaxi.com/document/Models
+ const Minimax: ModelProviderCard = {
+   chatModels: [
++    {
++      contextWindowTokens: 245_760,
++      description: '相对于abab6.5系列模型在长文、数学、写作等能力有大幅度提升。',
++      displayName: 'abab7-chat-preview',
++      enabled: true,
++      functionCall: true,
++      id: 'abab7-chat-preview',
++    },
+     {
+       contextWindowTokens: 245_760,
+       description: '适用于广泛的自然语言处理任务，包括文本生成、对话系统等。',
+diff --git a/src/libs/agent-runtime/minimax/index.test.ts b/src/libs/agent-runtime/minimax/index.test.ts
+deleted file mode 100644
+index 01146687f94f..000000000000
+--- a/src/libs/agent-runtime/minimax/index.test.ts
++++ /dev/null
+@@ -1,275 +0,0 @@
+-// @vitest-environment edge-runtime
+-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-import { ChatStreamPayload, ModelProvider } from '@/libs/agent-runtime';
+-import * as debugStreamModule from '@/libs/agent-runtime/utils/debugStream';
+-
+-import { LobeMinimaxAI } from './index';
+-
+-const provider = ModelProvider.Minimax;
+-const bizErrorType = 'ProviderBizError';
+-const invalidErrorType = 'InvalidProviderAPIKey';
+-
+-const encoder = new TextEncoder();
+-
+-// Mock the console.error to avoid polluting test output
+-vi.spyOn(console, 'error').mockImplementation(() => {});
+-
+-let instance: LobeMinimaxAI;
+-
+-beforeEach(() => {
+-  instance = new LobeMinimaxAI({ apiKey: 'test' });
+-});
+-
+-afterEach(() => {
+-  vi.clearAllMocks();
+-});
+-
+-describe('LobeMinimaxAI', () => {
+-  describe('init', () => {
+-    it('should correctly initialize with an API key', async () => {
+-      const instance = new LobeMinimaxAI({ apiKey: 'test_api_key' });
+-      expect(instance).toBeInstanceOf(LobeMinimaxAI);
+-    });
+-
+-    it('should throw AgentRuntimeError with InvalidMinimaxAPIKey if no apiKey is provided', async () => {
+-      try {
+-        new LobeMinimaxAI({});
+-      } catch (e) {
+-        expect(e).toEqual({ errorType: invalidErrorType });
+-      }
+-    });
+-  });
+-
+-  describe('chat', () => {
+-    it('should return a StreamingTextResponse on successful API call', async () => {
+-      const mockResponseData = {
+-        choices: [{ delta: { content: 'Hello, world!' } }],
+-      };
+-      const mockResponse = new Response(
+-        new ReadableStream({
+-          start(controller) {
+-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(mockResponseData)}`));
+-            controller.close();
+-          },
+-        }),
+-      );
+-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse);
+-
+-      const result = await instance.chat({
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'text-davinci-003',
+-        temperature: 0,
+-      });
+-
+-      expect(result).toBeInstanceOf(Response);
+-    });
+-
+-    it('should handle text messages correctly', async () => {
+-      const mockResponseData = {
+-        choices: [{ delta: { content: 'Hello, world!' } }],
+-      };
+-      const mockResponse = new Response(
+-        new ReadableStream({
+-          start(controller) {
+-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(mockResponseData)}`));
+-            controller.close();
+-          },
+-        }),
+-      );
+-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse);
+-
+-      const result = await instance.chat({
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'text-davinci-003',
+-        temperature: 0,
+-      });
+-
+-      expect(result).toBeInstanceOf(Response);
+-    });
+-
+-    it('should call debugStream in DEBUG mode', async () => {
+-      process.env.DEBUG_MINIMAX_CHAT_COMPLETION = '1';
+-
+-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+-        new Response(
+-          new ReadableStream({
+-            start(controller) {
+-              controller.enqueue(encoder.encode(JSON.stringify('Hello, world!')));
+-              controller.close();
+-            },
+-          }),
+-        ),
+-      );
+-
+-      vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
+-
+-      await instance.chat({
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'text-davinci-003',
+-        temperature: 0,
+-      });
+-
+-      // Assert
+-      expect(debugStreamModule.debugStream).toHaveBeenCalled();
+-
+-      delete process.env.DEBUG_MINIMAX_CHAT_COMPLETION;
+-    });
+-
+-    describe('Error', () => {
+-      it('should throw InvalidMinimaxAPIKey error on API_KEY_INVALID error', async () => {
+-        const mockErrorResponse = {
+-          base_resp: {
+-            status_code: 1004,
+-            status_msg: 'API key not valid',
+-          },
+-        };
+-        vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+-          new Response(
+-            new ReadableStream({
+-              start(controller) {
+-                controller.enqueue(encoder.encode(JSON.stringify(mockErrorResponse)));
+-                controller.close();
+-              },
+-            }),
+-          ),
+-        );
+-
+-        try {
+-          await instance.chat({
+-            messages: [{ content: 'Hello', role: 'user' }],
+-            model: 'text-davinci-003',
+-            temperature: 0,
+-          });
+-        } catch (e) {
+-          expect(e).toEqual({
+-            errorType: invalidErrorType,
+-            error: {
+-              code: 1004,
+-              message: 'API key not valid',
+-            },
+-            provider,
+-          });
+-        }
+-      });
+-
+-      it('should throw MinimaxBizError error on other error status codes', async () => {
+-        const mockErrorResponse = {
+-          base_resp: {
+-            status_code: 1001,
+-            status_msg: 'Some error occurred',
+-          },
+-        };
+-        vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+-          new Response(
+-            new ReadableStream({
+-              start(controller) {
+-                controller.enqueue(encoder.encode(JSON.stringify(mockErrorResponse)));
+-                controller.close();
+-              },
+-            }),
+-          ),
+-        );
+-
+-        try {
+-          await instance.chat({
+-            messages: [{ content: 'Hello', role: 'user' }],
+-            model: 'text-davinci-003',
+-            temperature: 0,
+-          });
+-        } catch (e) {
+-          expect(e).toEqual({
+-            errorType: bizErrorType,
+-            error: {
+-              code: 1001,
+-              message: 'Some error occurred',
+-            },
+-            provider,
+-          });
+-        }
+-      });
+-
+-      it('should throw MinimaxBizError error on generic errors', async () => {
+-        const mockError = new Error('Something went wrong');
+-        vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(mockError);
+-
+-        try {
+-          await instance.chat({
+-            messages: [{ content: 'Hello', role: 'user' }],
+-            model: 'text-davinci-003',
+-            temperature: 0,
+-          });
+-        } catch (e) {
+-          expect(e).toEqual({
+-            errorType: bizErrorType,
+-            error: {
+-              cause: undefined,
+-              message: 'Something went wrong',
+-              name: 'Error',
+-              stack: mockError.stack,
+-            },
+-            provider,
+-          });
+-        }
+-      });
+-    });
+-  });
+-
+-  describe('private methods', () => {
+-    describe('buildCompletionsParams', () => {
+-      it('should build the correct parameters', () => {
+-        const payload: ChatStreamPayload = {
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'text-davinci-003',
+-          temperature: 0.5,
+-          top_p: 0.8,
+-        };
+-
+-        const result = instance['buildCompletionsParams'](payload);
+-
+-        expect(result).toEqual({
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'text-davinci-003',
+-          stream: true,
+-          temperature: 0.25,
+-          top_p: 0.8,
+-        });
+-      });
+-
+-      it('should exclude temperature and top_p when they are 0', () => {
+-        const payload: ChatStreamPayload = {
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'text-davinci-003',
+-          temperature: 0,
+-          top_p: 0,
+-        };
+-
+-        const result = instance['buildCompletionsParams'](payload);
+-
+-        expect(result).toEqual({
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'text-davinci-003',
+-          stream: true,
+-        });
+-      });
+-
+-      it('should include max tokens when model is abab6.5t-chat', () => {
+-        const payload: ChatStreamPayload = {
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'abab6.5t-chat',
+-          temperature: 0,
+-          top_p: 0,
+-        };
+-
+-        const result = instance['buildCompletionsParams'](payload);
+-
+-        expect(result).toEqual({
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'abab6.5t-chat',
+-          stream: true,
+-          max_tokens: 4096,
+-        });
+-      });
+-    });
+-  });
+-});
+diff --git a/src/libs/agent-runtime/minimax/index.ts b/src/libs/agent-runtime/minimax/index.ts
+index 1e7b51e0c3aa..f646f8a401de 100644
+--- a/src/libs/agent-runtime/minimax/index.ts
++++ b/src/libs/agent-runtime/minimax/index.ts
+@@ -1,184 +1,24 @@
+-import { isEmpty } from 'lodash-es';
+-import OpenAI from 'openai';
+-
+-import { LobeRuntimeAI } from '../BaseAI';
+-import { AgentRuntimeErrorType } from '../error';
+-import {
+-  ChatCompetitionOptions,
+-  ChatCompletionErrorPayload,
+-  ChatStreamPayload,
+-  ModelProvider,
+-} from '../types';
+-import { AgentRuntimeError } from '../utils/createError';
+-import { debugStream } from '../utils/debugStream';
+-import { StreamingResponse } from '../utils/response';
+-import { MinimaxStream } from '../utils/streams';
+-
+-interface MinimaxBaseResponse {
+-  base_resp?: {
+-    status_code?: number;
+-    status_msg?: string;
+-  };
+-}
+-
+-type MinimaxResponse = Partial<OpenAI.ChatCompletionChunk> & MinimaxBaseResponse;
+-
+-function throwIfErrorResponse(data: MinimaxResponse) {
+-  // error status code
+-  // https://www.minimaxi.com/document/guides/chat-model/pro/api?id=6569c85948bc7b684b30377e#3.1.3%20%E8%BF%94%E5%9B%9E(response)%E5%8F%82%E6%95%B0
+-  if (!data.base_resp?.status_code || data.base_resp?.status_code < 1000) {
+-    return;
+-  }
+-  if (data.base_resp?.status_code === 1004) {
+-    throw AgentRuntimeError.chat({
+-      error: {
+-        code: data.base_resp.status_code,
+-        message: data.base_resp.status_msg,
+-      },
+-      errorType: AgentRuntimeErrorType.InvalidProviderAPIKey,
+-      provider: ModelProvider.Minimax,
+-    });
+-  }
+-  throw AgentRuntimeError.chat({
+-    error: {
+-      code: data.base_resp.status_code,
+-      message: data.base_resp.status_msg,
++import { ModelProvider } from '../types';
++import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
++
++export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
++  baseURL: 'https://api.minimax.chat/v1',
++  chatCompletion: {
++    handlePayload: (payload) => {
++      const { temperature, top_p, ...rest } = payload;
++
++      return {
++        ...rest,
++        frequency_penalty: undefined,
++        presence_penalty: undefined,
++        stream: true,
++        temperature: temperature === undefined || temperature <= 0 ? undefined : temperature / 2,
++        top_p: top_p !== undefined && top_p > 0 && top_p <= 1 ? top_p : undefined,
++      } as any;
+     },
+-    errorType: AgentRuntimeErrorType.ProviderBizError,
+-    provider: ModelProvider.Minimax,
+-  });
+-}
+-
+-function parseMinimaxResponse(chunk: string): MinimaxResponse | undefined {
+-  let body = chunk;
+-  if (body.startsWith('data:')) {
+-    body = body.slice(5).trim();
+-  }
+-  if (isEmpty(body)) {
+-    return;
+-  }
+-  return JSON.parse(body) as MinimaxResponse;
+-}
+-
+-export class LobeMinimaxAI implements LobeRuntimeAI {
+-  apiKey: string;
+-
+-  constructor({ apiKey }: { apiKey?: string } = {}) {
+-    if (!apiKey) throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidProviderAPIKey);
+-
+-    this.apiKey = apiKey;
+-  }
+-
+-  async chat(payload: ChatStreamPayload, options?: ChatCompetitionOptions): Promise<Response> {
+-    try {
+-      const response = await fetch('https://api.minimax.chat/v1/text/chatcompletion_v2', {
+-        body: JSON.stringify(this.buildCompletionsParams(payload)),
+-        headers: {
+-          'Authorization': `Bearer ${this.apiKey}`,
+-          'Content-Type': 'application/json',
+-        },
+-        method: 'POST',
+-      });
+-      if (!response.body || !response.ok) {
+-        throw AgentRuntimeError.chat({
+-          error: {
+-            status: response.status,
+-            statusText: response.statusText,
+-          },
+-          errorType: AgentRuntimeErrorType.ProviderBizError,
+-          provider: ModelProvider.Minimax,
+-        });
+-      }
+-
+-      const [prod, body2] = response.body.tee();
+-      const [prod2, debug] = body2.tee();
+-
+-      if (process.env.DEBUG_MINIMAX_CHAT_COMPLETION === '1') {
+-        debugStream(debug).catch(console.error);
+-      }
+-
+-      // wait for the first response, and throw error if minix returns an error
+-      await this.parseFirstResponse(prod2.getReader());
+-
+-      return StreamingResponse(MinimaxStream(prod), { headers: options?.headers });
+-    } catch (error) {
+-      console.log('error', error);
+-      const err = error as Error | ChatCompletionErrorPayload;
+-      if ('provider' in err) {
+-        throw error;
+-      }
+-      const errorResult = {
+-        cause: err.cause,
+-        message: err.message,
+-        name: err.name,
+-        stack: err.stack,
+-      };
+-      throw AgentRuntimeError.chat({
+-        error: errorResult,
+-        errorType: AgentRuntimeErrorType.ProviderBizError,
+-        provider: ModelProvider.Minimax,
+-      });
+-    }
+-  }
+-
+-  // the document gives the default value of max tokens, but abab6.5 and abab6.5s
+-  // will meet length finished error, and output is truncationed
+-  // so here fill the max tokens number to fix it
+-  // https://www.minimaxi.com/document/guides/chat-model/V2
+-  private getMaxTokens(model: string): number | undefined {
+-    switch (model) {
+-      case 'abab6.5t-chat':
+-      case 'abab6.5g-chat':
+-      case 'abab5.5s-chat':
+-      case 'abab5.5-chat': {
+-        return 4096;
+-      }
+-      case 'abab6.5s-chat': {
+-        return 8192;
+-      }
+-    }
+-  }
+-
+-  private buildCompletionsParams(payload: ChatStreamPayload) {
+-    const { temperature, top_p, ...params } = payload;
+-
+-    return {
+-      ...params,
+-      frequency_penalty: undefined,
+-      max_tokens:
+-        payload.max_tokens !== undefined ? payload.max_tokens : this.getMaxTokens(payload.model),
+-      presence_penalty: undefined,
+-      stream: true,
+-      temperature: temperature === undefined || temperature <= 0 ? undefined : temperature / 2,
+-
+-      tools: params.tools?.map((tool) => ({
+-        function: {
+-          description: tool.function.description,
+-          name: tool.function.name,
+-          parameters: JSON.stringify(tool.function.parameters),
+-        },
+-        type: 'function',
+-      })),
+-      top_p: top_p === 0 ? undefined : top_p,
+-    };
+-  }
+-
+-  private async parseFirstResponse(reader: ReadableStreamDefaultReader<Uint8Array>) {
+-    const decoder = new TextDecoder();
+-
+-    const { value } = await reader.read();
+-    const chunkValue = decoder.decode(value, { stream: true });
+-    let data;
+-    try {
+-      data = parseMinimaxResponse(chunkValue);
+-    } catch {
+-      // parse error, skip it
+-      return;
+-    }
+-    if (data) {
+-      throwIfErrorResponse(data);
+-    }
+-  }
+-}
+-
+-export default LobeMinimaxAI;
++  },
++  debug: {
++    chatCompletion: () => process.env.DEBUG_MINIMAX_CHAT_COMPLETION === '1',
++  },
++  provider: ModelProvider.Minimax,
++});
+diff --git a/src/libs/agent-runtime/utils/streams/index.ts b/src/libs/agent-runtime/utils/streams/index.ts
+index a3ac8983d97e..65ea36449bd0 100644
+--- a/src/libs/agent-runtime/utils/streams/index.ts
++++ b/src/libs/agent-runtime/utils/streams/index.ts
+@@ -2,7 +2,6 @@ export * from './anthropic';
+ export * from './azureOpenai';
+ export * from './bedrock';
+ export * from './google-ai';
+-export * from './minimax';
+ export * from './ollama';
+ export * from './openai';
+ export * from './protocol';
+diff --git a/src/libs/agent-runtime/utils/streams/minimax.test.ts b/src/libs/agent-runtime/utils/streams/minimax.test.ts
+deleted file mode 100644
+index f18cd6cd479d..000000000000
+--- a/src/libs/agent-runtime/utils/streams/minimax.test.ts
++++ /dev/null
+@@ -1,27 +0,0 @@
+-import { describe, expect, it } from 'vitest';
+-
+-import { processDoubleData } from './minimax';
+-
+-// 假设文件名为 minimax.ts
+-
+-describe('processDoubleData', () => {
+-  it('should remove the second "data: {"id": and everything after it when matchCount is 2', () => {
+-    const chunkValue = `data: {"id":"first"} some other text 
+-    
+-    data: {"id":"second"} more text`;
+-    const result = processDoubleData(chunkValue);
+-    expect(result).toBe('data: {"id":"first"} some other text');
+-  });
+-
+-  it('should not modify chunkValue when matchCount is not 2', () => {
+-    const chunkValue = `data: {"id":"first"} some other text`;
+-    const result = processDoubleData(chunkValue);
+-    expect(result).toBe(chunkValue);
+-  });
+-
+-  it('should not modify chunkValue when matchCount is more than 2', () => {
+-    const chunkValue = `data: {"id":"first"} some other text data: {"id":"second"} more text data: {"id":"third"} even more text`;
+-    const result = processDoubleData(chunkValue);
+-    expect(result).toBe(chunkValue);
+-  });
+-});
+diff --git a/src/libs/agent-runtime/utils/streams/minimax.ts b/src/libs/agent-runtime/utils/streams/minimax.ts
+deleted file mode 100644
+index ebd594e86f67..000000000000
+--- a/src/libs/agent-runtime/utils/streams/minimax.ts
++++ /dev/null
+@@ -1,57 +0,0 @@
+-import OpenAI from 'openai';
+-
+-import { ChatStreamCallbacks } from '../../types';
+-import { transformOpenAIStream } from './openai';
+-import { createCallbacksTransformer, createSSEProtocolTransformer } from './protocol';
+-
+-export const processDoubleData = (chunkValue: string): string => {
+-  const dataPattern = /data: {"id":"/g;
+-  const matchCount = (chunkValue.match(dataPattern) || []).length;
+-  let modifiedChunkValue = chunkValue;
+-  if (matchCount === 2) {
+-    const secondDataIdIndex = chunkValue.indexOf(
+-      'data: {"id":',
+-      chunkValue.indexOf('data: {"id":') + 1,
+-    );
+-    if (secondDataIdIndex !== -1) {
+-      modifiedChunkValue = chunkValue.slice(0, secondDataIdIndex).trim();
+-    }
+-  }
+-  return modifiedChunkValue;
+-};
+-
+-const unit8ArrayToJSONChunk = (unit8Array: Uint8Array): OpenAI.ChatCompletionChunk => {
+-  const decoder = new TextDecoder();
+-
+-  let chunkValue = decoder.decode(unit8Array, { stream: true });
+-
+-  // chunkValue example:
+-  // data: {"id":"028a65377137d57aaceeffddf48ae99f","choices":[{"finish_reason":"tool_calls","index":0,"delta":{"role":"assistant","tool_calls":[{"id":"call_function_7371372822","type":"function","function":{"name":"realtime-weather____fetchCurrentWeather","arguments":"{\"city\": [\"杭州\", \"北京\"]}"}}]}}],"created":155511,"model":"abab6.5s-chat","object":"chat.completion.chunk"}
+-
+-  chunkValue = processDoubleData(chunkValue);
+-
+-  // so we need to remove `data:` prefix and then parse it as JSON
+-  if (chunkValue.startsWith('data:')) {
+-    chunkValue = chunkValue.slice(5).trim();
+-  }
+-
+-  try {
+-    return JSON.parse(chunkValue);
+-  } catch (e) {
+-    console.error('minimax chunk parse error:', e);
+-
+-    return { raw: chunkValue } as any;
+-  }
+-};
+-
+-export const MinimaxStream = (stream: ReadableStream, callbacks?: ChatStreamCallbacks) => {
+-  return stream
+-    .pipeThrough(
+-      createSSEProtocolTransformer((buffer) => {
+-        const chunk = unit8ArrayToJSONChunk(buffer);
+-
+-        return transformOpenAIStream(chunk);
+-      }),
+-    )
+-    .pipeThrough(createCallbacksTransformer(callbacks));
+-};
