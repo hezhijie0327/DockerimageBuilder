@@ -1,4 +1,4 @@
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -78,6 +78,7 @@ FROM scratch
 
 ENV \
     DATA_FOLDER="/etc/vaultwarden/data" \
+    EXPERIMENTAL_CLIENT_FEATURE_FLAGS="autofill-overlay,autofill-v2,browser-fileless-import,extension-refresh,fido2-vault-credentials,inline-menu-positioning-improvements,ssh-agent,ssh-key-vault-item" \
     ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" \
     WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/web-vault"
 
