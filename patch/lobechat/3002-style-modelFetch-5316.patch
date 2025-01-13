@@ -637,24 +637,6 @@ index 1940562b7d42..cc8673413a76 100644
      smoothing: {
        speed: 2,
        text: true,
-diff --git a/src/config/modelProviders/huggingface.ts b/src/config/modelProviders/huggingface.ts
-index ace8370720c0..cba039ac7414 100644
---- a/src/config/modelProviders/huggingface.ts
-+++ b/src/config/modelProviders/huggingface.ts
-@@ -49,13 +49,11 @@ const HuggingFace: ModelProviderCard = {
-     'HuggingFace Inference API 提供了一种快速且免费的方式，让您可以探索成千上万种模型，适用于各种任务。无论您是在为新应用程序进行原型设计，还是在尝试机器学习的功能，这个 API 都能让您即时访问多个领域的高性能模型。',
-   disableBrowserRequest: true,
-   id: 'huggingface',
--  modelList: { showModelFetcher: true },
-   modelsUrl: 'https://huggingface.co/docs/api-inference/en/supported-models',
-   name: 'HuggingFace',
-   settings: {
-     disableBrowserRequest: true,
-     sdkType: 'huggingface',
--    showModelFetcher: true,
-   },
-   url: 'https://huggingface.co',
- };
 diff --git a/src/config/modelProviders/hunyuan.ts b/src/config/modelProviders/hunyuan.ts
 index 684c385b2894..6581c25e9b02 100644
 --- a/src/config/modelProviders/hunyuan.ts
@@ -1247,6 +1229,60 @@ index de6700fe7a8a..271014f12f9b 100644
 +    },
 +  },
    provider: ModelProvider.Groq,
+ });
+diff --git a/src/libs/agent-runtime/huggingface/index.ts b/src/libs/agent-runtime/huggingface/index.ts
+index 0739830f82fd..77484906172f 100644
+--- a/src/libs/agent-runtime/huggingface/index.ts
++++ b/src/libs/agent-runtime/huggingface/index.ts
+@@ -6,6 +6,14 @@ import { ModelProvider } from '../types';
+ import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
+ import { convertIterableToStream } from '../utils/streams';
+ 
++import { LOBE_DEFAULT_MODEL_LIST } from '@/config/modelProviders';
++import type { ChatModelCard } from '@/types/llm';
++
++export interface HuggingFaceModelCard {
++  id: string;
++  tags: string[];
++}
++
+ export const LobeHuggingFaceAI = LobeOpenAICompatibleFactory({
+   chatCompletion: {
+     handleStreamBizErrorType: (error) => {
+@@ -47,5 +55,34 @@ export const LobeHuggingFaceAI = LobeOpenAICompatibleFactory({
+   debug: {
+     chatCompletion: () => process.env.DEBUG_HUGGINGFACE_CHAT_COMPLETION === '1',
+   },
++  models: async () => {
++    const visionKeywords = [
++      'image-text-to-text',
++      'multimodal',
++      'vision',
++    ];
++
++    // ref: https://huggingface.co/docs/hub/api
++    const url = 'https://huggingface.co/api/models';
++    const response = await fetch(url, {
++      method: 'GET',
++    });
++    const json = await response.json();
++
++    const modelList: HuggingFaceModelCard[] = json;
++
++    return modelList
++      .map((model) => {
++        return {
++          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id.endsWith(m.id))?.enabled || false,
++          functionCall: model.tags.some(tag => tag.toLowerCase().includes('function-calling')),
++          id: model.id,
++          vision: model.tags.some(tag =>
++            visionKeywords.some(keyword => tag.toLowerCase().includes(keyword))
++          ),
++        };
++      })
++      .filter(Boolean) as ChatModelCard[];
++  },
+   provider: ModelProvider.HuggingFace,
  });
 diff --git a/src/libs/agent-runtime/internlm/index.ts b/src/libs/agent-runtime/internlm/index.ts
 index 3dfaf0edda41..7610da9e3c2d 100644
