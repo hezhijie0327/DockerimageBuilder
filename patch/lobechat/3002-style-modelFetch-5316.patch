@@ -1535,7 +1535,7 @@ index edc28f455e0f..f3b6495f1f87 100644
    provider: ModelProvider.SiliconCloud,
  });
 diff --git a/src/libs/agent-runtime/stepfun/index.ts b/src/libs/agent-runtime/stepfun/index.ts
-index 4ae98b6fe3c7..617ef9aa0429 100644
+index 4ae98b6fe3c7..f429d1dc7d86 100644
 --- a/src/libs/agent-runtime/stepfun/index.ts
 +++ b/src/libs/agent-runtime/stepfun/index.ts
 @@ -1,6 +1,12 @@
@@ -1551,17 +1551,24 @@ index 4ae98b6fe3c7..617ef9aa0429 100644
  export const LobeStepfunAI = LobeOpenAICompatibleFactory({
    baseURL: 'https://api.stepfun.com/v1',
    chatCompletion: {
-@@ -14,5 +20,17 @@ export const LobeStepfunAI = LobeOpenAICompatibleFactory({
+@@ -14,5 +20,24 @@ export const LobeStepfunAI = LobeOpenAICompatibleFactory({
    debug: {
      chatCompletion: () => process.env.DEBUG_STEPFUN_CHAT_COMPLETION === '1',
    },
 +  models: {
 +    transformModel: (m) => {
++      // ref: https://platform.stepfun.com/docs/llm/modeloverview
++      const functionCallKeywords = [
++        'step-1-',
++        'step-2-',
++        'step-1v-',
++      ];
++
 +      const model = m as unknown as StepfunModelCard;
 +
 +      return {
 +        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id.endsWith(m.id))?.enabled || false,
-+        functionCall: model.id !== 'step-1.5v-mini',
++        functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
 +        id: model.id,
 +        vision: model.id.toLowerCase().includes('v'),
 +      };
