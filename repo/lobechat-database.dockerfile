@@ -1,4 +1,4 @@
-# Current Version: 1.3.6
+# Current Version: 1.3.7
 
 ARG NODEJS_VERSION="22"
 
@@ -60,7 +60,7 @@ COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 RUN \
     export PNPM_HOME="/pnpm" \
     && corepack enable \
-    && corepack use pnpm \
+    && corepack use pnpm@9 \
     && pnpm i \
     && mkdir -p /deps \
     && pnpm add sharp pg drizzle-orm --prefix /deps
