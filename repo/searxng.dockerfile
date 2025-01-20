@@ -1,4 +1,4 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
 ARG PYTHON_VERSION="3"
 
@@ -41,7 +41,7 @@ RUN \
         build-base \
         git \
         openssl \
-        openblas openblas-dev gfortran cmake pkgconfig linux-headers \
+        cmake gfortran linux-headers openblas openblas-dev pkgconfig \
     && pip install --no-cache --break-system-packages -r requirements.txt \
     && python3 -m compileall -q searx \
     && find searx/static -a \( -name '*.html' -o -name '*.css' -o -name '*.js' \
