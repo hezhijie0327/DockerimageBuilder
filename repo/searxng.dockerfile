@@ -1,4 +1,4 @@
-# Current Version: 1.2.2
+# Current Version: 1.2.3
 
 ARG PYTHON_VERSION="3"
 
@@ -26,53 +26,59 @@ RUN \
     && sed -i "s|ultrasecretkey|$(openssl rand -hex 32)|g;s|127.0.0.1|0.0.0.0|g" "${WORKDIR}/BUILDTMP/SEARXNG/searx/settings.yml" \
     && sed -i "s|VERSION_STRING = \"1.0.0\"|VERSION_STRING = \"${SEARXNG_CUSTOM_VERSION}\"|g;s|GIT_URL = \"unknow\"|GIT_URL = \"https://github.com/searxng/searxng\"|g" "${WORKDIR}/BUILDTMP/SEARXNG/searx/version.py"
 
-FROM python:${PYTHON_VERSION}-alpine AS build_searxng
+FROM python:${PYTHON_VERSION}-slim AS build_searxng
 
-WORKDIR /usr/local/searxng
+WORKDIR /app
 
-COPY --from=get_info /tmp/BUILDTMP/SEARXNG/requirements.txt /usr/local/searxng/requirements.txt
-COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /usr/local/searxng/searx
+COPY --from=get_info /tmp/BUILDTMP/SEARXNG/requirements.txt /app/requirements.txt
+COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /app/searx
 
 RUN \
-    apk update \
-    && apk upgrade --no-cache \
-    && apk add --no-cache -t build-dependencies \
+    apt update \
+    && apt install -qy \
         brotli \
-        build-base \
+        build-essential \
         git \
         openssl \
-        cmake gfortran linux-headers openblas openblas-dev pkgconfig \
-    && pip install --no-cache --break-system-packages -r requirements.txt \
+        cmake gfortran libopenblas-dev pkg-config \
+    && python3 -m venv /app \
+    && . /app/bin/activate \
+    && pip install --no-cache -r requirements.txt \
     && python3 -m compileall -q searx \
-    && find searx/static -a \( -name '*.html' -o -name '*.css' -o -name '*.js' \
+    && find searx/static \( -name '*.html' -o -name '*.css' -o -name '*.js' \
         -o -name '*.svg' -o -name '*.ttf' -o -name '*.eot' \) \
         -type f -exec gzip -9 -k {} \+ -exec brotli --best {} \+ \
-    && apk del --purge build-dependencies \
-    && apk del --purge alpine* > /dev/null || true \
-    && apk add --no-cache busybox \
-    && apk del --purge apk* > /dev/null || true \
-    && /bin/busybox --install -s /bin \
-    && rm -rf /etc /lib/*apk* /root/* /sbin /usr/sbin /usr/share /var || true \
-    && rm -rf /root/* /tmp/* /var/cache/apk/*
+    && mkdir -p /distroless/lib /distroless/usr/local/bin \
+    && cp /usr/local/bin/python* /distroless/usr/local/bin/ \
+    && cp -rf /usr/local/include /distroless/usr/local/include \
+    && cp -rf /usr/local/lib /distroless/usr/local/lib \
+    && cp /usr/lib/$(arch)-linux-gnu/libcrypto.so.3 /distroless/lib/libcrypto.so.3 \
+    && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
+    && cp /usr/lib/$(arch)-linux-gnu/librt.so.1 /distroless/lib/librt.so.1 \
+    && cp /usr/lib/$(arch)-linux-gnu/libsqlite3.so.0 /distroless/lib/libsqlite3.so.0 \
+    && cp /usr/lib/$(arch)-linux-gnu/libssl.so.3 /distroless/lib/libssl.so.3 \
+    && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
+    && cp /usr/lib/$(arch)-linux-gnu/libz.so.1 /distroless/lib/libz.so.1 \
+    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
-FROM busybox:musl AS rebased_searxng
+FROM busybox:latest AS rebased_searxng
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_searxng /lib /lib
-COPY --from=build_searxng /usr/lib /usr/lib
-COPY --from=build_searxng /usr/local /usr/local
+COPY --from=build_searxng /distroless /
+
+COPY --from=build_searxng /app /app
 
 FROM scratch
 
 ENV \
-    PYTHONPATH="/usr/local/searxng" \
-    SEARXNG_SETTINGS_PATH="/usr/local/searxng/searx/settings.yml"
+    PYTHONPATH="/app" \
+    SEARXNG_SETTINGS_PATH="/app/searx/settings.yml"
 
 COPY --from=rebased_searxng / /
 
 EXPOSE 8888/tcp
 
-ENTRYPOINT ["/usr/local/bin/python"]
+ENTRYPOINT ["/app/bin/python"]
 
-CMD ["/usr/local/searxng/searx/webapp.py"]
+CMD ["-m", "searx.webapp"]
