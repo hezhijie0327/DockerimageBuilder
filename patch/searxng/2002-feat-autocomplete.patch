@@ -1,17 +1,18 @@
 diff --git a/searx/autocomplete.py b/searx/autocomplete.py
-index 09589cf1f68..9d9c21df039 100644
+index 09589cf1f68..4a145f1e0ea 100644
 --- a/searx/autocomplete.py
 +++ b/searx/autocomplete.py
-@@ -19,6 +19,8 @@
+@@ -19,6 +19,9 @@
  from searx.network import get as http_get, post as http_post
  from searx.exceptions import SearxEngineResponseException
  
++import bm25s
 +import random
 +
  
  def update_kwargs(**kwargs):
      if 'timeout' not in kwargs:
-@@ -250,14 +252,77 @@ def yandex(query, _lang):
+@@ -250,14 +253,82 @@ def yandex(query, _lang):
      'wikipedia': wikipedia,
      'brave': brave,
      'yandex': yandex,
@@ -31,18 +32,23 @@ index 09589cf1f68..9d9c21df039 100644
 +    return unique_results
 +
 +
-+def interleave_results(results_list):
-+    min_len = min(len(results) for results in results_list)
-+    interleaved = []
++def merge_results(results_list, query):
++    merged_results = [result for results in results_list for result in results]
 +
-+    for i in range(min_len):
-+        for results in results_list:
-+            interleaved.append(results[i])
++    unique_results = deduplicate_results(merged_results)
 +
-+    for results in results_list:
-+        interleaved.extend(results[min_len:])
++    result_tokens = bm25s.tokenize(unique_results)
 +
-+    return deduplicate_results(interleaved)
++    retriever = bm25s.BM25()
++    retriever.index(result_tokens)
++
++    query_tokens = bm25s.tokenize(query)
++
++    indices = retriever.retrieve(query_tokens, k=len(unique_results), return_as='documents', show_progress=False)
++
++    ranked_results = [unique_results[index] for index in indices[0]]
++
++    return ranked_results
 +
 +
  def search_autocomplete(backend_name, query, sxng_locale):
@@ -63,7 +69,7 @@ index 09589cf1f68..9d9c21df039 100644
 +                    results_list.append(backend(query, sxng_locale))
 +                except (HTTPError, SearxEngineResponseException, ValueError):
 +                    results_list.append([])
-+        return interleave_results(results_list)
++        return merge_results(results_list, query)
 +
 +    elif backend_name == 'random':
 +        available_backends = {key: backend for key, backend in backends.items() if key not in excluded_backends}
@@ -86,7 +92,7 @@ index 09589cf1f68..9d9c21df039 100644
 +                    results_list.append(backend(query, sxng_locale))
 +                except (HTTPError, SearxEngineResponseException, ValueError):
 +                    results_list.append([])
-+        return interleave_results(results_list)
++        return merge_results(results_list, query)
 +
 +    else:
 +        backend = backends.get(backend_name)
