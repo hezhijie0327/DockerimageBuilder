@@ -1,28 +1,37 @@
 diff --git a/searx/autocomplete.py b/searx/autocomplete.py
-index 09589cf1f68..52b23b0efa3 100644
+index 09589cf1f68..ccd0443f7df 100644
 --- a/searx/autocomplete.py
 +++ b/searx/autocomplete.py
-@@ -19,6 +19,9 @@
+@@ -19,6 +19,8 @@
  from searx.network import get as http_get, post as http_post
  from searx.exceptions import SearxEngineResponseException
  
-+import os
 +import random
 +
  
  def update_kwargs(**kwargs):
      if 'timeout' not in kwargs:
-@@ -250,14 +253,62 @@ def yandex(query, _lang):
+@@ -250,14 +252,77 @@ def yandex(query, _lang):
      'wikipedia': wikipedia,
      'brave': brave,
      'yandex': yandex,
-+    'combine': combine,
-+    'random': random,
++    'custom': 'custom',
++    'all': 'all',
++    'random': 'random',
  }
  
  
++def deduplicate_results(results):
++    seen = set()
++    unique_results = []
++    for result in results:
++        if result not in seen:
++            unique_results.append(result)
++            seen.add(result)
++    return unique_results
++
++
 +def interleave_results(results_list):
-+    # Interleave the results from each backend
 +    min_len = min(len(results) for results in results_list)
 +    interleaved = []
 +
@@ -30,11 +39,10 @@ index 09589cf1f68..52b23b0efa3 100644
 +        for results in results_list:
 +            interleaved.append(results[i])
 +
-+    # Add any remaining results from longer lists
 +    for results in results_list:
 +        interleaved.extend(results[min_len:])
 +
-+    return interleaved
++    return deduplicate_results(interleaved)
 +
 +
  def search_autocomplete(backend_name, query, sxng_locale):
@@ -45,36 +53,42 @@ index 09589cf1f68..52b23b0efa3 100644
 -        return backend(query, sxng_locale)
 -    except (HTTPError, SearxEngineResponseException):
 -        return []
-+    if backend_name == 'combine':
-+        # Read backends to combine from settings under 'search'
-+        combine_backends = settings.get('search', {}).get('autocomplete_engines', [])
++    excluded_backends = ['all', 'custom', 'random']
 +
-+        # Ensure combine_backends is a list and contains valid backends
-+        combine_backends = [backend.strip() for backend in combine_backends if backend.strip() in backends]
-+
-+        # Collect results from specified backends
++    if backend_name == 'all':
 +        results_list = []
-+        for backend_key in combine_backends:
-+            backend = backends.get(backend_key)
-+            if backend is not None:
++        for backend_key, backend in backends.items():
++            if backend_key not in excluded_backends:
 +                try:
 +                    results_list.append(backend(query, sxng_locale))
 +                except (HTTPError, SearxEngineResponseException, ValueError):
-+                    results_list.append([])  # Append empty list on error
-+        # Merge results using interleave logic
++                    results_list.append([])
 +        return interleave_results(results_list)
 +
 +    elif backend_name == 'random':
-+        # Exclude 'random' from the backend selection and select a random one
-+        available_backends = {key: backend for key, backend in backends.items() if key not in ['combine', 'random']}
++        available_backends = {key: backend for key, backend in backends.items() if key not in excluded_backends}
 +        backend = random.choice(list(available_backends.values()))
 +        try:
 +            return backend(query, sxng_locale)
 +        except (HTTPError, SearxEngineResponseException, ValueError):
 +            return []
 +
++    elif backend_name == 'custom':
++        custom_backends = settings.get('search', {}).get('autocomplete_engines', [])
++
++        custom_backends = [backend.strip() for backend in custom_backends if backend.strip() in backends]
++
++        results_list = []
++        for backend_key in custom_backends:
++            backend = backends.get(backend_key)
++            if backend is not None:
++                try:
++                    results_list.append(backend(query, sxng_locale))
++                except (HTTPError, SearxEngineResponseException, ValueError):
++                    results_list.append([])
++        return interleave_results(results_list)
++
 +    else:
-+        # Regular backend selection
 +        backend = backends.get(backend_name)
 +        if backend is None:
 +            return []
