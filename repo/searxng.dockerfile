@@ -1,4 +1,4 @@
-# Current Version: 1.2.4
+# Current Version: 1.2.5
 
 ARG PYTHON_VERSION="3"
 
@@ -49,7 +49,8 @@ RUN \
         -o -name '*.svg' -o -name '*.ttf' -o -name '*.eot' \) \
         -type f -exec gzip -9 -k {} \+ -exec brotli --best {} \+ \
     && mkdir -p /distroless/lib /distroless/usr/local/bin \
-    && cp /usr/local/bin/python* /distroless/usr/local/bin/ \
+    && cp /usr/local/bin/python3 /distroless/usr/local/bin/python3 \
+    && cp /usr/local/bin/python3-config /distroless/usr/local/bin/python3-config \
     && cp -rf /usr/local/include /distroless/usr/local/include \
     && cp -rf /usr/local/lib /distroless/usr/local/lib \
     && cp /usr/lib/$(arch)-linux-gnu/libcrypto.so.3 /distroless/lib/libcrypto.so.3 \
