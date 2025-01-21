@@ -1,0 +1,81 @@
+diff --git a/searx/autocomplete.py b/searx/autocomplete.py
+index 09589cf1f68..19fed1c8490 100644
+--- a/searx/autocomplete.py
++++ b/searx/autocomplete.py
+@@ -19,6 +19,8 @@
+ from searx.network import get as http_get, post as http_post
+ from searx.exceptions import SearxEngineResponseException
+ 
++import random
++
+ 
+ def update_kwargs(**kwargs):
+     if 'timeout' not in kwargs:
+@@ -238,6 +240,8 @@ def yandex(query, _lang):
+ 
+ 
+ backends = {
++    'all': all,
++    'random': random,
+     'dbpedia': dbpedia,
+     'duckduckgo': duckduckgo,
+     'google': google_complete,
+@@ -253,11 +257,51 @@ def yandex(query, _lang):
+ }
+ 
+ 
++def interleave_results(results_list):
++    # Interleave the results from each backend
++    min_len = min(len(results) for results in results_list)
++    interleaved = []
++
++    for i in range(min_len):
++        for results in results_list:
++            interleaved.append(results[i])
++
++    # Add any remaining results from longer lists
++    for results in results_list:
++        interleaved.extend(results[min_len:])
++
++    return interleaved
++
++
+ def search_autocomplete(backend_name, query, sxng_locale):
+-    backend = backends.get(backend_name)
+-    if backend is None:
+-        return []
+-    try:
+-        return backend(query, sxng_locale)
+-    except (HTTPError, SearxEngineResponseException):
+-        return []
++    if backend_name == 'all':
++        # Collect results from all backends except 'all' and 'random'
++        results_list = []
++        for backend_key, backend in backends.items():
++            if backend_key not in ['all', 'random']:  # Exclude 'all' and 'random'
++                try:
++                    results_list.append(backend(query, sxng_locale))
++                except (HTTPError, SearxEngineResponseException):
++                    results_list.append([])  # Append empty list on error
++
++        # Merge results using interleave logic
++        return interleave_results(results_list)
++
++    elif backend_name == 'random':
++        # Exclude 'random' from the backend selection and select a random one
++        available_backends = {key: backend for key, backend in backends.items() if key not in ['all', 'random']}
++        backend = random.choice(list(available_backends.values()))
++        try:
++            return backend(query, sxng_locale)
++        except (HTTPError, SearxEngineResponseException):
++            return []
++
++    else:
++        # Regular backend selection
++        backend = backends.get(backend_name)
++        if backend is None:
++            return []
++        try:
++            return backend(query, sxng_locale)
++        except (HTTPError, SearxEngineResponseException):
++            return []
