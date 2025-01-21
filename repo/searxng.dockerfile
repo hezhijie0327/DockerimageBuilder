@@ -1,4 +1,4 @@
-# Current Version: 1.2.3
+# Current Version: 1.2.4
 
 ARG PYTHON_VERSION="3"
 
@@ -53,6 +53,7 @@ RUN \
     && cp -rf /usr/local/include /distroless/usr/local/include \
     && cp -rf /usr/local/lib /distroless/usr/local/lib \
     && cp /usr/lib/$(arch)-linux-gnu/libcrypto.so.3 /distroless/lib/libcrypto.so.3 \
+    && cp /usr/lib/$(arch)-linux-gnu/libffi.so.8 /distroless/lib/libffi.so.8 \
     && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
     && cp /usr/lib/$(arch)-linux-gnu/librt.so.1 /distroless/lib/librt.so.1 \
     && cp /usr/lib/$(arch)-linux-gnu/libsqlite3.so.0 /distroless/lib/libsqlite3.so.0 \
