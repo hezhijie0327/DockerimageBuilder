@@ -1,24 +1,22 @@
 diff --git a/searx/autocomplete.py b/searx/autocomplete.py
-index 09589cf1f68..bf1d925113c 100644
+index 09589cf1f68..0bb47744461 100644
 --- a/searx/autocomplete.py
 +++ b/searx/autocomplete.py
-@@ -19,6 +19,9 @@
+@@ -19,6 +19,8 @@
  from searx.network import get as http_get, post as http_post
  from searx.exceptions import SearxEngineResponseException
  
 +import bm25s
-+import random
 +
  
  def update_kwargs(**kwargs):
      if 'timeout' not in kwargs:
-@@ -250,14 +253,82 @@ def yandex(query, _lang):
+@@ -250,14 +252,73 @@ def yandex(query, _lang):
      'wikipedia': wikipedia,
      'brave': brave,
      'yandex': yandex,
 +    'all': 'all',
 +    'custom': 'custom',
-+    'random': 'random',
  }
  
  
@@ -59,7 +57,7 @@ index 09589cf1f68..bf1d925113c 100644
 -        return backend(query, sxng_locale)
 -    except (HTTPError, SearxEngineResponseException):
 -        return []
-+    excluded_backends = ['all', 'custom', 'random']
++    excluded_backends = ['all', 'custom']
 +
 +    if backend_name == 'all':
 +        results_list = []
@@ -70,14 +68,6 @@ index 09589cf1f68..bf1d925113c 100644
 +                except (HTTPError, SearxEngineResponseException, ValueError):
 +                    results_list.append([])
 +        return rerank_results(results_list, query)
-+
-+    elif backend_name == 'random':
-+        available_backends = {key: backend for key, backend in backends.items() if key not in excluded_backends}
-+        backend = random.choice(list(available_backends.values()))
-+        try:
-+            return backend(query, sxng_locale)
-+        except (HTTPError, SearxEngineResponseException, ValueError):
-+            return []
 +
 +    elif backend_name == 'custom':
 +        custom_backends = settings.get('search', {}).get('autocomplete_engines', [])
