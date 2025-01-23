@@ -1,4 +1,4 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -33,7 +33,7 @@ RUN \
     && echo "${VAULTWARDEN_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/VAULTWARDEN/VAULTWARDEN_CUSTOM_VERSION" \
     && echo "${VAULTWARDEN_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/VAULTWARDEN_WEB/VAULTWARDEN_CUSTOM_VERSION"
 
-FROM --platform=linux/amd64 node:${NODEJS_VERSION}-slim as build_vaultwarden_web
+FROM --platform=linux/amd64 node:${NODEJS_VERSION}-slim AS build_vaultwarden_web
 
 WORKDIR /vaultwarden
 
@@ -53,7 +53,7 @@ RUN \
     && mv "${VAULT_FOLDER}/apps/web/build" ./web-vault \
     && sed -i "s/Promise.resolve(\"[0-9]\+\(\.[0-9]\+\)*\")/Promise.resolve(\"$(cat /vaultwarden/VAULTWARDEN_CUSTOM_VERSION)\")/g" ./web-vault/app/main.*.js
 
-FROM rust:${RUST_VERSION}-alpine as build_vaultwarden
+FROM rust:${RUST_VERSION}-alpine AS build_vaultwarden
 
 WORKDIR /vaultwarden
 
