@@ -1,17 +1,18 @@
 diff --git a/searx/autocomplete.py b/searx/autocomplete.py
-index 32a2bf188df..5a9851ed48b 100644
+index 32a2bf188df..8658f9590ed 100644
 --- a/searx/autocomplete.py
 +++ b/searx/autocomplete.py
-@@ -19,6 +19,8 @@
+@@ -19,6 +19,9 @@
  from searx.network import get as http_get, post as http_post
  from searx.exceptions import SearxEngineResponseException
  
 +import bm25s
++import bm25s.stopwords as stopwords_module
 +
  
  def update_kwargs(**kwargs):
      if 'timeout' not in kwargs:
-@@ -266,14 +268,73 @@ def yandex(query, _lang):
+@@ -266,14 +269,78 @@ def yandex(query, _lang):
      'swisscows': swisscows,
      'wikipedia': wikipedia,
      'yandex': yandex,
@@ -35,12 +36,17 @@ index 32a2bf188df..5a9851ed48b 100644
 +
 +    unique_results = deduplicate_results(merged_results)
 +
-+    result_tokens = bm25s.tokenize(unique_results)
++    stopwords = set()
++    for name, value in stopwords_module.__dict__.items():
++        if name.startswith("STOPWORDS_") and isinstance(value, tuple):
++            stopwords.update(value)
++
++    result_tokens = bm25s.tokenize(unique_results, stopwords=stopwords)
 +
 +    retriever = bm25s.BM25()
 +    retriever.index(result_tokens)
 +
-+    query_tokens = bm25s.tokenize(query)
++    query_tokens = bm25s.tokenize(query, stopwords=stopwords)
 +
 +    indices = retriever.retrieve(query_tokens, k=len(unique_results), return_as='documents', show_progress=False)
 +
