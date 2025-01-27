@@ -1,8 +1,8 @@
 diff --git a/requirements.txt b/requirements.txt
-index 533fa3edb64..fb392d96da9 100644
+index 533fa3edb64..b813987ac72 100644
 --- a/requirements.txt
 +++ b/requirements.txt
-@@ -19,3 +19,12 @@ tomli==2.0.2; python_version < '3.11'
+@@ -19,3 +19,10 @@ tomli==2.0.2; python_version < '3.11'
  msgspec==0.19.0
  typer-slim==0.15.1
  isodate==0.7.2
@@ -12,15 +12,13 @@ index 533fa3edb64..fb392d96da9 100644
 +ml_dtypes==0.5.1
 +numpy==2.2.2
 +opt_einsum==3.4.0
-+PyStemmer==2.2.0.3
-+pystreamer==0.4.3
 +scipy==1.15.1
 diff --git a/searx/plugins/rerank.py b/searx/plugins/rerank.py
 new file mode 100644
-index 00000000000..03d6705327c
+index 00000000000..803e390e9dd
 --- /dev/null
 +++ b/searx/plugins/rerank.py
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,53 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=protected-access
 +"""Plugin which reranks the search results via Okapi BM25 algorithm.
@@ -38,7 +36,6 @@ index 00000000000..03d6705327c
 +
 +import bm25s
 +import bm25s.stopwords as stopwords_module
-+import Stemmer
 +
 +name = 'Rerank plugin'
 +description = 'Rerank search results via Okapi BM25 algorithm'
@@ -50,8 +47,6 @@ index 00000000000..03d6705327c
 +    results = search.result_container._merged_results
 +    query = search.search_query.query
 +
-+    stemmer = Stemmer.Stemmer("english")
-+
 +    stopwords = set()
 +    for name, value in stopwords_module.__dict__.items():
 +        if name.startswith("STOPWORDS_") and isinstance(value, tuple):
@@ -60,12 +55,11 @@ index 00000000000..03d6705327c
 +    retriever = bm25s.BM25()
 +    result_tokens = bm25s.tokenize(
 +        [f"{result.get('content', '')} | {result.get('title', '')} | {result.get('url', '')}" for result in results],
-+        stopwords=stopwords,
-+        stemmer=stemmer
++        stopwords=stopwords
 +    )
 +    retriever.index(result_tokens)
 +
-+    query_tokens = bm25s.tokenize(query, stopwords=stopwords, stemmer=stemmer)
++    query_tokens = bm25s.tokenize(query, stopwords=stopwords)
 +
 +    documents, scores = retriever.retrieve(query_tokens, k=len(results), return_as='tuple', show_progress=False)
 +
