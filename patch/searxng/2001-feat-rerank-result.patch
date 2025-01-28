@@ -11,10 +11,10 @@ index 533fa3edb64..7297efb9145 100644
 +scipy==1.15.1
 diff --git a/searx/plugins/rerank.py b/searx/plugins/rerank.py
 new file mode 100644
-index 00000000000..803e390e9dd
+index 00000000000..72c407d0579
 --- /dev/null
 +++ b/searx/plugins/rerank.py
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,52 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=protected-access
 +"""Plugin which reranks the search results via Okapi BM25 algorithm.
@@ -43,19 +43,18 @@ index 00000000000..803e390e9dd
 +    results = search.result_container._merged_results
 +    query = search.search_query.query
 +
-+    stopwords = set()
-+    for name, value in stopwords_module.__dict__.items():
-+        if name.startswith("STOPWORDS_") and isinstance(value, tuple):
-+            stopwords.update(value)
++    corpus = [f"{result.get('content', '')} | {result.get('title', '')} | {result.get('url', '')}" for result in results]
 +
-+    retriever = bm25s.BM25()
-+    result_tokens = bm25s.tokenize(
-+        [f"{result.get('content', '')} | {result.get('title', '')} | {result.get('url', '')}" for result in results],
-+        stopwords=stopwords
-+    )
-+    retriever.index(result_tokens)
++    stopwords = {
++        word for name, value in stopwords_module.__dict__.items()
++        if name.startswith("STOPWORDS_") and isinstance(value, tuple) for word in value
++    }
 +
++    corpus_tokens = bm25s.tokenize(corpus, stopwords=stopwords)
 +    query_tokens = bm25s.tokenize(query, stopwords=stopwords)
++
++    retriever = bm25s.BM25(corpus=corpus)
++    retriever.index(corpus_tokens)
 +
 +    documents, scores = retriever.retrieve(query_tokens, k=len(results), return_as='tuple', show_progress=False)
 +
