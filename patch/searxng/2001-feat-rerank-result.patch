@@ -11,10 +11,10 @@ index 533fa3edb64..7297efb9145 100644
 +scipy==1.15.1
 diff --git a/searx/plugins/rerank.py b/searx/plugins/rerank.py
 new file mode 100644
-index 00000000000..dc7d84d1c8e
+index 00000000000..4d59cfa530b
 --- /dev/null
 +++ b/searx/plugins/rerank.py
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,51 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=protected-access
 +"""Plugin which reranks the search results via Okapi BM25 algorithm.
@@ -59,9 +59,10 @@ index 00000000000..dc7d84d1c8e
 +    documents, scores = retriever.retrieve(query_tokens, k=len(corpus), return_as='tuple', show_progress=False)
 +
 +    for index in documents[0]:
-+        results[index]['positions'] = [
-+            float(position / (1 - scores[0][index])) if isinstance(position, (int, float)) else position
-+            for position in results[index]['positions']
-+        ]
++        score = scores[0][index]
++        for i, position in enumerate(results[index].get('positions', [])):
++            if isinstance(position, (int, float)):
++                position = position / (1 - score) if 1 - score != 0 else position
++                results[index]['positions'][i] = position
 +
 +    return True
