@@ -1,4 +1,4 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 ARG GOLANG_VERSION="1"
 
@@ -30,7 +30,9 @@ WORKDIR /cloudflared
 
 COPY --from=get_info /tmp/BUILDTMP/CLOUDFLARED /cloudflared
 
-ENV CGO_ENABLED="0"
+ENV \
+    CGO_ENABLED="0" \
+    CONTAINER_BUILD="1"
 
 RUN \
     make cloudflared
