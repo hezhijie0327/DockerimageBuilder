@@ -1,0 +1,178 @@
+diff --git a/src/config/aiModels/github.ts b/src/config/aiModels/github.ts
+index e68ab31631d5..45ae5e3ef662 100644
+--- a/src/config/aiModels/github.ts
++++ b/src/config/aiModels/github.ts
+@@ -2,22 +2,18 @@ import { AIChatModelCard } from '@/types/aiModel';
+ 
+ const githubChatModels: AIChatModelCard[] = [
+   {
+-    abilities: {
+-      functionCall: false,
+-      vision: true,
+-    },
+     contextWindowTokens: 200_000,
+     description:
+-      '专注于高级推理和解决复杂问题，包括数学和科学任务。非常适合需要深入上下文理解和代理工作流程的应用程序。',
+-    displayName: 'OpenAI o1',
++      'o3-mini 是我们最新的小型推理模型，在与 o1-mini 相同的成本和延迟目标下提供高智能。',
++    displayName: 'OpenAI o3-mini',
+     enabled: true,
+-    id: 'o1',
++    id: 'o3-mini',
+     maxOutput: 100_000,
++    releasedAt: '2025-01-31',
+     type: 'chat',
+   },
+   {
+     abilities: {
+-      functionCall: false,
+       vision: true,
+     },
+     contextWindowTokens: 128_000,
+@@ -30,7 +26,19 @@ const githubChatModels: AIChatModelCard[] = [
+   },
+   {
+     abilities: {
+-      functionCall: false,
++      vision: true,
++    },
++    contextWindowTokens: 200_000,
++    description:
++      'o1是OpenAI新的推理模型，支持图文输入并输出文本，适用于需要广泛通用知识的复杂任务。该模型具有200K上下文和2023年10月的知识截止日期。',
++    displayName: 'OpenAI o1',
++    enabled: true,
++    id: 'o1',
++    maxOutput: 100_000,
++    type: 'chat',
++  },
++  {
++    abilities: {
+       vision: true,
+     },
+     contextWindowTokens: 128_000,
+diff --git a/src/config/aiModels/openai.ts b/src/config/aiModels/openai.ts
+index c35bfd65da81..6b68b7cbbbf4 100644
+--- a/src/config/aiModels/openai.ts
++++ b/src/config/aiModels/openai.ts
+@@ -9,6 +9,24 @@ import {
+ 
+ export const openaiChatModels: AIChatModelCard[] = [
+   {
++    contextWindowTokens: 200_000,
++    description:
++      'o3-mini 是我们最新的小型推理模型，在与 o1-mini 相同的成本和延迟目标下提供高智能。',
++    displayName: 'OpenAI o3-mini',
++    enabled: true,
++    id: 'o3-mini',
++    maxOutput: 100_000,
++    pricing: {
++      input: 1.1,
++      output: 4.4,
++    },
++    releasedAt: '2025-01-31',
++    type: 'chat',
++  },
++  {
++    abilities: {
++      vision: true,
++    },
+     contextWindowTokens: 128_000,
+     description:
+       'o1-mini是一款针对编程、数学和科学应用场景而设计的快速、经济高效的推理模型。该模型具有128K上下文和2023年10月的知识截止日期。',
+@@ -17,13 +35,34 @@ export const openaiChatModels: AIChatModelCard[] = [
+     id: 'o1-mini',
+     maxOutput: 65_536,
+     pricing: {
+-      input: 3,
+-      output: 12,
++      input: 1.1,
++      output: 4.4,
+     },
+     releasedAt: '2024-09-12',
+     type: 'chat',
+   },
+   {
++    abilities: {
++      vision: true,
++    },
++    contextWindowTokens: 200_000,
++    description:
++      'o1是OpenAI新的推理模型，支持图文输入并输出文本，适用于需要广泛通用知识的复杂任务。该模型具有200K上下文和2023年10月的知识截止日期。',
++    displayName: 'OpenAI o1',
++    enabled: true,
++    id: 'o1',
++    maxOutput: 100_000,
++    pricing: {
++      input: 15,
++      output: 60,
++    },
++    releasedAt: '2024-12-17',
++    type: 'chat',
++  },
++  {
++    abilities: {
++      vision: true,
++    },
+     contextWindowTokens: 128_000,
+     description:
+       'o1是OpenAI新的推理模型，适用于需要广泛通用知识的复杂任务。该模型具有128K上下文和2023年10月的知识截止日期。',
+diff --git a/src/libs/agent-runtime/github/index.ts b/src/libs/agent-runtime/github/index.ts
+index 7081a73043ef..0e55d1392c9d 100644
+--- a/src/libs/agent-runtime/github/index.ts
++++ b/src/libs/agent-runtime/github/index.ts
+@@ -2,7 +2,7 @@ import { LOBE_DEFAULT_MODEL_LIST } from '@/config/modelProviders';
+ import type { ChatModelCard } from '@/types/llm';
+ 
+ import { AgentRuntimeErrorType } from '../error';
+-import { o1Models, pruneO1Payload } from '../openai';
++import { pruneReasoningPayload, reasoningModels } from '../openai';
+ import { ModelProvider } from '../types';
+ import {
+   CHAT_MODELS_BLOCK_LIST,
+@@ -37,8 +37,8 @@ export const LobeGithubAI = LobeOpenAICompatibleFactory({
+     handlePayload: (payload) => {
+       const { model } = payload;
+ 
+-      if (o1Models.has(model)) {
+-        return { ...pruneO1Payload(payload), stream: false } as any;
++      if (reasoningModels.has(model)) {
++        return { ...pruneReasoningPayload(payload), stream: false } as any;
+       }
+ 
+       return { ...payload, stream: payload.stream ?? true };
+diff --git a/src/libs/agent-runtime/openai/index.ts b/src/libs/agent-runtime/openai/index.ts
+index 74b7e434976a..8c96384c14b1 100644
+--- a/src/libs/agent-runtime/openai/index.ts
++++ b/src/libs/agent-runtime/openai/index.ts
+@@ -2,16 +2,18 @@ import { ChatStreamPayload, ModelProvider, OpenAIChatMessage } from '../types';
+ import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
+ 
+ // TODO: 临时写法，后续要重构成 model card 展示配置
+-export const o1Models = new Set([
++export const reasoningModels = new Set([
+   'o1-preview',
+   'o1-preview-2024-09-12',
+   'o1-mini',
+   'o1-mini-2024-09-12',
+   'o1',
+   'o1-2024-12-17',
++  'o3-mini',
++  'o3-mini-2025-01-31',
+ ]);
+ 
+-export const pruneO1Payload = (payload: ChatStreamPayload) => ({
++export const pruneReasoningPayload = (payload: ChatStreamPayload) => ({
+   ...payload,
+   frequency_penalty: 0,
+   messages: payload.messages.map((message: OpenAIChatMessage) => ({
+@@ -29,8 +31,8 @@ export const LobeOpenAI = LobeOpenAICompatibleFactory({
+     handlePayload: (payload) => {
+       const { model } = payload;
+ 
+-      if (o1Models.has(model)) {
+-        return pruneO1Payload(payload) as any;
++      if (reasoningModels.has(model)) {
++        return pruneReasoningPayload(payload) as any;
+       }
+ 
+       return { ...payload, stream: payload.stream ?? true };
