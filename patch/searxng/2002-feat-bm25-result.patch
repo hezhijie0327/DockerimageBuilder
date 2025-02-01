@@ -1,13 +1,16 @@
 diff --git a/searx/plugins/bm25_rerank.py b/searx/plugins/bm25_rerank.py
 new file mode 100644
-index 00000000000..5d30a19b686
+index 00000000000..c6e8aebdf2b
 --- /dev/null
 +++ b/searx/plugins/bm25_rerank.py
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,62 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
-+# pylint: disable=missing-module-docstring, missing-class-docstring
++# pylint: disable=missing-module-docstring, missing-class-docstring, protected-access
 +from __future__ import annotations
 +import typing
++
++import bm25s
++import bm25s.stopwords as stopwords_module
 +
 +from searx.plugins import Plugin, PluginInfo
 +from searx.result_types import EngineResults
@@ -16,8 +19,6 @@ index 00000000000..5d30a19b686
 +    from searx.search import SearchWithPlugins
 +    from searx.extended_types import SXNG_Request
 +
-+import bm25s
-+import bm25s.stopwords as stopwords_module
 +
 +class SXNGPlugin(Plugin):
 +    """Rerank search results using the Okapi BM25 algorithm. The
@@ -41,11 +42,15 @@ index 00000000000..5d30a19b686
 +        results = search.result_container._merged_results
 +        query = search.search_query.query
 +
-+        corpus = [f"{result.get('content', '')} | {result.get('title', '')} | {result.get('url', '')}" for result in results]
++        corpus = [
++            f"{result.get('content', '')} | {result.get('title', '')} | {result.get('url', '')}" for result in results
++        ]
 +
 +        stopwords = {
-+            word for name, value in stopwords_module.__dict__.items()
-+            if name.startswith("STOPWORDS_") and isinstance(value, tuple) for word in value
++            word
++            for name, value in stopwords_module.__dict__.items()
++            if name.startswith("STOPWORDS_") and isinstance(value, tuple)
++            for word in value
 +        }
 +
 +        corpus_tokens = bm25s.tokenize(corpus, stopwords=stopwords)
