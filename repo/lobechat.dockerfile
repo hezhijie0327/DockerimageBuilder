@@ -1,4 +1,4 @@
-# Current Version: 1.9.3
+# Current Version: 1.9.4
 
 ARG NODEJS_VERSION="22"
 
@@ -55,9 +55,7 @@ COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 
 RUN \
     export PNPM_HOME="/pnpm" \
-    && npm install -g corepack@latest \
-    && corepack enable \
-    && corepack use pnpm@9 \
+    && npm i -g pnpm@9 \
     && pnpm i \
     && mkdir -p /deps \
     && pnpm add sharp --prefix /deps
