@@ -1,4 +1,4 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -44,6 +44,7 @@ COPY --from=get_info /tmp/BUILDTMP/ALIST_WEB /alist
 
 RUN \
     export PNPM_HOME="/pnpm" \
+    && npm install -g corepack@latest \
     && corepack enable \
     && corepack use pnpm@9 \
     && node ./scripts/i18n.mjs \
