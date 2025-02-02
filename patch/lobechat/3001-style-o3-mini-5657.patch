@@ -1,5 +1,5 @@
 diff --git a/src/config/aiModels/github.ts b/src/config/aiModels/github.ts
-index e68ab31631d51..2e3db2a7209c9 100644
+index e68ab31631d5..2e3db2a7209c 100644
 --- a/src/config/aiModels/github.ts
 +++ b/src/config/aiModels/github.ts
 @@ -3,21 +3,20 @@ import { AIChatModelCard } from '@/types/aiModel';
@@ -51,7 +51,7 @@ index e68ab31631d51..2e3db2a7209c9 100644
      },
      contextWindowTokens: 128_000,
 diff --git a/src/config/aiModels/openai.ts b/src/config/aiModels/openai.ts
-index c35bfd65da812..bb8f6869c58a9 100644
+index c35bfd65da81..bb8f6869c58a 100644
 --- a/src/config/aiModels/openai.ts
 +++ b/src/config/aiModels/openai.ts
 @@ -8,6 +8,24 @@ import {
@@ -109,8 +109,43 @@ index c35bfd65da812..bb8f6869c58a9 100644
    {
      contextWindowTokens: 128_000,
      description:
+diff --git a/src/features/AgentSetting/AgentModal/index.tsx b/src/features/AgentSetting/AgentModal/index.tsx
+index f8af3d1b88d7..f7e902fd8f0f 100644
+--- a/src/features/AgentSetting/AgentModal/index.tsx
++++ b/src/features/AgentSetting/AgentModal/index.tsx
+@@ -1,7 +1,7 @@
+ 'use client';
+ 
+ import { Form, ItemGroup, SliderWithInput } from '@lobehub/ui';
+-import { Switch } from 'antd';
++import { Select, Switch } from 'antd';
+ import { memo } from 'react';
+ import { useTranslation } from 'react-i18next';
+ 
+@@ -63,6 +63,21 @@ const AgentModal = memo(() => {
+         name: ['params', 'frequency_penalty'],
+         tag: 'frequency_penalty',
+       },
++      {
++        children: (
++          <Select
++            options={[
++              { value: 'low', label: t('settingModel.reasoningEffort.options.low') },
++              { value: 'medium', label: t('settingModel.reasoningEffort.options.medium') },
++              { value: 'high', label: t('settingModel.reasoningEffort.options.high') },
++            ]}
++          />
++        ),
++        desc: t('settingModel.reasoningEffort.desc'),
++        label: t('settingModel.reasoningEffort.title'),
++        name: ['params', 'reasoning_effort'],
++        tag: 'reasoning_effort',
++      },
+       {
+         children: <Switch />,
+         label: t('settingModel.enableMaxTokens.title'),
 diff --git a/src/libs/agent-runtime/github/index.ts b/src/libs/agent-runtime/github/index.ts
-index 7081a73043ef5..0e55d1392c9d8 100644
+index 7081a73043ef..0e55d1392c9d 100644
 --- a/src/libs/agent-runtime/github/index.ts
 +++ b/src/libs/agent-runtime/github/index.ts
 @@ -2,7 +2,7 @@ import { LOBE_DEFAULT_MODEL_LIST } from '@/config/modelProviders';
@@ -134,7 +169,7 @@ index 7081a73043ef5..0e55d1392c9d8 100644
  
        return { ...payload, stream: payload.stream ?? true };
 diff --git a/src/libs/agent-runtime/openai/index.ts b/src/libs/agent-runtime/openai/index.ts
-index 74b7e434976af..8bed6c0702d81 100644
+index 74b7e434976a..ec55401042d8 100644
 --- a/src/libs/agent-runtime/openai/index.ts
 +++ b/src/libs/agent-runtime/openai/index.ts
 @@ -2,21 +2,23 @@ import { ChatStreamPayload, ModelProvider, OpenAIChatMessage } from '../types';
@@ -164,14 +199,51 @@ index 74b7e434976af..8bed6c0702d81 100644
    })),
    presence_penalty: 0,
    temperature: 1,
-@@ -29,8 +31,8 @@ export const LobeOpenAI = LobeOpenAICompatibleFactory({
+@@ -29,8 +31,10 @@ export const LobeOpenAI = LobeOpenAICompatibleFactory({
      handlePayload: (payload) => {
        const { model } = payload;
  
 -      if (o1Models.has(model)) {
 -        return pruneO1Payload(payload) as any;
++      console.log(payload)
++
 +      if (reasoningModels.has(model)) {
 +        return pruneReasoningPayload(payload) as any;
        }
  
        return { ...payload, stream: payload.stream ?? true };
+diff --git a/src/locales/default/discover.ts b/src/locales/default/discover.ts
+index 82907c86c58d..c46a81a7da6b 100644
+--- a/src/locales/default/discover.ts
++++ b/src/locales/default/discover.ts
+@@ -127,6 +127,10 @@ export default {
+         title: '话题新鲜度',
+       },
+       range: '范围',
++      reasoning_effort: {
++        desc: '此设置控制推理的深入程度。较高的值会增加推理的复杂性，可能导致更详细的回答，但也会增加响应时间和 Token 消耗。较低的值会减少推理深度，提高响应速度。',
++        title: '推理强度',
++      },
+       temperature: {
+         desc: '此设置影响模型回应的多样性。较低的值会导致更可预测和典型的回应，而较高的值则鼓励更多样化和不常见的回应。当值设为0时，模型对于给定的输入总是给出相同的回应。',
+         title: '随机性',
+diff --git a/src/locales/default/setting.ts b/src/locales/default/setting.ts
+index d20460052773..df390bbf8867 100644
+--- a/src/locales/default/setting.ts
++++ b/src/locales/default/setting.ts
+@@ -218,6 +218,15 @@ export default {
+       desc: '值越大，越有可能扩展到新话题',
+       title: '话题新鲜度',
+     },
++    reasoningEffort: {
++      desc: '值越大，推理能力越强，但可能会增加响应时间和 Token 消耗',
++      options: {
++        high: '高',
++        low: '低',
++        medium: '中',
++      },
++      title: '推理强度',
++    },
+     temperature: {
+       desc: '值越大，回复越随机',
+       title: '随机性',
