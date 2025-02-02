@@ -1,4 +1,4 @@
-# Current Version: 1.9.1
+# Current Version: 1.9.2
 
 ARG NODEJS_VERSION="22"
 
@@ -55,6 +55,7 @@ COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 
 RUN \
     export PNPM_HOME="/pnpm" \
+    && npm install -g corepack@latest \
     && corepack enable \
     && corepack use pnpm@9 \
     && pnpm i \
