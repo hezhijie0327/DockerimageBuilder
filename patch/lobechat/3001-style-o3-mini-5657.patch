@@ -110,7 +110,7 @@ index c35bfd65da81..bb8f6869c58a 100644
      contextWindowTokens: 128_000,
      description:
 diff --git a/src/features/AgentSetting/AgentModal/index.tsx b/src/features/AgentSetting/AgentModal/index.tsx
-index f8af3d1b88d7..3994e2f07409 100644
+index f8af3d1b88d7..a5c935554f6c 100644
 --- a/src/features/AgentSetting/AgentModal/index.tsx
 +++ b/src/features/AgentSetting/AgentModal/index.tsx
 @@ -1,7 +1,7 @@
@@ -122,13 +122,33 @@ index f8af3d1b88d7..3994e2f07409 100644
  import { memo } from 'react';
  import { useTranslation } from 'react-i18next';
  
-@@ -63,6 +63,21 @@ const AgentModal = memo(() => {
-         name: ['params', 'frequency_penalty'],
-         tag: 'frequency_penalty',
+@@ -17,9 +17,9 @@ const AgentModal = memo(() => {
+   const { t } = useTranslation('setting');
+   const [form] = Form.useForm();
+ 
+-  const [enableMaxTokens, updateConfig] = useStore((s) => {
++  const [enableMaxTokens, enableReasoningEffort, updateConfig] = useStore((s) => {
+     const config = selectors.chatConfig(s);
+-    return [config.enableMaxTokens, s.setAgentConfig];
++    return [config.enableMaxTokens, config.enableReasoningEffort, s.setAgentConfig];
+   });
+ 
+   const providerName = useProviderName(useStore((s) => s.config.provider) as string);
+@@ -79,6 +79,30 @@ const AgentModal = memo(() => {
+         name: ['params', 'max_tokens'],
+         tag: 'max_tokens',
        },
++      {
++        children: <Switch />,
++        label: t('settingModel.enableReasoningEffort.title'),
++        minWidth: undefined,
++        name: ['chatConfig', 'enableReasoningEffort'],
++        valuePropName: 'checked',
++      },
 +      {
 +        children: (
 +          <Select
++            defaultValue='medium'
 +            options={[
 +              { label: t('settingModel.reasoningEffort.options.low'), value: 'low' },
 +              { label: t('settingModel.reasoningEffort.options.medium'), value: 'medium' },
@@ -137,13 +157,14 @@ index f8af3d1b88d7..3994e2f07409 100644
 +          />
 +        ),
 +        desc: t('settingModel.reasoningEffort.desc'),
++        hidden: !enableReasoningEffort,
 +        label: t('settingModel.reasoningEffort.title'),
 +        name: ['params', 'reasoning_effort'],
 +        tag: 'reasoning_effort',
 +      },
-       {
-         children: <Switch />,
-         label: t('settingModel.enableMaxTokens.title'),
+     ],
+     title: t('settingModel.title'),
+   };
 diff --git a/src/libs/agent-runtime/github/index.ts b/src/libs/agent-runtime/github/index.ts
 index 7081a73043ef..0e55d1392c9d 100644
 --- a/src/libs/agent-runtime/github/index.ts
@@ -228,10 +249,20 @@ index 82907c86c58d..c46a81a7da6b 100644
          desc: '此设置影响模型回应的多样性。较低的值会导致更可预测和典型的回应，而较高的值则鼓励更多样化和不常见的回应。当值设为0时，模型对于给定的输入总是给出相同的回应。',
          title: '随机性',
 diff --git a/src/locales/default/setting.ts b/src/locales/default/setting.ts
-index d20460052773..df390bbf8867 100644
+index d20460052773..727358c88773 100644
 --- a/src/locales/default/setting.ts
 +++ b/src/locales/default/setting.ts
-@@ -218,6 +218,15 @@ export default {
+@@ -202,6 +202,9 @@ export default {
+     enableMaxTokens: {
+       title: '开启单次回复限制',
+     },
++    enableReasoningEffort: {
++      title: '自定义推理强度',
++    },
+     frequencyPenalty: {
+       desc: '值越大，越有可能降低重复字词',
+       title: '频率惩罚度',
+@@ -218,6 +221,15 @@ export default {
        desc: '值越大，越有可能扩展到新话题',
        title: '话题新鲜度',
      },
@@ -247,3 +278,27 @@ index d20460052773..df390bbf8867 100644
      temperature: {
        desc: '值越大，回复越随机',
        title: '随机性',
+diff --git a/src/types/agent/index.ts b/src/types/agent/index.ts
+index ee6453b295e8..d04e4cda408a 100644
+--- a/src/types/agent/index.ts
++++ b/src/types/agent/index.ts
+@@ -73,6 +73,11 @@ export interface LobeAgentChatConfig {
+    */
+   historyCount?: number;
+   inputTemplate?: string;
++
++  /**
++   * 自定义推理强度
++   */
++  enableReasoningEffort?: boolean;
+ }
+ 
+ export const AgentChatConfigSchema = z.object({
+@@ -82,6 +87,7 @@ export const AgentChatConfigSchema = z.object({
+   enableCompressHistory: z.boolean().optional(),
+   enableHistoryCount: z.boolean().optional(),
+   enableMaxTokens: z.boolean().optional(),
++  enableReasoningEffort: z.boolean().optional(),
+   historyCount: z.number().optional(),
+ });
+ 
