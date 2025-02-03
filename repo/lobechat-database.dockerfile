@@ -1,4 +1,4 @@
-# Current Version: 1.4.1
+# Current Version: 1.4.2
 
 ARG NODEJS_VERSION="22"
 
@@ -47,6 +47,7 @@ FROM build_baseos AS build_lobechat
 ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
     NEXT_PUBLIC_SERVICE_MODE="server" \
+    PNPM_HOME="/pnpm" \
     APP_URL="http://app.com" \
     DATABASE_DRIVER="node" \
     DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
@@ -58,8 +59,8 @@ COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 
 RUN \
-    export PNPM_HOME="/pnpm" \
-    && npm i -g $(jq -r .packageManager package.json) \
+    corepack enable \
+    && corepack use $(jq -r .packageManager package.json) \
     && pnpm i \
     && mkdir -p /deps \
     && pnpm add sharp pg drizzle-orm --prefix /deps
