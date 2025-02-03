@@ -1,4 +1,4 @@
-# Current Version: 1.2.6
+# Current Version: 1.2.7
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -49,6 +49,7 @@ RUN \
     apt update \
     && apt install jq -qy \
     && export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
+    && npm i -g corepack@latest \
     && corepack enable \
     && corepack use $(jq -r .packageManager package.json) \
     && node ./scripts/i18n.mjs \
