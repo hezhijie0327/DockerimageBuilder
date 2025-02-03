@@ -1,4 +1,4 @@
-# Current Version: 1.4.0
+# Current Version: 1.4.1
 
 ARG NODEJS_VERSION="22"
 
@@ -31,7 +31,7 @@ ENV DEBIAN_FRONTEND="noninteractive"
 
 RUN \
     apt update \
-    && apt install proxychains-ng -qy \
+    && apt install jq proxychains-ng -qy \
     && mkdir -p /distroless/bin /distroless/etc /distroless/lib \
     && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
     && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
@@ -59,7 +59,7 @@ COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 
 RUN \
     export PNPM_HOME="/pnpm" \
-    && npm i -g pnpm@9 \
+    && npm i -g $(jq -r .packageManager package.json) \
     && pnpm i \
     && mkdir -p /deps \
     && pnpm add sharp pg drizzle-orm --prefix /deps
