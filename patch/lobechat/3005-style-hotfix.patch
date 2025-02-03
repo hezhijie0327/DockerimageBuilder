@@ -1,0 +1,57 @@
+diff --git a/src/store/user/slices/modelList/selectors/modelProvider.ts b/src/store/user/slices/modelList/selectors/modelProvider.ts
+index cf0c71f67243a..f0876a65c3569 100644
+--- a/src/store/user/slices/modelList/selectors/modelProvider.ts
++++ b/src/store/user/slices/modelList/selectors/modelProvider.ts
+@@ -122,6 +122,9 @@ const isModelEnabledFunctionCall = (id: string) => (s: UserStore) =>
+ const isModelEnabledVision = (id: string) => (s: UserStore) =>
+   getModelCardById(id)(s)?.vision || id.includes('vision');
+ 
++const isModelEnabledReasoning = (id: string) => (s: UserStore) =>
++  getModelCardById(id)(s)?.reasoning || false;
++
+ const isModelEnabledFiles = (id: string) => (s: UserStore) => getModelCardById(id)(s)?.files;
+ 
+ const isModelEnabledUpload = (id: string) => (s: UserStore) =>
+@@ -145,6 +148,7 @@ export const modelProviderSelectors = {
+   isModelEnabledFiles,
+   isModelEnabledFunctionCall,
+   isModelEnabledUpload,
++  isModelEnabledReasoning,
+   isModelEnabledVision,
+   isModelHasMaxToken,
+ 
+diff --git a/src/types/llm.ts b/src/types/llm.ts
+index 7230e77a5ed98..0ad147d22f1fa 100644
+--- a/src/types/llm.ts
++++ b/src/types/llm.ts
+@@ -42,6 +42,15 @@ export interface ChatModelCard {
+   legacy?: boolean;
+   maxOutput?: number;
+   pricing?: ChatModelPricing;
++
++  /**
++   *  whether model supports reasoning
++   */
++  reasoning?: boolean;
++
++  /**
++   * whether model is legacy (deprecated but not removed yet)
++   */
+   releasedAt?: string;
+ 
+   /**
+diff --git a/src/utils/_deprecated/parseModels.ts b/src/utils/_deprecated/parseModels.ts
+index c6800b4cc6b6e..8cd61e0a2151d 100644
+--- a/src/utils/_deprecated/parseModels.ts
++++ b/src/utils/_deprecated/parseModels.ts
+@@ -61,10 +61,7 @@ export const parseModelString = (modelString: string = '', withDeploymentName =
+       for (const capability of capabilityList) {
+         switch (capability) {
+           case 'reasoning': {
+-            /*
+-            * skip warning for reasoning
+             model.reasoning = true;
+-            */
+             break;
+           }
+           case 'vision': {
