@@ -1,4 +1,4 @@
-# Current Version: 1.2.7
+# Current Version: 1.2.8
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -46,12 +46,10 @@ ENV \
     PNPM_HOME="/pnpm"
 
 RUN \
-    apt update \
-    && apt install jq -qy \
-    && export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
+    export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
     && npm i -g corepack@latest \
     && corepack enable \
-    && corepack use $(jq -r .packageManager package.json) \
+    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
     && node ./scripts/i18n.mjs \
     && pnpm i \
     && pnpm build
