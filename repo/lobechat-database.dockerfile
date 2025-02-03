@@ -1,4 +1,4 @@
-# Current Version: 1.4.2
+# Current Version: 1.4.3
 
 ARG NODEJS_VERSION="22"
 
@@ -59,7 +59,8 @@ COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 
 RUN \
-    corepack enable \
+    export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
+    && corepack enable \
     && corepack use $(jq -r .packageManager package.json) \
     && pnpm i \
     && mkdir -p /deps \
