@@ -1,4 +1,4 @@
-# Current Version: 1.9.5
+# Current Version: 1.9.6
 
 ARG NODEJS_VERSION="22"
 
@@ -46,7 +46,8 @@ FROM build_baseos AS build_lobechat
 
 ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
-    NEXT_PUBLIC_CLIENT_DB="pglite"
+    NEXT_PUBLIC_CLIENT_DB="pglite" \
+    PNPM_HOME="/pnpm"
 
 WORKDIR /app
 
@@ -54,8 +55,8 @@ COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 
 RUN \
-    export PNPM_HOME="/pnpm" \
-    && npm i -g $(jq -r .packageManager package.json) \
+    corepack enable \
+    && corepack use $(jq -r .packageManager package.json) \
     && pnpm i \
     && mkdir -p /deps \
     && pnpm add sharp --prefix /deps
