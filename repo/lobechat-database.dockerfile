@@ -1,4 +1,4 @@
-# Current Version: 1.4.4
+# Current Version: 1.4.5
 
 ARG NODEJS_VERSION="22"
 
@@ -31,7 +31,7 @@ ENV DEBIAN_FRONTEND="noninteractive"
 
 RUN \
     apt update \
-    && apt install jq proxychains-ng -qy \
+    && apt install proxychains-ng -qy \
     && mkdir -p /distroless/bin /distroless/etc /distroless/lib \
     && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
     && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
@@ -62,7 +62,7 @@ RUN \
     export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
     && npm i -g corepack@latest \
     && corepack enable \
-    && corepack use $(jq -r .packageManager package.json) \
+    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
     && pnpm i \
     && mkdir -p /deps \
     && pnpm add sharp pg drizzle-orm --prefix /deps
