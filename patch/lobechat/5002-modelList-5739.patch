@@ -1,0 +1,85 @@
+diff --git a/src/utils/merge.test.ts b/src/utils/merge.test.ts
+index c3ba5907fdc84..2b73b80af6686 100644
+--- a/src/utils/merge.test.ts
++++ b/src/utils/merge.test.ts
+@@ -45,4 +45,60 @@ describe('mergeArrayById', () => {
+       },
+     ]);
+   });
++
++  it('should merge data with objects', () => {
++    const data = mergeArrayById(
++      [
++        {
++          contextWindowTokens: 128_000,
++          description:
++            'o1-mini是一款针对编程、数学和科学应用场景而设计的快速、经济高效的推理模型。该模型具有128K上下文和2023年10月的知识截止日期。',
++          displayName: 'OpenAI o1-mini',
++          enabled: true,
++          id: 'o3-mini',
++          abilities: {
++            functionCall: true,
++          },
++          maxOutput: 65_536,
++          pricing: {
++            input: 3,
++            output: 12,
++          },
++          releasedAt: '2024-09-12',
++          type: 'chat',
++        },
++      ],
++      [
++        {
++          id: 'o3-mini',
++          contextWindowTokens: null,
++          displayName: 'OpenAI o1-mini ABC',
++          type: 'chat',
++          abilities: {},
++          enabled: false,
++        },
++      ],
++    );
++
++    expect(data).toEqual([
++      {
++        contextWindowTokens: 128_000,
++        description:
++          'o1-mini是一款针对编程、数学和科学应用场景而设计的快速、经济高效的推理模型。该模型具有128K上下文和2023年10月的知识截止日期。',
++        displayName: 'OpenAI o1-mini ABC',
++        enabled: false,
++        id: 'o3-mini',
++        maxOutput: 65_536,
++        pricing: {
++          input: 3,
++          output: 12,
++        },
++        abilities: {
++          functionCall: true,
++        },
++        releasedAt: '2024-09-12',
++        type: 'chat',
++      },
++    ]);
++  });
+ });
+diff --git a/src/utils/merge.ts b/src/utils/merge.ts
+index 3ab798e819926..af8df22f5541d 100644
+--- a/src/utils/merge.ts
++++ b/src/utils/merge.ts
+@@ -1,4 +1,4 @@
+-import { merge as _merge, mergeWith } from 'lodash-es';
++import { merge as _merge, isEmpty, mergeWith } from 'lodash-es';
+ 
+ /**
+  * 用于合并对象，如果是数组则直接替换
+@@ -33,7 +33,8 @@ export const mergeArrayById = <T extends MergeableItem>(defaultItems: T[], userI
+     const mergedItem: T = { ...defaultItem };
+     Object.entries(userItem).forEach(([key, value]) => {
+       // Only use user value if it's not null and not undefined
+-      if (value !== null && value !== undefined) {
++      // and not empty object
++      if (value !== null && value !== undefined && !(typeof value === 'object' && isEmpty(value))) {
+         // @ts-expect-error
+         mergedItem[key] = value;
+       }
