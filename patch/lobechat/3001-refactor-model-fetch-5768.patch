@@ -197,7 +197,7 @@ index 1e8535f07e190..9d5938fb3f2d0 100644
    });
  });
 diff --git a/src/libs/agent-runtime/cloudflare/index.ts b/src/libs/agent-runtime/cloudflare/index.ts
-index 885e3fd7543b8..35e68ec706f89 100644
+index 885e3fd7543b8..ce30df82958e2 100644
 --- a/src/libs/agent-runtime/cloudflare/index.ts
 +++ b/src/libs/agent-runtime/cloudflare/index.ts
 @@ -1,12 +1,9 @@
@@ -255,7 +255,7 @@ index 885e3fd7543b8..35e68ec706f89 100644
 +          contextWindowTokens: model.properties?.max_total_tokens
 +            ? Number(model.properties.max_total_tokens)
 +            : LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.contextWindowTokens ?? undefined,
-+          displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.displayName ?? undefined,
++          displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.displayName ?? (model.properties?.["beta"] === "true" ? `${model.name} (Beta)` : undefined),
 +          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.enabled || false,
 +          functionCall: model.description.toLowerCase().includes('function call') || model.properties?.["function_calling"] === "true",
 +          id: model.name,
@@ -4645,6 +4645,214 @@ index 73b06cbcd314d..1515c751d8b5d 100644
    },
    provider: ModelProvider.TogetherAI,
  });
+diff --git a/src/libs/agent-runtime/utils/cloudflareHelpers.test.ts b/src/libs/agent-runtime/utils/cloudflareHelpers.test.ts
+index 3a69bd7c6994e..353b63867bc59 100644
+--- a/src/libs/agent-runtime/utils/cloudflareHelpers.test.ts
++++ b/src/libs/agent-runtime/utils/cloudflareHelpers.test.ts
+@@ -6,25 +6,8 @@ import {
+   CloudflareStreamTransformer,
+   desensitizeCloudflareUrl,
+   fillUrl,
+-  getModelBeta,
+-  getModelDisplayName,
+-  getModelFunctionCalling,
+-  getModelTokens,
+ } from './cloudflareHelpers';
+ 
+-//const {
+-//  getModelBeta,
+-//  getModelDisplayName,
+-//  getModelFunctionCalling,
+-//  getModelTokens,
+-//} = require('./cloudflareHelpers');
+-
+-//const cloudflareHelpers = require('./cloudflareHelpers');
+-//const getModelBeta = cloudflareHelpers.__get__('getModelBeta');
+-//const getModelDisplayName = cloudflareHelpers.__get__('getModelDisplayName');
+-//const getModelFunctionCalling = cloudflareHelpers.__get__('getModelFunctionCalling');
+-//const getModelTokens = cloudflareHelpers.__get__('getModelTokens');
+-
+ afterEach(() => {
+   vi.restoreAllMocks();
+ });
+@@ -254,86 +237,4 @@ describe('cloudflareHelpers', () => {
+       });
+     });
+   });
+-
+-  describe('modelManifest', () => {
+-    describe('getModelBeta', () => {
+-      it('should get beta property', () => {
+-        const model = { properties: [{ property_id: 'beta', value: 'true' }] };
+-        const beta = getModelBeta(model);
+-        expect(beta).toBe(true);
+-      });
+-
+-      it('should return false if beta property is false', () => {
+-        const model = { properties: [{ property_id: 'beta', value: 'false' }] };
+-        const beta = getModelBeta(model);
+-        expect(beta).toBe(false);
+-      });
+-
+-      it('should return false if beta property is not present', () => {
+-        const model = { properties: [] };
+-        const beta = getModelBeta(model);
+-        expect(beta).toBe(false);
+-      });
+-    });
+-
+-    describe('getModelDisplayName', () => {
+-      it('should return display name with beta suffix', () => {
+-        const model = { name: 'model', properties: [{ property_id: 'beta', value: 'true' }] };
+-        const name = getModelDisplayName(model, true);
+-        expect(name).toBe('model (Beta)');
+-      });
+-
+-      it('should return display name without beta suffix', () => {
+-        const model = { name: 'model', properties: [] };
+-        const name = getModelDisplayName(model, false);
+-        expect(name).toBe('model');
+-      });
+-
+-      it('should return model["name"]', () => {
+-        const model = { id: 'modelID', name: 'modelName' };
+-        const name = getModelDisplayName(model, false);
+-        expect(name).toBe('modelName');
+-      });
+-
+-      it('should return last part of model["name"]', () => {
+-        const model = { name: '@provider/modelFamily/modelName' };
+-        const name = getModelDisplayName(model, false);
+-        expect(name).toBe('modelName');
+-      });
+-    });
+-
+-    describe('getModelFunctionCalling', () => {
+-      it('should return true if function_calling property is true', () => {
+-        const model = { properties: [{ property_id: 'function_calling', value: 'true' }] };
+-        const functionCalling = getModelFunctionCalling(model);
+-        expect(functionCalling).toBe(true);
+-      });
+-
+-      it('should return false if function_calling property is false', () => {
+-        const model = { properties: [{ property_id: 'function_calling', value: 'false' }] };
+-        const functionCalling = getModelFunctionCalling(model);
+-        expect(functionCalling).toBe(false);
+-      });
+-
+-      it('should return false if function_calling property is not set', () => {
+-        const model = { properties: [] };
+-        const functionCalling = getModelFunctionCalling(model);
+-        expect(functionCalling).toBe(false);
+-      });
+-    });
+-
+-    describe('getModelTokens', () => {
+-      it('should return tokens property value', () => {
+-        const model = { properties: [{ property_id: 'max_total_tokens', value: '100' }] };
+-        const tokens = getModelTokens(model);
+-        expect(tokens).toBe(100);
+-      });
+-
+-      it('should return undefined if tokens property is not present', () => {
+-        const model = { properties: [] };
+-        const tokens = getModelTokens(model);
+-        expect(tokens).toBeUndefined();
+-      });
+-    });
+-  });
+ });
+diff --git a/src/libs/agent-runtime/utils/cloudflareHelpers.ts b/src/libs/agent-runtime/utils/cloudflareHelpers.ts
+index 5fd596f4c7c57..109ae8d157c19 100644
+--- a/src/libs/agent-runtime/utils/cloudflareHelpers.ts
++++ b/src/libs/agent-runtime/utils/cloudflareHelpers.ts
+@@ -32,7 +32,6 @@ class CloudflareStreamTransformer {
+   }
+ }
+ 
+-const CF_PROPERTY_NAME = 'property_id';
+ const DEFAULT_BASE_URL_PREFIX = 'https://api.cloudflare.com';
+ 
+ function fillUrl(accountID: string): string {
+@@ -57,78 +56,9 @@ function desensitizeCloudflareUrl(url: string): string {
+   }
+ }
+ 
+-function getModelBeta(model: any): boolean {
+-  try {
+-    const betaProperty = model['properties'].filter(
+-      (property: any) => property[CF_PROPERTY_NAME] === 'beta',
+-    );
+-    if (betaProperty.length === 1) {
+-      return betaProperty[0]['value'] === 'true'; // This is a string now.
+-    }
+-    return false;
+-  } catch {
+-    return false;
+-  }
+-}
+-
+-function getModelDisplayName(model: any, beta: boolean): string {
+-  const modelId = model['name'];
+-  let name = modelId.split('/').at(-1)!;
+-  if (beta) {
+-    name += ' (Beta)';
+-  }
+-  return name;
+-}
+-
+-// eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
+-function getModelFunctionCalling(model: any): boolean {
+-  try {
+-    const fcProperty = model['properties'].filter(
+-      (property: any) => property[CF_PROPERTY_NAME] === 'function_calling',
+-    );
+-    if (fcProperty.length === 1) {
+-      return fcProperty[0]['value'] === 'true';
+-    }
+-    return false;
+-  } catch {
+-    return false;
+-  }
+-}
+-
+-function getModelTokens(model: any): number | undefined {
+-  try {
+-    const tokensProperty = model['properties'].filter(
+-      (property: any) => property[CF_PROPERTY_NAME] === 'max_total_tokens',
+-    );
+-    if (tokensProperty.length === 1) {
+-      return parseInt(tokensProperty[0]['value']);
+-    }
+-    return undefined;
+-  } catch {
+-    return undefined;
+-  }
+-}
+-
+-function convertModelManifest(model: any) {
+-  const modelBeta = getModelBeta(model);
+-  return {
+-    description: model['description'],
+-    displayName: getModelDisplayName(model, modelBeta),
+-    enabled: !modelBeta,
+-    functionCall: false, //getModelFunctionCalling(model),
+-    id: model['name'],
+-    tokens: getModelTokens(model),
+-  };
+-}
+-
+ export {
+   CloudflareStreamTransformer,
+-  convertModelManifest,
+   DEFAULT_BASE_URL_PREFIX,
+   desensitizeCloudflareUrl,
+   fillUrl,
+-  getModelBeta,
+-  getModelDisplayName,
+-  getModelFunctionCalling,
+-  getModelTokens,
+ };
 diff --git a/src/libs/agent-runtime/xai/index.ts b/src/libs/agent-runtime/xai/index.ts
 index 5602869e43517..b59f1eefb7317 100644
 --- a/src/libs/agent-runtime/xai/index.ts
