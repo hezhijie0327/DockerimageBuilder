@@ -1,4 +1,4 @@
-# Current Version: 1.4.8
+# Current Version: 1.4.9
 
 ARG NODEJS_VERSION="22"
 
@@ -96,10 +96,10 @@ FROM scratch
 
 ENV \
     DATABASE_DRIVER="node" \
-    MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
     NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="" \
     NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
     SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt" \
+    MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
     FEATURE_FLAGS="-check_updates,+pin_list,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
