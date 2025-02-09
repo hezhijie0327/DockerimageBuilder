@@ -1,4 +1,4 @@
-# Current Version: 1.9.9
+# Current Version: 2.0.0
 
 ARG NODEJS_VERSION="22"
 
@@ -47,6 +47,7 @@ FROM build_baseos AS build_lobechat
 ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
     NEXT_PUBLIC_CLIENT_DB="pglite" \
+    MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
     PNPM_HOME="/pnpm"
 
 WORKDIR /app
