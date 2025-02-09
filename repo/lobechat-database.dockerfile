@@ -1,4 +1,4 @@
-# Current Version: 1.4.5
+# Current Version: 1.4.6
 
 ARG NODEJS_VERSION="22"
 
@@ -46,6 +46,7 @@ FROM build_baseos AS build_lobechat
 
 ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
+    NEXT_PUBLIC_ENABLE_NEXT_AUTH="1" \
     NEXT_PUBLIC_SERVICE_MODE="server" \
     PNPM_HOME="/pnpm" \
     APP_URL="http://app.com" \
