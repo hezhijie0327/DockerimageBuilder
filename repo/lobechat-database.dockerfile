@@ -1,4 +1,4 @@
-# Current Version: 1.4.6
+# Current Version: 1.4.7
 
 ARG NODEJS_VERSION="22"
 
@@ -48,6 +48,7 @@ ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
     NEXT_PUBLIC_ENABLE_NEXT_AUTH="1" \
     NEXT_PUBLIC_SERVICE_MODE="server" \
+    MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
     PNPM_HOME="/pnpm" \
     APP_URL="http://app.com" \
     DATABASE_DRIVER="node" \
