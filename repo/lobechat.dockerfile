@@ -1,4 +1,4 @@
-# Current Version: 2.0.0
+# Current Version: 2.0.1
 
 ARG NODEJS_VERSION="22"
 
@@ -88,6 +88,7 @@ ENV \
     NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="" \
     NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
     SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt" \
+    MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
     FEATURE_FLAGS="-check_updates,+pin_list,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
