@@ -1,0 +1,1243 @@
+diff --git a/src/libs/agent-runtime/ai360/index.ts b/src/libs/agent-runtime/ai360/index.ts
+index 93887d7c7381a..1f793fa7d8027 100644
+--- a/src/libs/agent-runtime/ai360/index.ts
++++ b/src/libs/agent-runtime/ai360/index.ts
+@@ -31,17 +31,25 @@ export const LobeAi360AI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as Ai360ModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+         contextWindowTokens: model.total_tokens,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: model.id === '360gpt-pro',
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          model.id === '360gpt-pro'
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+         maxTokens:
+           typeof model.max_tokens === 'number'
+             ? model.max_tokens
+             : undefined,
+-        reasoning: reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        reasoning:
++          reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/anthropic/index.ts b/src/libs/agent-runtime/anthropic/index.ts
+index d40c4a4f4bd3f..6b2d864312e04 100644
+--- a/src/libs/agent-runtime/anthropic/index.ts
++++ b/src/libs/agent-runtime/anthropic/index.ts
+@@ -128,13 +128,21 @@ export class LobeAnthropicAI implements LobeRuntimeAI {
+   
+     return modelList
+       .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+         return {
+-          contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
++          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
+           displayName: model.display_name,
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-          functionCall: model.id.toLowerCase().includes('claude-3'),
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            model.id.toLowerCase().includes('claude-3')
++            || knownModel?.abilities?.functionCall
++            || false,
+           id: model.id,
+-          vision: model.id.toLowerCase().includes('claude-3') && !model.id.toLowerCase().includes('claude-3-5-haiku'),
++          vision:
++            model.id.toLowerCase().includes('claude-3') && !model.id.toLowerCase().includes('claude-3-5-haiku')
++            || knownModel?.abilities?.vision
++            || false,
+         };
+       })
+       .filter(Boolean) as ChatModelCard[];
+diff --git a/src/libs/agent-runtime/baichuan/index.ts b/src/libs/agent-runtime/baichuan/index.ts
+index 3a4b25ae467a1..2fce036a79b28 100644
+--- a/src/libs/agent-runtime/baichuan/index.ts
++++ b/src/libs/agent-runtime/baichuan/index.ts
+@@ -37,10 +37,12 @@ export const LobeBaichuanAI = LobeOpenAICompatibleFactory({
+ 
+     return modelList
+       .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.model === m.id);
++
+         return {
+           contextWindowTokens: model.max_input_length,
+           displayName: model.model_show_name,
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.model === m.id)?.enabled || false,
++          enabled: knownModel?.enabled || false,
+           functionCall: model.function_call,
+           id: model.model,
+           maxTokens: model.max_tokens,
+diff --git a/src/libs/agent-runtime/cloudflare/index.ts b/src/libs/agent-runtime/cloudflare/index.ts
+index ce30df82958e2..ec323e169b362 100644
+--- a/src/libs/agent-runtime/cloudflare/index.ts
++++ b/src/libs/agent-runtime/cloudflare/index.ts
+@@ -127,16 +127,30 @@ export class LobeCloudflareAI implements LobeRuntimeAI {
+ 
+     return modelList
+       .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id);
++
+         return {
+           contextWindowTokens: model.properties?.max_total_tokens
+             ? Number(model.properties.max_total_tokens)
+-            : LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.contextWindowTokens ?? undefined,
+-          displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.displayName ?? (model.properties?.["beta"] === "true" ? `${model.name} (Beta)` : undefined),
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.enabled || false,
+-          functionCall: model.description.toLowerCase().includes('function call') || model.properties?.["function_calling"] === "true",
++            : knownModel?.contextWindowTokens ?? undefined,
++          displayName: knownModel?.displayName ?? (model.properties?.["beta"] === "true" ? `${model.name} (Beta)` : undefined),
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            model.description.toLowerCase().includes('function call')
++            || model.properties?.["function_calling"] === "true"
++            || knownModel?.abilities?.functionCall
++            || false,
+           id: model.name,
+-          reasoning: model.name.toLowerCase().includes('deepseek-r1'),
+-          vision: model.name.toLowerCase().includes('vision') || model.task?.name.toLowerCase().includes('image-to-text') || model.description.toLowerCase().includes('vision'),
++          reasoning:
++            model.name.toLowerCase().includes('deepseek-r1')
++            || knownModel?.abilities?.reasoning
++            || false,
++          vision:
++            model.name.toLowerCase().includes('vision')
++            || model.task?.name.toLowerCase().includes('image-to-text')
++            || model.description.toLowerCase().includes('vision')
++            || knownModel?.abilities?.vision
++            || false,
+         };
+       })
+       .filter(Boolean) as ChatModelCard[];
+diff --git a/src/libs/agent-runtime/deepseek/index.ts b/src/libs/agent-runtime/deepseek/index.ts
+index aa873d605b984..e4db23af893df 100644
+--- a/src/libs/agent-runtime/deepseek/index.ts
++++ b/src/libs/agent-runtime/deepseek/index.ts
+@@ -63,13 +63,21 @@ export const LobeDeepSeekAI = LobeOpenAICompatibleFactory({
+     transformModel: (m) => {
+       const model = m as unknown as DeepSeekModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: !model.id.toLowerCase().includes('deepseek-reasoner'),
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          !model.id.toLowerCase().includes('reasoner')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        reasoning: model.id.toLowerCase().includes('deepseek-reasoner'),
++        reasoning:
++          model.id.toLowerCase().includes('reasoner')
++          || knownModel?.abilities?.reasoning
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/fireworksai/index.ts b/src/libs/agent-runtime/fireworksai/index.ts
+index dc52d8dfdf20a..b710849c6aa34 100644
+--- a/src/libs/agent-runtime/fireworksai/index.ts
++++ b/src/libs/agent-runtime/fireworksai/index.ts
+@@ -24,13 +24,20 @@ export const LobeFireworksAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as FireworksAIModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+         contextWindowTokens: model.context_length,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: model.supports_tools || model.id.toLowerCase().includes('function'),
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          model.supports_tools
++          || model.id.toLowerCase().includes('function'),
+         id: model.id,
+-        reasoning: reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        reasoning:
++          reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
+         vision: model.supports_image_input,
+       };
+     },
+diff --git a/src/libs/agent-runtime/giteeai/index.ts b/src/libs/agent-runtime/giteeai/index.ts
+index 62ceacefdaa3d..3dfb6c3366388 100644
+--- a/src/libs/agent-runtime/giteeai/index.ts
++++ b/src/libs/agent-runtime/giteeai/index.ts
+@@ -31,14 +31,25 @@ export const LobeGiteeAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as GiteeAIModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('qwen2.5-coder'),
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('qwen2.5-coder')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        reasoning: reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
+-        vision: visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        reasoning:
++          reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
++        vision:
++          visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/github/index.ts b/src/libs/agent-runtime/github/index.ts
+index 7552b98b5aa0b..14aef23f3e071 100644
+--- a/src/libs/agent-runtime/github/index.ts
++++ b/src/libs/agent-runtime/github/index.ts
+@@ -58,15 +58,26 @@ export const LobeGithubAI = LobeOpenAICompatibleFactory({
+ 
+     return modelList
+       .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id);
++
+         return {
+-          contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.contextWindowTokens ?? undefined,
++          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
+           description: model.description,
+           displayName: model.friendly_name,
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.enabled || false,
+-          functionCall: functionCallKeywords.some(keyword => model.description.toLowerCase().includes(keyword)),
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            functionCallKeywords.some(keyword => model.description.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.functionCall
++            || false,
+           id: model.name,
+-          reasoning: reasoningKeywords.some(keyword => model.name.toLowerCase().includes(keyword)),
+-          vision: visionKeywords.some(keyword => model.description.toLowerCase().includes(keyword)),
++          reasoning:
++            reasoningKeywords.some(keyword => model.name.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.reasoning
++            || false,
++          vision:
++            visionKeywords.some(keyword => model.description.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.vision
++            || false,
+         };
+       })
+       .filter(Boolean) as ChatModelCard[];
+diff --git a/src/libs/agent-runtime/google/index.ts b/src/libs/agent-runtime/google/index.ts
+index 8f7de84ecb401..5b00132678862 100644
+--- a/src/libs/agent-runtime/google/index.ts
++++ b/src/libs/agent-runtime/google/index.ts
+@@ -149,17 +149,26 @@ export class LobeGoogleAI implements LobeRuntimeAI {
+       .map((model) => {
+         const modelName = model.name.replace(/^models\//, '');
+ 
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => modelName === m.id);
++
+         return {
+           contextWindowTokens: model.inputTokenLimit + model.outputTokenLimit,
+           displayName: model.displayName,
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => modelName === m.id)?.enabled || false,
+-          functionCall: modelName.toLowerCase().includes('gemini'),
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            modelName.toLowerCase().includes('gemini')
++            || knownModel?.abilities?.functionCall
++            || false,
+           id: modelName,
+-          reasoning: modelName.toLowerCase().includes('thinking'),
++          reasoning:
++            modelName.toLowerCase().includes('thinking')
++            || knownModel?.abilities?.reasoning
++            || false,
+           vision:
+-            modelName.toLowerCase().includes('vision') ||
+-            (modelName.toLowerCase().includes('gemini') &&
+-              !modelName.toLowerCase().includes('gemini-1.0')),
++            modelName.toLowerCase().includes('vision')
++            || (modelName.toLowerCase().includes('gemini') && !modelName.toLowerCase().includes('gemini-1.0'))
++            || knownModel?.abilities?.vision
++            || false,
+         };
+       })
+       .filter(Boolean) as ChatModelCard[];
+diff --git a/src/libs/agent-runtime/groq/index.ts b/src/libs/agent-runtime/groq/index.ts
+index c8dd645b41999..f2ea5c4c25682 100644
+--- a/src/libs/agent-runtime/groq/index.ts
++++ b/src/libs/agent-runtime/groq/index.ts
+@@ -48,14 +48,25 @@ export const LobeGroq = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as GroqModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+         contextWindowTokens: model.context_window,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        reasoning: reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
+-        vision: model.id.toLowerCase().includes('vision'),
++        reasoning:
++          reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
++        vision:
++          model.id.toLowerCase().includes('vision')
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/higress/index.ts b/src/libs/agent-runtime/higress/index.ts
+index 04554cd4d785a..0eedc149c4422 100644
+--- a/src/libs/agent-runtime/higress/index.ts
++++ b/src/libs/agent-runtime/higress/index.ts
+@@ -1,11 +1,9 @@
+ import { uniqueId } from 'lodash-es';
+ 
+-import { LOBE_DEFAULT_MODEL_LIST } from '@/config/modelProviders';
+-
+ import { ModelProvider } from '../types';
+ import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
+ 
+-// import { OpenRouterModelCard } from './type';
++import { LOBE_DEFAULT_MODEL_LIST } from '@/config/aiModels';
+ 
+ export const LobeHigressAI = LobeOpenAICompatibleFactory({
+   constructorOptions: {
+@@ -22,23 +20,33 @@ export const LobeHigressAI = LobeOpenAICompatibleFactory({
+     transformModel: (m) => {
+       const model = m as any;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+         contextWindowTokens: model.context_length,
+         description: model.description,
+         displayName: model.name,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
++        enabled: knownModel?.enabled || false,
+         functionCall:
+-          model.description.includes('function calling') || model.description.includes('tools'),
++          model.description.includes('function calling')
++          || model.description.includes('tools')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+         maxTokens:
+           typeof model.top_provider.max_completion_tokens === 'number'
+             ? model.top_provider.max_completion_tokens
+             : undefined,
+-        reasoning: model.description.includes('reasoning'),
++        reasoning:
++          model.description.includes('reasoning')
++          || knownModel?.abilities?.reasoning
++          || false,
+         vision:
+-          model.description.includes('vision') ||
+-          model.description.includes('multimodal') ||
+-          model.id.includes('vision'),
++          model.description.includes('vision')
++          || model.description.includes('multimodal')
++          || model.id.includes('vision')
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/huggingface/index.ts b/src/libs/agent-runtime/huggingface/index.ts
+index d1847f41fa696..146346972e8c7 100644
+--- a/src/libs/agent-runtime/huggingface/index.ts
++++ b/src/libs/agent-runtime/huggingface/index.ts
+@@ -79,16 +79,26 @@ export const LobeHuggingFaceAI = LobeOpenAICompatibleFactory({
+ 
+     return modelList
+       .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+         return {
+-          contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-          displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-          functionCall: model.tags.some(tag => tag.toLowerCase().includes('function-calling')),
++          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++          displayName: knownModel?.displayName ?? undefined,
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            model.tags.some(tag => tag.toLowerCase().includes('function-calling'))
++            || knownModel?.abilities?.functionCall
++            || false,
+           id: model.id,
+-          reasoning: model.tags.some(tag => tag.toLowerCase().includes('reasoning')) || reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
+-          vision: model.tags.some(tag =>
+-            visionKeywords.some(keyword => tag.toLowerCase().includes(keyword))
+-          ),
++          reasoning:
++            model.tags.some(tag => tag.toLowerCase().includes('reasoning'))
++            || reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.reasoning
++            || false,
++          vision:
++            model.tags.some(tag => visionKeywords.some(keyword => tag.toLowerCase().includes(keyword)))
++            || knownModel?.abilities?.vision
++            || false,
+         };
+       })
+       .filter(Boolean) as ChatModelCard[];
+diff --git a/src/libs/agent-runtime/hunyuan/index.ts b/src/libs/agent-runtime/hunyuan/index.ts
+index 5bcf827cc54ec..852a9ae1a4975 100644
+--- a/src/libs/agent-runtime/hunyuan/index.ts
++++ b/src/libs/agent-runtime/hunyuan/index.ts
+@@ -22,13 +22,21 @@ export const LobeHunyuanAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as HunyuanModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('vision'),
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('vision')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        vision: model.id.toLowerCase().includes('vision'),
++        vision:
++          model.id.toLowerCase().includes('vision')
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/internlm/index.ts b/src/libs/agent-runtime/internlm/index.ts
+index 267371360eafa..58cf1227fd464 100644
+--- a/src/libs/agent-runtime/internlm/index.ts
++++ b/src/libs/agent-runtime/internlm/index.ts
+@@ -24,11 +24,15 @@ export const LobeInternLMAI = LobeOpenAICompatibleFactory({
+     transformModel: (m) => {
+       const model = m as unknown as InternLMModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: true,
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+       };
+     },
+diff --git a/src/libs/agent-runtime/lmstudio/index.ts b/src/libs/agent-runtime/lmstudio/index.ts
+index 9ef31ab793071..000f2ed6678be 100644
+--- a/src/libs/agent-runtime/lmstudio/index.ts
++++ b/src/libs/agent-runtime/lmstudio/index.ts
+@@ -1,11 +1,40 @@
+ import { ModelProvider } from '../types';
+ import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
+ 
++import { LOBE_DEFAULT_MODEL_LIST } from '@/config/aiModels';
++
++export interface LMStudioModelCard {
++  id: string;
++}
++
+ export const LobeLMStudioAI = LobeOpenAICompatibleFactory({
+   apiKey: 'placeholder-to-avoid-error',
+   baseURL: 'http://127.0.0.1:1234/v1',
+   debug: {
+     chatCompletion: () => process.env.DEBUG_LMSTUDIO_CHAT_COMPLETION === '1',
+   },
++  models: {
++    transformModel: (m) => {
++      const model = m as unknown as LMStudioModelCard;
++
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
++      return {
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          knownModel?.abilities?.functionCall
++          || false,
++        id: model.id,
++        reasoning:
++          knownModel?.abilities?.reasoning
++          || false,
++        vision:
++          knownModel?.abilities?.vision
++          || false,
++      };
++    },
++  },
+   provider: ModelProvider.LMStudio,
+ });
+diff --git a/src/libs/agent-runtime/mistral/index.ts b/src/libs/agent-runtime/mistral/index.ts
+index 27f695e36195a..592d396b20b89 100644
+--- a/src/libs/agent-runtime/mistral/index.ts
++++ b/src/libs/agent-runtime/mistral/index.ts
+@@ -34,11 +34,13 @@ export const LobeMistralAI = LobeOpenAICompatibleFactory({
+     transformModel: (m) => {
+       const model = m as unknown as MistralModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+         contextWindowTokens: model.max_context_length,
+         description: model.description,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
+         functionCall: model.capabilities.function_calling,
+         id: model.id,
+         vision: model.capabilities.vision,
+diff --git a/src/libs/agent-runtime/moonshot/index.ts b/src/libs/agent-runtime/moonshot/index.ts
+index 9bb92fa2dc2a3..e213474603d29 100644
+--- a/src/libs/agent-runtime/moonshot/index.ts
++++ b/src/libs/agent-runtime/moonshot/index.ts
+@@ -28,13 +28,20 @@ export const LobeMoonshotAI = LobeOpenAICompatibleFactory({
+     transformModel: (m) => {
+       const model = m as unknown as MoonshotModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: true,
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        vision: model.id.toLowerCase().includes('vision'),
++        vision:
++          model.id.toLowerCase().includes('vision')
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/novita/index.ts b/src/libs/agent-runtime/novita/index.ts
+index a7c7d33f3253d..fe4465383816b 100644
+--- a/src/libs/agent-runtime/novita/index.ts
++++ b/src/libs/agent-runtime/novita/index.ts
+@@ -22,15 +22,27 @@ export const LobeNovitaAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as NovitaModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+         contextWindowTokens: model.context_size,
+         description: model.description,
+         displayName: model.title,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: model.description.toLowerCase().includes('function calling'),
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          model.description.toLowerCase().includes('function calling')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        reasoning: model.description.toLowerCase().includes('reasoning task') || reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
+-        vision: model.description.toLowerCase().includes('vision'),
++        reasoning:
++          model.description.toLowerCase().includes('reasoning task')
++          || reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
++        vision:
++          model.description.toLowerCase().includes('vision')
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/ollama/index.test.ts b/src/libs/agent-runtime/ollama/index.test.ts
+index 79ab4360249a7..4a1b71639cc7d 100644
+--- a/src/libs/agent-runtime/ollama/index.test.ts
++++ b/src/libs/agent-runtime/ollama/index.test.ts
+@@ -145,7 +145,26 @@ describe('LobeOllamaAI', () => {
+       const models = await ollamaAI.models();
+ 
+       expect(listMock).toHaveBeenCalled();
+-      expect(models).toEqual([{ id: 'model-1' }, { id: 'model-2' }]);
++      expect(models).toEqual([
++        {
++          contextWindowTokens: undefined,
++          displayName: undefined,
++          enabled: false,
++          functionCall: false,
++          id: 'model-1',
++          reasoning: false,
++          vision: false
++        },
++        {
++          contextWindowTokens: undefined,
++          displayName: undefined,
++          enabled: false,
++          functionCall: false,
++          id: 'model-2',
++          reasoning: false,
++          vision: false
++        }
++      ]);
+     });
+   });
+ 
+diff --git a/src/libs/agent-runtime/ollama/index.ts b/src/libs/agent-runtime/ollama/index.ts
+index 4bb9c4bcefded..f2ff37218f7a1 100644
+--- a/src/libs/agent-runtime/ollama/index.ts
++++ b/src/libs/agent-runtime/ollama/index.ts
+@@ -2,7 +2,6 @@ import { Ollama, Tool } from 'ollama/browser';
+ import { ClientOptions } from 'openai';
+ 
+ import { OpenAIChatMessage } from '@/libs/agent-runtime';
+-import { ChatModelCard } from '@/types/llm';
+ 
+ import { LobeRuntimeAI } from '../BaseAI';
+ import { AgentRuntimeErrorType } from '../error';
+@@ -20,6 +19,13 @@ import { OllamaStream, convertIterableToStream } from '../utils/streams';
+ import { parseDataUri } from '../utils/uriParser';
+ import { OllamaMessage } from './type';
+ 
++import { LOBE_DEFAULT_MODEL_LIST } from '@/config/aiModels';
++import { ChatModelCard } from '@/types/llm';
++
++export interface OllamaModelCard {
++  name: string;
++}
++
+ export class LobeOllamaAI implements LobeRuntimeAI {
+   private client: Ollama;
+ 
+@@ -102,11 +108,32 @@ export class LobeOllamaAI implements LobeRuntimeAI {
+     return await Promise.all(promises);
+   }
+ 
+-  async models(): Promise<ChatModelCard[]> {
++  async models() {
+     const list = await this.client.list();
+-    return list.models.map((model) => ({
+-      id: model.name,
+-    }));
++
++    const modelList: OllamaModelCard[] = list.models;
++
++    return modelList
++      .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id);
++
++        return {
++          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++          displayName: knownModel?.displayName ?? undefined,
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            knownModel?.abilities?.functionCall
++            || false,
++          id: model.name,
++          reasoning:
++            knownModel?.abilities?.functionCall
++            || false,
++          vision:
++            knownModel?.abilities?.functionCall
++            || false,
++        };
++      })
++      .filter(Boolean) as ChatModelCard[];
+   }
+ 
+   private invokeEmbeddingModel = async (payload: EmbeddingsPayload): Promise<Embeddings> => {
+diff --git a/src/libs/agent-runtime/openai/__snapshots__/index.test.ts.snap b/src/libs/agent-runtime/openai/__snapshots__/index.test.ts.snap
+index a4541e4af7248..95754bd0502b7 100644
+--- a/src/libs/agent-runtime/openai/__snapshots__/index.test.ts.snap
++++ b/src/libs/agent-runtime/openai/__snapshots__/index.test.ts.snap
+@@ -126,7 +126,7 @@ exports[`LobeOpenAI > models > should get models 1`] = `
+     "functionCall": true,
+     "id": "gpt-4",
+     "reasoning": false,
+-    "vision": false,
++    "vision": true,
+   },
+   {
+     "contextWindowTokens": 16385,
+diff --git a/src/libs/agent-runtime/openai/index.ts b/src/libs/agent-runtime/openai/index.ts
+index e925b7b98dac0..3dae2edf17589 100644
+--- a/src/libs/agent-runtime/openai/index.ts
++++ b/src/libs/agent-runtime/openai/index.ts
+@@ -75,14 +75,25 @@ export const LobeOpenAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as OpenAIModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('audio'),
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('audio')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        reasoning: reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
+-        vision: visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('audio'),
++        reasoning:
++          reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
++        vision:
++          visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('audio')
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/openrouter/__snapshots__/index.test.ts.snap b/src/libs/agent-runtime/openrouter/__snapshots__/index.test.ts.snap
+index b66823705e6c5..8b60923b8fa54 100644
+--- a/src/libs/agent-runtime/openrouter/__snapshots__/index.test.ts.snap
++++ b/src/libs/agent-runtime/openrouter/__snapshots__/index.test.ts.snap
+@@ -510,11 +510,11 @@ GPT-4o mini achieves an 82% score on MMLU and presently ranks higher than GPT-4
+ Check out the [launch announcement](https://openai.com/index/gpt-4o-mini-advancing-cost-efficient-intelligence/) to learn more.",
+     "displayName": "OpenAI: GPT-4o-mini",
+     "enabled": true,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "openai/gpt-4o-mini",
+     "maxTokens": 16384,
+     "reasoning": false,
+-    "vision": false,
++    "vision": true,
+   },
+   {
+     "contextWindowTokens": 32768,
+@@ -560,7 +560,7 @@ Gemma models are well-suited for a variety of text generation tasks, including q
+ 
+ See the [launch announcement](https://blog.google/technology/developers/google-gemma-2/) for more details. Usage of Gemma is subject to Google's [Gemma Terms of Use](https://ai.google.dev/gemma/terms).",
+     "displayName": "Google: Gemma 2 27B",
+-    "enabled": true,
++    "enabled": false,
+     "functionCall": false,
+     "id": "google/gemma-2-27b-it",
+     "maxTokens": undefined,
+@@ -940,7 +940,7 @@ Usage of Gemini is subject to Google's [Gemini Terms of Use](https://ai.google.d
+ #multimodal",
+     "displayName": "Google: Gemini Flash 1.5",
+     "enabled": true,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "google/gemini-flash-1.5",
+     "maxTokens": 32768,
+     "reasoning": false,
+@@ -968,7 +968,7 @@ Compared with DeepSeek 67B, DeepSeek-V2 achieves stronger performance, and meanw
+ DeepSeek-V2 achieves remarkable performance on both standard benchmarks and open-ended generation evaluations.",
+     "displayName": "DeepSeek-V2 Chat",
+     "enabled": true,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "deepseek/deepseek-chat",
+     "maxTokens": 4096,
+     "reasoning": false,
+@@ -1065,11 +1065,11 @@ For benchmarking against other models, it was briefly called ["im-also-a-good-gp
+ For benchmarking against other models, it was briefly called ["im-also-a-good-gpt2-chatbot"](https://twitter.com/LiamFedus/status/1790064963966370209)",
+     "displayName": "OpenAI: GPT-4o",
+     "enabled": true,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "openai/gpt-4o",
+     "maxTokens": 4096,
+     "reasoning": false,
+-    "vision": false,
++    "vision": true,
+   },
+   {
+     "contextWindowTokens": 128000,
+@@ -1336,7 +1336,7 @@ Usage of Gemini is subject to Google's [Gemini Terms of Use](https://ai.google.d
+ #multimodal",
+     "displayName": "Google: Gemini Pro 1.5",
+     "enabled": true,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "google/gemini-pro-1.5",
+     "maxTokens": 32768,
+     "reasoning": false,
+@@ -1438,7 +1438,7 @@ See the launch announcement and benchmark results [here](https://www.anthropic.c
+ #multimodal",
+     "displayName": "Anthropic: Claude 3 Haiku",
+     "enabled": true,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "anthropic/claude-3-haiku",
+     "maxTokens": 4096,
+     "reasoning": false,
+@@ -1503,7 +1503,7 @@ See the launch announcement and benchmark results [here](https://www.anthropic.c
+ #multimodal",
+     "displayName": "Anthropic: Claude 3 Opus",
+     "enabled": true,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "anthropic/claude-3-opus",
+     "maxTokens": 4096,
+     "reasoning": false,
+diff --git a/src/libs/agent-runtime/openrouter/index.ts b/src/libs/agent-runtime/openrouter/index.ts
+index 2767ca16c0306..20c530ff31e1c 100644
+--- a/src/libs/agent-runtime/openrouter/index.ts
++++ b/src/libs/agent-runtime/openrouter/index.ts
+@@ -1,9 +1,9 @@
+-import { LOBE_DEFAULT_MODEL_LIST } from '@/config/modelProviders';
+-
+ import { ModelProvider } from '../types';
+ import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
+ import { OpenRouterModelCard } from './type';
+ 
++import { LOBE_DEFAULT_MODEL_LIST } from '@/config/aiModels';
++
+ export const LobeOpenRouterAI = LobeOpenAICompatibleFactory({
+   baseURL: 'https://openrouter.ai/api/v1',
+   chatCompletion: {
+@@ -39,23 +39,33 @@ export const LobeOpenRouterAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as OpenRouterModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+         contextWindowTokens: model.context_length,
+         description: model.description,
+         displayName: model.name,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
++        enabled: knownModel?.enabled || false,
+         functionCall:
+-          model.description.includes('function calling') || model.description.includes('tools'),
++          model.description.includes('function calling')
++          || model.description.includes('tools')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+         maxTokens:
+           typeof model.top_provider.max_completion_tokens === 'number'
+             ? model.top_provider.max_completion_tokens
+             : undefined,
+-        reasoning: reasoningKeywords.some((keyword) => model.id.toLowerCase().includes(keyword)),
++        reasoning:
++          reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
+         vision:
+-          model.description.includes('vision') ||
+-          model.description.includes('multimodal') ||
+-          visionKeywords.some((keyword) => model.id.toLowerCase().includes(keyword)),
++          model.description.includes('vision')
++          || model.description.includes('multimodal')
++          || visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/qwen/index.ts b/src/libs/agent-runtime/qwen/index.ts
+index 3802fdc83c519..e4bc09d8524d1 100644
+--- a/src/libs/agent-runtime/qwen/index.ts
++++ b/src/libs/agent-runtime/qwen/index.ts
+@@ -92,14 +92,25 @@ export const LobeQwenAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as QwenModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        reasoning: reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
+-        vision: visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        reasoning:
++          reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
++        vision:
++          visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/sensenova/index.ts b/src/libs/agent-runtime/sensenova/index.ts
+index 123472019cdeb..1ed591a7d9ae7 100644
+--- a/src/libs/agent-runtime/sensenova/index.ts
++++ b/src/libs/agent-runtime/sensenova/index.ts
+@@ -44,13 +44,21 @@ export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
+ 
+     return modelList
+       .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+         return {
+-          contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-          displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-          functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++          displayName: knownModel?.displayName ?? undefined,
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.functionCall
++            || false,
+           id: model.id,
+-          vision: model.id.toLowerCase().includes('vision'),
++          vision:
++            model.id.toLowerCase().includes('vision')
++            || knownModel?.abilities?.vision
++            || false,
+         };
+       })
+       .filter(Boolean) as ChatModelCard[];
+diff --git a/src/libs/agent-runtime/siliconcloud/index.ts b/src/libs/agent-runtime/siliconcloud/index.ts
+index d2625dd9295a4..9db78155780ff 100644
+--- a/src/libs/agent-runtime/siliconcloud/index.ts
++++ b/src/libs/agent-runtime/siliconcloud/index.ts
+@@ -79,14 +79,25 @@ export const LobeSiliconCloudAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as SiliconCloudModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('deepseek-r1'),
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)) && !model.id.toLowerCase().includes('deepseek-r1')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        reasoning: reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
+-        vision: visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        reasoning:
++          reasoningKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.reasoning
++          || false,
++        vision:
++          visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/stepfun/index.ts b/src/libs/agent-runtime/stepfun/index.ts
+index 598716e58a70c..bfe905f94ce4a 100644
+--- a/src/libs/agent-runtime/stepfun/index.ts
++++ b/src/libs/agent-runtime/stepfun/index.ts
+@@ -37,13 +37,21 @@ export const LobeStepfunAI = LobeOpenAICompatibleFactory({
+ 
+       const model = m as unknown as StepfunModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        vision: visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword)),
++        vision:
++          visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/togetherai/index.ts b/src/libs/agent-runtime/togetherai/index.ts
+index 1515c751d8b5d..80457c8324090 100644
+--- a/src/libs/agent-runtime/togetherai/index.ts
++++ b/src/libs/agent-runtime/togetherai/index.ts
+@@ -34,17 +34,29 @@ export const LobeTogetherAI = LobeOpenAICompatibleFactory({
+ 
+     return modelList
+       .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id);
++
+         return {
+-          contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.contextWindowTokens ?? undefined,
++          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
+           description: model.description,
+           displayName: model.display_name,
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.name === m.id)?.enabled || false,
+-          functionCall: model.description?.toLowerCase().includes('function calling'),
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            model.description?.toLowerCase().includes('function calling')
++            || knownModel?.abilities?.functionCall
++            || false,
+           id: model.name,
+           maxOutput: model.context_length,
+-          reasoning: reasoningKeywords.some(keyword => model.name.toLowerCase().includes(keyword)),
++          reasoning:
++            reasoningKeywords.some(keyword => model.name.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.functionCall
++            || false,
+           tokens: model.context_length,
+-          vision: model.description?.toLowerCase().includes('vision') || visionKeywords.some(keyword => model.name?.toLowerCase().includes(keyword)),
++          vision:
++            model.description?.toLowerCase().includes('vision')
++            || visionKeywords.some(keyword => model.name?.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.functionCall
++            || false,
+         };
+       })
+       .filter(Boolean) as ChatModelCard[];
+diff --git a/src/libs/agent-runtime/xai/index.ts b/src/libs/agent-runtime/xai/index.ts
+index b59f1eefb7317..7f1a0fa2db497 100644
+--- a/src/libs/agent-runtime/xai/index.ts
++++ b/src/libs/agent-runtime/xai/index.ts
+@@ -16,13 +16,20 @@ export const LobeXAI = LobeOpenAICompatibleFactory({
+     transformModel: (m) => {
+       const model = m as unknown as XAIModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: true,
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        vision: model.id.toLowerCase().includes('vision'),
++        vision:
++          model.id.toLowerCase().includes('vision')
++          || knownModel?.abilities?.functionCall
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/zeroone/index.ts b/src/libs/agent-runtime/zeroone/index.ts
+index 839c0a832f181..48d9d3813a40e 100644
+--- a/src/libs/agent-runtime/zeroone/index.ts
++++ b/src/libs/agent-runtime/zeroone/index.ts
+@@ -16,13 +16,21 @@ export const LobeZeroOneAI = LobeOpenAICompatibleFactory({
+     transformModel: (m) => {
+       const model = m as unknown as ZeroOneModelCard;
+ 
++      const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id);
++
+       return {
+-        contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.contextWindowTokens ?? undefined,
+-        displayName: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.displayName ?? undefined,
+-        enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.id === m.id)?.enabled || false,
+-        functionCall: model.id.toLowerCase().includes('fc'),
++        contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
++        displayName: knownModel?.displayName ?? undefined,
++        enabled: knownModel?.enabled || false,
++        functionCall:
++          model.id.toLowerCase().includes('fc')
++          || knownModel?.abilities?.functionCall
++          || false,
+         id: model.id,
+-        vision: model.id.toLowerCase().includes('vision'),
++        vision:
++          model.id.toLowerCase().includes('vision')
++          || knownModel?.abilities?.vision
++          || false,
+       };
+     },
+   },
+diff --git a/src/libs/agent-runtime/zhipu/authToken.test.ts b/src/libs/agent-runtime/zhipu/authToken.test.ts
+deleted file mode 100644
+index 406b99b5da6bd..0000000000000
+--- a/src/libs/agent-runtime/zhipu/authToken.test.ts
++++ /dev/null
+@@ -1,18 +0,0 @@
+-// @vitest-environment node
+-import { generateApiToken } from './authToken';
+-
+-describe('generateApiToken', () => {
+-  it('should throw an error if no apiKey is provided', async () => {
+-    await expect(generateApiToken()).rejects.toThrow('Invalid apiKey');
+-  });
+-
+-  it('should throw an error if apiKey is invalid', async () => {
+-    await expect(generateApiToken('invalid')).rejects.toThrow('Invalid apiKey');
+-  });
+-
+-  it('should return a token if a valid apiKey is provided', async () => {
+-    const apiKey = 'id.secret';
+-    const token = await generateApiToken(apiKey);
+-    expect(token).toBeDefined();
+-  });
+-});
+diff --git a/src/libs/agent-runtime/zhipu/authToken.ts b/src/libs/agent-runtime/zhipu/authToken.ts
+deleted file mode 100644
+index 6cb04afc95c2d..0000000000000
+--- a/src/libs/agent-runtime/zhipu/authToken.ts
++++ /dev/null
+@@ -1,22 +0,0 @@
+-import { SignJWT } from 'jose';
+-
+-export const generateApiToken = async (apiKey?: string): Promise<string> => {
+-  if (!apiKey) {
+-    throw new Error('Invalid apiKey');
+-  }
+-
+-  const [id, secret] = apiKey.split('.');
+-  if (!id || !secret) {
+-    throw new Error('Invalid apiKey');
+-  }
+-
+-  const expSeconds = 60 * 60 * 24 * 30;
+-  const nowSeconds = Math.floor(Date.now() / 1000);
+-  const exp = nowSeconds + expSeconds;
+-  const jwtConstructor = new SignJWT({ api_key: id })
+-    .setProtectedHeader({ alg: 'HS256', sign_type: 'SIGN', typ: 'JWT' })
+-    .setExpirationTime(exp)
+-    .setIssuedAt(nowSeconds);
+-
+-  return jwtConstructor.sign(new TextEncoder().encode(secret));
+-};
+diff --git a/src/libs/agent-runtime/zhipu/index.test.ts b/src/libs/agent-runtime/zhipu/index.test.ts
+index 54e6e648abf3a..a2cf3a6bc4ca2 100644
+--- a/src/libs/agent-runtime/zhipu/index.test.ts
++++ b/src/libs/agent-runtime/zhipu/index.test.ts
+@@ -5,21 +5,12 @@ import { Mock, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+ import { ChatStreamCallbacks, LobeOpenAI, LobeOpenAICompatibleRuntime } from '@/libs/agent-runtime';
+ import * as debugStreamModule from '@/libs/agent-runtime/utils/debugStream';
+ 
+-import * as authTokenModule from './authToken';
+ import { LobeZhipuAI } from './index';
+ 
+ const bizErrorType = 'ProviderBizError';
+ const invalidErrorType = 'InvalidProviderAPIKey';
+ 
+-// Mock相关依赖
+-vi.mock('./authToken');
+-
+ describe('LobeZhipuAI', () => {
+-  beforeEach(() => {
+-    // Mock generateApiToken
+-    vi.spyOn(authTokenModule, 'generateApiToken').mockResolvedValue('mocked_token');
+-  });
+-
+   afterEach(() => {
+     vi.restoreAllMocks();
+   });
+diff --git a/src/libs/agent-runtime/zhipu/index.ts b/src/libs/agent-runtime/zhipu/index.ts
+index 3e75d50687650..daff537aea470 100644
+--- a/src/libs/agent-runtime/zhipu/index.ts
++++ b/src/libs/agent-runtime/zhipu/index.ts
+@@ -57,15 +57,26 @@ export const LobeZhipuAI = LobeOpenAICompatibleFactory({
+ 
+     return modelList
+       .map((model) => {
++        const knownModel = LOBE_DEFAULT_MODEL_LIST.find((m) => model.modelCode === m.id);
++
+         return {
+-          contextWindowTokens: LOBE_DEFAULT_MODEL_LIST.find((m) => model.modelCode === m.id)?.contextWindowTokens ?? undefined,
++          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
+           description: model.description,
+           displayName: model.modelName,
+-          enabled: LOBE_DEFAULT_MODEL_LIST.find((m) => model.modelCode === m.id)?.enabled || false,
+-          functionCall: model.modelCode.toLowerCase().includes('glm-4') && !model.modelCode.toLowerCase().includes('glm-4v'),
++          enabled: knownModel?.enabled || false,
++          functionCall:
++            model.modelCode.toLowerCase().includes('glm-4') && !model.modelCode.toLowerCase().includes('glm-4v')
++            || knownModel?.abilities?.functionCall
++            || false,
+           id: model.modelCode,
+-          reasoning: model.modelCode.toLowerCase().includes('glm-zero-preview'),
+-          vision: model.modelCode.toLowerCase().includes('glm-4v'),
++          reasoning:
++            model.modelCode.toLowerCase().includes('glm-zero-preview')
++            || knownModel?.abilities?.reasoning
++            || false,
++          vision:
++            model.modelCode.toLowerCase().includes('glm-4v')
++            || knownModel?.abilities?.vision
++            || false,
+         };
+       })
+       .filter(Boolean) as ChatModelCard[];
