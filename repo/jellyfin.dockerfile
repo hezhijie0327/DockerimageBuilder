@@ -1,4 +1,4 @@
-# Current Version: 2.1.3
+# Current Version: 2.1.4
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -33,7 +33,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/JELLYFIN" \
     && git submodule update --init \
     && cd "${WORKDIR}/BUILDTMP/JELLYFIN_WEB" \
-    && sed -i "s/systemInfo.Version/'${JELLYFIN_CUSTOM_VERSION}'/g" "${WORKDIR}/BUILDTMP/JELLYFIN_WEB/src/controllers/dashboard/dashboard.js" \
+    && sed -i "s/systemInfo.Version/'${JELLYFIN_CUSTOM_VERSION}'/g" "${WORKDIR}/BUILDTMP/JELLYFIN_WEB/src/apps/dashboard/controllers/dashboard.js" \
     && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "${WORKDIR}/BUILDTMP/JELLYFIN/SYS_ARCH" \
     && curl -s --connect-timeout 15 "https://repo.jellyfin.org/jellyfin_team.gpg.key" | gpg --dearmor > "${WORKDIR}/BUILDTMP/JELLYFIN/jellyfin-archive-keyring.gpg"
 
