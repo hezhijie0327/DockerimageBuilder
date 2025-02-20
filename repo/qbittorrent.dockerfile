@@ -1,4 +1,4 @@
-# Current Version: 1.2.6
+# Current Version: 1.2.7
 
 FROM hezhijie0327/module:alpine AS get_info
 
@@ -41,8 +41,8 @@ RUN \
     apk update \
     && apk add --no-cache bash \
     && export qbt_cross_name=$(cat "/qbittorrent/SYS_ARCH") \
-    && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbittorrent-nox-static.sh \
-    && bash ./qbittorrent-nox-static.sh all \
+    && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbt-nox-static.bash \
+    && bash ./qbt-nox-static.bash all \
         --bootstrap-patches \
         --build-directory /qbittorrent \
         --icu \
