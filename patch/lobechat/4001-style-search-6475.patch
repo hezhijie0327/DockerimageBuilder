@@ -903,10 +903,10 @@ index cd36499769f4f..5ffa87403b14d 100644
    },
    debug: {
 diff --git a/src/libs/agent-runtime/hunyuan/index.ts b/src/libs/agent-runtime/hunyuan/index.ts
-index 1abe27d4cc879..d44a94caa0270 100644
+index 1abe27d4cc879..0c243135440b6 100644
 --- a/src/libs/agent-runtime/hunyuan/index.ts
 +++ b/src/libs/agent-runtime/hunyuan/index.ts
-@@ -9,6 +9,22 @@ export interface HunyuanModelCard {
+@@ -9,6 +9,24 @@ export interface HunyuanModelCard {
  
  export const LobeHunyuanAI = LobeOpenAICompatibleFactory({
    baseURL: 'https://api.hunyuan.cloud.tencent.com/v1',
@@ -919,8 +919,10 @@ index 1abe27d4cc879..d44a94caa0270 100644
 +        ...(enabledSearch && {
 +          citation: true,
 +          enable_enhancement: true,
++          /*
 +          enable_multimedia: true,
-+          enable_speed_search: process.env.HUNYUAN_SPEED_SEARCH || false,
++          */
++          enable_speed_search: process.env.HUNYUAN_ENABLE_SPEED_SEARCH === '1',
 +          search_info: true
 +        }),
 +      } as any;
@@ -930,19 +932,28 @@ index 1abe27d4cc879..d44a94caa0270 100644
      chatCompletion: () => process.env.DEBUG_HUNYUAN_CHAT_COMPLETION === '1',
    },
 diff --git a/src/libs/agent-runtime/minimax/index.ts b/src/libs/agent-runtime/minimax/index.ts
-index 6778951558d36..cb35c6ca5d8f7 100644
+index 6778951558d36..df6e03137400e 100644
 --- a/src/libs/agent-runtime/minimax/index.ts
 +++ b/src/libs/agent-runtime/minimax/index.ts
-@@ -12,7 +12,7 @@ export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
+@@ -12,7 +12,16 @@ export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
    baseURL: 'https://api.minimax.chat/v1',
    chatCompletion: {
      handlePayload: (payload) => {
 -      const { temperature, top_p, ...params } = payload;
 +      const { enabledSearch, temperature, tools, top_p, ...params } = payload;
++
++      const minimaxTools = tools?.map((tool) => ({
++        function: {
++          description: tool.function.description,
++          name: tool.function.name,
++          parameters: JSON.stringify(tool.function.parameters),
++        },
++        type: 'function',
++      })),
  
        return {
          ...params,
-@@ -21,15 +21,15 @@ export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
+@@ -21,15 +30,15 @@ export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
          presence_penalty: undefined,
          stream: true,
          temperature: temperature === undefined || temperature <= 0 ? undefined : temperature / 2,
@@ -957,7 +968,7 @@ index 6778951558d36..cb35c6ca5d8f7 100644
          top_p: top_p !== undefined && top_p > 0 && top_p <= 1 ? top_p : undefined,
 +        ...(enabledSearch && {
 +          tools: [
-+            ...(tools ? tools : []),
++            ...(minimaxTools ? minimaxTools : []),
 +            {
 +              type: "web_search",
 +            }
@@ -1002,8 +1013,23 @@ index 133ce09219380..273241b304243 100644
      },
    },
    debug: {
+diff --git a/src/libs/agent-runtime/qwen/index.ts b/src/libs/agent-runtime/qwen/index.ts
+index 1822b044e1555..3ca2582327f1d 100644
+--- a/src/libs/agent-runtime/qwen/index.ts
++++ b/src/libs/agent-runtime/qwen/index.ts
+@@ -50,6 +50,10 @@ export const LobeQwenAI = LobeOpenAICompatibleFactory({
+         ...(enabledSearch && {
+           enable_search: enabledSearch,
+           search_options: {
++            /*
++            enable_citation: true,
++            enable_source: true,
++            */
+             search_strategy: process.env.QWEN_SEARCH_STRATEGY || 'standard', // standard or pro
+           },
+         }),
 diff --git a/src/libs/agent-runtime/stepfun/index.ts b/src/libs/agent-runtime/stepfun/index.ts
-index 03ed6c9bde8c7..d25ae494fd40c 100644
+index 03ed6c9bde8c7..ddf7bc460d780 100644
 --- a/src/libs/agent-runtime/stepfun/index.ts
 +++ b/src/libs/agent-runtime/stepfun/index.ts
 @@ -11,9 +11,22 @@ export const LobeStepfunAI = LobeOpenAICompatibleFactory({
@@ -1021,7 +1047,7 @@ index 03ed6c9bde8c7..d25ae494fd40c 100644
 +            ...(tools ? tools : []),
 +            {
 +              function: {
-+                description: "这个web_search用来搜索互联网的信息",
++                description: "use web_search to search information on the internet",
 +              },
 +              type: "web_search",
 +            }
