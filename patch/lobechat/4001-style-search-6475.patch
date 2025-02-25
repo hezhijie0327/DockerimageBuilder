@@ -226,44 +226,6 @@ index 6ba991859be4b..3ab62c0023b02 100644
      type: 'chat',
    },
    {
-diff --git a/src/config/aiModels/minimax.ts b/src/config/aiModels/minimax.ts
-index f99074c1a3c7b..1b972f667dc29 100644
---- a/src/config/aiModels/minimax.ts
-+++ b/src/config/aiModels/minimax.ts
-@@ -4,6 +4,7 @@ const minimaxChatModels: AIChatModelCard[] = [
-   {
-     abilities: {
-       functionCall: true,
-+      search: true,
-       vision: true,
-     },
-     contextWindowTokens: 1_000_192,
-@@ -18,11 +19,15 @@ const minimaxChatModels: AIChatModelCard[] = [
-       output: 8,
-     },
-     releasedAt: '2025-01-15',
-+    settings: {
-+      searchImpl: 'params',
-+    },
-     type: 'chat',
-   },
-   {
-     abilities: {
-       functionCall: true,
-+      search: true,
-       vision: true,
-     },
-     contextWindowTokens: 245_760,
-@@ -36,6 +41,9 @@ const minimaxChatModels: AIChatModelCard[] = [
-       input: 1,
-       output: 1,
-     },
-+    settings: {
-+      searchImpl: 'params',
-+    },
-     type: 'chat',
-   },
-   {
 diff --git a/src/config/aiModels/moonshot.ts b/src/config/aiModels/moonshot.ts
 index 4f1bc3b7c5d24..d9be341bf7da5 100644
 --- a/src/config/aiModels/moonshot.ts
@@ -932,28 +894,23 @@ index 1abe27d4cc879..728e43157dcde 100644
      chatCompletion: () => process.env.DEBUG_HUNYUAN_CHAT_COMPLETION === '1',
    },
 diff --git a/src/libs/agent-runtime/minimax/index.ts b/src/libs/agent-runtime/minimax/index.ts
-index 6778951558d36..e07974d01b491 100644
+index 6778951558d36..a4a7e0c5637e8 100644
 --- a/src/libs/agent-runtime/minimax/index.ts
 +++ b/src/libs/agent-runtime/minimax/index.ts
-@@ -12,7 +12,14 @@ export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
+@@ -12,23 +12,14 @@ export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
    baseURL: 'https://api.minimax.chat/v1',
    chatCompletion: {
      handlePayload: (payload) => {
 -      const { temperature, top_p, ...params } = payload;
-+      const { enabledSearch, temperature, tools, top_p, ...params } = payload;
-+
-+      const minimaxTools = enabledSearch ? [
-+        ...(tools || []),
-+        {
-+          type: "web_search",
-+        }
-+      ] : tools;
++      const { max_tokens, temperature, top_p, ...params } = payload;
  
        return {
          ...params,
-@@ -21,14 +28,7 @@ export const LobeMinimaxAI = LobeOpenAICompatibleFactory({
+         frequency_penalty: undefined,
+-        max_tokens: payload.max_tokens !== undefined ? payload.max_tokens : getMinimaxMaxOutputs(payload.model),
++        max_tokens: max_tokens !== undefined ? max_tokens : getMinimaxMaxOutputs(payload.model),
          presence_penalty: undefined,
-         stream: true,
+-        stream: true,
          temperature: temperature === undefined || temperature <= 0 ? undefined : temperature / 2,
 -        tools: params.tools?.map((tool) => ({
 -          function: {
@@ -963,7 +920,6 @@ index 6778951558d36..e07974d01b491 100644
 -          },
 -          type: 'function',
 -        })),
-+        tools: minimaxTools,
          top_p: top_p !== undefined && top_p > 0 && top_p <= 1 ? top_p : undefined,
        } as any;
      },
