@@ -21,7 +21,7 @@ index 728e43157dcde..8b0fad8aedd67 100644
        } as any;
      },
 diff --git a/src/libs/agent-runtime/utils/streams/openai.ts b/src/libs/agent-runtime/utils/streams/openai.ts
-index 3cac3e173f294..312d883388fea 100644
+index 3cac3e173f294..414f1f11567cb 100644
 --- a/src/libs/agent-runtime/utils/streams/openai.ts
 +++ b/src/libs/agent-runtime/utils/streams/openai.ts
 @@ -128,7 +128,6 @@ export const transformOpenAIStream = (
@@ -32,24 +32,15 @@ index 3cac3e173f294..312d883388fea 100644
          if ('citations' in chunk && !!chunk.citations && !streamContext?.returnedPplxCitation) {
            streamContext.returnedPplxCitation = true;
  
-@@ -141,6 +140,31 @@ export const transformOpenAIStream = (
-             { data: content, id: chunk.id, type: 'text' },
+@@ -142,6 +141,23 @@ export const transformOpenAIStream = (
            ];
          }
-+/*
-+        // Hunyuan
-+        if ('search_info' in chunk && !!chunk.search_info?.search_results) {
-+          const search_info = (chunk.search_info?.search_results as any[]).map((item) => ({ title: item.title, url: item.url }));
+ 
++        // in Wenxin api, the citation is in the first and last chunk
++        if ('search_results' in chunk && !!chunk.search_results && !streamContext?.returnedWenxinCitation) {
++          streamContext.returnedWenxinCitation = true;
 +
-+          return [
-+            { data: { search_info }, id: chunk.id, type: 'grounding' },
-+            { data: content, id: chunk.id, type: 'text' },
-+          ];
-+        }
-+*/
-+        // Wenxin
-+        if ('search_results' in chunk && !!chunk.search_results) {
-+          const search_results = (chunk.search_results as any[]).map((item) => {
++          const citations = (chunk.search_results as any[]).map((item) => {
 +            return {
 +              title: item.title,
 +              url: item.url
@@ -57,13 +48,26 @@ index 3cac3e173f294..312d883388fea 100644
 +          });
 +
 +          return [
-+            { data: { search_results }, id: chunk.id, type: 'grounding' },
++            { data: { citations }, id: chunk.id, type: 'grounding' },
 +            { data: content, id: chunk.id, type: 'text' },
 +          ];
 +        }
- 
++
          return { data: content, id: chunk.id, type: 'text' };
        }
+     }
+diff --git a/src/libs/agent-runtime/utils/streams/protocol.ts b/src/libs/agent-runtime/utils/streams/protocol.ts
+index fb345e070a805..d45e7143a2f50 100644
+--- a/src/libs/agent-runtime/utils/streams/protocol.ts
++++ b/src/libs/agent-runtime/utils/streams/protocol.ts
+@@ -12,6 +12,7 @@ export interface StreamContext {
+    * this flag is used to check if the pplx citation is returned,and then not return it again
+    */
+   returnedPplxCitation?: boolean;
++  returnedWenxinCitation?: boolean;
+   thinking?: {
+     id: string;
+     name: string;
 diff --git a/src/libs/agent-runtime/wenxin/index.ts b/src/libs/agent-runtime/wenxin/index.ts
 index aff83dc41bc02..85bed26c08c5b 100644
 --- a/src/libs/agent-runtime/wenxin/index.ts
