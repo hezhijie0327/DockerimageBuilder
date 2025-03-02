@@ -1,8 +1,28 @@
+diff --git a/docs/admin/settings/settings_search.rst b/docs/admin/settings/settings_search.rst
+index 83f3bca0bb8..e18fc5d9249 100644
+--- a/docs/admin/settings/settings_search.rst
++++ b/docs/admin/settings/settings_search.rst
+@@ -41,6 +41,7 @@
+   - ``mwmbl``
+   - ``qwant``
+   - ``seznam``
++  - ``sogou``
+   - ``stract``
+   - ``swisscows``
+   - ``wikipedia``
 diff --git a/searx/autocomplete.py b/searx/autocomplete.py
-index a0aa2a73003..b8e8a44fb52 100644
+index a0aa2a73003..09f220c2f89 100644
 --- a/searx/autocomplete.py
 +++ b/searx/autocomplete.py
-@@ -171,6 +171,27 @@ def seznam(query, _lang):
+@@ -20,6 +20,7 @@
+ )
+ from searx.network import get as http_get, post as http_post
+ from searx.exceptions import SearxEngineResponseException
++from searx.utils import extr
+ 
+ 
+ def update_kwargs(**kwargs):
+@@ -171,6 +172,23 @@ def seznam(query, _lang):
      ]
  
  
@@ -12,17 +32,13 @@ index a0aa2a73003..b8e8a44fb52 100644
 +    response = get(base_url + urlencode({'m': 'searxng', 'key': query}))
 +
 +    if response.ok:
-+        data = response.text
++        raw_json = extr(response.text, "[", "]", default="")
 +
-+        start_idx = data.find("[")
-+        end_idx = data.rfind("]")
-+
-+        if start_idx != -1 and end_idx != -1:
-+            try:
-+                data_list = json.loads(data[start_idx : end_idx + 1])
-+                return data_list[1] if isinstance(data_list, list) else []
-+            except json.JSONDecodeError:
-+                return []
++        try:
++            data = json.loads(f"[{raw_json}]]")
++            return data[1]
++        except json.JSONDecodeError:
++            return []
 +
 +    return []
 +
@@ -30,7 +46,7 @@ index a0aa2a73003..b8e8a44fb52 100644
  def stract(query, _lang):
      # stract autocompleter (beta)
      url = f"https://stract.com/beta/api/autosuggest?q={quote_plus(query)}"
-@@ -254,6 +275,7 @@ def yandex(query, _lang):
+@@ -254,6 +272,7 @@ def yandex(query, _lang):
      'mwmbl': mwmbl,
      'qwant': qwant,
      'seznam': seznam,
@@ -40,20 +56,22 @@ index a0aa2a73003..b8e8a44fb52 100644
      'wikipedia': wikipedia,
 diff --git a/searx/engines/sogou.py b/searx/engines/sogou.py
 new file mode 100644
-index 00000000000..12ecc26fe39
+index 00000000000..e36b4cd4f3b
 --- /dev/null
 +++ b/searx/engines/sogou.py
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,68 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Sogou search engine for searxng"""
 +
 +from urllib.parse import urlencode
 +from lxml import html
 +
++from searx.utils import extract_text
++
 +# Metadata
 +about = {
 +    "website": "https://www.sogou.com/",
-+    "official_api_documentation": None,
++    "wikidata_id": "Q7554565",
 +    "use_official_api": False,
 +    "require_api_key": False,
 +    "results": "HTML",
@@ -68,7 +86,7 @@ index 00000000000..12ecc26fe39
 +time_range_dict = {'day': 'inttime_day', 'week': 'inttime_week', 'month': 'inttime_month', 'year': 'inttime_year'}
 +
 +# Base URL
-+base_url = "https://www.sogou.com/web"
++base_url = "https://www.sogou.com"
 +
 +
 +def request(query, params):
@@ -77,11 +95,11 @@ index 00000000000..12ecc26fe39
 +        "page": params["pageno"],
 +    }
 +
-+    if 'time_range' in params and params['time_range'] in time_range_dict:
-+        query_params["s_from"] = time_range_dict[params['time_range']]
++    if time_range_dict.get(params['time_range']):
++        query_params["s_from"] = time_range_dict.get(params['time_range'])
 +        query_params["tsn"] = 1
 +
-+    params["url"] = f"{base_url}?{urlencode(query_params)}"
++    params["url"] = f"{base_url}/web?{urlencode(query_params)}"
 +    return params
 +
 +
@@ -90,20 +108,15 @@ index 00000000000..12ecc26fe39
 +    results = []
 +
 +    for item in dom.xpath('//div[contains(@class, "vrwrap")]'):
-+        title_elem = item.xpath('.//h3[contains(@class, "vr-title")]/a')
-+        title = title_elem[0].text_content().strip() if title_elem else ""
-+
-+        url_elem = item.xpath('.//h3[contains(@class, "vr-title")]/a/@href')
-+        url = url_elem[0] if url_elem else ""
++        title = extract_text(item.xpath('.//h3[contains(@class, "vr-title")]/a'))
++        url = extract_text(item.xpath('.//h3[contains(@class, "vr-title")]/a/@href'))
 +
 +        if url.startswith("/link?url="):
-+            url = f"https://www.sogou.com{url}"
++            url = f"{base_url}{url}"
 +
-+        content_elem = item.xpath('.//div[contains(@class, "text-layout")]//p[contains(@class, "star-wiki")]/text()')
-+        content = " ".join(content_elem).strip() if content_elem else ""
++        content = extract_text(item.xpath('.//div[contains(@class, "text-layout")]//p[contains(@class, "star-wiki")]'))
 +        if not content:
-+            content_elem = item.xpath('.//div[contains(@class, "fz-mid space-txt")]/text()')
-+            content = " ".join(content_elem).strip() if content_elem else ""
++            content = extract_text(item.xpath('.//div[contains(@class, "fz-mid space-txt")]'))
 +
 +        if title and url:
 +            results.append(
@@ -115,39 +128,36 @@ index 00000000000..12ecc26fe39
 +            )
 +
 +    return results
-diff --git a/searx/engines/sogou_picture.py b/searx/engines/sogou_picture.py
+diff --git a/searx/engines/sogou_images.py b/searx/engines/sogou_images.py
 new file mode 100644
-index 00000000000..9ce2c1d990f
+index 00000000000..69992e3baff
 --- /dev/null
-+++ b/searx/engines/sogou_picture.py
-@@ -0,0 +1,52 @@
++++ b/searx/engines/sogou_images.py
+@@ -0,0 +1,49 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Sogou-Images: A search engine for retrieving images from Sogou."""
 +
 +import json
 +import re
-+from urllib.parse import urlencode
++from urllib.parse import quote_plus
 +
 +# about
 +about = {
 +    "website": "https://pic.sogou.com/",
++    "wikidata_id": "Q7554565",
 +    "use_official_api": False,
 +    "require_api_key": False,
 +    "results": "HTML",
 +}
 +
 +# engine dependent config
-+categories = ["images", "web"]
++categories = ["images"]
 +
-+base_url = "https://pic.sogou.com/pics"
++base_url = "https://pic.sogou.com"
 +
 +
 +def request(query, params):
-+    query_params = {
-+        "query": query,
-+    }
-+
-+    params["url"] = f"{base_url}?{urlencode(query_params)}"
++    params["url"] = f"{base_url}/pics?query={quote_plus(query)}"
 +    return params
 +
 +
@@ -173,11 +183,11 @@ index 00000000000..9ce2c1d990f
 +            )
 +
 +    return results
-diff --git a/searx/engines/sogou_video.py b/searx/engines/sogou_video.py
+diff --git a/searx/engines/sogou_videos.py b/searx/engines/sogou_videos.py
 new file mode 100644
-index 00000000000..9e3b13f9e85
+index 00000000000..1149996c967
 --- /dev/null
-+++ b/searx/engines/sogou_video.py
++++ b/searx/engines/sogou_videos.py
 @@ -0,0 +1,72 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Sogou-Videos: A search engine for retrieving videos from Sogou."""
@@ -199,7 +209,7 @@ index 00000000000..9e3b13f9e85
 +results_per_page = 10
 +
 +# Base URL
-+base_url = "https://v.sogou.com/api/video/shortVideoV2"
++base_url = "https://v.sogou.com"
 +
 +
 +def request(query, params):
@@ -209,7 +219,7 @@ index 00000000000..9e3b13f9e85
 +        "query": query,
 +    }
 +
-+    params["url"] = f"{base_url}?{urlencode(query_params)}"
++    params["url"] = f"{base_url}/api/video/shortVideoV2?{urlencode(query_params)}"
 +    return params
 +
 +
@@ -220,7 +230,7 @@ index 00000000000..9e3b13f9e85
 +        raise SearxEngineAPIException(f"Invalid response: {e}") from e
 +    results = []
 +
-+    if "data" not in data or "list" not in data["data"]:
++    if not data.get("data", {}).get("list"):
 +        raise SearxEngineAPIException("Invalid response")
 +
 +    for entry in data["data"]["list"]:
@@ -229,10 +239,10 @@ index 00000000000..9e3b13f9e85
 +
 +        video_url = entry.get("url")
 +        if video_url.startswith("/vc/np"):
-+            video_url = f"https://v.sogou.com{video_url}"
++            video_url = f"{base_url}{video_url}"
 +
 +        published_date = None
-+        if entry.get("date", "") and entry.get("duration", ""):
++        if entry.get("date") and entry.get("duration"):
 +            try:
 +                date_time_str = f"{entry['date']} {entry['duration']}"
 +                published_date = datetime.strptime(date_time_str, "%Y-%m-%d %H:%M")
