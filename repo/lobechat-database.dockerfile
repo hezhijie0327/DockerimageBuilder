@@ -1,4 +1,4 @@
-# Current Version: 1.4.9
+# Current Version: 1.5.0
 
 ARG NODEJS_VERSION="22"
 
@@ -56,8 +56,9 @@ ENV \
 
 WORKDIR /app
 
-COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json ./
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json /tmp/BUILDTMP/LOBECHAT/pnpm-workspace.yaml ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/packages ./packages
 
 RUN \
     export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
@@ -66,7 +67,9 @@ RUN \
     && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
     && pnpm i \
     && mkdir -p /deps \
-    && pnpm add sharp pg drizzle-orm --prefix /deps
+    && cd /deps \
+    && pnpm init \
+    && pnpm add sharp pg drizzle-orm
 
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/ .
 
