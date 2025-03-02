@@ -1,4 +1,4 @@
-# Current Version: 2.0.1
+# Current Version: 2.0.2
 
 ARG NODEJS_VERSION="22"
 
@@ -52,8 +52,9 @@ ENV \
 
 WORKDIR /app
 
-COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json ./
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json /tmp/BUILDTMP/LOBECHAT/pnpm-workspace.yaml ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/packages ./packages
 
 RUN \
     export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
@@ -62,7 +63,9 @@ RUN \
     && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
     && pnpm i \
     && mkdir -p /deps \
-    && pnpm add sharp --prefix /deps
+    && cd /deps \
+    && pnpm init \
+    && pnpm add sharp
 
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/ .
 
