@@ -1,15 +1,27 @@
+diff --git a/docs/admin/settings/settings_search.rst b/docs/admin/settings/settings_search.rst
+index 83f3bca0bb8..a85640fa5fe 100644
+--- a/docs/admin/settings/settings_search.rst
++++ b/docs/admin/settings/settings_search.rst
+@@ -33,6 +33,7 @@
+ ``autocomplete``:
+   Existing autocomplete backends, leave blank to turn it off.
+ 
++  - ``360search``
+   - ``baidu``
+   - ``brave``
+   - ``dbpedia``
 diff --git a/searx/autocomplete.py b/searx/autocomplete.py
-index a0aa2a73003..b359a9306ca 100644
+index a0aa2a73003..2ef6189a554 100644
 --- a/searx/autocomplete.py
 +++ b/searx/autocomplete.py
 @@ -148,6 +148,21 @@ def mwmbl(query, _lang):
      return [result for result in results if not result.startswith("go: ") and not result.startswith("search: ")]
  
  
-+def qihu360so(query, _lang):
-+    # 360So search autocompleter
-+    base_url = "https://sug.so.360.cn/suggest?"
-+    response = get(base_url + urlencode({'format': 'json', 'word': query}))
++def qihu360search(query, _lang):
++    # 360Search search autocompleter
++    url = f"https://sug.so.360.cn/suggest?{urlencode({'format': 'json', 'word': query})}"
++    response = get(url)
 +
 +    results = []
 +
@@ -28,27 +40,29 @@ index a0aa2a73003..b359a9306ca 100644
  
  
  backends = {
-+    '360so': qihu360so,
++    '360search': qihu360search,
      'baidu': baidu,
      'brave': brave,
      'dbpedia': dbpedia,
-diff --git a/searx/engines/360so.py b/searx/engines/360so.py
+diff --git a/searx/engines/360search.py b/searx/engines/360search.py
 new file mode 100644
-index 00000000000..45efab9e49c
+index 00000000000..024440dc271
 --- /dev/null
-+++ b/searx/engines/360so.py
-@@ -0,0 +1,69 @@
++++ b/searx/engines/360search.py
+@@ -0,0 +1,68 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=invalid-name
-+"""360So search engine for searxng"""
++"""360Search search engine for searxng"""
 +
 +from urllib.parse import urlencode
 +from lxml import html
 +
++from searx.utils import extract_text
++
 +# Metadata
 +about = {
 +    "website": "https://www.so.com/",
-+    "official_api_documentation": None,
++    "wikidata_id": "Q10846064",
 +    "use_official_api": False,
 +    "require_api_key": False,
 +    "results": "HTML",
@@ -63,7 +77,7 @@ index 00000000000..45efab9e49c
 +time_range_dict = {'day': 'd', 'week': 'w', 'month': 'm', 'year': 'y'}
 +
 +# Base URL
-+base_url = "https://www.so.com/s"
++base_url = "https://www.so.com"
 +
 +
 +def request(query, params):
@@ -72,10 +86,10 @@ index 00000000000..45efab9e49c
 +        "q": query,
 +    }
 +
-+    if 'time_range' in params and params['time_range'] in time_range_dict:
-+        query_params["adv_t"] = time_range_dict[params['time_range']]
++    if time_range_dict.get(params['time_range']):
++        query_params["adv_t"] = time_range_dict.get(params['time_range'])
 +
-+    params["url"] = f"{base_url}?{urlencode(query_params)}"
++    params["url"] = f"{base_url}/s?{urlencode(query_params)}"
 +    return params
 +
 +
@@ -84,18 +98,15 @@ index 00000000000..45efab9e49c
 +    results = []
 +
 +    for item in dom.xpath('//li[contains(@class, "res-list")]'):
-+        title_elem = item.xpath('.//h3[contains(@class, "res-title")]/a')
-+        title = title_elem[0].text_content().strip() if title_elem else ""
++        title = extract_text(item.xpath('.//h3[contains(@class, "res-title")]/a'))
 +
-+        url_elem = item.xpath('.//h3[contains(@class, "res-title")]/a/@data-mdurl')
-+        if not url_elem:
-+            url_elem = item.xpath('.//h3[contains(@class, "res-title")]/a/@href')
-+        url = url_elem[0] if url_elem else ""
++        url = extract_text(item.xpath('.//h3[contains(@class, "res-title")]/a/@data-mdurl'))
++        if not url:
++            url = extract_text(item.xpath('.//h3[contains(@class, "res-title")]/a/@href'))
 +
-+        content_elem = item.xpath('.//p[@class="res-desc"]/text()')
-+        if not content_elem:
-+            content_elem = item.xpath('.//span[@class="res-list-summary"]/text()')
-+        content = " ".join(content_elem).strip() if content_elem else ""
++        content = extract_text(item.xpath('.//p[@class="res-desc"]'))
++        if not content:
++            content = extract_text(item.xpath('.//span[@class="res-list-summary"]'))
 +
 +        if title and url:
 +            results.append(
@@ -107,15 +118,15 @@ index 00000000000..45efab9e49c
 +            )
 +
 +    return results
-diff --git a/searx/engines/360so_video.py b/searx/engines/360so_video.py
+diff --git a/searx/engines/360search_videos.py b/searx/engines/360search_videos.py
 new file mode 100644
-index 00000000000..2614cd89522
+index 00000000000..03c47ca404b
 --- /dev/null
-+++ b/searx/engines/360so_video.py
++++ b/searx/engines/360search_videos.py
 @@ -0,0 +1,63 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=invalid-name
-+"""360So-Videos: A search engine for retrieving videos from 360So."""
++"""360Search-Videos: A search engine for retrieving videos from 360Search."""
 +
 +from urllib.parse import urlencode
 +from datetime import datetime
@@ -133,13 +144,13 @@ index 00000000000..2614cd89522
 +results_per_page = 10
 +categories = ["videos"]
 +
-+base_url = "https://tv.360kan.com/v1/video/list"
++base_url = "https://tv.360kan.com"
 +
 +
 +def request(query, params):
 +    query_params = {"count": 10, "q": query, "start": params["pageno"] * 10}
 +
-+    params["url"] = f"{base_url}?{urlencode(query_params)}"
++    params["url"] = f"{base_url}/v1/video/list?{urlencode(query_params)}"
 +    return params
 +
 +
