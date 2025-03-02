@@ -1,5 +1,5 @@
 diff --git a/src/libs/agent-runtime/hunyuan/index.ts b/src/libs/agent-runtime/hunyuan/index.ts
-index 728e43157dcde..8b0fad8aedd67 100644
+index 728e43157dcde..27d3f2c5ab490 100644
 --- a/src/libs/agent-runtime/hunyuan/index.ts
 +++ b/src/libs/agent-runtime/hunyuan/index.ts
 @@ -16,13 +16,13 @@ export const LobeHunyuanAI = LobeOpenAICompatibleFactory({
@@ -8,78 +8,64 @@ index 728e43157dcde..8b0fad8aedd67 100644
          ...(enabledSearch && {
 -          /*
            citation: true,
--          enable_multimedia: true,
--          search_info: true
--          */
-           enable_enhancement: true,
++          enable_enhancement: true,
 +          /*
-+          enable_multimedia: true, // Whitelist function
-+          */
+           enable_multimedia: true,
+-          search_info: true
+           */
+-          enable_enhancement: true,
            enable_speed_search: process.env.HUNYUAN_ENABLE_SPEED_SEARCH === '1',
-+          search_info: true
++          search_info: true,
          }),
        } as any;
      },
 diff --git a/src/libs/agent-runtime/utils/streams/openai.ts b/src/libs/agent-runtime/utils/streams/openai.ts
-index 3cac3e173f294..414f1f11567cb 100644
+index 414f1f11567cb..743b5ee24229f 100644
 --- a/src/libs/agent-runtime/utils/streams/openai.ts
 +++ b/src/libs/agent-runtime/utils/streams/openai.ts
-@@ -128,7 +128,6 @@ export const transformOpenAIStream = (
- 
-       if (typeof content === 'string') {
-         // in Perplexity api, the citation is in every chunk, but we only need to return it once
--
-         if ('citations' in chunk && !!chunk.citations && !streamContext?.returnedPplxCitation) {
-           streamContext.returnedPplxCitation = true;
- 
-@@ -142,6 +141,23 @@ export const transformOpenAIStream = (
+@@ -141,16 +141,27 @@ export const transformOpenAIStream = (
            ];
          }
  
-+        // in Wenxin api, the citation is in the first and last chunk
-+        if ('search_results' in chunk && !!chunk.search_results && !streamContext?.returnedWenxinCitation) {
-+          streamContext.returnedWenxinCitation = true;
++        // in Hunyuan api, the citation is in every chunk
++        if ('search_info' in chunk && !!chunk.search_info) {
++          const search_info = chunk.search_info as { search_results: any[] };
 +
-+          const citations = (chunk.search_results as any[]).map((item) => {
-+            return {
-+              title: item.title,
-+              url: item.url
-+            } as CitationItem;
-+          });
++          if (!!search_info.search_results && !streamContext?.returnedHunyuanCitation) {
++            streamContext.returnedHunyuanCitation = true;
 +
-+          return [
-+            { data: { citations }, id: chunk.id, type: 'grounding' },
-+            { data: content, id: chunk.id, type: 'text' },
-+          ];
++            const citations = search_info.search_results.map((item) => ({ title: item.title, url: item.url }) as CitationItem);
++
++            return [
++              { data: { citations }, id: chunk.id, type: 'grounding' },
++              { data: content, id: chunk.id, type: 'text' },
++            ];
++          }
 +        }
 +
-         return { data: content, id: chunk.id, type: 'text' };
-       }
-     }
+         // in Wenxin api, the citation is in the first and last chunk
+         if ('search_results' in chunk && !!chunk.search_results && !streamContext?.returnedWenxinCitation) {
+           streamContext.returnedWenxinCitation = true;
+ 
+-          const citations = (chunk.search_results as any[]).map((item) => {
+-            return {
+-              title: item.title,
+-              url: item.url
+-            } as CitationItem;
+-          });
++          const citations = (chunk.search_results as any[]).map((item) => ({ title: item.title, url: item.url }) as CitationItem);
+ 
+           return [
+             { data: { citations }, id: chunk.id, type: 'grounding' },
 diff --git a/src/libs/agent-runtime/utils/streams/protocol.ts b/src/libs/agent-runtime/utils/streams/protocol.ts
-index fb345e070a805..d45e7143a2f50 100644
+index d45e7143a2f50..90661888d6efc 100644
 --- a/src/libs/agent-runtime/utils/streams/protocol.ts
 +++ b/src/libs/agent-runtime/utils/streams/protocol.ts
-@@ -12,6 +12,7 @@ export interface StreamContext {
+@@ -7,6 +7,7 @@ import { AgentRuntimeErrorType } from '../../error';
+  */
+ export interface StreamContext {
+   id: string;
++  returnedHunyuanCitation?: boolean;
+   /**
+    * As pplx citations is in every chunk, but we only need to return it once
     * this flag is used to check if the pplx citation is returned,and then not return it again
-    */
-   returnedPplxCitation?: boolean;
-+  returnedWenxinCitation?: boolean;
-   thinking?: {
-     id: string;
-     name: string;
-diff --git a/src/libs/agent-runtime/wenxin/index.ts b/src/libs/agent-runtime/wenxin/index.ts
-index aff83dc41bc02..85bed26c08c5b 100644
---- a/src/libs/agent-runtime/wenxin/index.ts
-+++ b/src/libs/agent-runtime/wenxin/index.ts
-@@ -12,10 +12,8 @@ export const LobeWenxinAI = LobeOpenAICompatibleFactory({
-         ...(enabledSearch && {
-           web_search: {
-             enable: true,
--            /*
-             enable_citation: true,
-             enable_trace: true,
--            */
-           }
-         }),
-       } as any;
