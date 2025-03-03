@@ -1,4 +1,4 @@
-# Current Version: 1.5.0
+# Current Version: 1.5.1
 
 ARG NODEJS_VERSION="22"
 
@@ -69,7 +69,7 @@ RUN \
     && mkdir -p /deps \
     && cd /deps \
     && pnpm init \
-    && pnpm add sharp pg drizzle-orm
+    && pnpm add pg drizzle-orm
 
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/ .
 
@@ -81,17 +81,15 @@ COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 
 COPY --from=build_baseos /distroless/ /
 
-COPY --from=build_lobechat /app/public /app/public
-
 COPY --from=build_lobechat /app/.next/standalone /app/
-COPY --from=build_lobechat /app/.next/static /app/.next/static
-COPY --from=build_lobechat /deps/node_modules/.pnpm /app/node_modules/.pnpm
-COPY --from=build_lobechat /deps/node_modules/pg /app/node_modules/pg
-COPY --from=build_lobechat /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
 
 COPY --from=build_lobechat /app/src/database/migrations /app/migrations
 COPY --from=build_lobechat /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
 COPY --from=build_lobechat /app/scripts/migrateServerDB/errorHint.js /app/errorHint.js
+
+COPY --from=build_lobechat /deps/node_modules/.pnpm /app/node_modules/.pnpm
+COPY --from=build_lobechat /deps/node_modules/pg /app/node_modules/pg
+COPY --from=build_lobechat /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
 
 COPY --from=build_lobechat /app/scripts/serverLauncher/startServer.js /app/startServer.js
 
