@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 2.1.1
+# Current Version: 2.1.2
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -21,7 +21,7 @@ export LIBSODIUM_VERSION_FIXED=""
 export LOBECHAT_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
 export QBITTORRENT_VERSION_FIXED=""
-export SEARXNG_VERSION_FIXED=""
+export SEARXNG_VERSION_FIXED="1.0.0"
 export SIYUAN_VERSION_FIXED=""
 export UNBOUND_VERSION_FIXED=""
 export VALKEY_VERSION_FIXED=""
