@@ -1,4 +1,4 @@
-# Current Version: 2.0.2
+# Current Version: 2.0.3
 
 ARG NODEJS_VERSION="22"
 
@@ -61,11 +61,7 @@ RUN \
     && npm i -g corepack@latest \
     && corepack enable \
     && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
-    && pnpm i \
-    && mkdir -p /deps \
-    && cd /deps \
-    && pnpm init \
-    && pnpm add sharp
+    && pnpm i
 
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/ .
 
@@ -77,11 +73,7 @@ COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 
 COPY --from=build_baseos /distroless/ /
 
-COPY --from=build_lobechat /app/public /app/public
-
 COPY --from=build_lobechat /app/.next/standalone /app/
-COPY --from=build_lobechat /app/.next/static /app/.next/static
-COPY --from=build_lobechat /deps/node_modules/.pnpm /app/node_modules/.pnpm
 
 COPY --from=build_lobechat /app/scripts/serverLauncher/startServer.js /app/startServer.js
 
