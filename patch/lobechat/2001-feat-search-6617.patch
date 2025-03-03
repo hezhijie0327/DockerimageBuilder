@@ -132,13 +132,168 @@ index cd193788f9e53..431a8e2dc2c77 100644
      type: 'chat',
    },
    {
+diff --git a/src/libs/agent-runtime/hunyuan/index.test.ts b/src/libs/agent-runtime/hunyuan/index.test.ts
+index 45c3080631619..8ac25f6e77598 100644
+--- a/src/libs/agent-runtime/hunyuan/index.test.ts
++++ b/src/libs/agent-runtime/hunyuan/index.test.ts
+@@ -1,7 +1,9 @@
+ // @vitest-environment node
+-import { ModelProvider } from '@/libs/agent-runtime';
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++import { LobeOpenAICompatibleRuntime, ModelProvider } from '@/libs/agent-runtime';
++import { testProvider } from '@/libs/agent-runtime/providerTestUtils';
+ 
+-import { testProvider } from '../providerTestUtils';
+ import { LobeHunyuanAI } from './index';
+ 
+ testProvider({
+@@ -11,3 +13,136 @@ testProvider({
+   chatDebugEnv: 'DEBUG_HUNYUAN_CHAT_COMPLETION',
+   chatModel: 'hunyuan-lite',
+ });
++
++// Mock the console.error to avoid polluting test output
++vi.spyOn(console, 'error').mockImplementation(() => {});
++
++let instance: LobeOpenAICompatibleRuntime;
++
++beforeEach(() => {
++  instance = new LobeHunyuanAI({ apiKey: 'test' });
++
++  // 使用 vi.spyOn 来模拟 chat.completions.create 方法
++  vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
++    new ReadableStream() as any,
++  );
++});
++
++describe('LobeHunyuanAI', () => {
++  describe('chat', () => {
++    it('should with search citations', async () => {
++const data = [
++        {
++          id: "939fbdb8dbb9b4c5944cbbe687c977c2",
++          object: "chat.completion.chunk",
++          created: 1741000456,
++          model: "hunyuan-turbo",
++          system_fingerprint: "",
++          choices: [
++            {
++              index: 0,
++              delta: { role: "assistant", content: "为您" },
++              finish_reason: null
++            }
++          ],
++          note: "以上内容为AI生成，不代表开发者立场，请勿删除或修改本标记",
++          search_info: {
++            search_results: [
++              {
++                index: 1,
++                title: "公务员考试时政热点【2025年3月3日】_公务员考试网_华图教育",
++                url: "http://www.huatu.com/2025/0303/2803685.html",
++                icon: "https://hunyuan-img-1251316161.cos.ap-guangzhou.myqcloud.com/%2Fpublic/img/63ce96deffe0119827f12deaa5ffe7ef.jpg",
++                text: "华图教育官网"
++              },
++              {
++                index: 2,
++                title: "外交部新闻（2025年3月3日）",
++                url: "https://view.inews.qq.com/a/20250303A02NLC00?scene=qqsearch",
++                icon: "https://hunyuan-img-1251316161.cos.ap-guangzhou.myqcloud.com/%2Fpublic/img/00ce40298870d1accb7920d641152722.jpg",
++                text: "腾讯网"
++              }
++            ]
++          }
++        },
++        {
++          id: "939fbdb8dbb9b4c5944cbbe687c977c2",
++          object: "chat.completion.chunk",
++          created: 1741000456,
++          model: "hunyuan-turbo",
++          system_fingerprint: "",
++          choices: [
++            {
++              index: 0,
++              delta: { role: "assistant", content: "找到" },
++              finish_reason: null
++            }
++          ],
++          note: "以上内容为AI生成，不代表开发者立场，请勿删除或修改本标记",
++          search_info: {
++            search_results: [
++              {
++                index: 1,
++                title: "公务员考试时政热点【2025年3月3日】_公务员考试网_华图教育",
++                url: "http://www.huatu.com/2025/0303/2803685.html",
++                icon: "https://hunyuan-img-1251316161.cos.ap-guangzhou.myqcloud.com/%2Fpublic/img/63ce96deffe0119827f12deaa5ffe7ef.jpg",
++                text: "华图教育官网"
++              },
++              {
++                index: 2,
++                title: "外交部新闻（2025年3月3日）",
++                url: "https://view.inews.qq.com/a/20250303A02NLC00?scene=qqsearch",
++                icon: "https://hunyuan-img-1251316161.cos.ap-guangzhou.myqcloud.com/%2Fpublic/img/00ce40298870d1accb7920d641152722.jpg",
++                text: "腾讯网"
++              }
++            ]
++          }
++        }
++      ];
++
++      const mockStream = new ReadableStream({
++        start(controller) {
++          data.forEach((chunk) => {
++            controller.enqueue(chunk);
++          });
++
++          controller.close();
++        },
++      });
++
++      vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(mockStream as any);
++
++      const result = await instance.chat({
++        messages: [{ content: 'Hello', role: 'user' }],
++        model: 'mistralai/mistral-7b-instruct:free',
++        temperature: 0,
++      });
++
++      const decoder = new TextDecoder();
++      const reader = result.body!.getReader();
++      const stream: string[] = [];
++
++      while (true) {
++        const { value, done } = await reader.read();
++        if (done) break;
++        stream.push(decoder.decode(value));
++      }
++
++      expect(stream).toEqual(
++        [
++          'id: 939fbdb8dbb9b4c5944cbbe687c977c2',
++          'event: grounding',
++          'data: {"citations":[{"title":"公务员考试时政热点【2025年3月3日】_公务员考试网_华图教育","url":"http://www.huatu.com/2025/0303/2803685.html"},{"title":"外交部新闻（2025年3月3日）","url":"https://view.inews.qq.com/a/20250303A02NLC00?scene=qqsearch"}]}\n',
++          'id: 939fbdb8dbb9b4c5944cbbe687c977c2',
++          'event: text',
++          'data: "为您"\n',
++          'id: 939fbdb8dbb9b4c5944cbbe687c977c2',
++          'event: text',
++          'data: "找到"\n',
++        ].map((line) => `${line}\n`),
++      );
++
++      expect((await reader.read()).done).toBe(true);
++    });
++  });
++});
 diff --git a/src/libs/agent-runtime/hunyuan/index.ts b/src/libs/agent-runtime/hunyuan/index.ts
-index 728e43157dcde..27d3f2c5ab490 100644
+index 728e43157dcde..710f3322b5ff6 100644
 --- a/src/libs/agent-runtime/hunyuan/index.ts
 +++ b/src/libs/agent-runtime/hunyuan/index.ts
-@@ -16,13 +16,13 @@ export const LobeHunyuanAI = LobeOpenAICompatibleFactory({
+@@ -15,14 +15,15 @@ export const LobeHunyuanAI = LobeOpenAICompatibleFactory({
+ 
        return {
          ...rest,
++        stream: true,
          ...(enabledSearch && {
 -          /*
            citation: true,
@@ -153,6 +308,19 @@ index 728e43157dcde..27d3f2c5ab490 100644
          }),
        } as any;
      },
+diff --git a/src/libs/agent-runtime/qwen/index.ts b/src/libs/agent-runtime/qwen/index.ts
+index 3ca2582327f1d..74ffe1b11664c 100644
+--- a/src/libs/agent-runtime/qwen/index.ts
++++ b/src/libs/agent-runtime/qwen/index.ts
+@@ -35,7 +35,7 @@ export const LobeQwenAI = LobeOpenAICompatibleFactory({
+           : presence_penalty !== undefined && presence_penalty >= -2 && presence_penalty <= 2
+             ? presence_penalty
+             : undefined,
+-        stream: !payload.tools,
++        stream: true,
+         temperature:
+           temperature !== undefined && temperature >= 0 && temperature < 2
+             ? temperature
 diff --git a/src/libs/agent-runtime/utils/streams/openai.ts b/src/libs/agent-runtime/utils/streams/openai.ts
 index 3cac3e173f294..e07b359626232 100644
 --- a/src/libs/agent-runtime/utils/streams/openai.ts
@@ -223,11 +391,130 @@ index fb345e070a805..c362e114e2f19 100644
    thinking?: {
      id: string;
      name: string;
+diff --git a/src/libs/agent-runtime/wenxin/index.test.ts b/src/libs/agent-runtime/wenxin/index.test.ts
+new file mode 100644
+index 0000000000000..7db7b3c0b992d
+--- /dev/null
++++ b/src/libs/agent-runtime/wenxin/index.test.ts
+@@ -0,0 +1,113 @@
++// @vitest-environment node
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++import { LobeOpenAICompatibleRuntime, ModelProvider } from '@/libs/agent-runtime';
++import { testProvider } from '@/libs/agent-runtime/providerTestUtils';
++
++import { LobeWenxinAI } from './index';
++
++testProvider({
++  Runtime: LobeWenxinAI,
++  provider: ModelProvider.Wenxin,
++  defaultBaseURL: 'https://qianfan.baidubce.com/v2',
++  chatDebugEnv: 'DEBUG_WENXIN_CHAT_COMPLETION',
++  chatModel: 'ernie-speed-128k',
++});
++
++// Mock the console.error to avoid polluting test output
++vi.spyOn(console, 'error').mockImplementation(() => {});
++
++let instance: LobeOpenAICompatibleRuntime;
++
++beforeEach(() => {
++  instance = new LobeWenxinAI({ apiKey: 'test' });
++
++  // 使用 vi.spyOn 来模拟 chat.completions.create 方法
++  vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
++    new ReadableStream() as any,
++  );
++});
++
++describe('LobeWenxinAI', () => {
++  describe('chat', () => {
++    it('should with search citations', async () => {
++      const data = [
++        {
++          id: "as-bhrxwy5fq1",
++          object: "chat.completion.chunk",
++          created: 1741000028,
++          model: "ernie-4.0-8k-latest",
++          choices: [
++            {
++              index: 0,
++              delta: { content: "今天是**", role: "assistant" },
++              flag: 0
++            }
++          ],
++          search_results: [
++            { index: 1, url: "http://www.mnw.cn/news/shehui/", title: "社会新闻" },
++            { index: 2, url: "https://www.chinanews.com.cn/sh/2025/03-01/10376297.shtml", title: "中越边民共庆“春龙节”" },
++            { index: 3, url: "https://www.chinanews.com/china/index.shtml", title: "中国新闻网_时政" }
++          ]
++        },
++        {
++          id: "as-bhrxwy5fq1",
++          object: "chat.completion.chunk",
++          created: 1741000028,
++          model: "ernie-4.0-8k-latest",
++          choices: [
++            {
++              index: 0,
++              delta: { content: "20" },
++              flag: 0
++            }
++          ]
++        }
++      ];
++
++      const mockStream = new ReadableStream({
++        start(controller) {
++          data.forEach((chunk) => {
++            controller.enqueue(chunk);
++          });
++
++          controller.close();
++        },
++      });
++
++      vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(mockStream as any);
++
++      const result = await instance.chat({
++        messages: [{ content: 'Hello', role: 'user' }],
++        model: 'mistralai/mistral-7b-instruct:free',
++        temperature: 0,
++      });
++
++      const decoder = new TextDecoder();
++      const reader = result.body!.getReader();
++      const stream: string[] = [];
++
++      while (true) {
++        const { value, done } = await reader.read();
++        if (done) break;
++        stream.push(decoder.decode(value));
++      }
++
++      expect(stream).toEqual(
++        [
++          'id: as-bhrxwy5fq1',
++          'event: grounding',
++          'data: {"citations":[{"title":"社会新闻","url":"http://www.mnw.cn/news/shehui/"},{"title":"中越边民共庆“春龙节”","url":"https://www.chinanews.com.cn/sh/2025/03-01/10376297.shtml"},{"title":"中国新闻网_时政","url":"https://www.chinanews.com/china/index.shtml"}]}\n',
++          'id: as-bhrxwy5fq1',
++          'event: text',
++          'data: "今天是**"\n',
++          'id: as-bhrxwy5fq1',
++          'event: text',
++          'data: "20"\n',
++        ].map((line) => `${line}\n`),
++      );
++
++      expect((await reader.read()).done).toBe(true);
++    });
++  });
++});
 diff --git a/src/libs/agent-runtime/wenxin/index.ts b/src/libs/agent-runtime/wenxin/index.ts
-index c324e9b9bc695..85bed26c08c5b 100644
+index c324e9b9bc695..d670121551d1a 100644
 --- a/src/libs/agent-runtime/wenxin/index.ts
 +++ b/src/libs/agent-runtime/wenxin/index.ts
-@@ -3,6 +3,22 @@ import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
+@@ -3,6 +3,23 @@ import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
  
  export const LobeWenxinAI = LobeOpenAICompatibleFactory({
    baseURL: 'https://qianfan.baidubce.com/v2',
@@ -237,6 +524,7 @@ index c324e9b9bc695..85bed26c08c5b 100644
 +
 +      return {
 +        ...rest,
++        stream: true,
 +        ...(enabledSearch && {
 +          web_search: {
 +            enable: true,
