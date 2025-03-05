@@ -1,9 +1,9 @@
 diff --git a/searx/engines/chinaso.py b/searx/engines/chinaso.py
 new file mode 100644
-index 00000000000..a6e76194605
+index 00000000000..f83bd5fbeee
 --- /dev/null
 +++ b/searx/engines/chinaso.py
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,142 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""ChinaSo: A search engine from ChinaSo."""
 +
@@ -38,6 +38,11 @@ index 00000000000..a6e76194605
 +base_url = "https://www.chinaso.com"
 +
 +
++def init(_):
++    if chinaso_category not in parsers:
++        raise SearxEngineAPIException(f"Unsupported category: {chinaso_category}")
++
++
 +def request(query, params):
 +    query_params = {"q": query}
 +
@@ -46,19 +51,16 @@ index 00000000000..a6e76194605
 +        query_params["etime"] = 'now'
 +
 +    category_config = {
-+        'news': {'endpoint': '/v5/general/v1/web/search', 'params': {'pn': params["pageno"], 'ps': 10}},
++        'news': {'endpoint': '/v5/general/v1/web/search', 'params': {'pn': params["pageno"], 'ps': results_per_page}},
 +        'images': {
 +            'endpoint': '/v5/general/v1/search/image',
-+            'params': {'start_index': (params["pageno"] - 1) * 10, 'rn': 10},
++            'params': {'start_index': (params["pageno"] - 1) * results_per_page, 'rn': results_per_page},
 +        },
 +        'videos': {
 +            'endpoint': '/v5/general/v1/search/video',
-+            'params': {'start_index': (params["pageno"] - 1) * 10, 'rn': 10},
++            'params': {'start_index': (params["pageno"] - 1) * results_per_page, 'rn': results_per_page},
 +        },
 +    }
-+
-+    if chinaso_category not in category_config:
-+        raise SearxEngineAPIException(f"Unsupported category: {chinaso_category}")
 +
 +    query_params.update(category_config[chinaso_category]['params'])
 +
@@ -75,15 +77,12 @@ index 00000000000..a6e76194605
 +
 +    parsers = {'news': parse_news, 'images': parse_images, 'videos': parse_videos}
 +
-+    if chinaso_category not in parsers:
-+        raise SearxEngineAPIException(f"Unsupported category: {chinaso_category}")
-+
 +    return parsers[chinaso_category](data)
 +
 +
 +def parse_news(data):
 +    results = []
-+    if "data" not in data or "data" not in data["data"]:
++    if not data.get("data", {}).get("data"):
 +        raise SearxEngineAPIException("Invalid response")
 +
 +    for entry in data["data"]["data"]:
@@ -107,7 +106,7 @@ index 00000000000..a6e76194605
 +
 +def parse_images(data):
 +    results = []
-+    if "data" not in data or "arrRes" not in data["data"]:
++    if not data.get("data", {}).get("arrRes"):
 +        raise SearxEngineAPIException("Invalid response")
 +
 +    for entry in data["data"]["arrRes"]:
@@ -126,7 +125,7 @@ index 00000000000..a6e76194605
 +
 +def parse_videos(data):
 +    results = []
-+    if "data" not in data or "arrRes" not in data["data"]:
++    if not data.get("data", {}).get("arrRes"):
 +        raise SearxEngineAPIException("Invalid response")
 +
 +    for entry in data["data"]["arrRes"]:
