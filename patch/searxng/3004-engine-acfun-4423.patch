@@ -1,9 +1,9 @@
 diff --git a/searx/engines/acfun.py b/searx/engines/acfun.py
 new file mode 100644
-index 00000000000..ee37b742640
+index 00000000000..3f7b7cdfd43
 --- /dev/null
 +++ b/searx/engines/acfun.py
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,108 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Acfun search engine for searxng"""
 +
@@ -11,6 +11,9 @@ index 00000000000..ee37b742640
 +import re
 +import json
 +from datetime import datetime, timedelta
++from lxml import html
++
++from searx.utils import extract_text
 +
 +# Metadata
 +about = {
@@ -49,12 +52,17 @@ index 00000000000..ee37b742640
 +            if not raw_html:
 +                continue
 +
-+            video_blocks = re.findall(r'<div class="search-video".*?</div>\s*</div>', raw_html, re.DOTALL)
++            tree = html.fromstring(raw_html)
++
++            video_blocks = tree.xpath('//div[contains(@class, "search-video")]')
++            if not video_blocks:
++                continue
 +
 +            for video_block in video_blocks:
 +                video_info = extract_video_data(video_block)
 +                if video_info and video_info["title"] and video_info["url"]:
 +                    results.append(video_info)
++
 +        except json.JSONDecodeError:
 +            continue
 +
@@ -62,37 +70,32 @@ index 00000000000..ee37b742640
 +
 +
 +def extract_video_data(video_block):
-+    """Extract video data from a single video block."""
 +    try:
-+        # Extract title and content ID from data-exposure-log
-+        exposure_log_match = re.search(r'data-exposure-log=\'({.*?})\'', video_block)
++        data_exposure_log = video_block.get('data-exposure-log')
++        video_data = json.loads(data_exposure_log)
 +
-+        video_data = json.loads(exposure_log_match.group(1))
-+        title = video_data.get("title", "")
 +        content_id = video_data.get("content_id", "")
++        title = video_data.get("title", "")
 +
-+        # Extract description, cover image, publish time, and duration
-+        description = re.search(r'<div class="video__main__intro ellipsis2">(.*?)</div>', video_block, re.DOTALL)
-+        cover_image = re.search(r'<img src="(.*?)" alt=', video_block)
-+        publish_time = re.search(r'<span class="info__create-time">(.*?)</span>', video_block)
-+        duration = re.search(r'<span class="video__duration">(.*?)</span>', video_block)
-+
-+        # Parse url and iframe_url
 +        url = f"{base_url}/v/ac{content_id}"
-+        iframe_url = f"{base_url}/player/ac{content_id}"
++        iframe_src = f"{base_url}/player/ac{content_id}"
 +
-+        # Parse publish_time and duration
++        create_time = extract_text(video_block.xpath('.//span[@class="info__create-time"]'))
++        video_cover = extract_text(video_block.xpath('.//div[@class="video__cover"]/a/img/@src')[0])
++        video_duration = extract_text(video_block.xpath('.//span[@class="video__duration"]'))
++        video_intro = extract_text(video_block.xpath('.//div[@class="video__main__intro"]'))
++
 +        published_date = None
-+        if publish_time:
++        if create_time:
 +            try:
-+                published_date = datetime.strptime(publish_time.group(1).strip(), "%Y-%m-%d")
++                published_date = datetime.strptime(create_time.strip(), "%Y-%m-%d")
 +            except (ValueError, TypeError):
 +                pass
 +
 +        length = None
-+        if duration:
++        if video_duration:
 +            try:
-+                timediff = datetime.strptime(duration.group(1).strip(), "%M:%S")
++                timediff = datetime.strptime(video_duration.strip(), "%M:%S")
 +                length = timedelta(minutes=timediff.minute, seconds=timediff.second)
 +            except (ValueError, TypeError):
 +                pass
@@ -100,11 +103,12 @@ index 00000000000..ee37b742640
 +        return {
 +            "title": title,
 +            "url": url,
-+            "content": description.group(1).strip(),
-+            "thumbnail": cover_image.group(1),
++            "content": video_intro,
++            "thumbnail": video_cover,
 +            "length": length,
 +            "publishedDate": published_date,
-+            "iframe_src": iframe_url,
++            "iframe_src": iframe_src,
 +        }
++
 +    except (json.JSONDecodeError, AttributeError, TypeError, ValueError):
 +        return None
