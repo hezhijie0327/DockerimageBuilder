@@ -1,14 +1,17 @@
 diff --git a/searx/engines/baidu.py b/searx/engines/baidu.py
 new file mode 100644
-index 00000000000..b0d0b5353d4
+index 00000000000..6aa0716fd94
 --- /dev/null
 +++ b/searx/engines/baidu.py
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,75 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
-+"""Baidu
++"""Baidu_
 +
-+.. Website: https://www.baidu.com
++.. _Baidu: https://www.baidu.com
 +"""
++
++# There exits a https://github.com/ohblue/baidu-serp-api/
++# but we don't use it here (may we can learn from).
 +
 +from urllib.parse import urlencode
 +from datetime import datetime
@@ -25,29 +28,36 @@ index 00000000000..b0d0b5353d4
 +}
 +
 +paging = True
-+results_per_page = 10
 +categories = ["general"]
-+
 +base_url = "https://www.baidu.com/s"
++results_per_page = 10
 +
 +
 +def request(query, params):
 +    keyword = query.strip()
 +
-+    query_params = {"wd": keyword, "pn": (params["pageno"] - 1) * results_per_page, "rn": results_per_page, "tn": "json"}
++    query_params = {
++        "wd": keyword,
++        "rn": results_per_page,
++        "pn": (params["pageno"] - 1) * results_per_page,
++        "tn": "json",
++    }
 +
 +    params["url"] = f"{base_url}?{urlencode(query_params)}"
 +    return params
 +
 +
 +def response(resp):
-+    data = resp.json()
++    try:
++        data = resp.json()
++    except Exception as e:
++        raise SearxEngineAPIException(f"Invalid response: {e}") from e
 +    results = []
 +
-+    entries = data.get("feed", {}).get("entry")
-+    if not entries:
++    if "feed" not in data or "entry" not in data["feed"]:
 +        raise SearxEngineAPIException("Invalid response")
-+    for entry in entries:
++
++    for entry in data["feed"]["entry"]:
 +        if not entry.get("title") or not entry.get("url"):
 +            continue
 +
@@ -64,6 +74,7 @@ index 00000000000..b0d0b5353d4
 +                "url": entry["url"],
 +                "content": entry.get("abs", ""),
 +                "publishedDate": published_date,
++                # "source": entry.get('source')
 +            }
 +        )
 +
