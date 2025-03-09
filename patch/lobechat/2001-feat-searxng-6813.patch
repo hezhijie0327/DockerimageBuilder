@@ -398,7 +398,7 @@ index 5bf24f48730c2..cbbe7424bf93d 100644
    },
  };
 diff --git a/src/server/modules/SearXNG.ts b/src/server/modules/SearXNG.ts
-index d2f5872bbce07..e974aaabfd053 100644
+index d2f5872bbce07..b9266538c1c09 100644
 --- a/src/server/modules/SearXNG.ts
 +++ b/src/server/modules/SearXNG.ts
 @@ -10,12 +10,13 @@ export class SearXNGClient {
@@ -412,7 +412,7 @@ index d2f5872bbce07..e974aaabfd053 100644
          engines: engines?.join(','),
          format: 'json',
          q: query,
-+        time_range: time_range,
++        ...( time_range !== 'anytime' ? { time_range: time_range } : {} )
        });
  
        const response = await fetch(urlJoin(this.baseUrl, `/search?${searchParams}`));
@@ -503,7 +503,7 @@ index 28b85d9d9573c..162ef6bfdf933 100644
  
        await get().updatePluginState(id, data);
 diff --git a/src/tools/web-browsing/components/SearchBar.tsx b/src/tools/web-browsing/components/SearchBar.tsx
-index 2b630831d207f..21531eefde733 100644
+index 2b630831d207f..0b893ed9f97ff 100644
 --- a/src/tools/web-browsing/components/SearchBar.tsx
 +++ b/src/tools/web-browsing/components/SearchBar.tsx
 @@ -1,5 +1,5 @@
@@ -525,7 +525,7 @@ index 2b630831d207f..21531eefde733 100644
  const SearchBar = memo<SearchBarProps>(
    ({
      defaultEngines = [],
-+    defaultTimeRange = '',
++    defaultTimeRange,
      aiSummary = true,
      defaultQuery,
      tooltip = true,
@@ -542,7 +542,7 @@ index 2b630831d207f..21531eefde733 100644
 +      const data: SearchQuery = {
 +        query,
 +        searchEngines: engines,
-+        ...(time_range !== '' && { searchTimeRange: time_range }),
++        searchTimeRange: time_range,
 +      };
        onSearch?.(data);
        await reSearchWithSearXNG(messageId, data, { aiSummary });
@@ -560,7 +560,7 @@ index 2b630831d207f..21531eefde733 100644
 +            onChange={(e) => setTimeRange(e.target.value)}
 +            optionType="button"
 +            options={[
-+              { label: t('search.timeRange.anytime'), value: '' },
++              { label: t('search.timeRange.anytime'), value: 'anytime' },
 +              { label: t('search.timeRange.day'), value: 'day' },
 +              { label: t('search.timeRange.week'), value: 'week' },
 +              { label: t('search.timeRange.month'), value: 'month' },
@@ -573,7 +573,7 @@ index 2b630831d207f..21531eefde733 100644
      );
    },
 diff --git a/src/tools/web-browsing/index.ts b/src/tools/web-browsing/index.ts
-index 7e32a75a70932..03c9432739d98 100644
+index 7e32a75a70932..75b0affeb9883 100644
 --- a/src/tools/web-browsing/index.ts
 +++ b/src/tools/web-browsing/index.ts
 @@ -19,13 +19,14 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
@@ -593,7 +593,7 @@ index 7e32a75a70932..03c9432739d98 100644
                  'google',
                  'bilibili',
                  'bing',
-@@ -44,11 +45,32 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
+@@ -44,11 +45,33 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
                  'unsplash',
                  'vimeo',
                  'youtube',
@@ -616,6 +616,7 @@ index 7e32a75a70932..03c9432739d98 100644
 +          searchTimeRange: {
 +            description: "(optional) [string] Specifies time range of search results.",
 +            enum: [
++              'anytime',
 +              'day',
 +              'week',
 +              'month',
@@ -627,10 +628,10 @@ index 7e32a75a70932..03c9432739d98 100644
          required: ['query'],
          type: 'object',
 diff --git a/src/tools/web-browsing/systemRole.ts b/src/tools/web-browsing/systemRole.ts
-index 1a960d0476fcd..292c34dbf0c6f 100644
+index 1a960d0476fcd..a7edf9ec35c9d 100644
 --- a/src/tools/web-browsing/systemRole.ts
 +++ b/src/tools/web-browsing/systemRole.ts
-@@ -31,8 +31,26 @@ Choose search engines based on the query type:
+@@ -31,8 +31,27 @@ Choose search engines based on the query type:
  - Images: unsplash, pinterest
  - Entertainment: imdb, reddit
  - For region-specific information, prefer search engines popular in that region
@@ -652,6 +653,7 @@ index 1a960d0476fcd..292c34dbf0c6f 100644
 +- For recent developments: week
 +- For ongoing trends or updates: month
 +- For long-term insights: year
++- For no time restriction: anytime
 +</search_time_range_selection>
 +
  <citation_requirements>
