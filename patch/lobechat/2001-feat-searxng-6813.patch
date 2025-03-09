@@ -398,7 +398,7 @@ index 5bf24f48730c2..cbbe7424bf93d 100644
    },
  };
 diff --git a/src/server/modules/SearXNG.ts b/src/server/modules/SearXNG.ts
-index d2f5872bbce07..b9266538c1c09 100644
+index d2f5872bbce07..9bc6000cef5ea 100644
 --- a/src/server/modules/SearXNG.ts
 +++ b/src/server/modules/SearXNG.ts
 @@ -10,12 +10,13 @@ export class SearXNGClient {
@@ -412,7 +412,7 @@ index d2f5872bbce07..b9266538c1c09 100644
          engines: engines?.join(','),
          format: 'json',
          q: query,
-+        ...( time_range !== 'anytime' ? { time_range: time_range } : {} )
++        ...( time_range !== 'anytime' ? { time_range: time_range } : {} ),
        });
  
        const response = await fetch(urlJoin(this.baseUrl, `/search?${searchParams}`));
@@ -453,19 +453,83 @@ index 382979b452d31..50c404ca4f14d 100644
  
    crawlPage(url: string) {
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
-index d95215d26dd4a..22ae559fdd6fd 100644
+index d95215d26dd4a..a4f3b1140378b 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
-@@ -88,7 +88,7 @@ describe('searXNG actions', () => {
+@@ -83,12 +83,71 @@ describe('searXNG actions', () => {
+       const expectedContent: SearchContent[] = [
+         {
+           content: 'Test Content',
++          img_src: undefined,
+           title: 'Test Result',
+           url: 'https://test.com',
          },
        ];
  
 -      expect(searchService.search).toHaveBeenCalledWith('test query', ['google']);
 +      expect(searchService.search).toHaveBeenCalledWith('test query', ['google'], undefined);
++      expect(result.current.searchLoading[messageId]).toBe(false);
++      expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
++        messageId,
++        JSON.stringify(expectedContent),
++      );
++    });
++
++    it('should handle successful search with image', async () => {
++      const mockResponse: SearchResponse = {
++        results: [
++          {
++            title: 'Test Result with image',
++            content: 'Test Content',
++            url: 'https://test.com',
++            img_src: 'https://test.com/test.jpg',
++            category: 'images',
++            engine: 'duckduckgo images',
++            engines: ['duckduckgo images'],
++            parsed_url: ['test.com'],
++            positions: [1],
++            score: 1,
++            template: 'images.html',
++          },
++        ],
++        answers: [],
++        corrections: [],
++        infoboxes: [],
++        number_of_results: 1,
++        query: 'test',
++        suggestions: [],
++        unresponsive_engines: [],
++      };
++
++      (searchService.search as Mock).mockResolvedValue(mockResponse);
++
++      const { result } = renderHook(() => useChatStore());
++      const { searchWithSearXNG } = result.current;
++
++      const messageId = 'test-message-id';
++      const query: SearchQuery = {
++        query: 'test query',
++        searchEngines: ['duckduckgo images'],
++      };
++
++      await act(async () => {
++        await searchWithSearXNG(messageId, query);
++      });
++
++      const expectedContent: SearchContent[] = [
++        {
++          content: 'Test Content',
++          img_src: 'https://test.com/test.jpg',
++          title: 'Test Result with image',
++          url: 'https://test.com',
++        },
++      ];
++
++      expect(searchService.search).toHaveBeenCalledWith('test query', ['duckduckgo images'], undefined);
        expect(result.current.searchLoading[messageId]).toBe(false);
        expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
          messageId,
-@@ -143,6 +143,7 @@ describe('searXNG actions', () => {
+@@ -143,6 +202,7 @@ describe('searXNG actions', () => {
        const query: SearchQuery = {
          query: 'test query',
          searchEngines: ['custom-engine'],
@@ -473,7 +537,7 @@ index d95215d26dd4a..22ae559fdd6fd 100644
        };
  
        await act(async () => {
-@@ -150,7 +151,7 @@ describe('searXNG actions', () => {
+@@ -150,7 +210,7 @@ describe('searXNG actions', () => {
        });
  
        expect(searchService.search).toHaveBeenCalledTimes(2);
@@ -483,7 +547,7 @@ index d95215d26dd4a..22ae559fdd6fd 100644
        expect(result.current.updatePluginArguments).toHaveBeenCalledWith(messageId, {
          query: 'test query',
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.ts b/src/store/chat/slices/builtinTool/actions/searXNG.ts
-index 28b85d9d9573c..162ef6bfdf933 100644
+index 28b85d9d9573c..3a13c2e41fb5e 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.ts
 @@ -141,12 +141,12 @@ export const searchSlice: StateCreator<
@@ -502,6 +566,14 @@ index 28b85d9d9573c..162ef6bfdf933 100644
        }
  
        await get().updatePluginState(id, data);
+@@ -175,6 +175,7 @@ export const searchSlice: StateCreator<
+     // add 15 search results to message content
+     const searchContent: SearchContent[] = data.results.slice(0, 15).map((item) => ({
+       content: item.content,
++      img_src: item.img_src,
+       title: item.title,
+       url: item.url,
+     }));
 diff --git a/src/tools/web-browsing/components/SearchBar.tsx b/src/tools/web-browsing/components/SearchBar.tsx
 index 2b630831d207f..0b893ed9f97ff 100644
 --- a/src/tools/web-browsing/components/SearchBar.tsx
@@ -628,7 +700,7 @@ index 7e32a75a70932..75b0affeb9883 100644
          required: ['query'],
          type: 'object',
 diff --git a/src/tools/web-browsing/systemRole.ts b/src/tools/web-browsing/systemRole.ts
-index 1a960d0476fcd..a7edf9ec35c9d 100644
+index 1a960d0476fcd..4818685677c05 100644
 --- a/src/tools/web-browsing/systemRole.ts
 +++ b/src/tools/web-browsing/systemRole.ts
 @@ -31,8 +31,27 @@ Choose search engines based on the query type:
@@ -649,18 +721,18 @@ index 1a960d0476fcd..a7edf9ec35c9d 100644
  
 +<search_time_range_selection>
 +Only specify a time range if the query is time-sensitive:
++- For no time restriction: anytime
 +- For the latest updates: day
 +- For recent developments: week
 +- For ongoing trends or updates: month
 +- For long-term insights: year
-+- For no time restriction: anytime
 +</search_time_range_selection>
 +
  <citation_requirements>
  - Always cite sources using markdown footnote format (e.g., [^1])
  - List all referenced URLs at the end of your response
 diff --git a/src/types/tool/search.ts b/src/types/tool/search.ts
-index 66e7314f2aa66..248d9f444310a 100644
+index 66e7314f2aa66..7f980c208b832 100644
 --- a/src/types/tool/search.ts
 +++ b/src/types/tool/search.ts
 @@ -1,6 +1,7 @@
@@ -671,7 +743,7 @@ index 66e7314f2aa66..248d9f444310a 100644
  }
  
  export const SEARCH_SEARXNG_NOT_CONFIG = 'SearXNG is not configured';
-@@ -22,12 +23,14 @@ export interface SearchResult {
+@@ -22,18 +23,21 @@ export interface SearchResult {
    engine: string;
    engines: string[];
    iframe_src?: string;
@@ -683,6 +755,13 @@ index 66e7314f2aa66..248d9f444310a 100644
    template: string;
    thumbnail?: string | null;
 +  thumbnail_src?: string;
+   title: string;
+   url: string;
+ }
+ 
+ export interface SearchContent {
+   content?: string;
++  img_src?: string;
    title: string;
    url: string;
  }
