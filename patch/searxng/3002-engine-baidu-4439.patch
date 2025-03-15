@@ -1,20 +1,21 @@
 diff --git a/searx/engines/baidu.py b/searx/engines/baidu.py
-index 86626e87e6c..b4aba587d71 100644
+index 86626e87e6c..5c8e5595f15 100644
 --- a/searx/engines/baidu.py
 +++ b/searx/engines/baidu.py
-@@ -9,8 +9,11 @@
+@@ -9,8 +9,12 @@
  
  from urllib.parse import urlencode
  from datetime import datetime
 +import time
 +import json
++import re
  
  from searx.exceptions import SearxEngineAPIException
 +from searx.utils import html_to_text
  
  about = {
      "website": "https://www.baidu.com",
-@@ -23,33 +26,85 @@
+@@ -23,33 +27,91 @@
  }
  
  paging = True
@@ -96,7 +97,13 @@ index 86626e87e6c..b4aba587d71 100644
  def response(resp):
      try:
 -        data = resp.json()
-+        data = json.loads(resp.text, strict=False)
++        text = resp.text
++
++        if baidu_category == 'images':
++            # fix Invalid \escape
++            text = re.sub(r'\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', text)
++
++        data = json.loads(text, strict=False)
      except Exception as e:
          raise SearxEngineAPIException(f"Invalid response: {e}") from e
 -    results = []
@@ -113,7 +120,7 @@ index 86626e87e6c..b4aba587d71 100644
          raise SearxEngineAPIException("Invalid response")
  
      for entry in data["feed"]["entry"]:
-@@ -69,8 +124,44 @@ def response(resp):
+@@ -69,8 +131,44 @@ def response(resp):
                  "url": entry["url"],
                  "content": entry.get("abs", ""),
                  "publishedDate": published_date,
@@ -122,7 +129,7 @@ index 86626e87e6c..b4aba587d71 100644
          )
 +    return results
 +
- 
++
 +def parse_images(data):
 +    results = []
 +    if "data" in data:
@@ -144,7 +151,7 @@ index 86626e87e6c..b4aba587d71 100644
 +            )
 +    return results
 +
-+
+ 
 +def parse_it(data):
 +    results = []
 +    if not data.get("data", {}).get("documents", {}).get("data"):
