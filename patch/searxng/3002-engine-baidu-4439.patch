@@ -1,21 +1,20 @@
 diff --git a/searx/engines/baidu.py b/searx/engines/baidu.py
-index 86626e87e6c..5c8e5595f15 100644
+index 86626e87e6c..1c9d867339e 100644
 --- a/searx/engines/baidu.py
 +++ b/searx/engines/baidu.py
-@@ -9,8 +9,12 @@
+@@ -9,8 +9,11 @@
  
  from urllib.parse import urlencode
  from datetime import datetime
 +import time
 +import json
-+import re
  
  from searx.exceptions import SearxEngineAPIException
 +from searx.utils import html_to_text
  
  about = {
      "website": "https://www.baidu.com",
-@@ -23,33 +27,91 @@
+@@ -23,33 +26,86 @@
  }
  
  paging = True
@@ -95,20 +94,18 @@ index 86626e87e6c..5c8e5595f15 100644
  
  
  def response(resp):
-     try:
+-    try:
 -        data = resp.json()
-+        text = resp.text
-+
-+        if baidu_category == 'images':
-+            # fix Invalid \escape
-+            text = re.sub(r'\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', text)
-+
-+        data = json.loads(text, strict=False)
-     except Exception as e:
-         raise SearxEngineAPIException(f"Invalid response: {e}") from e
+-    except Exception as e:
+-        raise SearxEngineAPIException(f"Invalid response: {e}") from e
 -    results = []
  
 -    if "feed" not in data or "entry" not in data["feed"]:
++    text = resp.text
++    if baidu_category == 'images':
++        # baidu's JSON encoder wrongly quotes / and ' characters by \\ and \'
++        text = text.replace(r"\/", "/").replace(r"\'", "'")
++    data = json.loads(text, strict=False)
 +    parsers = {'general': parse_general, 'images': parse_images, 'it': parse_it}
 +
 +    return parsers[baidu_category](data)
@@ -120,7 +117,7 @@ index 86626e87e6c..5c8e5595f15 100644
          raise SearxEngineAPIException("Invalid response")
  
      for entry in data["feed"]["entry"]:
-@@ -69,8 +131,44 @@ def response(resp):
+@@ -69,8 +125,53 @@ def response(resp):
                  "url": entry["url"],
                  "content": entry.get("abs", ""),
                  "publishedDate": published_date,
@@ -129,29 +126,38 @@ index 86626e87e6c..5c8e5595f15 100644
          )
 +    return results
 +
-+
+ 
 +def parse_images(data):
 +    results = []
 +    if "data" in data:
 +        for item in data["data"]:
++            if not item:
++                # the last item in the JSON list is empty, the JSON string ends with "}, {}]"
++                continue
 +            replace_url = item.get("replaceUrl", [{}])[0]
-+            from_url = replace_url.get("FromURL", "").replace("\\/", "/")
-+            img_src = replace_url.get("ObjURL", "").replace("\\/", "/")
-+
++            width = item.get("width")
++            height = item.get("height")
++            img_date = item.get("bdImgnewsDate")
++            publishedDate = None
++            if img_date:
++                publishedDate = datetime.strptime(img_date, "%Y-%m-%d %H:%M")
 +            results.append(
 +                {
 +                    "template": "images.html",
-+                    "url": from_url,
-+                    "thumbnail_src": item.get("thumbURL", ""),
-+                    "img_src": img_src,
-+                    "content": html_to_text(item.get("fromPageTitleEnc", "")),
-+                    "title": html_to_text(item.get("fromPageTitle", "")),
-+                    "source": item.get("fromURLHost", ""),
++                    "url": replace_url.get("FromURL"),
++                    "thumbnail_src": item.get("thumbURL"),
++                    "img_src": replace_url.get("ObjURL"),
++                    "title": html_to_text(item.get("fromPageTitle")),
++                    "source": item.get("fromURLHost"),
++                    "resolution": f"{width} x {height}",
++                    "img_format": item.get("type"),
++                    "filesize": item.get("filesize"),
++                    "publishedDate": publishedDate,
 +                }
 +            )
 +    return results
 +
- 
++
 +def parse_it(data):
 +    results = []
 +    if not data.get("data", {}).get("documents", {}).get("data"):
