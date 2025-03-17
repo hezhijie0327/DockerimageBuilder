@@ -1,9 +1,9 @@
 diff --git a/searx/engines/quark.py b/searx/engines/quark.py
 new file mode 100644
-index 00000000000..2fda234d088
+index 00000000000..886a6fc8c79
 --- /dev/null
 +++ b/searx/engines/quark.py
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,327 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Quark (Shenma) search engine for searxng"""
 +
@@ -129,7 +129,10 @@ index 00000000000..2fda234d088
 +                'ai_page': parse_ai_page,
 +                'baike_sc': parse_baike_sc,
 +                'finance_shuidi': parse_finance_shuidi,
++                'kk_yidian_all': parse_kk_yidian_all,
 +                'life_show_general_image': parse_life_show_general_image,
++                'med_struct': parse_med_struct,
++                'music_new_song': parse_music_new_song,
 +                'nature_result': parse_nature_result,
 +                'news_uchq': parse_news_uchq,
 +                'ss_note': parse_ss_note,
@@ -210,6 +213,20 @@ index 00000000000..2fda234d088
 +    }
 +
 +
++def parse_kk_yidian_all(data):
++    content_list = []
++    for section in data.get('list_container', []):
++        for item in section.get('list_container', []):
++            if 'dot_text' in item:
++                content_list.append(item['dot_text'])
++
++    return {
++        "title": html_to_text(data.get('title')),
++        "url": data.get('title_url'),
++        "content": html_to_text(' | '.join(content_list)),
++    }
++
++
 +def parse_life_show_general_image(data):
 +    results = []
 +    for item in data.get('image', []):
@@ -223,6 +240,29 @@ index 00000000000..2fda234d088
 +                "source": item.get("site"),
 +                "resolution": f"{item['width']} x {item['height']}",
 +                "publishedDate": datetime.fromtimestamp(int(item.get("publish_time"))),
++            }
++        )
++    return results
++
++
++def parse_med_struct(data):
++    return {
++        "title": html_to_text(data.get('title')),
++        "url": data.get('message', {}).get('statistics', {}).get('nu'),
++        "content": html_to_text(data.get('message', {}).get('content_text')),
++        "thumbnail": data.get('message', {}).get('video_img'),
++    }
++
++
++def parse_music_new_song(data):
++    results = []
++    for item in data.get('hit3', []):
++        results.append(
++            {
++                "title": f"{item['song_name']} | {item['song_singer']}",
++                "url": item.get("play_url"),
++                "content": html_to_text(item.get("lyrics")),
++                "thumbnail": item.get("image_url"),
 +            }
 +        )
 +    return results
@@ -263,12 +303,11 @@ index 00000000000..2fda234d088
 +
 +
 +def parse_ss_pic_text(data):
-+    time_value = data.get('sourceProps', {}).get('time')
-+    if time_value is None or int(time_value) == 0:
++    try:
++        published_date = datetime.fromtimestamp(int(data.get('sourceProps', {}).get('time')))
++    except (ValueError, TypeError):
 +        # Sometime Quark will return 0, set published_date as None
 +        published_date = None
-+    else:
-+        published_date = datetime.fromtimestamp(int(time_value))
 +
 +    return {
 +        "title": html_to_text(data.get('titleProps', {}).get('content')),
