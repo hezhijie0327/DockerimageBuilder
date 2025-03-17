@@ -1,9 +1,9 @@
 diff --git a/searx/engines/quark.py b/searx/engines/quark.py
 new file mode 100644
-index 00000000000..4ca7b46cf88
+index 00000000000..2fda234d088
 --- /dev/null
 +++ b/searx/engines/quark.py
-@@ -0,0 +1,293 @@
+@@ -0,0 +1,288 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Quark (Shenma) search engine for searxng"""
 +
@@ -12,7 +12,7 @@ index 00000000000..4ca7b46cf88
 +import re
 +import json
 +
-+from searx.utils import html_to_text, searx_useragent
++from searx.utils import html_to_text, gen_useragent
 +from searx.exceptions import SearxEngineAPIException, SearxEngineCaptchaException
 +
 +# Metadata
@@ -35,6 +35,8 @@ index 00000000000..4ca7b46cf88
 +time_range_support = True
 +time_range_dict = {'day': '4', 'week': '3', 'month': '2', 'year': '1'}
 +
++CAPTCHA_PATTERN = r'\{[^{]*?"action"\s*:\s*"captcha"\s*,\s*"url"\s*:\s*"([^"]+)"[^{]*?\}'
++
 +
 +def is_alibaba_captcha(html):
 +    """
@@ -44,12 +46,7 @@ index 00000000000..4ca7b46cf88
 +
 +    Typically, the ban duration is around 15 minutes.
 +    """
-+    pattern = r'\{[^{]*?"action"\s*:\s*"captcha"\s*,\s*"url"\s*:\s*"([^"]+)"[^{]*?\}'
-+    match = re.search(pattern, html)
-+
-+    if match:
-+        captcha_url = match.group(1)
-+        raise SearxEngineCaptchaException(suspended_time=900, message=f"Alibaba CAPTCHA: {captcha_url}")
++    return bool(re.search(CAPTCHA_PATTERN, html))
 +
 +
 +def init(_):
@@ -87,7 +84,7 @@ index 00000000000..4ca7b46cf88
 +
 +    params["url"] = f"{query_url}?{urlencode(query_params)}"
 +    params["headers"] = {
-+        "User-Agent": searx_useragent(),
++        "User-Agent": gen_useragent(),
 +    }
 +    return params
 +
@@ -96,14 +93,14 @@ index 00000000000..4ca7b46cf88
 +    results = []
 +    text = resp.text
 +
-+    is_alibaba_captcha(text)
++    if is_alibaba_captcha(text):
++        raise SearxEngineCaptchaException(
++            suspended_time=900, message="Alibaba CAPTCHA detected. Please try again later."
++        )
 +
 +    if quark_category == 'images':
 +        data = json.loads(text)
 +        for item in data.get('data', {}).get('hit', {}).get('imgInfo', {}).get('item', []):
-+            width = item.get("width")
-+            height = item.get("height")
-+
 +            results.append(
 +                {
 +                    "template": "images.html",
@@ -112,7 +109,7 @@ index 00000000000..4ca7b46cf88
 +                    "img_src": item.get("bigPicUrl"),
 +                    "title": item.get("title"),
 +                    "source": item.get("site"),
-+                    "resolution": f"{width} x {height}",
++                    "resolution": f"{item['width']} x {item['height']}",
 +                    "publishedDate": datetime.fromtimestamp(int(item.get("publish_time"))),
 +                }
 +            )
@@ -192,9 +189,9 @@ index 00000000000..4ca7b46cf88
 +
 +def parse_finance_shuidi(data):
 +    content = " | ".join(
-+        filter(
-+            None,
-+            [
++        (
++            info
++            for info in [
 +                data.get('establish_time'),
 +                data.get('company_status'),
 +                data.get('controled_type'),
@@ -202,7 +199,8 @@ index 00000000000..4ca7b46cf88
 +                data.get('capital'),
 +                data.get('address'),
 +                data.get('business_scope'),
-+            ],
++            ]
++            if info
 +        )
 +    )
 +    return {
@@ -215,9 +213,6 @@ index 00000000000..4ca7b46cf88
 +def parse_life_show_general_image(data):
 +    results = []
 +    for item in data.get('image', []):
-+        width = item.get("width")
-+        height = item.get("height")
-+
 +        results.append(
 +            {
 +                "template": "images.html",
@@ -226,7 +221,7 @@ index 00000000000..4ca7b46cf88
 +                "img_src": item.get("bigPicUrl"),
 +                "title": item.get("title"),
 +                "source": item.get("site"),
-+                "resolution": f"{width} x {height}",
++                "resolution": f"{item['width']} x {item['height']}",
 +                "publishedDate": datetime.fromtimestamp(int(item.get("publish_time"))),
 +            }
 +        )
