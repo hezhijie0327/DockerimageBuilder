@@ -1,9 +1,9 @@
 diff --git a/searx/engines/quark.py b/searx/engines/quark.py
 new file mode 100644
-index 00000000000..7e8969e784d
+index 00000000000..1f98253f091
 --- /dev/null
 +++ b/searx/engines/quark.py
-@@ -0,0 +1,327 @@
+@@ -0,0 +1,338 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Quark (Shenma) search engine for searxng"""
 +
@@ -136,8 +136,13 @@ index 00000000000..7e8969e784d
 +                'nature_result': parse_nature_result,
 +                'news_uchq': parse_news_uchq,
 +                'ss_note': parse_ss_note,
-+                'ss_pic': parse_ss_pic_text,
-+                'ss_text': parse_ss_pic_text,
++
++                # ss_kv, ss_text, structure_web_novel use the same struct as ss_pic
++                'ss_pic': parse_ss_pic,
++                'ss_kv': parse_ss_pic,
++                'ss_text': parse_ss_pic,
++                'structure_web_novel': parse_ss_pic,
++
 +                'travel_dest_overview': parse_travel_dest_overview,
 +                'travel_ranking_list': parse_travel_ranking_list,
 +            }
@@ -302,18 +307,24 @@ index 00000000000..7e8969e784d
 +    }
 +
 +
-+def parse_ss_pic_text(data):
++def parse_ss_pic(data):
 +    try:
 +        published_date = datetime.fromtimestamp(int(data.get('sourceProps', {}).get('time')))
 +    except (ValueError, TypeError):
 +        # Sometime Quark will return 0, set published_date as None
 +        published_date = None
 +
++    try:
++        thumbnail = data.get('picListProps', [])[0].get('src')
++    except (ValueError, TypeError, IndexError):
++        thumbnail = None
++
 +    return {
-+        "title": html_to_text(data.get('titleProps', {}).get('content')),
-+        "url": data.get('sourceProps', {}).get('dest_url'),
-+        "content": html_to_text(data.get('summaryProps', {}).get('content')),
++        "title": html_to_text(data.get('titleProps', {}).get('content') or data.get('title')),
++        "url": data.get('sourceProps', {}).get('dest_url') or data.get('normal_url'),
++        "content": html_to_text(data.get('summaryProps', {}).get('content') or data.get('show_body')),
 +        "publishedDate": published_date,
++        "thumbnail": thumbnail,
 +    }
 +
 +
