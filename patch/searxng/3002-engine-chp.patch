@@ -1,22 +1,21 @@
-diff --git a/searx/engines/yaodian.py b/searx/engines/yaodian.py
+diff --git a/searx/engines/chp.py b/searx/engines/chp.py
 new file mode 100644
-index 00000000000..179051e1ef7
+index 00000000000..52adcd4a0a1
 --- /dev/null
-+++ b/searx/engines/yaodian.py
-@@ -0,0 +1,56 @@
++++ b/searx/engines/chp.py
+@@ -0,0 +1,53 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
-+"""China Pharmacopoeia (Yaodian) engine for searxng"""
++"""ChP (Chinese Pharmacopoeia) engine for searxng"""
 +
 +from json import loads, dumps
 +from datetime import datetime
 +
-+from searx.exceptions import SearxEngineAPIException
 +from searx.utils import html_to_text
 +
 +about = {
 +    "website": 'https://ydz.chp.org.cn/',
-+    "wikidata_id": None,
-+    "use_official_api": True,
++    "wikidata_id": 'Q111049218',
++    "use_official_api": False,
 +    "require_api_key": False,
 +    "results": 'JSON',
 +    "language": "zh",
@@ -32,8 +31,9 @@ index 00000000000..179051e1ef7
 +def request(query, params):
 +
 +    params['url'] = f'{base_url}/front-api/search'
-+    params['method'] = 'POST'
++
 +    params['headers']['Content-Type'] = 'application/json'
++    params['method'] = 'POST'
 +
 +    params['data'] = dumps({"keyword": query, "pageSize": results_per_page, "pageNum": params["pageno"]}).encode(
 +        'utf-8'
@@ -46,16 +46,13 @@ index 00000000000..179051e1ef7
 +    results = []
 +    json = loads(resp.text)
 +
-+    if not json.get("data", {}).get("list"):
-+        raise SearxEngineAPIException("Invalid response")
-+
-+    for entry in json["data"]["list"]:
++    for item in json.get('data', {}).get('list', []):
 +        results.append(
 +            {
-+                'content': html_to_text(f"{entry['bookName']} | {entry['pageNum']} | {entry['textContent']}"),
-+                'title': html_to_text(f"{entry['title']} | {entry['etitle']} | {entry['pinyinTitle']}"),
-+                'url': f'{base_url}/#/item?bookId={entry["bookId"]}&entryId={entry["id"]}',
-+                "publishedDate": datetime.strptime(entry["createTime"], "%Y-%m-%d %H:%M:%S"),
++                'content': html_to_text(f"{item['bookName']} | {item['pageNum']} | {item['textContent']}"),
++                'title': html_to_text(f"{item['title']} | {item['etitle']} | {item['pinyinTitle']}"),
++                'url': f'{base_url}/#/item?bookId={item["bookId"]}&entryId={item["id"]}',
++                "publishedDate": datetime.strptime(item["createTime"], "%Y-%m-%d %H:%M:%S"),
 +            }
 +        )
 +
