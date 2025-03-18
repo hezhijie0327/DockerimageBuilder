@@ -1,0 +1,62 @@
+diff --git a/searx/engines/yaodian.py b/searx/engines/yaodian.py
+new file mode 100644
+index 00000000000..179051e1ef7
+--- /dev/null
++++ b/searx/engines/yaodian.py
+@@ -0,0 +1,56 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""China Pharmacopoeia (Yaodian) engine for searxng"""
++
++from json import loads, dumps
++from datetime import datetime
++
++from searx.exceptions import SearxEngineAPIException
++from searx.utils import html_to_text
++
++about = {
++    "website": 'https://ydz.chp.org.cn/',
++    "wikidata_id": None,
++    "use_official_api": True,
++    "require_api_key": False,
++    "results": 'JSON',
++    "language": "zh",
++}
++
++paging = True
++categories = ['dictionaries']
++results_per_page = 10
++
++base_url = "https://ydz.chp.org.cn"
++
++
++def request(query, params):
++
++    params['url'] = f'{base_url}/front-api/search'
++    params['method'] = 'POST'
++    params['headers']['Content-Type'] = 'application/json'
++
++    params['data'] = dumps({"keyword": query, "pageSize": results_per_page, "pageNum": params["pageno"]}).encode(
++        'utf-8'
++    )
++
++    return params
++
++
++def response(resp):
++    results = []
++    json = loads(resp.text)
++
++    if not json.get("data", {}).get("list"):
++        raise SearxEngineAPIException("Invalid response")
++
++    for entry in json["data"]["list"]:
++        results.append(
++            {
++                'content': html_to_text(f"{entry['bookName']} | {entry['pageNum']} | {entry['textContent']}"),
++                'title': html_to_text(f"{entry['title']} | {entry['etitle']} | {entry['pinyinTitle']}"),
++                'url': f'{base_url}/#/item?bookId={entry["bookId"]}&entryId={entry["id"]}',
++                "publishedDate": datetime.strptime(entry["createTime"], "%Y-%m-%d %H:%M:%S"),
++            }
++        )
++
++    return results
