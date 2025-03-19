@@ -1,0 +1,97 @@
+diff --git a/searx/engines/niconico.py b/searx/engines/niconico.py
+new file mode 100644
+index 00000000000..8a7f5c8f603
+--- /dev/null
++++ b/searx/engines/niconico.py
+@@ -0,0 +1,91 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""Niconico search engine for searxng"""
++
++import time
++
++from urllib.parse import urlencode
++from datetime import datetime, timedelta
++from lxml import html
++
++from searx.utils import extract_text
++
++about = {
++    "website": "https://www.nicovideo.jp/",
++    "wikidata_id": "Q697233",
++    "use_official_api": False,
++    "require_api_key": False,
++    "results": "HTML",
++    "language": "ja",
++}
++
++categories = ["videos"]
++paging = True
++
++time_range_support = True
++time_range_dict = {'day': '1', 'week': '2', 'month': '3', 'year': '-1'}
++
++base_url = "https://www.nicovideo.jp"
++
++
++def request(query, params):
++    query_params = {
++        "page": params['pageno'],
++        "sort": "h",
++        "order": "d",
++    }
++
++    if time_range_dict.get(params['time_range']):
++        # Niconico doesn"t support year params natively, use start and end params instead
++        if params['time_range'] == -1:
++            now = int(time.time())
++            query_params['start'] = time.strftime('%Y-%m-%d', time.gmtime(now - 31536000))
++            query_params['end'] = time.strftime('%Y-%m-%d', time.gmtime(now))
++        else:
++            query_params['f_range'] = time_range_dict.get(params['time_range'])
++
++    params['url'] = f"{base_url}/search/{query}?{urlencode(query_params)}"
++    return params
++
++
++def response(resp):
++    results = []
++    dom = html.fromstring(resp.text)
++
++    for item in dom.xpath('//li[@data-video-item]'):
++        relative_url = item.xpath('.//a[@class="itemThumbWrap"]/@href')[0]
++        video_id = relative_url.rsplit('?', maxsplit=1)[0].split('/')[-1]
++
++        url = f"{base_url}/watch/{video_id}"
++        iframe_src = f"https://embed.nicovideo.jp/watch/{video_id}"
++
++        length = None
++        video_length = extract_text(item.xpath('.//span[@class="videoLength"]'))
++        if video_length:
++            try:
++                timediff = datetime.strptime(video_length, "%M:%S")
++                length = timedelta(minutes=timediff.minute, seconds=timediff.second)
++            except ValueError:
++                pass
++
++        published_date = None
++        upload_time = extract_text(item.xpath('.//p[@class="itemTime"]//span[@class="time"]/text()'))
++        if upload_time:
++            try:
++                published_date = datetime.strptime(upload_time, "%Y/%m/%d %H:%M")
++            except ValueError:
++                pass
++
++        results.append(
++            {
++                'template': 'videos.html',
++                'title': extract_text(item.xpath('.//p[@class="itemTitle"]/a')),
++                'content': extract_text(item.xpath('.//p[@class="itemDescription"]/@title')[0]),
++                'url': url,
++                "iframe_src": iframe_src,
++                'thumbnail': item.xpath('.//img[@class="thumb"]/@src')[0],
++                'length': length,
++                "publishedDate": published_date,
++            }
++        )
++
++    return results
