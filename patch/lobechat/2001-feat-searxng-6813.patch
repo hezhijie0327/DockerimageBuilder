@@ -483,7 +483,7 @@ index 382979b452d31..366664a4a1ec5 100644
  
    crawlPage(url: string) {
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
-index d95215d26dd4a..63855b90116e5 100644
+index d95215d26dd4a..5ae5acc735ea7 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 @@ -72,8 +72,10 @@ describe('searXNG actions', () => {
@@ -509,7 +509,15 @@ index d95215d26dd4a..63855b90116e5 100644
        expect(result.current.searchLoading[messageId]).toBe(false);
        expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
          messageId,
-@@ -141,8 +145,11 @@ describe('searXNG actions', () => {
+@@ -133,6 +137,7 @@ describe('searXNG actions', () => {
+       };
+ 
+       (searchService.search as Mock)
++        .mockResolvedValueOnce(emptyResponse)
+         .mockResolvedValueOnce(emptyResponse)
+         .mockResolvedValueOnce(retryResponse);
+ 
+@@ -141,20 +146,35 @@ describe('searXNG actions', () => {
  
        const messageId = 'test-message-id';
        const query: SearchQuery = {
@@ -522,17 +530,27 @@ index d95215d26dd4a..63855b90116e5 100644
        };
  
        await act(async () => {
-@@ -150,11 +157,14 @@ describe('searXNG actions', () => {
+         await searchWithSearXNG(messageId, query);
        });
  
-       expect(searchService.search).toHaveBeenCalledTimes(2);
+-      expect(searchService.search).toHaveBeenCalledTimes(2);
 -      expect(searchService.search).toHaveBeenNthCalledWith(1, 'test query', ['custom-engine']);
 -      expect(searchService.search).toHaveBeenNthCalledWith(2, 'test query');
++      expect(searchService.search).toHaveBeenCalledTimes(3);
 +      expect(searchService.search).toHaveBeenNthCalledWith(1, "test query", {
 +          "searchEngines": [ "custom-engine" ],
 +          "searchTimeRange": "year",
 +      });
-+      expect(searchService.search).toHaveBeenNthCalledWith(2, "test query");
++      expect(searchService.search).toHaveBeenNthCalledWith(2, "test query", {
++          "searchTimeRange": "year",
++      });
++      expect(result.current.updatePluginArguments).toHaveBeenCalledWith(messageId, {
++        optionalParams: {
++          "searchTimeRange": "year",
++        },
++        query: 'test query',
++      });
++      expect(searchService.search).toHaveBeenNthCalledWith(3, "test query");
        expect(result.current.updatePluginArguments).toHaveBeenCalledWith(messageId, {
 +        optionalParams: undefined,
          query: 'test query',
@@ -541,19 +559,34 @@ index d95215d26dd4a..63855b90116e5 100644
      });
  
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.ts b/src/store/chat/slices/builtinTool/actions/searXNG.ts
-index 28b85d9d9573c..8085bcb3072c8 100644
+index 28b85d9d9573c..f77a0a4828d88 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.ts
-@@ -141,12 +141,12 @@ export const searchSlice: StateCreator<
+@@ -141,12 +141,26 @@ export const searchSlice: StateCreator<
      get().toggleSearchLoading(id, true);
      let data: SearchResponse | undefined;
      try {
 -      data = await searchService.search(params.query, params.searchEngines);
++      // 首次查询
 +      data = await searchService.search(params.query, params.optionalParams);
++
++      // 如果没有搜索到结果，则执行第一次重试（移除搜索引擎限制）
++      if (data?.results.length === 0 && params.optionalParams?.searchEngines && params.optionalParams?.searchEngines?.length > 0) {
++        const paramsExcludeSearchEngines = {
++          ...params,
++          optionalParams: {
++            ...params.optionalParams,
++            searchEngines: undefined
++          }
++        };
++        data = await searchService.search(params.query, paramsExcludeSearchEngines.optionalParams);
++        get().updatePluginArguments(id, paramsExcludeSearchEngines);
++      }
  
-       // 如果没有搜索到结果，那么尝试使用默认的搜索引擎再搜一次
+-      // 如果没有搜索到结果，那么尝试使用默认的搜索引擎再搜一次
 -      if (data?.results.length === 0 && params.searchEngines && params.searchEngines?.length > 0) {
-+      if (data?.results.length === 0 && (params.optionalParams?.searchEngines && params.optionalParams?.searchEngines?.length > 0 || params.optionalParams?.searchTimeRange)) {
++      // 如果仍然没有搜索到结果，则执行第二次重试（移除所有限制）
++      if (data?.results.length === 0) {
          data = await searchService.search(params.query);
 -        get().updatePluginArguments(id, { ...params, searchEngines: undefined });
 +        get().updatePluginArguments(id, { ...params, optionalParams: undefined });
