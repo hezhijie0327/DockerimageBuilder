@@ -70,7 +70,7 @@ index 3d5f5aeaf1316..ad2fa801b6152 100644
          console.error(e);
  
 diff --git a/src/services/search.ts b/src/services/search.ts
-index 50c404ca4f14d..308db2871bfb5 100644
+index 50c404ca4f14d..366664a4a1ec5 100644
 --- a/src/services/search.ts
 +++ b/src/services/search.ts
 @@ -1,8 +1,8 @@
@@ -80,12 +80,12 @@ index 50c404ca4f14d..308db2871bfb5 100644
 -  search(query: string, searchEngine?: string[], searchTimeRange?: string) {
 -    return toolsClient.search.query.query({ query, searchEngine, searchTimeRange });
 +  search(query: string, optionalParams?: object) {
-+    return toolsClient.search.query.query({ query, optionalParams });
++    return toolsClient.search.query.query({ optionalParams, query});
    }
  
    crawlPage(url: string) {
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
-index 22ae559fdd6fd..86947898ab4bb 100644
+index 22ae559fdd6fd..63855b90116e5 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 @@ -72,8 +72,10 @@ describe('searXNG actions', () => {
@@ -100,21 +100,18 @@ index 22ae559fdd6fd..86947898ab4bb 100644
        };
  
        await act(async () => {
-@@ -88,7 +90,12 @@ describe('searXNG actions', () => {
+@@ -88,7 +90,9 @@ describe('searXNG actions', () => {
          },
        ];
  
 -      expect(searchService.search).toHaveBeenCalledWith('test query', ['google'], undefined);
-+      expect( searchService.search ).toHaveBeenCalledWith({
-+        "optionalParams": {
-+          "searchEngines": [ 'google' ]
-+        },
-+        "query": "test query",
++      expect( searchService.search ).toHaveBeenCalledWith('test query', {
++        searchEngines: [ 'google' ]
 +      });
        expect(result.current.searchLoading[messageId]).toBe(false);
        expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
          messageId,
-@@ -141,9 +148,11 @@ describe('searXNG actions', () => {
+@@ -141,9 +145,11 @@ describe('searXNG actions', () => {
  
        const messageId = 'test-message-id';
        const query: SearchQuery = {
@@ -128,22 +125,17 @@ index 22ae559fdd6fd..86947898ab4bb 100644
        };
  
        await act(async () => {
-@@ -151,11 +160,19 @@ describe('searXNG actions', () => {
+@@ -151,11 +157,14 @@ describe('searXNG actions', () => {
        });
  
        expect(searchService.search).toHaveBeenCalledTimes(2);
 -      expect(searchService.search).toHaveBeenNthCalledWith(1, 'test query', ['custom-engine'], 'year');
 -      expect(searchService.search).toHaveBeenNthCalledWith(2, 'test query');
-+      expect(searchService.search).toHaveBeenNthCalledWith(1, {
-+        "optionalParams": {
-+          "searchEngines": [ 'custom-engine' ],
++      expect(searchService.search).toHaveBeenNthCalledWith(1, "test query", {
++          "searchEngines": [ "custom-engine" ],
 +          "searchTimeRange": "year",
-+        },
-+        "query": "test query",
 +      });
-+      expect(searchService.search).toHaveBeenNthCalledWith(2, {
-+        "query": "test query",
-+      });
++      expect(searchService.search).toHaveBeenNthCalledWith(2, "test query");
        expect(result.current.updatePluginArguments).toHaveBeenCalledWith(messageId, {
 +        optionalParams: undefined,
          query: 'test query',
