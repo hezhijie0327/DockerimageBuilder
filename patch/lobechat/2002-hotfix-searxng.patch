@@ -24,39 +24,46 @@ index 9bc6000cef5ea..7550897aec81c 100644
  
        const response = await fetch(urlJoin(this.baseUrl, `/search?${searchParams}`));
 diff --git a/src/server/routers/tools/__test__/search.test.ts b/src/server/routers/tools/__test__/search.test.ts
-index a621f19d93a46..41ba8b2bcee4f 100644
+index a621f19d93a46..b87a07d516bd8 100644
 --- a/src/server/routers/tools/__test__/search.test.ts
 +++ b/src/server/routers/tools/__test__/search.test.ts
-@@ -99,7 +99,7 @@ describe('searchRouter', () => {
+@@ -99,7 +99,9 @@ describe('searchRouter', () => {
  
        const result = await caller.query({
          query: 'test query',
 -        searchEngine: ['google'],
-+        searchEngines: ['google'],
++        optionalParams: {
++          searchEngines: ['google'],
++        },
        });
  
        expect(result).toEqual(mockSearchResult);
 diff --git a/src/server/routers/tools/search.ts b/src/server/routers/tools/search.ts
-index 3d5f5aeaf1316..828cb22b08c55 100644
+index 3d5f5aeaf1316..ad2fa801b6152 100644
 --- a/src/server/routers/tools/search.ts
 +++ b/src/server/routers/tools/search.ts
-@@ -44,7 +44,7 @@ export const searchRouter = router({
+@@ -43,9 +43,11 @@ export const searchRouter = router({
+   query: searchProcedure
      .input(
        z.object({
++        optionalParams: z.object({
++          searchEngines: z.array(z.string()).optional(),
++          searchTimeRange: z.string().optional(),
++        }).optional(),
          query: z.string(),
 -        searchEngine: z.array(z.string()).optional(),
-+        searchEngines: z.array(z.string()).optional(),
-         searchTimeRange: z.string().optional(),
+-        searchTimeRange: z.string().optional(),
        }),
      )
-@@ -56,7 +56,10 @@ export const searchRouter = router({
+     .query(async ({ input }) => {
+@@ -56,7 +58,10 @@ export const searchRouter = router({
        const client = new SearXNGClient(toolsEnv.SEARXNG_URL);
  
        try {
 -        return await client.search(input.query, input.searchEngine, input.searchTimeRange);
 +        return await client.search(input.query, {
-+          engines: input.searchEngines,
-+          time_range: input.searchTimeRange,
++          engines: input.optionalParams?.searchEngines,
++          time_range: input.optionalParams?.searchTimeRange,
 +        });
        } catch (e) {
          console.error(e);
@@ -78,7 +85,7 @@ index 50c404ca4f14d..2e069c1df01d9 100644
  
    crawlPage(url: string) {
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
-index 22ae559fdd6fd..bc3cb2a66669b 100644
+index 22ae559fdd6fd..07076b36d01d4 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 @@ -73,7 +73,9 @@ describe('searXNG actions', () => {
@@ -92,21 +99,62 @@ index 22ae559fdd6fd..bc3cb2a66669b 100644
        };
  
        await act(async () => {
-@@ -142,8 +144,10 @@ describe('searXNG actions', () => {
+@@ -88,7 +90,12 @@ describe('searXNG actions', () => {
+         },
+       ];
+ 
+-      expect(searchService.search).toHaveBeenCalledWith('test query', ['google'], undefined);
++      expect( searchService.search ).toHaveBeenCalledWith({
++        "optionalParams": {
++          "searchEngines": [ 'google' ]
++        },
++        "query": "test query",
++      });
+       expect(result.current.searchLoading[messageId]).toBe(false);
+       expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
+         messageId,
+@@ -141,9 +148,11 @@ describe('searXNG actions', () => {
+ 
        const messageId = 'test-message-id';
        const query: SearchQuery = {
-         query: 'test query',
--        searchEngines: ['custom-engine'],
--        searchTimeRange: 'year',
 +        optionalParams: {
 +          searchEngines: ['custom-engine'],
 +          searchTimeRange: 'year',
 +        },
+         query: 'test query',
+-        searchEngines: ['custom-engine'],
+-        searchTimeRange: 'year',
        };
  
        await act(async () => {
+@@ -151,11 +160,22 @@ describe('searXNG actions', () => {
+       });
+ 
+       expect(searchService.search).toHaveBeenCalledTimes(2);
+-      expect(searchService.search).toHaveBeenNthCalledWith(1, 'test query', ['custom-engine'], 'year');
+-      expect(searchService.search).toHaveBeenNthCalledWith(2, 'test query');
++      expect(searchService.search).toHaveBeenNthCalledWith(1, {
++        "optionalParams": {
++          "searchEngines": [ 'custom-engine' ],
++          "searchTimeRange": "year",
++        },
++        "query": "test query",
++      });
++      expect(searchService.search).toHaveBeenNthCalledWith(2, {
++        "query": "test query",
++      });
+       expect(result.current.updatePluginArguments).toHaveBeenCalledWith(messageId, {
++        optionalParams: {
++          searchEngines: undefined,
++          searchTimeRange: undefined,
++        },
+         query: 'test query',
+-        searchEngines: undefined,
+       });
+     });
+ 
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.ts b/src/store/chat/slices/builtinTool/actions/searXNG.ts
-index 162ef6bfdf933..1486b749d3fbb 100644
+index 162ef6bfdf933..797560db5bf97 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.ts
 @@ -141,12 +141,12 @@ export const searchSlice: StateCreator<
@@ -121,7 +169,7 @@ index 162ef6bfdf933..1486b749d3fbb 100644
 -        data = await searchService.search(params.query);
 -        get().updatePluginArguments(id, { ...params, searchEngines: undefined, searchTimeRange: undefined });
 +      if (data?.results.length === 0 && (params.optionalParams?.searchEngines && params.optionalParams?.searchEngines?.length > 0 || params.optionalParams?.searchTimeRange)) {
-+        data = await searchService.search(params);
++        data = await searchService.search({ query: params.query });
 +        get().updatePluginArguments(id, { ...params, optionalParams: { searchEngines: undefined, searchTimeRange: undefined } });
        }
  
@@ -183,6 +231,97 @@ index 0b893ed9f97ff..849df2063e594 100644
        };
        onSearch?.(data);
        await reSearchWithSearXNG(messageId, data, { aiSummary });
+diff --git a/src/tools/web-browsing/index.ts b/src/tools/web-browsing/index.ts
+index 78f2b7fe1ebf3..6455cdbf8f3a5 100644
+--- a/src/tools/web-browsing/index.ts
++++ b/src/tools/web-browsing/index.ts
+@@ -18,48 +18,48 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
+       name: WebBrowsingApiName.searchWithSearXNG,
+       parameters: {
+         properties: {
++          optionalParams: {
++            description: "The optional params you can set:",
++            type: 'object',
++            properties: {
++              searchEngines: {
++                description: 'The search engine you can use:',
++                items: {
++                  enum: [
++                    'google',
++                    'bilibili',
++                    'bing',
++                    'duckduckgo',
++                    'npm',
++                    'pypi',
++                    'github',
++                    'arxiv',
++                    'google scholar',
++                    'z-library',
++                    'reddit',
++                    'imdb',
++                    'brave',
++                    'wikipedia',
++                    'pinterest',
++                    'unsplash',
++                    'vimeo',
++                    'youtube',
++                  ],
++                  type: 'string',
++                },
++                type: 'array',
++              },
++              searchTimeRange: {
++                description: "The time range you can set:",
++                enum: ['anytime', 'day', 'week', 'month', 'year'],
++                type: 'string',
++              },
++            },
++          },
+           query: {
+             description: 'The search query',
+             type: 'string',
+           },
+-          searchEngines: {
+-            description: 'The search engine you can use:',
+-            items: {
+-              enum: [
+-                'google',
+-                'bilibili',
+-                'bing',
+-                'duckduckgo',
+-                'npm',
+-                'pypi',
+-                'github',
+-                'arxiv',
+-                'google scholar',
+-                'z-library',
+-                'reddit',
+-                'imdb',
+-                'brave',
+-                'wikipedia',
+-                'pinterest',
+-                'unsplash',
+-                'vimeo',
+-                'youtube',
+-              ],
+-              type: 'string',
+-            },
+-            type: 'array',
+-          },
+-          searchTimeRange: {
+-            description: "The time range you can set:",
+-            enum: [
+-              'anytime',
+-              'day',
+-              'week',
+-              'month',
+-              'year',
+-            ],
+-            type: 'string'
+-          },
+         },
+         required: ['query'],
+         type: 'object',
 diff --git a/src/types/tool/search.ts b/src/types/tool/search.ts
 index bfda96bc748ef..4e4fccb4f0d7f 100644
 --- a/src/types/tool/search.ts
