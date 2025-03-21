@@ -825,10 +825,10 @@ index 2157afecde1d3..3900823c62bbd 100644
      if (loading || !pluginState)
 diff --git a/src/tools/web-browsing/components/CategoryAvatar.tsx b/src/tools/web-browsing/components/CategoryAvatar.tsx
 new file mode 100644
-index 0000000000000..7db845e9e9b91
+index 0000000000000..b99a40d47a327
 --- /dev/null
 +++ b/src/tools/web-browsing/components/CategoryAvatar.tsx
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,26 @@
 +import { Avatar } from 'antd';
 +import { useTheme } from 'antd-style';
 +import { memo } from 'react';
@@ -837,34 +837,26 @@ index 0000000000000..7db845e9e9b91
 +
 +interface CategoryAvatarProps {
 +  category: string;
-+  size?: number;
 +}
 +
-+export const CategoryAvatar = memo<CategoryAvatarProps>(
-+  ({ category, size = 26 }) => {
-+    const Icon = CATEGORY_ICON_MAP[category];
-+    const theme = useTheme();
++export const CategoryAvatar = memo<CategoryAvatarProps>(({ category }) => {
++  const theme = useTheme();
++  const IconComponent = CATEGORY_ICON_MAP[category];
 +
-+    return (
-+      <Avatar
-+        alt={category}
-+        style={{
-+          backgroundColor: 'transparent',
-+          color: theme.colorTextSecondary,
-+          display: 'flex',
-+          height: size,
-+          width: size,
-+        }}
-+      >
-+        <Icon 
-+          size={size} 
-+        />
-+      </Avatar>
-+    );
-+  },
-+);
++  return (
++    <Avatar
++      alt={category}
++      icon={<IconComponent size={16} />}
++      style={{
++        backgroundColor: 'transparent',
++        color: theme.colorTextSecondary,
++        fontSize: 16,
++      }}
++    />
++  );
++});
 diff --git a/src/tools/web-browsing/components/SearchBar.tsx b/src/tools/web-browsing/components/SearchBar.tsx
-index 2b630831d207f..fbc442312a6ce 100644
+index 2b630831d207f..ea69a4121cd47 100644
 --- a/src/tools/web-browsing/components/SearchBar.tsx
 +++ b/src/tools/web-browsing/components/SearchBar.tsx
 @@ -1,5 +1,5 @@
@@ -945,7 +937,7 @@ index 2b630831d207f..fbc442312a6ce 100644
 +            options={Object.keys(CATEGORY_ICON_MAP).map((item) => ({
 +              label: (
 +                <Flexbox align={'center'} gap={8} horizontal>
-+                  <CategoryAvatar category={item as any} size={22} />
++                  <CategoryAvatar category={item as any} />
 +                  {t(`search.searchCategory.value.${item}` as any)}
 +                </Flexbox>
 +              ),
@@ -1131,7 +1123,7 @@ index 7e32a75a70932..6354665e87c9f 100644
          required: ['query'],
          type: 'object',
 diff --git a/src/tools/web-browsing/systemRole.ts b/src/tools/web-browsing/systemRole.ts
-index 1a960d0476fcd..4f7e5402bf795 100644
+index 1a960d0476fcd..14ddc93cec8d9 100644
 --- a/src/tools/web-browsing/systemRole.ts
 +++ b/src/tools/web-browsing/systemRole.ts
 @@ -22,6 +22,19 @@ export const systemPrompt = (
@@ -1140,36 +1132,27 @@ index 1a960d0476fcd..4f7e5402bf795 100644
  
 +<search_categories_selection>
 +Choose search categories based on query type:
-+- General Information Queries: general
-+- News & Current Affairs: news
-+- Academic Research: science
-+- Technical Issues: it
-+- Image Search: images
-+- Video Content: videos
-+- Geographic Information: map
-+- Document Retrieval: files
-+- Social Platform Content: social_media
++- General: general
++- News: news
++- Academic & Science: science
++- Technical: it
++- Images: images
++- Videos: videos
++- Geographic & Maps: map
++- Files: files
++- Social Media: social_media
 +</search_categories_selection>
 +
  <search_engine_selection>
  Choose search engines based on the query type:
  - General knowledge: google, bing, duckduckgo, brave, wikipedia
-@@ -33,6 +46,27 @@ Choose search engines based on the query type:
- - For region-specific information, prefer search engines popular in that region
+@@ -30,9 +43,52 @@ Choose search engines based on the query type:
+ - Videos: youtube, vimeo, bilibili
+ - Images: unsplash, pinterest
+ - Entertainment: imdb, reddit
+-- For region-specific information, prefer search engines popular in that region
  </search_engine_selection>
  
-+<search_engine_categories_best_practices>
-+Search categories represent groups of specialized engines. When unsure about specific engine selection:
-+1. Use categories for broader resource coverage
-+2. Leverage keyword-driven category matching (e.g., "stock market trends" → news + general)
-+3. Combine categories for multi-faceted queries (e.g., "AI conference presentation video" → videos + science)
-+
-+Key advantages over individual engine selection:
-+- Systematic resource categorization
-+- Cross-platform search capabilities
-+- Intelligent query-type alignment
-+</search_engine_categories_best_practices>
-+
 +<search_time_range_selection>
 +Only specify a time range if the query is time-sensitive:
 +- For no time restriction: anytime
@@ -1179,10 +1162,45 @@ index 1a960d0476fcd..4f7e5402bf795 100644
 +- For long-term insights: year
 +</search_time_range_selection>
 +
++<search_strategy_guidelines>
++ - For region-specific queries, default to locally dominant search engines
++ - Use category-based searches when unsure about engine selection
++ - Use time-range filters to prioritize time-sensitive information
++ - Leverage cross-platform meta-search capabilities for comprehensive results
++ - Prioritize authoritative sources in search results when available
++
++ <search_strategy_best_practices>
++   - Combine categories for multi-faceted queries:
++     * "AI ethics whitepaper PDF" → files + science + general
++     * "Python machine learning tutorial video" → videos + it + science
++     * "Sustainable energy policy analysis" → news + science + general
++
++   - Apply keyword-driven category mapping:
++     * "GitHub repository statistics" → it + files
++     * "Climate change documentary" → videos + science
++     * "Restaurant recommendations Paris" → map + social_media
++
++   - Use file-type targeting for document searches:
++     * "Financial statement xls" → files + news
++     * "Research paper citation RIS" → files + science
++     * "Government policy brief docx" → files + general
++
++   - Region-specific query handling:
++     * "Beijing traffic update" → map + news (engine: baidu)
++     * "Moscow event listings" → social_media + news (engine: yandex)
++     * "Tokyo restaurant reviews" → social_media + map (engine: google)
++
++   - Leverage cross-platform capabilities:
++     * "Open-source project documentation" → files + it (engines: github + pypi)
++     * "Historical weather patterns" → science + general (engines: google scholar + wikipedia)
++     * "Movie release dates 2025" → news + entertainment (engines: imdb + reddit)
++ </search_strategy_best_practices>
++</search_strategy_guidelines>
++
  <citation_requirements>
  - Always cite sources using markdown footnote format (e.g., [^1])
  - List all referenced URLs at the end of your response
-@@ -86,6 +120,9 @@ SearXNG is a metasearch engine that can leverage multiple search engines includi
+@@ -86,6 +142,9 @@ SearXNG is a metasearch engine that can leverage multiple search engines includi
  
    2. Use \`:\` to select language:
       - Search Wikipedia in a specific language: \`:fr !wp Wau Holland\` (uses French)
