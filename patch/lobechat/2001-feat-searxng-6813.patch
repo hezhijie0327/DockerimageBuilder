@@ -674,7 +674,7 @@ index 382979b452d31..366664a4a1ec5 100644
  
    crawlPage(url: string) {
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
-index d95215d26dd4a..37f21eb35a644 100644
+index d95215d26dd4a..5ae5acc735ea7 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.test.ts
 @@ -72,8 +72,10 @@ describe('searXNG actions', () => {
@@ -689,13 +689,7 @@ index d95215d26dd4a..37f21eb35a644 100644
        };
  
        await act(async () => {
-@@ -83,12 +85,15 @@ describe('searXNG actions', () => {
-       const expectedContent: SearchContent[] = [
-         {
-           content: 'Test Content',
-+          img_src: undefined,
-           title: 'Test Result',
-           url: 'https://test.com',
+@@ -88,7 +90,9 @@ describe('searXNG actions', () => {
          },
        ];
  
@@ -706,7 +700,7 @@ index d95215d26dd4a..37f21eb35a644 100644
        expect(result.current.searchLoading[messageId]).toBe(false);
        expect(result.current.internal_updateMessageContent).toHaveBeenCalledWith(
          messageId,
-@@ -133,6 +138,7 @@ describe('searXNG actions', () => {
+@@ -133,6 +137,7 @@ describe('searXNG actions', () => {
        };
  
        (searchService.search as Mock)
@@ -714,7 +708,7 @@ index d95215d26dd4a..37f21eb35a644 100644
          .mockResolvedValueOnce(emptyResponse)
          .mockResolvedValueOnce(retryResponse);
  
-@@ -141,20 +147,35 @@ describe('searXNG actions', () => {
+@@ -141,20 +146,35 @@ describe('searXNG actions', () => {
  
        const messageId = 'test-message-id';
        const query: SearchQuery = {
@@ -756,7 +750,7 @@ index d95215d26dd4a..37f21eb35a644 100644
      });
  
 diff --git a/src/store/chat/slices/builtinTool/actions/searXNG.ts b/src/store/chat/slices/builtinTool/actions/searXNG.ts
-index 28b85d9d9573c..6a8a4fcde2ad1 100644
+index 28b85d9d9573c..1ed1f0394f1f7 100644
 --- a/src/store/chat/slices/builtinTool/actions/searXNG.ts
 +++ b/src/store/chat/slices/builtinTool/actions/searXNG.ts
 @@ -141,12 +141,26 @@ export const searchSlice: StateCreator<
@@ -790,14 +784,20 @@ index 28b85d9d9573c..6a8a4fcde2ad1 100644
        }
  
        await get().updatePluginState(id, data);
-@@ -175,6 +189,7 @@ export const searchSlice: StateCreator<
+@@ -174,9 +188,12 @@ export const searchSlice: StateCreator<
+ 
      // add 15 search results to message content
      const searchContent: SearchContent[] = data.results.slice(0, 15).map((item) => ({
-       content: item.content,
-+      img_src: item.img_src,
+-      content: item.content,
        title: item.title,
        url: item.url,
++      ...(item.content && { content: item.content }),
++      ...(item.publishedDate && { publishedDate: item.publishedDate }),
++      ...(item.img_src && { img_src: item.img_src }),
++      ...(item.thumbnail && { thumbnail: item.thumbnail }),
      }));
+ 
+     await get().internal_updateMessageContent(id, JSON.stringify(searchContent));
 diff --git a/src/tools/web-browsing/Portal/Search/index.tsx b/src/tools/web-browsing/Portal/Search/index.tsx
 index aee6ad968cdb0..5c2f3b37e2cdc 100644
 --- a/src/tools/web-browsing/Portal/Search/index.tsx
@@ -1235,7 +1235,7 @@ index 1a960d0476fcd..7902880f87ccf 100644
  </searxng_description>
  
 diff --git a/src/types/tool/search.ts b/src/types/tool/search.ts
-index 66e7314f2aa66..2e14238890e9f 100644
+index 66e7314f2aa66..bb47c76794533 100644
 --- a/src/types/tool/search.ts
 +++ b/src/types/tool/search.ts
 @@ -1,6 +1,10 @@
@@ -1250,7 +1250,7 @@ index 66e7314f2aa66..2e14238890e9f 100644
  }
  
  export const SEARCH_SEARXNG_NOT_CONFIG = 'SearXNG is not configured';
-@@ -22,18 +26,21 @@ export interface SearchResult {
+@@ -22,18 +26,23 @@ export interface SearchResult {
    engine: string;
    engines: string[];
    iframe_src?: string;
@@ -1269,6 +1269,8 @@ index 66e7314f2aa66..2e14238890e9f 100644
  export interface SearchContent {
    content?: string;
 +  img_src?: string;
++  publishedDate?: string | null;
++  thumbnail?: string | null;
    title: string;
    url: string;
  }
