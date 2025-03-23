@@ -1,9 +1,9 @@
 diff --git a/searx/engines/quark.py b/searx/engines/quark.py
 new file mode 100644
-index 00000000000..9988b049c32
+index 00000000000..64b0878b417
 --- /dev/null
 +++ b/searx/engines/quark.py
-@@ -0,0 +1,356 @@
+@@ -0,0 +1,377 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Quark (Shenma) search engine for searxng"""
 +
@@ -101,6 +101,11 @@ index 00000000000..9988b049c32
 +    if quark_category == 'images':
 +        data = json.loads(text)
 +        for item in data.get('data', {}).get('hit', {}).get('imgInfo', {}).get('item', []):
++            try:
++                published_date = datetime.fromtimestamp(int(item.get("publish_time")))
++            except (ValueError, TypeError):
++                published_date = None
++
 +            results.append(
 +                {
 +                    "template": "images.html",
@@ -110,7 +115,7 @@ index 00000000000..9988b049c32
 +                    "title": item.get("title"),
 +                    "source": item.get("site"),
 +                    "resolution": f"{item['width']} x {item['height']}",
-+                    "publishedDate": datetime.fromtimestamp(int(item.get("publish_time"))),
++                    "publishedDate": published_date,
 +                }
 +            )
 +
@@ -177,12 +182,18 @@ index 00000000000..9988b049c32
 +            if isinstance(item.get('content'), list)
 +            else str(item.get('content'))
 +        )
++
++        try:
++            published_date = datetime.fromtimestamp(int(item.get('source', {}).get('time')))
++        except (ValueError, TypeError):
++            published_date = None
++
 +        results.append(
 +            {
 +                "title": html_to_text(item.get('title')),
 +                "url": item.get('url'),
 +                "content": html_to_text(content),
-+                "publishedDate": datetime.fromtimestamp(int(item.get('source', {}).get('time'))),
++                "publishedDate": published_date,
 +            }
 +        )
 +    return results
@@ -237,6 +248,11 @@ index 00000000000..9988b049c32
 +def parse_life_show_general_image(data):
 +    results = []
 +    for item in data.get('image', []):
++        try:
++            published_date = datetime.fromtimestamp(int(item.get("publish_time")))
++        except (ValueError, TypeError):
++            published_date = None
++
 +        results.append(
 +            {
 +                "template": "images.html",
@@ -246,7 +262,7 @@ index 00000000000..9988b049c32
 +                "title": item.get("title"),
 +                "source": item.get("site"),
 +                "resolution": f"{item['width']} x {item['height']}",
-+                "publishedDate": datetime.fromtimestamp(int(item.get("publish_time"))),
++                "publishedDate": published_date,
 +            }
 +        )
 +    return results
@@ -338,11 +354,16 @@ index 00000000000..9988b049c32
 +
 +
 +def parse_ss_note(data):
++    try:
++        published_date = datetime.fromtimestamp(int(data.get('source', {}).get('time')))
++    except (ValueError, TypeError):
++        published_date = None
++
 +    return {
 +        "title": html_to_text(data.get('title', {}).get('content')),
 +        "url": data.get('source', {}).get('dest_url'),
 +        "content": html_to_text(data.get('summary', {}).get('content')),
-+        "publishedDate": datetime.fromtimestamp(int(data.get('source', {}).get('time'))),
++        "publishedDate": published_date,
 +    }
 +
 +
