@@ -1,9 +1,9 @@
 diff --git a/searx/engines/quark.py b/searx/engines/quark.py
 new file mode 100644
-index 00000000000..7d37c8a87a9
+index 00000000000..957ef0d97a7
 --- /dev/null
 +++ b/searx/engines/quark.py
-@@ -0,0 +1,380 @@
+@@ -0,0 +1,383 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Quark (Shenma) search engine for searxng"""
 +
@@ -120,6 +120,31 @@ index 00000000000..7d37c8a87a9
 +            )
 +
 +    if quark_category == 'general':
++        # Quark returns a variety of different sc values on a single page, depending on the query type.
++        source_category_parsers = {
++            'addition': parse_addition,
++            'ai_page': parse_ai_page,
++            'baike_sc': parse_baike_sc,
++            'finance_shuidi': parse_finance_shuidi,
++            'kk_yidian_all': parse_kk_yidian_all,
++            'life_show_general_image': parse_life_show_general_image,
++            'med_struct': parse_med_struct,
++            'music_new_song': parse_music_new_song,
++            'nature_result': parse_nature_result,
++            'news_uchq': parse_news_uchq,
++            'ss_note': parse_ss_note,
++            # ss_kv, ss_pic, ss_text, ss_video, baike, structure_web_novel use the same struct as ss_doc
++            'ss_doc': parse_ss_doc,
++            'ss_kv': parse_ss_doc,
++            'ss_pic': parse_ss_doc,
++            'ss_text': parse_ss_doc,
++            'ss_video': parse_ss_doc,
++            'baike': parse_ss_doc,
++            'structure_web_novel': parse_ss_doc,
++            'travel_dest_overview': parse_travel_dest_overview,
++            'travel_ranking_list': parse_travel_ranking_list,
++        }
++
 +        pattern = r'<script\s+type="application/json"\s+id="s-data-[^"]+"\s+data-used-by="hydrate">(.*?)</script>'
 +        matches = re.findall(pattern, text, re.DOTALL)
 +
@@ -129,29 +154,6 @@ index 00000000000..7d37c8a87a9
 +            extra_data = data.get('extraData', {})
 +
 +            source_category = extra_data.get('sc')
-+            source_category_parsers = {
-+                'addition': parse_addition,
-+                'ai_page': parse_ai_page,
-+                'baike_sc': parse_baike_sc,
-+                'finance_shuidi': parse_finance_shuidi,
-+                'kk_yidian_all': parse_kk_yidian_all,
-+                'life_show_general_image': parse_life_show_general_image,
-+                'med_struct': parse_med_struct,
-+                'music_new_song': parse_music_new_song,
-+                'nature_result': parse_nature_result,
-+                'news_uchq': parse_news_uchq,
-+                'ss_note': parse_ss_note,
-+                # ss_kv, ss_pic, ss_text, ss_video, baike, structure_web_novel use the same struct as ss_doc
-+                'ss_doc': parse_ss_doc,
-+                'ss_kv': parse_ss_doc,
-+                'ss_pic': parse_ss_doc,
-+                'ss_text': parse_ss_doc,
-+                'ss_video': parse_ss_doc,
-+                'baike': parse_ss_doc,
-+                'structure_web_novel': parse_ss_doc,
-+                'travel_dest_overview': parse_travel_dest_overview,
-+                'travel_ranking_list': parse_travel_ranking_list,
-+            }
 +
 +            parsers = source_category_parsers.get(source_category)
 +            if parsers:
@@ -321,6 +323,7 @@ index 00000000000..7d37c8a87a9
 +    try:
 +        timestamp = int(data.get('sourceProps', {}).get('time'))
 +
++        # Sometime Quark will return 0, set published_date as None
 +        if timestamp != 0:
 +            published_date = datetime.fromtimestamp(timestamp)
 +    except (ValueError, TypeError):
