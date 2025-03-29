@@ -1,16 +1,17 @@
 diff --git a/searx/engines/naver.py b/searx/engines/naver.py
 new file mode 100644
-index 00000000000..6565aa04d59
+index 00000000000..e14d95196c3
 --- /dev/null
 +++ b/searx/engines/naver.py
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,193 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Naver search engine for searxng"""
 +
 +from urllib.parse import urlencode
-+from lxml import html
 +import re
++from lxml import html
 +
++from searx.exceptions import SearxEngineAPIException
 +from searx.utils import (
 +    eval_xpath_getindex,
 +    eval_xpath_list,
@@ -24,7 +25,7 @@ index 00000000000..6565aa04d59
 +# engine metadata
 +about = {
 +    "website": "https://search.naver.com",
-+    "wikidata_id": "Q1046638",
++    "wikidata_id": "Q485639",
 +    "use_official_api": False,
 +    "require_api_key": False,
 +    "results": "HTML",
@@ -48,7 +49,25 @@ index 00000000000..6565aa04d59
 +- ``videos``: search for videos
 +"""
 +
-+naver_category_dict = {"general": "web", "images": "image", "news": "news", "videos": "video"}
++# Naver cannot set the number of results on one page, set default value for paging
++naver_category_dict = {
++    "general": {
++        "start": 15,
++        "where": "web",
++    },
++    "images": {
++        "start": 50,
++        "where": "image",
++    },
++    "news": {
++        "start": 10,
++        "where": "news",
++    },
++    "videos": {
++        "start": 48,
++        "where": "video",
++    },
++}
 +
 +
 +def init(_):
@@ -57,24 +76,13 @@ index 00000000000..6565aa04d59
 +
 +
 +def request(query, params):
-+    page_num = params["pageno"]
-+
 +    query_params = {
 +        "query": query,
 +    }
 +
-+    if naver_category == 'news':
-+        query_params["start"] = (page_num - 1) * 10 + 1
-+    elif naver_category == 'videos':
-+        query_params["start"] = (page_num - 1) * 48 + 1
-+    elif naver_category == 'images':
-+        query_params["start"] = (page_num - 1) * 50 + 1
-+    else:
-+        # general
-+        query_params["start"] = (page_num - 1) * 15 + 1
-+
 +    if naver_category in naver_category_dict:
-+        query_params["where"] = naver_category_dict[naver_category]
++        query_params["start"] = (params["pageno"] - 1) * naver_category_dict[naver_category]["start"] + 1
++        query_params["where"] = naver_category_dict[naver_category]["where"]
 +
 +    if params["time_range"] in time_range_dict:
 +        query_params["nso"] = f"p:{time_range_dict[params['time_range']]}"
@@ -95,11 +103,15 @@ index 00000000000..6565aa04d59
 +    dom = html.fromstring(data)
 +
 +    for item in eval_xpath_list(dom, "//ul[@class='lst_total']/li[contains(@class, 'bx')]"):
-+        results.append({
-+            "title": extract_text(eval_xpath(item, ".//a[@class='link_tit']")),
-+            "url": eval_xpath_getindex(item, ".//a[@class='link_tit']/@href", 0),
-+            "content": extract_text(eval_xpath(item, ".//div[contains(@class, 'total_dsc_wrap')]//a[contains(@class, 'api_txt_lines')]")),
-+        })
++        results.append(
++            {
++                "title": extract_text(eval_xpath(item, ".//a[@class='link_tit']")),
++                "url": eval_xpath_getindex(item, ".//a[@class='link_tit']/@href", 0),
++                "content": extract_text(
++                    eval_xpath(item, ".//div[contains(@class, 'total_dsc_wrap')]//a[contains(@class, 'api_txt_lines')]")
++                ),
++            }
++        )
 +
 +    return results
 +
@@ -113,15 +125,17 @@ index 00000000000..6565aa04d59
 +        items = json.get('content', {}).get('items', [])
 +
 +        for item in items:
-+            results.append({
-+                "template": "images.html",
-+                "url": item.get('link'),
-+                "thumbnail_src": item.get('thumb'),
-+                "img_src": item.get('originalUrl'),
-+                "title": html_to_text(item.get('title')),
-+                "source": item.get('source'),
-+                "resolution": f"{item.get('orgWidth')} x {item.get('orgHeight')}",
-+            })
++            results.append(
++                {
++                    "template": "images.html",
++                    "url": item.get('link'),
++                    "thumbnail_src": item.get('thumb'),
++                    "img_src": item.get('originalUrl'),
++                    "title": html_to_text(item.get('title')),
++                    "source": item.get('source'),
++                    "resolution": f"{item.get('orgWidth')} x {item.get('orgHeight')}",
++                }
++            )
 +
 +    return results
 +
@@ -138,12 +152,18 @@ index 00000000000..6565aa04d59
 +        except (ValueError, TypeError):
 +            pass
 +
-+        results.append({
-+            "title": extract_text(eval_xpath(item, ".//a[contains(@class, 'news_tit')]")),
-+            "url": eval_xpath_getindex(item, ".//a[contains(@class, 'news_tit')]/@href", 0),
-+            "content": html_to_text(extract_text(eval_xpath(item, ".//div[contains(@class, 'news_dsc')]//a[contains(@class, 'api_txt_lines')]"))),
-+            "thumbnail": thumbnail,
-+        })
++        results.append(
++            {
++                "title": extract_text(eval_xpath(item, ".//a[contains(@class, 'news_tit')]")),
++                "url": eval_xpath_getindex(item, ".//a[contains(@class, 'news_tit')]/@href", 0),
++                "content": html_to_text(
++                    extract_text(
++                        eval_xpath(item, ".//div[contains(@class, 'news_dsc')]//a[contains(@class, 'api_txt_lines')]")
++                    )
++                ),
++                "thumbnail": thumbnail,
++            }
++        )
 +
 +    return results
 +
@@ -166,13 +186,15 @@ index 00000000000..6565aa04d59
 +        except (ValueError, TypeError):
 +            pass
 +
-+        results.append({
-+            "template": "videos.html",
-+            "title": extract_text(eval_xpath(item, ".//a[@class='info_title']")),
-+            "url": eval_xpath_getindex(item, ".//a[@class='info_title']/@href", 0),
-+            "thumbnail": thumbnail,
-+            'length': length,
-+        })
++        results.append(
++            {
++                "template": "videos.html",
++                "title": extract_text(eval_xpath(item, ".//a[@class='info_title']")),
++                "url": eval_xpath_getindex(item, ".//a[@class='info_title']/@href", 0),
++                "thumbnail": thumbnail,
++                'length': length,
++            }
++        )
 +
 +    return results
 diff --git a/searx/utils.py b/searx/utils.py
