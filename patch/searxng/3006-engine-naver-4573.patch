@@ -1,3 +1,49 @@
+diff --git a/docs/admin/settings/settings_search.rst b/docs/admin/settings/settings_search.rst
+index 76441dd0b7c..ddc6e959408 100644
+--- a/docs/admin/settings/settings_search.rst
++++ b/docs/admin/settings/settings_search.rst
+@@ -41,6 +41,7 @@
+   - ``duckduckgo``
+   - ``google``
+   - ``mwmbl``
++  - ``naver``
+   - ``qwant``
+   - ``seznam``
+   - ``sogou``
+diff --git a/searx/autocomplete.py b/searx/autocomplete.py
+index 8a4f0a66a92..eccac88b75d 100644
+--- a/searx/autocomplete.py
++++ b/searx/autocomplete.py
+@@ -149,6 +149,21 @@ def mwmbl(query, _lang):
+     return [result for result in results if not result.startswith("go: ") and not result.startswith("search: ")]
+ 
+ 
++def naver(query, _lang):
++    # Naver search autocompleter
++    url = f"https://ac.search.naver.com/nx/ac?{urlencode({'q': query, 'r_format': 'json', 'st': 0})}"
++    response = get(url)
++
++    results = []
++
++    if response.ok:
++        data = response.json()
++        if 'items' in data and data['items']:
++            for item in data['items'][0]:
++                results.append(item[0])
++    return results
++
++
+ def qihu360search(query, _lang):
+     # 360Search search autocompleter
+     url = f"https://sug.so.360.cn/suggest?{urlencode({'format': 'json', 'word': query})}"
+@@ -286,6 +301,7 @@ def yandex(query, _lang):
+     'duckduckgo': duckduckgo,
+     'google': google_complete,
+     'mwmbl': mwmbl,
++    'naver': naver,
+     'qwant': qwant,
+     'seznam': seznam,
+     'sogou': sogou,
 diff --git a/searx/engines/naver.py b/searx/engines/naver.py
 new file mode 100644
 index 00000000000..e14d95196c3
