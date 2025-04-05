@@ -1,4 +1,4 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 ARG POSTGRES_VERSION="17"
 
@@ -20,6 +20,7 @@ RUN \
         make \
         gcc \
         clang \
+        jq \
         pkg-config \
         libopenblas-dev \
         postgresql-server-dev-all \
@@ -47,12 +48,13 @@ RUN \
 FROM build_basic AS build_icu
 
 ENV \
-    ICU_VERSION="77.1"
+    ICU_VERSION_FIXED=""
 
 WORKDIR /tmp
 
 RUN export WORKDIR=$(pwd) \
-    && curl -L -o icu4c-src.tgz "https://github.com/unicode-org/icu/releases/download/release-$(echo $ICU_VERSION | sed 's/\./-/g')/icu4c-$(echo $ICU_VERSION | sed 's/\./_/g')-src.tgz" \
+    && export ICU_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/unicode-org/icu/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release" | grep -v "alpha\|eclipse\|rc\|preview" | tail -n 1 | sed "s/refs\/tags\/release\-//" | tr '-' '.') \
+    && curl -L -o icu4c-src.tgz "https://github.com/unicode-org/icu/releases/download/release-$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | sed 's/\./-/g')/icu4c-$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | sed 's/\./_/g')-src.tgz" \
     && tar xzvf icu4c-src.tgz \
     && rm icu4c-src.tgz \
     && cd icu/source \
