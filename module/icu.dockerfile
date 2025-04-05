@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG GCC_VERSION="14"
 
@@ -13,8 +13,7 @@ RUN \
     && cat "${WORKDIR}/icu.json" | jq -Sr ".source" > "${WORKDIR}/icu.autobuild" \
     && mkdir -p "${WORKDIR}/BUILDTMP/ICU" \
     && cd "${WORKDIR}/BUILDTMP/ICU" \
-    && curl -Ls -o - "https://github.com/unicode-org/icu/releases/download/release-77-1/icu4c-77_1-src.tgz" | tar zxvf - --strip-components=1
-    #&& curl -Ls -o - $(cat "${WORKDIR}/icu.autobuild") | tar zxvf - --strip-components=1
+    && curl -Ls -o - $(cat "${WORKDIR}/icu.autobuild") | tar zxvf - --strip-components=1
 
 FROM gcc:${GCC_VERSION} AS build_icu
 
