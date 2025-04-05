@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 ARG POSTGRES_VERSION="17"
 
@@ -143,13 +143,9 @@ COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/share/postgresq
 
 RUN \
     ldconfig && ldconfig \
-    && apt update \
-    && apt install -qy \
-        postgresql-${POSTGRES_VERSION}-postgis-3 \
-        postgresql-${POSTGRES_VERSION}-postgis-3-scripts \
+    && sed -i "/postgis/d" "/docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh" \
     && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_cron,pg_ivm,pg_search'/" "/usr/share/postgresql/postgresql.conf.sample" \
-    && echo "cron.database_name = 'postgres'" >> "/usr/share/postgresql/postgresql.conf.sample" \
-    && rm -rf /var/lib/apt/lists/*
+    && echo "cron.database_name = 'postgres'" >> "/usr/share/postgresql/postgresql.conf.sample"
 
 FROM scratch
 
