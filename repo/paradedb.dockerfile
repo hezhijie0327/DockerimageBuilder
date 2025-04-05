@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 ARG POSTGRES_VERSION="17"
 
@@ -24,11 +24,27 @@ RUN \
         pkg-config \
         libopenblas-dev \
         postgresql-server-dev-all \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt" \
-    && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y \
-    && git clone -b dev --depth 1 "https://github.com/paradedb/paradedb" "${WORKDIR}/BUILDTMP/paradedb"
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt"
 
-FROM build_basic AS build_paradedb
+FROM build_basic AS build_icu
+
+ENV \
+    ICU_VERSION_FIXED=""
+
+WORKDIR /tmp/BUILDTMP
+
+RUN \
+    export WORKDIR=$(pwd) \
+    && mkdir -p "${WORKDIR}/icu" \
+    && cd "${WORKDIR}/icu" \
+    && export ICU_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/unicode-org/icu/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release" | grep -v "alpha\|eclipse\|rc\|preview" | tail -n 1 | sed "s/refs\/tags\/release\-//" | tr '-' '.') \
+    && curl -Ls -o - "https://github.com/unicode-org/icu/releases/download/release-$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | sed 's/\./-/g')/icu4c-$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | sed 's/\./_/g')-src.tgz" | tar zxvf - --strip-components=1 \
+    && cd "${WORKDIR}/icu/source" \
+    && ./runConfigureICU Linux --prefix="/icu" \
+    && make -j $(nproc) \
+    && make install
+
+FROM build_basic AS build_pg_search
 
 ARG \
     POSTGRES_VERSION
@@ -38,47 +54,23 @@ ENV \
     PGX_HOME="/usr/lib/postgresql/${POSTGRES_VERSION}" \
     POSTGRES_VERSION="${POSTGRES_VERSION}"
 
-WORKDIR /tmp/BUILDTMP/paradedb
+COPY --from=build_icu /icu/ /usr/local/
+
+WORKDIR /tmp/BUILDTMP
 
 RUN \
-    export PGRX_VERSION=$(cargo tree --depth 1 -i pgrx -p pg_search | head -n 1 | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/') \
+    export WORKDIR=$(pwd) \
+    && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y \
+    && git clone -b dev --depth 1 "https://github.com/paradedb/paradedb" "${WORKDIR}/paradedb" \
+    && cd paradedb \
+    && export PGRX_VERSION=$(cargo tree --depth 1 -i pgrx -p pg_search | head -n 1 | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/') \
     && cargo install --locked cargo-pgrx --version "${PGRX_VERSION}" \
-    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/lib/postgresql/${POSTGRES_VERSION}/bin/pg_config"
-
-FROM build_basic AS build_icu
-
-ENV \
-    ICU_VERSION_FIXED=""
-
-WORKDIR /tmp
-
-RUN export WORKDIR=$(pwd) \
-    && export ICU_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/unicode-org/icu/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release" | grep -v "alpha\|eclipse\|rc\|preview" | tail -n 1 | sed "s/refs\/tags\/release\-//" | tr '-' '.') \
-    && curl -L -o icu4c-src.tgz "https://github.com/unicode-org/icu/releases/download/release-$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | sed 's/\./-/g')/icu4c-$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | sed 's/\./_/g')-src.tgz" \
-    && tar xzvf icu4c-src.tgz \
-    && rm icu4c-src.tgz \
-    && cd icu/source \
-    && ./runConfigureICU Linux --prefix="${WORKDIR}/BUILDLIB" \
-    && make -j $(nproc) \
-    && make install
-
-FROM build_paradedb AS build_pg_search
-
-ARG \
-    POSTGRES_VERSION
-
-ENV \
-    POSTGRES_VERSION="${POSTGRES_VERSION}"
-
-COPY --from=build_icu /tmp/BUILDLIB/ /usr/local/
-
-WORKDIR /tmp/BUILDTMP/paradedb/pg_search
-
-RUN \
-    ldconfig && ldconfig \
+    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/lib/postgresql/${POSTGRES_VERSION}/bin/pg_config" \
+    && cd pg_search \
+    && ldconfig && ldconfig \
     && cargo pgrx package --features icu --pg-config "/usr/lib/postgresql/${POSTGRES_VERSION}/bin/pg_config"
 
-FROM build_paradedb AS build_pgvector
+FROM build_basic AS build_pgvector
 
 ARG \
     POSTGRES_VERSION
@@ -87,25 +79,34 @@ ENV \
     PG_CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter -Wno-sign-compare" \
     PG_CONFIG="/usr/lib/postgresql/${POSTGRES_VERSION}/bin/pg_config"
 
+WORKDIR /tmp/BUILDTMP
+
 RUN \
-    git clone -b "master" --depth 1 "https://github.com/pgvector/pgvector.git" "/tmp/BUILDTMP/pgvector" \
-    && cd "/tmp/BUILDTMP/pgvector" \
+    export WORKDIR=$(pwd) \
+    && git clone -b "master" --depth 1 "https://github.com/pgvector/pgvector.git" "${WORKDIR}/pgvector" \
+    && cd "${WORKDIR}/pgvector" \
     && echo "trusted = true" >> vector.control \
     && make USE_PGXS=1 -j
 
-FROM build_paradedb AS build_pg_cron
+FROM build_basic AS build_pg_cron
+
+WORKDIR /tmp/BUILDTMP
 
 RUN \
-    git clone -b "main" --depth 1 "https://github.com/citusdata/pg_cron.git" "/tmp/BUILDTMP/pg_cron" \
-    && cd "/tmp/BUILDTMP/pg_cron" \
+    export WORKDIR=$(pwd) \
+    && git clone -b "main" --depth 1 "https://github.com/citusdata/pg_cron.git" "${WORKDIR}/pg_cron" \
+    && cd "${WORKDIR}/pg_cron" \
     && echo "trusted = true" >> pg_cron.control \
     && make USE_PGXS=1 -j
 
-FROM build_paradedb AS build_pg_ivm
+FROM build_basic AS build_pg_ivm
+
+WORKDIR /tmp/BUILDTMP
 
 RUN \
-    git clone -b "main" --depth 1 "https://github.com/sraoss/pg_ivm.git" "/tmp/BUILDTMP/pg_ivm" \
-    && cd "/tmp/BUILDTMP/pg_ivm" \
+    export WORKDIR=$(pwd) \
+    && git clone -b "main" --depth 1 "https://github.com/sraoss/pg_ivm.git" "${WORKDIR}/pg_ivm" \
+    && cd "${WORKDIR}/pg_ivm" \
     && echo "trusted = true" >> pg_ivm.control \
     && make USE_PGXS=1 -j
 
@@ -120,11 +121,11 @@ ENV \
 # SSL cert
 COPY --from=build_basic /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
-# ParadeDB bootstrap
-COPY --from=build_basic /tmp/BUILDTMP/paradedb/docker/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh
-
 # ICU
-COPY --from=build_icu /tmp/BUILDLIB/ /usr/local/
+COPY --from=build_icu /icu/ /usr/local/
+
+# ParadeDB bootstrap
+COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/docker/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh
 
 # ParadeDB extensions
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/lib/postgresql/${POSTGRES_VERSION}/lib/* /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
