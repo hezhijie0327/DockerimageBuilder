@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 ARG POSTGRES_VERSION="17"
 
@@ -47,7 +47,7 @@ RUN \
 FROM build_basic AS build_icu
 
 ENV \
-    ICU_VERSION="76.1"
+    ICU_VERSION="77.1"
 
 WORKDIR /tmp
 
@@ -75,19 +75,6 @@ WORKDIR /tmp/BUILDTMP/paradedb/pg_search
 RUN \
     ldconfig && ldconfig \
     && cargo pgrx package --features icu --pg-config "/usr/lib/postgresql/${POSTGRES_VERSION}/bin/pg_config"
-
-FROM build_paradedb AS build_pg_parquet
-
-ARG \
-    POSTGRES_VERSION
-
-ENV \
-    POSTGRES_VERSION="${POSTGRES_VERSION}"
-
-RUN \
-    git clone -b "main" --depth 1 "https://github.com/CrunchyData/pg_parquet.git" "/tmp/BUILDTMP/pg_parquet" \
-    && cd "/tmp/BUILDTMP/pg_parquet" \
-    && cargo pgrx package --pg-config "/usr/lib/postgresql/${POSTGRES_VERSION}/bin/pg_config"
 
 FROM build_paradedb AS build_pgvector
 
@@ -141,14 +128,7 @@ COPY --from=build_icu /tmp/BUILDLIB/ /usr/local/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/lib/postgresql/${POSTGRES_VERSION}/lib/* /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/share/postgresql/${POSTGRES_VERSION}/extension/* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
-COPY --from=build_pg_parquet /tmp/BUILDTMP/pg_parquet/target/release/pg_parquet-pg${POSTGRES_VERSION}/usr/lib/postgresql/${POSTGRES_VERSION}/lib/* /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
-COPY --from=build_pg_parquet /tmp/BUILDTMP/pg_parquet/target/release/pg_parquet-pg${POSTGRES_VERSION}/usr/share/postgresql/${POSTGRES_VERSION}/extension/* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
-
 # 3rd party extensions
-COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
-COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
-COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/share/postgresql/${POSTGRES_VERSION}/extension/
-
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/sql/*.sql /usr/share/postgresql/${POSTGRES_VERSION}/extension/
@@ -157,13 +137,17 @@ COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.so /usr/lib/postgresql/${POSTGRE
 COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/sql/*.sql /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
+COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
+COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
+COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/share/postgresql/${POSTGRES_VERSION}/extension/
+
 RUN \
     ldconfig && ldconfig \
     && apt update \
     && apt install -qy \
         postgresql-${POSTGRES_VERSION}-postgis-3 \
         postgresql-${POSTGRES_VERSION}-postgis-3-scripts \
-    && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_parquet,pg_cron'/" "/usr/share/postgresql/postgresql.conf.sample" \
+    && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_cron,pg_ivm,pg_search'/" "/usr/share/postgresql/postgresql.conf.sample" \
     && echo "cron.database_name = 'postgres'" >> "/usr/share/postgresql/postgresql.conf.sample" \
     && rm -rf /var/lib/apt/lists/*
 
@@ -171,8 +155,11 @@ FROM scratch
 
 COPY --from=paradedb_rebase / /
 
+ARG \
+    POSTGRES_VERSION
+
 ENV \
-    PATH="/usr/lib/postgresql/17/bin:$PATH"
+    PATH="/usr/lib/postgresql/${POSTGRES_VERSION}/bin:$PATH" \
     PGDATA="/var/lib/postgresql/data" \
     PGPORT="5432" POSTGRES_DB="postgres" \
     POSTGRES_USER="postgres" \
