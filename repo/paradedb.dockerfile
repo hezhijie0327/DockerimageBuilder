@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 ARG POSTGRES_VERSION="17"
 
@@ -124,13 +124,6 @@ COPY --from=build_basic /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl
 # ICU
 COPY --from=build_icu /icu/ /usr/local/
 
-# ParadeDB bootstrap
-COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/docker/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh
-
-# ParadeDB extensions
-COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/lib/postgresql/${POSTGRES_VERSION}/lib/* /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
-COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/share/postgresql/${POSTGRES_VERSION}/extension/* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
-
 # 3rd party extensions
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
@@ -143,6 +136,13 @@ COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/sql/*.sql /usr/share/postgresql/${
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/share/postgresql/${POSTGRES_VERSION}/extension/
+
+# ParadeDB bootstrap
+COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/docker/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh
+
+# ParadeDB extensions
+COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/lib/postgresql/${POSTGRES_VERSION}/lib/* /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
+COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/share/postgresql/${POSTGRES_VERSION}/extension/* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
 RUN \
     ldconfig && ldconfig \
