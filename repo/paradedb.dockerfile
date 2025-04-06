@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 ARG POSTGRES_VERSION="17"
 
@@ -10,9 +10,7 @@ RUN \
     export WORKDIR=$(pwd) \
     && mkdir -p "${WORKDIR}/BUILDTMP" \
     && apk add --no-cache \
-        ca-certificates \
         build-base \
-        gnupg \
         curl \
         git \
         make \
@@ -111,12 +109,6 @@ RUN \
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
 
-ARG \
-    POSTGRES_VERSION
-
-ENV \
-    POSTGRES_VERSION="${POSTGRES_VERSION}"
-
 # SSL cert
 COPY --from=build_basic /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
@@ -140,8 +132,8 @@ COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/local/share/pos
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/docker/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh
 
 # ParadeDB extensions
-COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
-COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg${POSTGRES_VERSION}/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
+COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
+COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
 
 RUN \
     sed -i "/postgis/d" "/docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh" \
