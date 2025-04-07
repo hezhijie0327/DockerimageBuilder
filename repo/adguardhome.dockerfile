@@ -1,4 +1,4 @@
-# Current Version: 2.2.4
+# Current Version: 2.2.5
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -27,7 +27,7 @@ RUN \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/adguardhome/*.patch \
     && cp -r "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/adguardhome/static/zh-cn.json" "${WORKDIR}/BUILDTMP/ADGUARDHOME/client/src/__locales/zh-cn.json"
 
-FROM --platform=linux/amd64 node:${NODEJS_VERSION}-slim AS build_adguardhome_web
+FROM node:${NODEJS_VERSION}-slim AS build_adguardhome_web
 
 WORKDIR /adguardhome
 
