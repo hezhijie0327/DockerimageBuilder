@@ -1,4 +1,4 @@
-# Current Version: 1.2.2
+# Current Version: 1.2.3
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -33,7 +33,7 @@ RUN \
     && echo "${VAULTWARDEN_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/VAULTWARDEN/VAULTWARDEN_CUSTOM_VERSION" \
     && echo "${VAULTWARDEN_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/VAULTWARDEN_WEB/VAULTWARDEN_CUSTOM_VERSION"
 
-FROM --platform=linux/amd64 node:${NODEJS_VERSION}-slim AS build_vaultwarden_web
+FROM node:${NODEJS_VERSION}-slim AS build_vaultwarden_web
 
 WORKDIR /vaultwarden
 
