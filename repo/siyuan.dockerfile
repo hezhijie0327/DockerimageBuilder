@@ -1,4 +1,4 @@
-# Current Version: 1.1.9
+# Current Version: 1.2.0
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -29,7 +29,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN/kernel" \
     && sed -i "s/\=\ \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\=\ \"${SIYUAN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/SIYUAN/kernel/util/working.go"
 
-FROM --platform=linux/amd64 node:${NODEJS_VERSION}-slim AS build_siyuan_app
+FROM node:${NODEJS_VERSION}-slim AS build_siyuan_app
 
 WORKDIR /siyuan
 
