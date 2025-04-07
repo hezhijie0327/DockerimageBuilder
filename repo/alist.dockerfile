@@ -1,4 +1,4 @@
-# Current Version: 1.2.8
+# Current Version: 1.2.9
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -36,7 +36,7 @@ RUN \
     && sed -i -e "s/\"version\": \"0.0.0\"/\"version\": \"$ALIST_CUSTOM_VERSION\"/g" "${WORKDIR}/BUILDTMP/ALIST_WEB/package.json" \
     && cp -rf "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/alist_web/lang/zh-CN" "${WORKDIR}/BUILDTMP/ALIST_WEB/src/lang/zh-CN"
 
-FROM --platform=linux/amd64 node:${NODEJS_VERSION}-slim AS build_alist_web
+FROM node:${NODEJS_VERSION}-slim AS build_alist_web
 
 WORKDIR /alist
 
