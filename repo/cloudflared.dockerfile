@@ -1,4 +1,4 @@
-# Current Version: 1.1.8
+# Current Version: 1.1.9
 
 ARG GOLANG_VERSION="1"
 
@@ -25,7 +25,7 @@ RUN \
     && echo $(uname -m | sed "s/x86_64/amd64/g;s/x86-64/amd64/g;s/amd64/amd64/g;s/aarch64/arm64/g") > "${WORKDIR}/BUILDTMP/CLOUDFLARED/SYS_ARCH" \
     && sed -i "s/\$(shell git describe --tags --always --match \"\[0-9\]\[0-9\]\[0-9\]\[0-9\].\*.\*\")/${CLOUDFLARED_CUSTOM_VERSION}/g" "${WORKDIR}/BUILDTMP/CLOUDFLARED/Makefile"
 
-FROM --platform=linux/amd64 golang:${GOLANG_VERSION} AS build_cloudflared
+FROM golang:${GOLANG_VERSION} AS build_cloudflared
 
 WORKDIR /cloudflared
 
