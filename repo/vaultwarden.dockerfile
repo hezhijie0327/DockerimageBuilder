@@ -1,4 +1,4 @@
-# Current Version: 1.2.5
+# Current Version: 1.2.6
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -45,7 +45,11 @@ COPY --from=get_info /tmp/BUILDTMP/VAULTWARDEN_WEB /vaultwarden
 RUN \
     apt update \
     && apt install -qy \
+          build-essential \
+          gcc \
           git \
+          make \
+          python3 \
     && export VAULT_VERSION=$(cat ./Dockerfile | grep "ARG VAULT_VERSION" | cut -d '=' -f 2) \
     && ./scripts/checkout_web_vault.sh \
     && ./scripts/patch_web_vault.sh \
