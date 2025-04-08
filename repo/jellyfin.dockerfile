@@ -1,4 +1,4 @@
-# Current Version: 2.1.5
+# Current Version: 2.1.6
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -61,20 +61,13 @@ ENV \
 RUN \
     dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="/jellyfin/output" --self-contained --runtime linux-$(cat "/jellyfin/SYS_ARCH") -p:DebugSymbols=false -p:DebugType=none
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
-
-COPY --from=build_jellyfin /jellyfin/output /tmp/BUILDKIT/jellyfin
-
-RUN \
-    gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/jellyfin/jellyfin"
-
 FROM debian:stable-slim AS rebased_jellyfin
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=gpg_sign /tmp/BUILDKIT/jellyfin /opt/jellyfin
+COPY --from=build_jellyfin /jellyfin/output /opt/jellyfin
 
 COPY --from=build_jellyfin /jellyfin/jellyfin-archive-keyring.gpg /usr/share/keyrings/jellyfin-archive-keyring.gpg
 
