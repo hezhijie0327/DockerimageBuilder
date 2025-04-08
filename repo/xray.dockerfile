@@ -1,4 +1,4 @@
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 ARG GOLANG_VERSION="1"
 
@@ -36,16 +36,14 @@ ENV \
 RUN \
     go build -o xray -trimpath -ldflags "-s -w -buildid=" ./main
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
+FROM scratch AS rebased_xray
 
-COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_xray /xray/xray /tmp/BUILDKIT/xray
-
-RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/xray"
+COPY --from=build_xray /xray/xray /xray
 
 FROM scratch
 
-COPY --from=gpg_sign /tmp/BUILDKIT /
+COPY --from=rebased_xray / /
 
 ENTRYPOINT ["/xray"]
