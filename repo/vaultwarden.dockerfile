@@ -1,4 +1,4 @@
-# Current Version: 1.2.4
+# Current Version: 1.2.5
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -80,7 +80,7 @@ ENV \
     ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" \
     WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/web-vault"
 
-COPY --from=gpg_sign / /
+COPY --from=rebased_vaultwarden / /
 
 EXPOSE 8000/tcp
 
