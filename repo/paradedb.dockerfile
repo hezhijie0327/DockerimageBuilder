@@ -1,4 +1,4 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 ARG POSTGRES_VERSION="17"
 
@@ -109,13 +109,10 @@ RUN \
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
 
-# SSL cert
 COPY --from=build_basic /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
-# ICU
 COPY --from=build_icu /icu/ /usr/local/
 
-# 3rd party extensions
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.so /usr/local/lib/postgresql/
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.control /usr/local/share/postgresql/extension/
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/sql/*.sql /usr/local/share/postgresql/extension/
@@ -128,10 +125,8 @@ COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.so /usr/local/lib/postgresql
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.control /usr/local/share/postgresql/extension/
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/local/share/postgresql/extension/
 
-# ParadeDB bootstrap
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/docker/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh
 
-# ParadeDB extensions
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
 
