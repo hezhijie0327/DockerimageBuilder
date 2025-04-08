@@ -1,4 +1,4 @@
-# Current Version: 2.2.5
+# Current Version: 2.2.6
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -49,13 +49,11 @@ RUN \
     make go-deps \
     && make go-build VERSION="$(cat /adguardhome/ADGUARDHOME_CUSTOM_VERSION)"
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
+FROM scratch AS rebased_adguardhome
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_adguardhome /adguardhome/AdGuardHome /tmp/BUILDKIT/AdGuardHome
-
-RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/AdGuardHome"
 
 FROM scratch
 
