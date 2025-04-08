@@ -1,4 +1,4 @@
-# Current Version: 2.1.6
+# Current Version: 2.1.7
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -67,11 +67,11 @@ ENV DEBIAN_FRONTEND="noninteractive"
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_jellyfin /jellyfin/output /opt/jellyfin
+COPY --from=build_jellyfin /jellyfin/output /app/jellyfin
 
 COPY --from=build_jellyfin /jellyfin/jellyfin-archive-keyring.gpg /usr/share/keyrings/jellyfin-archive-keyring.gpg
 
-COPY --from=build_jellyfin_web /jellyfin/dist /opt/jellyfin-web
+COPY --from=build_jellyfin_web /jellyfin/dist /app/jellyfin-web
 
 COPY --from=build_jellyfin_web /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc
 
@@ -104,4 +104,4 @@ COPY --from=rebased_jellyfin / /
 
 EXPOSE 1900/udp 7359/udp 8096/tcp 8920/tcp
 
-ENTRYPOINT ["/opt/jellyfin/jellyfin", "--ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffmpeg", "--webdir", "/opt/jellyfin-web"]
+ENTRYPOINT ["/app/jellyfin/jellyfin", "--ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffmpeg", "--webdir", "/app/jellyfin-web"]

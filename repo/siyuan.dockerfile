@@ -1,4 +1,4 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -57,14 +57,14 @@ WORKDIR /tmp
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_siyuan_app /siyuan/appearance /opt/siyuan/appearance
-COPY --from=build_siyuan_app /siyuan/stage /opt/siyuan/stage
-COPY --from=build_siyuan_app /siyuan/guide /opt/siyuan/guide
-COPY --from=build_siyuan_app /siyuan/changelogs /opt/siyuan/changelogs
+COPY --from=build_siyuan_app /siyuan/appearance /app/siyuan/appearance
+COPY --from=build_siyuan_app /siyuan/stage /app/siyuan/stage
+COPY --from=build_siyuan_app /siyuan/guide /app/siyuan/guide
+COPY --from=build_siyuan_app /siyuan/changelogs /app/siyuan/changelogs
 
-COPY --from=build_siyuan_kernel /siyuan/kernel /opt/siyuan/kernel
+COPY --from=build_siyuan_kernel /siyuan/kernel /app/siyuan/kernel
 
-RUN find /opt/siyuan/ -name .git | xargs rm -rf
+RUN find /app/siyuan/ -name .git | xargs rm -rf
 
 FROM scratch
 
@@ -74,4 +74,4 @@ COPY --from=rebased_siyuan / /
 
 EXPOSE 6806/tcp 6808/tcp
 
-ENTRYPOINT ["/opt/siyuan/kernel"]
+ENTRYPOINT ["/app/siyuan/kernel"]

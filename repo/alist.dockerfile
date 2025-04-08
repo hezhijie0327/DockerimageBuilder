@@ -1,4 +1,4 @@
-# Current Version: 1.3.0
+# Current Version: 1.3.1
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -71,7 +71,7 @@ WORKDIR /tmp
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_alist /alist/alist /opt/alist/alist
+COPY --from=build_alist /alist/alist /app/alist/alist
 
 FROM scratch
 
@@ -79,4 +79,4 @@ COPY --from=rebased_alist / /
 
 EXPOSE 5221/tcp 5222/tcp 5244/tcp 5246/tcp
 
-ENTRYPOINT ["/opt/alist/alist"]
+ENTRYPOINT ["/app/alist/alist"]
