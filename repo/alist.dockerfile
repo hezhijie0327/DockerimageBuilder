@@ -1,4 +1,4 @@
-# Current Version: 1.2.9
+# Current Version: 1.3.0
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -65,19 +65,13 @@ COPY --from=build_alist_web /alist/dist /alist/public/dist
 RUN \
     go build -o ./alist -ldflags="-w -s -X github.com/alist-org/alist/v3/internal/conf.Version=$(cat /alist/ALIST_CUSTOM_VERSION)" -tags=jsoniter .
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
-
-COPY --from=build_alist /alist/alist /tmp/BUILDKIT/alist
-
-RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/alist"
-
 FROM busybox:latest AS rebased_alist
 
 WORKDIR /tmp
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=gpg_sign /tmp/BUILDKIT /opt/alist
+COPY --from=build_alist /alist/alist /opt/alist/alist
 
 FROM scratch
 

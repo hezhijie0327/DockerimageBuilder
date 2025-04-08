@@ -1,4 +1,4 @@
-# Current Version: 1.1.9
+# Current Version: 1.2.0
 
 ARG GOLANG_VERSION="1"
 
@@ -41,16 +41,14 @@ RUN \
     && .teamcity/install-cloudflare-go.sh \
     && make cloudflared
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
+FROM scratch AS rebased_cloudflared
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_cloudflared /cloudflared/cloudflared /tmp/BUILDKIT/cloudflared
-
-RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/cloudflared"
+COPY --from=build_cloudflared /cloudflared/cloudflared /cloudflared
 
 FROM scratch
 
-COPY --from=gpg_sign /tmp/BUILDKIT /
+COPY --from=rebased_cloudflared / /
 
 ENTRYPOINT ["/cloudflared"]

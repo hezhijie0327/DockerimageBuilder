@@ -1,4 +1,4 @@
-# Current Version: 1.5.0
+# Current Version: 1.5.1
 
 ARG GCC_VERSION="14"
 
@@ -106,23 +106,16 @@ RUN \
           -r "/unbound/etc/unbound/root.hints" \
           -v -R || logger "Please check root.key"
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
+FROM scratch AS rebased_unbound
 
-COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_unbound /usr/local/sbin/unbound* /tmp/BUILDKIT/
-COPY --from=build_unbound /unbound/etc/unbound /tmp/BUILDKIT/etc/unbound
-
-RUN \
-    gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound" \
-    && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound-anchor" \
-    && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound-checkconf" \
-    && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound-control" \
-    && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/unbound-host"
+COPY --from=build_unbound /usr/local/sbin/unbound* /
+COPY --from=build_unbound /unbound/etc/unbound /etc/unbound
 
 FROM scratch
 
-COPY --from=gpg_sign /tmp/BUILDKIT /
+COPY --from=rebased_unbound / /
 
 EXPOSE 443/tcp 53/tcp 53/udp 853/tcp
 

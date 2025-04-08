@@ -1,4 +1,4 @@
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -51,24 +51,18 @@ ENV CGO_ENABLED="1"
 RUN \
     go build --tags fts5 -v -ldflags "-s -w"
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
-
-COPY --from=build_siyuan_kernel /siyuan/kernel /tmp/BUILDKIT/kernel
-
-RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/kernel"
-
 FROM busybox:latest AS rebased_siyuan
 
 WORKDIR /tmp
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=gpg_sign /tmp/BUILDKIT/ /opt/siyuan/
-
 COPY --from=build_siyuan_app /siyuan/appearance /opt/siyuan/appearance
 COPY --from=build_siyuan_app /siyuan/stage /opt/siyuan/stage
 COPY --from=build_siyuan_app /siyuan/guide /opt/siyuan/guide
 COPY --from=build_siyuan_app /siyuan/changelogs /opt/siyuan/changelogs
+
+COPY --from=build_siyuan_kernel /siyuan/kernel /opt/siyuan/kernel
 
 RUN find /opt/siyuan/ -name .git | xargs rm -rf
 

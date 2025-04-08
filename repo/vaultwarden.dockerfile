@@ -1,4 +1,4 @@
-# Current Version: 1.2.3
+# Current Version: 1.2.5
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -64,15 +64,13 @@ RUN \
     && export VW_VERSION=$(cat "/vaultwarden/VAULTWARDEN_CUSTOM_VERSION") \
     && cargo build --features sqlite --release
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
+FROM scratch AS rebased_vaultwarden
 
-COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_vaultwarden_web /vaultwarden/web-vault /tmp/BUILDKIT/web-vault
+COPY --from=build_vaultwarden /vaultwarden/target/release/vaultwarden /vaultwarden
 
-COPY --from=build_vaultwarden /vaultwarden/target/release/vaultwarden /tmp/BUILDKIT/vaultwarden
-
-RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/vaultwarden"
+COPY --from=build_vaultwarden_web /vaultwarden/web-vault /web-vault
 
 FROM scratch
 
@@ -82,7 +80,7 @@ ENV \
     ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" \
     WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/web-vault"
 
-COPY --from=gpg_sign /tmp/BUILDKIT /
+COPY --from=rebased_vaultwarden / /
 
 EXPOSE 8000/tcp
 

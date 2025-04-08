@@ -1,4 +1,4 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
 
 ARG GCC_VERSION="14"
 
@@ -51,20 +51,15 @@ RUN \
     && rm -rf /usr/local/bin/valkey-check-* "/usr/local/bin/valkey-sentinel" \
     && strip -s /usr/local/bin/valkey-*
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
+FROM scratch AS rebased_valkey
 
-COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_valkey /usr/local/bin/valkey-* /tmp/BUILDKIT/
-
-RUN \
-    gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/valkey-benchmark" \
-    && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/valkey-cli" \
-    && gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/valkey-server"
+COPY --from=build_valkey /usr/local/bin/valkey-* /
 
 FROM scratch
 
-COPY --from=gpg_sign /tmp/BUILDKIT /
+COPY --from=rebased_valkey / /
 
 EXPOSE 6379/tcp
 

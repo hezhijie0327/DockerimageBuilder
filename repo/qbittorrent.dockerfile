@@ -1,4 +1,4 @@
-# Current Version: 1.3.0
+# Current Version: 1.3.1
 
 FROM hezhijie0327/module:alpine AS get_info
 
@@ -49,17 +49,15 @@ RUN \
         --qbittorrent-master \
         --strip
 
-FROM hezhijie0327/gpg:latest AS gpg_sign
+FROM scratch AS rebased_qbittorrent
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_qbittorrent /qbittorrent/completed/qbittorrent-nox /tmp/BUILDKIT/qbittorrent-nox
-
-RUN gpg --detach-sign --passphrase "$(cat '/root/.gnupg/ed25519_passphrase.key' | base64 -d)" --pinentry-mode "loopback" "/tmp/BUILDKIT/qbittorrent-nox"
+COPY --from=build_qbittorrent /qbittorrent/completed/qbittorrent-nox /qbittorrent-nox
 
 FROM scratch
 
-COPY --from=gpg_sign /tmp/BUILDKIT /
+COPY --from=rebased_qbittorrent / /
 
 EXPOSE 8080/tcp 9000/tcp
 
