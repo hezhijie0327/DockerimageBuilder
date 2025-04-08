@@ -1,4 +1,4 @@
-# Current Version: 2.0.3
+# Current Version: 1.5.1
 
 ARG NODEJS_VERSION="22"
 
@@ -46,9 +46,13 @@ FROM build_baseos AS build_lobechat
 
 ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
-    NEXT_PUBLIC_CLIENT_DB="pglite" \
-    MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
-    PNPM_HOME="/pnpm"
+    NEXT_PUBLIC_ENABLE_NEXT_AUTH="1" \
+    NEXT_PUBLIC_SERVICE_MODE="server" \
+    PNPM_HOME="/pnpm" \
+    APP_URL="http://app.com" \
+    DATABASE_DRIVER="node" \
+    DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
+    KEY_VAULTS_SECRET="use-for-build"
 
 WORKDIR /app
 
@@ -61,7 +65,11 @@ RUN \
     && npm i -g corepack@latest \
     && corepack enable \
     && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
-    && pnpm i
+    && pnpm i \
+    && mkdir -p /deps \
+    && cd /deps \
+    && pnpm init \
+    && pnpm add pg drizzle-orm
 
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/ .
 
@@ -75,11 +83,20 @@ COPY --from=build_baseos /distroless/ /
 
 COPY --from=build_lobechat /app/.next/standalone /app/
 
+COPY --from=build_lobechat /app/src/database/migrations /app/migrations
+COPY --from=build_lobechat /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
+COPY --from=build_lobechat /app/scripts/migrateServerDB/errorHint.js /app/errorHint.js
+
+COPY --from=build_lobechat /deps/node_modules/.pnpm /app/node_modules/.pnpm
+COPY --from=build_lobechat /deps/node_modules/pg /app/node_modules/pg
+COPY --from=build_lobechat /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
+
 COPY --from=build_lobechat /app/scripts/serverLauncher/startServer.js /app/startServer.js
 
 FROM scratch
 
 ENV \
+    DATABASE_DRIVER="node" \
     NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="" \
     NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
     SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt" \
