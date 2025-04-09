@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 ARG POSTGRES_VERSION="17"
 
@@ -33,7 +33,7 @@ RUN \
         clang-libclang \
         clang-static \
         llvm-static \
-        openssl-libs-static \
+        openssl-libs-static
 
 FROM build_basic AS build_icu
 
