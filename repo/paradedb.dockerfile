@@ -1,6 +1,16 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 ARG POSTGRES_VERSION="17"
+
+FROM hezhijie0327/module:alpine AS get_info
+
+WORKDIR /tmp
+
+RUN \
+    export WORKDIR=$(pwd) \
+    && cat "/opt/package.json" | jq -Sr ".module.icu" > "${WORKDIR}/icu.json" \
+    && cat "${WORKDIR}/icu.json" | jq -Sr ".version" \
+    && cat "${WORKDIR}/icu.json" | jq -Sr ".source" > "${WORKDIR}/icu.autobuild"
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
 
@@ -33,12 +43,13 @@ ENV \
 
 WORKDIR /tmp/BUILDTMP
 
+COPY --from=get_info /tmp/icu.autobuild /tmp/BUILDTMP/icu.autobuild
+
 RUN \
     export WORKDIR=$(pwd) \
     && mkdir -p "${WORKDIR}/icu" \
     && cd "${WORKDIR}/icu" \
-    && export ICU_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/unicode-org/icu/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release" | grep -v "alpha\|eclipse\|rc\|preview" | tail -n 1 | sed "s/refs\/tags\/release\-//" | tr '-' '.') \
-    && curl -Ls -o - "https://github.com/unicode-org/icu/releases/download/release-$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | sed 's/\./-/g')/icu4c-$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | sed 's/\./_/g')-src.tgz" | tar zxvf - --strip-components=1 \
+    && curl -Ls -o - $(cat "${WORKDIR}/icu.autobuild") | tar zxvf - --strip-components=1 \
     && cd "${WORKDIR}/icu/source" \
     && ./runConfigureICU Linux --prefix="/icu" \
     && make -j $(nproc) \
