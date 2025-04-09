@@ -1,4 +1,4 @@
-# Current Version: 1.1.0
+# Current Version: 1.1.1
 
 ARG POSTGRES_VERSION="17"
 
@@ -34,7 +34,6 @@ RUN \
         clang-static \
         llvm-static \
         openssl-libs-static \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt"
 
 FROM build_basic AS build_icu
 
@@ -120,7 +119,7 @@ RUN \
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
 
-COPY --from=build_basic /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_icu /icu/ /usr/local/
 
