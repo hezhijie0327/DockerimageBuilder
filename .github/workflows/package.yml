@@ -1,4 +1,4 @@
-# Current Version: 1.4.8
+# Current Version: 1.4.9
 
 name: Build & Release hezhijie0327/DockerimageBuilder (Package)
 
@@ -57,14 +57,14 @@ jobs:
 
       - uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_TOKEN }}
-
-      - uses: docker/login-action@v3
-        with:
           registry: ghcr.io
           username: ${{ env.GHCR_USERNAME }}
           password: ${{ env.GHCR_TOKEN }}
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Build and push by digest
         id: build
@@ -75,7 +75,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: |
             org.opencontainers.image.title=${{ env.PACKAGE_NAME }}
-          outputs: type=image,name=${{ env.DOCKERHUB_NAMESPACE }}/${{ env.PACKAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.GHCR_NAMESPACE }}/${{ env.PACKAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
         run: |
@@ -119,14 +119,14 @@ jobs:
 
       - uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_TOKEN }}
-
-      - uses: docker/login-action@v3
-        with:
           registry: ghcr.io
           username: ${{ env.GHCR_USERNAME }}
           password: ${{ env.GHCR_TOKEN }}
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Download digests
         uses: actions/download-artifact@v4
@@ -135,27 +135,19 @@ jobs:
           pattern: ${{ matrix.package }}-digest-*
           merge-multiple: true
 
-      - name: Create and push DockerHub manifest
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create -t ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }} \
-            $(printf '${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}@sha256:%s ' *)
-
       - name: Create and push GHCR manifest
         working-directory: /tmp/digests
         run: |
-          for digest in *; do
-            docker buildx imagetools create -t ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}@sha256:${digest} \
-              ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}@sha256:${digest}
-          done
-
           docker buildx imagetools create -t ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }} \
             $(printf '${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}@sha256:%s ' *)
 
-      - name: Inspect manifests
+      - name: Create and push Docker Hub manifest
+        working-directory: /tmp/digests
         run: |
-          echo "Inspecting DockerHub manifest:"
-          docker buildx imagetools inspect ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }}
+          for digest in *; do
+            docker buildx imagetools create -t ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}@sha256:${digest} \
+              ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}@sha256:${digest}
+          done
 
-          echo "Inspecting GHCR manifest:"
-          docker buildx imagetools inspect ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }}
+          docker buildx imagetools create -t ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }} \
+            $(printf '${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}@sha256:%s ' *)
