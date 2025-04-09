@@ -1,8 +1,8 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 ARG GCC_VERSION="14"
 
-FROM hezhijie0327/module:alpine AS get_info
+FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -15,7 +15,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBHIREDIS" \
     && curl -Ls -o - $(cat "${WORKDIR}/libhiredis.autobuild") | tar zxvf - --strip-components=1
 
-FROM hezhijie0327/module:openssl AS build_openssl
+FROM ghcr.io/hezhijie0327/module:openssl AS build_openssl
 
 FROM gcc:${GCC_VERSION} AS build_libhiredis
 

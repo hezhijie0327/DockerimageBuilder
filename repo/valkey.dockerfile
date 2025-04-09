@@ -1,8 +1,8 @@
-# Current Version: 1.1.4
+# Current Version: 1.1.5
 
 ARG GCC_VERSION="14"
 
-FROM hezhijie0327/module:alpine AS get_info
+FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -24,7 +24,7 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/VALKEY" \
     && sed -i 's/\(VALKEY_VERSION "\)[0-9]\+\(\.[0-9]\+\)*"/\1'"${VALKEY_CUSTOM_VERSION}"'"/' "${WORKDIR}/BUILDTMP/VALKEY/src/version.h"
 
-FROM hezhijie0327/module:openssl AS build_openssl
+FROM ghcr.io/hezhijie0327/module:openssl AS build_openssl
 
 FROM gcc:${GCC_VERSION} AS build_valkey
 

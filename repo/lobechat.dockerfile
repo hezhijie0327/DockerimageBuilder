@@ -1,8 +1,8 @@
-# Current Version: 1.5.1
+# Current Version: 1.5.2
 
 ARG NODEJS_VERSION="22"
 
-FROM hezhijie0327/module:alpine AS get_info
+FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 

@@ -1,9 +1,9 @@
-# Current Version: 1.3.1
+# Current Version: 1.3.2
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
 
-FROM hezhijie0327/module:alpine AS get_info
+FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 

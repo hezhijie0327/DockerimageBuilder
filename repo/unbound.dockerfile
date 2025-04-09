@@ -1,8 +1,8 @@
-# Current Version: 1.5.1
+# Current Version: 1.5.2
 
 ARG GCC_VERSION="14"
 
-FROM hezhijie0327/module:alpine AS get_info
+FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -27,17 +27,17 @@ RUN \
     && wget -O "${WORKDIR}/BUILDTMP/UNBOUND/etc/unbound/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" \
     && wget -O "${WORKDIR}/BUILDTMP/UNBOUND/etc/unbound/root.hints" "https://www.internic.net/domain/named.cache"
 
-FROM hezhijie0327/module:libexpat AS build_libexpat
+FROM ghcr.io/hezhijie0327/module:libexpat AS build_libexpat
 
-FROM hezhijie0327/module:libhiredis AS build_libhiredis
+FROM ghcr.io/hezhijie0327/module:libhiredis AS build_libhiredis
 
-FROM hezhijie0327/module:libmnl AS build_libmnl
+FROM ghcr.io/hezhijie0327/module:libmnl AS build_libmnl
 
-FROM hezhijie0327/module:libnghttp2 AS build_libnghttp2
+FROM ghcr.io/hezhijie0327/module:libnghttp2 AS build_libnghttp2
 
-FROM hezhijie0327/module:libsodium AS build_libsodium
+FROM ghcr.io/hezhijie0327/module:libsodium AS build_libsodium
 
-FROM hezhijie0327/module:openssl AS build_openssl
+FROM ghcr.io/hezhijie0327/module:openssl AS build_openssl
 
 FROM gcc:${GCC_VERSION} AS build_unbound
 
