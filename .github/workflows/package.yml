@@ -1,4 +1,4 @@
-# Current Version: 1.4.6
+# Current Version: 1.4.7
 
 name: Build & Release hezhijie0327/DockerimageBuilder (Package)
 
@@ -6,6 +6,7 @@ on:
   schedule:
     - cron: "0 8,20 * * *" # UTC+8 04:00 / 16:00
   workflow_dispatch:
+
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -13,6 +14,8 @@ env:
   GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
   DOCKERHUB_NAMESPACE: ${{ secrets.DOCKERHUB_USERNAME }}
   GHCR_NAMESPACE: ghcr.io/${{ secrets.GHCR_USERNAME }}
+  CONTAINTER_TAG: latest
+
 jobs:
   build:
     strategy:
@@ -31,11 +34,23 @@ jobs:
           - valkey
           - vaultwarden
           - xray
-        platform: [amd64, arm64]
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            os: ubuntu-24.04
+          - platform: linux/arm64
+            os: ubuntu-24.04-arm
     name: Build ${{ matrix.package }} (${{ matrix.platform }})
-    runs-on: ${{ matrix.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          echo "PACKAGE_NAME=${{ matrix.package }}" >> $GITHUB_ENV
+
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/login-action@v3
@@ -49,25 +64,29 @@ jobs:
           username: ${{ env.GHCR_USERNAME }}
           password: ${{ env.GHCR_TOKEN }}
 
-      - name: Build image for ${{ matrix.package }} (${{ matrix.platform }})
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./repo/${{ matrix.package }}.dockerfile
-          platforms: linux/${{ matrix.platform }}
-          push: false
-          load: true
-          tags: |
-            ${{ matrix.package }}:${{ matrix.platform }}
+          platforms: ${{ matrix.platform }}
+          labels: |
+            org.opencontainers.image.title=${{ env.PACKAGE_NAME }}
+          outputs: type=image,name=${{ env.DOCKERHUB_NAMESPACE }}/${{ env.PACKAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
-      - name: Export image
-        run: docker save ${{ matrix.package }}:${{ matrix.platform }} > ${{ matrix.package }}-${{ matrix.platform }}.tar
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
 
-      - name: Upload image artifact
+      - name: Upload digest artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.package }}-${{ matrix.platform }}-image
-          path: ${{ matrix.package }}-${{ matrix.platform }}.tar
+          name: ${{ env.PACKAGE_NAME }}-digest-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
           retention-days: 1
 
   merge:
@@ -105,54 +124,34 @@ jobs:
           username: ${{ env.GHCR_USERNAME }}
           password: ${{ env.GHCR_TOKEN }}
 
-      - name: Download ${{ matrix.package }}:amd64 image
+      - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.package }}-amd64-image
-          path: ./
-
-      - name: Download ${{ matrix.package }}:arm64 image
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ matrix.package }}-arm64-image
-          path: ./
-
-      - name: Load ${{ matrix.package }}:amd64 image
-        run: docker load < ${{ matrix.package }}-amd64.tar
-
-      - name: Load ${{ matrix.package }}:arm64 image
-        run: docker load < ${{ matrix.package }}-arm64.tar
+          path: /tmp/digests
+          pattern: ${{ matrix.package }}-digest-*
+          merge-multiple: true
 
       - name: Create and push DockerHub manifest
+        working-directory: /tmp/digests
         run: |
-          docker tag ${{ matrix.package }}:amd64 ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:amd64
-          docker tag ${{ matrix.package }}:arm64 ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:arm64
-
-          docker push ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:amd64
-          docker push ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:arm64
-
-          docker manifest create ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:latest \
-            --amend ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:amd64 \
-            --amend ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:arm64
-          docker manifest annotate ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:latest \
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:amd64 --os linux --arch amd64
-          docker manifest annotate ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:latest \
-            ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:arm64 --os linux --arch arm64
-          docker manifest push --purge ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:latest
+          docker buildx imagetools create -t ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }} \
+            $(printf '${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}@sha256:%s ' *)
 
       - name: Create and push GHCR manifest
+        working-directory: /tmp/digests
         run: |
-          docker tag ${{ matrix.package }}:amd64 ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:amd64
-          docker tag ${{ matrix.package }}:arm64 ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:arm64
+          for digest in *; do
+            docker buildx imagetools create -t ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}@sha256:${digest} \
+              ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}@sha256:${digest}
+          done
 
-          docker push ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:amd64
-          docker push ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:arm64
+          docker buildx imagetools create -t ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }} \
+            $(printf '${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}@sha256:%s ' *)
 
-          docker manifest create ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:latest \
-            --amend ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:amd64 \
-            --amend ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:arm64
-          docker manifest annotate ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:latest \
-            ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:amd64 --os linux --arch amd64
-          docker manifest annotate ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:latest \
-            ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:arm64 --os linux --arch arm64
-          docker manifest push --purge ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:latest
+      - name: Inspect manifests
+        run: |
+          echo "Inspecting DockerHub manifest:"
+          docker buildx imagetools inspect ${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }}
+
+          echo "Inspecting GHCR manifest:"
+          docker buildx imagetools inspect ${{ env.GHCR_NAMESPACE }}/${{ matrix.package }}:${{ env.CONTAINTER_TAG }}
