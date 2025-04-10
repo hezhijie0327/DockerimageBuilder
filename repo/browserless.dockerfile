@@ -1,4 +1,4 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 ARG NODEJS_VERSION="22"
 
@@ -101,4 +101,4 @@ COPY --from=rebased_browserless / /
 
 ENTRYPOINT ["/bin/node"]
 
-CMD ["/app/startServer.js"]
+CMD ["/app/startServer.cjs"]
