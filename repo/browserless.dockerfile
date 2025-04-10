@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 ARG NODEJS_VERSION="22"
 
@@ -66,13 +66,8 @@ RUN \
     && apt-get -qq clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto
 
 RUN \
-    apt update \
-    && apt install proxychains-ng -qy \
-    && mkdir -p /distroless/bin /distroless/etc /distroless/lib \
-    && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
+    mkdir -p /distroless/bin /distroless/lib \
     && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
-    && cp /usr/bin/proxychains4 /distroless/bin/proxychains \
-    && cp /etc/proxychains4.conf /distroless/etc/proxychains4.conf \
     && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
     && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
     && cp /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
@@ -89,7 +84,8 @@ COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truety
 FROM scratch
 
 ENV \
-    HOST="0.0.0.0" PORT="3000" TOKEN="" PROXY_SERVER_URL="" \
+    ALL_PROXY="" HTTPS_PROXY="" HTTP_PROXY="" NO_PROXY="" \
+    HOST="0.0.0.0" PORT="3000" TOKEN="" \
     ALLOW_GET="false" ALLOW_FILE_PROTOCOL="false" \
     HEALTH="true" MAX_CPU_PERCENT="75" MAX_MEMORY_PERCENT="75" \
     CORS="true" CORS_ALLOW_METHODS="" CORS_ALLOW_ORIGIN="" CORS_MAX_AGE="2592000" \
