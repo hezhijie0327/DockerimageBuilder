@@ -1,6 +1,7 @@
-# Current Version: 1.0.8
+# Current Version: 1.0.9
 
 ARG NODEJS_VERSION="22"
+ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -27,7 +28,11 @@ RUN \
 
 FROM node:${NODEJS_VERSION}-slim AS build_browserless
 
-ENV DEBIAN_FRONTEND="noninteractive"
+ARG PLAYWRIGHT_CORE
+
+ENV \
+    DEBIAN_FRONTEND="noninteractive" \
+    PLAYWRIGHT_CORE="${PLAYWRIGHT_CORE}"
 
 WORKDIR /app
 
@@ -54,10 +59,13 @@ RUN \
     rm -rf /app/src/routes
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/chromium /app/src/routes/chromium/
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}/
 
 RUN \
-    ./node_modules/playwright-core/cli.js install --with-deps chromium \
+    if [ "${PLAYWRIGHT_CORE}" = "edge" ]; then \
+        PLAYWRIGHT_CORE="msedge"; \
+    fi \
+    && ./node_modules/playwright-core/cli.js install --with-deps ${PLAYWRIGHT_CORE} \
     && npm run build \
     && npm run build:function \
     && npm prune production \
