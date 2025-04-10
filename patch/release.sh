@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 2.1.5
+# Current Version: 2.1.6
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -10,6 +10,7 @@ export ADGUARDHOME_VERSION_FIXED=""
 export ALIST_VERSION_FIXED=""
 export ALIST_WEB_VERSION_FIXED=""
 export ARIA2_VERSION_FIXED=""
+export BROWSERLESS_VERSION_FIXED=""
 export CLOUDFLARED_VERSION_FIXED=""
 export ICU_VERSION_FIXED=""
 export JELLYFIN_VERSION_FIXED=""
@@ -36,6 +37,7 @@ function GetLatestVersion() {
     ADGUARDHOME_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AdguardTeam/AdGuardHome/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "-" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     ALIST_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AlistGo/alist/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     ALIST_WEB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/AlistGo/alist-web/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\///")
+    BROWSERLESS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/browserless/browserless/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     CLOUDFLARED_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/cloudflare/cloudflared/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
     ICU_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/unicode-org/icu/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/release" | grep -v "alpha\|eclipse\|rc\|preview" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     JELLYFIN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
@@ -62,6 +64,7 @@ function GenerateReplacements() {
         "s/{ADGUARDHOME_VERSION}/${ADGUARDHOME_VERSION_FIXED:-${ADGUARDHOME_VERSION}}/g"
         "s/{ALIST_VERSION}/${ALIST_VERSION_FIXED:-${ALIST_VERSION}}/g"
         "s/{ALIST_WEB_VERSION}/${ALIST_WEB_VERSION_FIXED:-${ALIST_WEB_VERSION}}/g"
+        "s/{BROWSERLESS_VERSION}/${BROWSERLESS_VERSION_FIXED:-${BROWSERLESS_VERSION}}/g"
         "s/{CLOUDFLARED_VERSION}/${CLOUDFLARED_VERSION_FIXED:-${CLOUDFLARED_VERSION}}/g"
         "s/{ICU_VERSION}/${ICU_VERSION_FIXED:-${ICU_VERSION}}/g"
         "s/{ICU_VERSION_}/$(echo ${ICU_VERSION_FIXED:-${ICU_VERSION}} | tr '-' '_')/g"
