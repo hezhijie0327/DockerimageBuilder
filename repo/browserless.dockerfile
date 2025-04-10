@@ -1,4 +1,4 @@
-# Current Version: 1.0.6
+# Current Version: 1.0.7
 
 ARG NODEJS_VERSION="22"
 
@@ -89,7 +89,7 @@ ENV \
     ALLOW_GET="false" ALLOW_FILE_PROTOCOL="false" \
     HEALTH="true" MAX_CPU_PERCENT="75" MAX_MEMORY_PERCENT="75" \
     CORS="true" CORS_ALLOW_METHODS="" CORS_ALLOW_ORIGIN="" CORS_MAX_AGE="2592000" \
-    CONCURRENT="5" QUEUED="5" TIMEOUT="15000" \
+    CONCURRENT="5" QUEUED="5" TIMEOUT="30000" \
     DATA_DIR="/tmp" DOWNLOAD_DIR="/tmp/downloads" \
     METRICS_JSON_PATH="/tmp/metrics.json"
 
