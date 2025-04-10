@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 ARG NODEJS_VERSION="22"
 
@@ -22,6 +22,7 @@ RUN \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export BROWSERLESS_CUSTOM_VERSION="${BROWSERLESS_VERSION}-ZHIJIE-${BROWSERLESS_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/BROWSERLESS" \
+    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/browserless/*.patch \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${BROWSERLESS_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/BROWSERLESS/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_browserless
@@ -41,6 +42,7 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/package.json /app/package.json
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/package-lock.json /app/package-lock.json
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/tsconfig.json /app/tsconfig.json
 
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/startServer.cjs /app/startServer.cjs
 
 RUN \
     npm i --production=false
@@ -64,8 +66,13 @@ RUN \
     && apt-get -qq clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto
 
 RUN \
-    mkdir -p /distroless/bin /distroless/lib \
+    apt update \
+    && apt install proxychains-ng -qy \
+    && mkdir -p /distroless/bin /distroless/etc /distroless/lib \
+    && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
     && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
+    && cp /usr/bin/proxychains4 /distroless/bin/proxychains \
+    && cp /etc/proxychains4.conf /distroless/etc/proxychains4.conf \
     && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
     && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
     && cp /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
@@ -90,10 +97,8 @@ ENV \
     DATA_DIR="/tmp" DOWNLOAD_DIR="/tmp/downloads" \
     METRICS_JSON_PATH="/tmp/metrics.json"
 
-WORKDIR /app
-
 COPY --from=rebased_browserless / /
 
 ENTRYPOINT ["/bin/node"]
 
-CMD ["/app/build/index.js"]
+CMD ["/app/startServer.js"]
