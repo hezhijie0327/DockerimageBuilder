@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -32,6 +32,7 @@ ARG PLAYWRIGHT_CORE
 
 ENV \
     DEBIAN_FRONTEND="noninteractive" \
+    PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers" \
     PLAYWRIGHT_CORE="${PLAYWRIGHT_CORE}"
 
 WORKDIR /app
@@ -84,14 +85,21 @@ RUN \
 
 FROM busybox:latest AS rebased_browserless
 
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
 COPY --from=build_browserless /distroless /
+
 COPY --from=build_browserless /app /app
-COPY --from=build_browserless /root/.cache/ms-playwright /root/.cache/ms-playwright
+
 COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truetype/
 
 FROM scratch
 
 ENV \
+    NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="" \
+    NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
+    SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt" \
+    PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers" \
     ALL_PROXY="" HTTPS_PROXY="" HTTP_PROXY="" NO_PROXY="" \
     HOST="0.0.0.0" PORT="3000" TOKEN="" \
     ALLOW_GET="false" ALLOW_FILE_PROTOCOL="false" \
