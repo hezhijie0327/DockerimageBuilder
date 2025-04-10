@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 ARG NODEJS_VERSION="22"
 
@@ -89,7 +89,7 @@ COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truety
 FROM scratch
 
 ENV \
-    HOST="0.0.0.0" PORT="3000" TOKEN="" PROXY_URL="" \
+    HOST="0.0.0.0" PORT="3000" TOKEN="" PROXY_SERVER_URL="" \
     ALLOW_GET="false" ALLOW_FILE_PROTOCOL="false" \
     HEALTH="true" MAX_CPU_PERCENT="75" MAX_MEMORY_PERCENT="75" \
     CORS="true" CORS_ALLOW_METHODS="" CORS_ALLOW_ORIGIN="" CORS_MAX_AGE="2592000" \
