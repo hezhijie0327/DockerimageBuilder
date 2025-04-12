@@ -1,4 +1,4 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
 ARG GOLANG_VERSION="1"
 
@@ -43,7 +43,7 @@ RUN \
 
 FROM scratch AS rebased_cloudflared
 
-COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_cloudflared /cloudflared/cloudflared /cloudflared
 
