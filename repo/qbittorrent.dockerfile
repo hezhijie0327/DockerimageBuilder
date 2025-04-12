@@ -1,4 +1,4 @@
-# Current Version: 1.3.2
+# Current Version: 1.3.3
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -51,7 +51,7 @@ RUN \
 
 FROM scratch AS rebased_qbittorrent
 
-COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_qbittorrent /qbittorrent/completed/qbittorrent-nox /qbittorrent-nox
 
