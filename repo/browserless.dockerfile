@@ -1,4 +1,4 @@
-# Current Version: 1.1.4
+# Current Version: 1.1.5
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -106,8 +106,8 @@ ENV \
     HEALTH="true" MAX_CPU_PERCENT="75" MAX_MEMORY_PERCENT="75" \
     CORS="true" CORS_ALLOW_METHODS="" CORS_ALLOW_ORIGIN="" CORS_MAX_AGE="2592000" \
     CONCURRENT="5" QUEUED="5" TIMEOUT="90000" \
-    DATA_DIR="/tmp" DOWNLOAD_DIR="/tmp/downloads" \
-    METRICS_JSON_PATH="/tmp/metrics.json"
+    DATA_DIR="" DOWNLOAD_DIR="" \
+    METRICS_JSON_PATH=""
 
 COPY --from=rebased_browserless / /
 
