@@ -1,4 +1,3 @@
-
 # Current Version: 1.1.1
 
 ARG NODEJS_VERSION="22"
