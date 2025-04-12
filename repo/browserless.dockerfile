@@ -1,6 +1,7 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 ARG NODEJS_VERSION="22"
+ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -27,9 +28,12 @@ RUN \
 
 FROM node:${NODEJS_VERSION}-slim AS build_browserless
 
+ARG PLAYWRIGHT_CORE
+
 ENV \
     DEBIAN_FRONTEND="noninteractive" \
-    PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers"
+    PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers" \
+    PLAYWRIGHT_CORE="${PLAYWRIGHT_CORE}"
 
 WORKDIR /app
 
@@ -49,13 +53,20 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/startServer.cjs /app/startServer.
 RUN \
     npm i --production=false
 
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src
 
 RUN \
-    rm -rf /app/src/routes/chrome /app/src/routes/edge
+    rm -rf /app/src/routes
+
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}
 
 RUN \
-    ./node_modules/playwright-core/cli.js install --with-deps chromium firefox webkit \
+    if [ "${PLAYWRIGHT_CORE}" = "edge" ]; then \
+        PLAYWRIGHT_CORE="msedge"; \
+    fi \
+    && ./node_modules/playwright-core/cli.js install --with-deps ${PLAYWRIGHT_CORE} \
     && npm run build \
     && npm run build:function \
     && npm prune production \
@@ -76,11 +87,11 @@ FROM busybox:latest AS rebased_browserless
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
-
 COPY --from=build_browserless /distroless /
 
 COPY --from=build_browserless /app /app
+
+COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truetype/
 
 FROM scratch
 
