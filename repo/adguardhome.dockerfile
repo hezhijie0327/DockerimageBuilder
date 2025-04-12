@@ -1,4 +1,4 @@
-# Current Version: 2.2.8
+# Current Version: 2.2.9
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -51,7 +51,7 @@ RUN \
 
 FROM scratch AS rebased_adguardhome
 
-COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /tmp/BUILDKIT/etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_adguardhome /adguardhome/AdGuardHome /AdGuardHome
 
