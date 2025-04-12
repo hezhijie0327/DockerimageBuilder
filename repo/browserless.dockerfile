@@ -1,4 +1,4 @@
-# Current Version: 1.1.1
+# Current Version: 1.1.2
 
 ARG NODEJS_VERSION="22"
 
@@ -49,15 +49,10 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/startServer.cjs /app/startServer.
 RUN \
     npm i --production=false
 
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src
 
 RUN \
-    rm -rf /app/src/routes
-
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/chromium /app/src/routes/chromium/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/firefox /app/src/routes/firefox/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/webkit /app/src/routes/webkit/
+    rm -rf /app/src/routes/chrome /app/src/routes/edge
 
 RUN \
     ./node_modules/playwright-core/cli.js install --with-deps chromium firefox webkit \
