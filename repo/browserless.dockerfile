@@ -1,4 +1,4 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -101,7 +101,7 @@ ENV \
     SSL_CERT_DIR="/etc/ssl/certs/ca-certificates.crt" \
     PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers" \
     ALL_PROXY="" HTTPS_PROXY="" HTTP_PROXY="" NO_PROXY="" \
-    HOST="0.0.0.0" PORT="3000" TOKEN="" \
+    HOST="0.0.0.0" PORT="3000" TOKEN="6R0W53R135510" \
     ALLOW_GET="false" ALLOW_FILE_PROTOCOL="false" \
     HEALTH="true" MAX_CPU_PERCENT="75" MAX_MEMORY_PERCENT="75" \
     CORS="true" CORS_ALLOW_METHODS="" CORS_ALLOW_ORIGIN="" CORS_MAX_AGE="2592000" \
