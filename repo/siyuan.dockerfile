@@ -1,4 +1,4 @@
-# Current Version: 1.2.3
+# Current Version: 1.2.4
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -36,7 +36,9 @@ WORKDIR /siyuan
 COPY --from=get_info /tmp/BUILDTMP/SIYUAN/app /siyuan
 
 RUN \
-    npm install -g pnpm \
+    apt update \
+    && apt install git -qy \
+    && npm install -g pnpm \
     && pnpm i \
     && pnpm run build
 
