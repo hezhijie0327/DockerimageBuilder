@@ -180,7 +180,7 @@ index 6b9f0d59297b6..b1ebed6b3c5f2 100644
  
  export const allModels = [...sensenovaChatModels];
 diff --git a/src/libs/agent-runtime/sensenova/index.ts b/src/libs/agent-runtime/sensenova/index.ts
-index e24ff58c49d47..cf3fa6ba53434 100644
+index e24ff58c49d47..d7531c4b51184 100644
 --- a/src/libs/agent-runtime/sensenova/index.ts
 +++ b/src/libs/agent-runtime/sensenova/index.ts
 @@ -1,6 +1,8 @@
@@ -201,24 +201,20 @@ index e24ff58c49d47..cf3fa6ba53434 100644
  
        return {
          ...rest,
-@@ -19,6 +21,16 @@ export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
+@@ -19,6 +21,12 @@ export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
            frequency_penalty !== undefined && frequency_penalty > 0 && frequency_penalty <= 2
              ? frequency_penalty
              : undefined,
-+        messages: messages.map((message) => {
-+          // 如果是非 V6 模型，则直接返回标准 message
-+          if (!model.startsWith('SenseNova-V6') || message.role !== 'user') return message;
-+
-+          return {
-+            ...message,
-+            content: convertSenseNovaMessage(message.content),
-+          } as any;
-+        }),
++        messages: messages.map((message) => 
++          message.role !== 'user' || !/^Sense(Nova-V6|Chat-Vision)/.test(model)
++            ? message
++            : { ...message, content: convertSenseNovaMessage(message.content) }
++        ) as any[],
 +        model,
          stream: true,
          temperature:
            temperature !== undefined && temperature > 0 && temperature <= 2
-@@ -35,12 +47,17 @@ export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
+@@ -35,12 +43,17 @@ export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
      const { LOBE_DEFAULT_MODEL_LIST } = await import('@/config/aiModels');
  
      const functionCallKeywords = [
@@ -238,7 +234,7 @@ index e24ff58c49d47..cf3fa6ba53434 100644
      ];
  
      client.baseURL = 'https://api.sensenova.cn/v1/llm';
-@@ -66,7 +83,7 @@ export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
+@@ -66,7 +79,7 @@ export const LobeSenseNovaAI = LobeOpenAICompatibleFactory({
              || knownModel?.abilities?.reasoning
              || false,
            vision:
