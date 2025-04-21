@@ -1,5 +1,5 @@
 diff --git a/src/config/aiModels/spark.ts b/src/config/aiModels/spark.ts
-index 99f1990d858e4..97c7c3d78ed45 100644
+index 99f1990d858e4..52bcdeb0f4f0f 100644
 --- a/src/config/aiModels/spark.ts
 +++ b/src/config/aiModels/spark.ts
 @@ -3,8 +3,21 @@ import { AIChatModelCard } from '@/types/aiModel';
@@ -16,7 +16,7 @@ index 99f1990d858e4..97c7c3d78ed45 100644
 +    id: 'x1',
 +    maxOutput: 32_768,
 +    settings: {
-+      searchImpl: 'internal',
++      searchImpl: 'params',
 +    },
 +    type: 'chat',
 +  },
@@ -34,7 +34,13 @@ index 99f1990d858e4..97c7c3d78ed45 100644
      type: 'chat',
    },
    {
-@@ -34,19 +44,12 @@ const sparkChatModels: AIChatModelCard[] = [
+@@ -29,24 +39,17 @@ const sparkChatModels: AIChatModelCard[] = [
+     id: 'generalv3',
+     maxOutput: 8192,
+     settings: {
+-      searchImpl: 'internal',
++      searchImpl: 'params',
+     },
      type: 'chat',
    },
    {
@@ -94,8 +100,20 @@ index dd1d705dafaeb..ffdeac6cd3be4 100644
      sdkType: 'openai',
      showModelFetcher: false,
      smoothing: {
+diff --git a/src/libs/agent-runtime/spark/index.test.ts b/src/libs/agent-runtime/spark/index.test.ts
+index f22d440a2eb0d..bd2a23f49b976 100644
+--- a/src/libs/agent-runtime/spark/index.test.ts
++++ b/src/libs/agent-runtime/spark/index.test.ts
+@@ -13,4 +13,7 @@ testProvider({
+   defaultBaseURL,
+   chatDebugEnv: 'DEBUG_SPARK_CHAT_COMPLETION',
+   chatModel: 'spark',
++  test: {
++    skipAPICall: true,
++  },
+ });
 diff --git a/src/libs/agent-runtime/spark/index.ts b/src/libs/agent-runtime/spark/index.ts
-index 95d3f3e81d45a..3dfce3e844db1 100644
+index 95d3f3e81d45a..c8a27070fb2a2 100644
 --- a/src/libs/agent-runtime/spark/index.ts
 +++ b/src/libs/agent-runtime/spark/index.ts
 @@ -1,4 +1,4 @@
@@ -104,7 +122,7 @@ index 95d3f3e81d45a..3dfce3e844db1 100644
  import { LobeOpenAICompatibleFactory } from '../utils/openaiCompatibleFactory';
  
  import { transformSparkResponseToStream, SparkAIStream } from '../utils/streams';
-@@ -6,6 +6,26 @@ import { transformSparkResponseToStream, SparkAIStream } from '../utils/streams'
+@@ -6,6 +6,28 @@ import { transformSparkResponseToStream, SparkAIStream } from '../utils/streams'
  export const LobeSparkAI = LobeOpenAICompatibleFactory({
    baseURL: 'https://spark-api-open.xf-yun.com/v1',
    chatCompletion: {
@@ -118,7 +136,9 @@ index 95d3f3e81d45a..3dfce3e844db1 100644
 +          web_search: {
 +            enable: true,
 +            search_mode: process.env.SPARK_SEARCH_MODE || "normal", // normal or deep
++            /*
 +            show_ref_label: true,
++            */
 +          },
 +        }
 +      ] : tools;
@@ -131,11 +151,88 @@ index 95d3f3e81d45a..3dfce3e844db1 100644
      handleStream: SparkAIStream,
      handleTransformResponseToStream: transformSparkResponseToStream,
      noUserId: true,
+diff --git a/src/libs/agent-runtime/utils/streams/spark.test.ts b/src/libs/agent-runtime/utils/streams/spark.test.ts
+index 933df1dbb959f..8197acf035ed7 100644
+--- a/src/libs/agent-runtime/utils/streams/spark.test.ts
++++ b/src/libs/agent-runtime/utils/streams/spark.test.ts
+@@ -6,6 +6,72 @@ import { SparkAIStream, transformSparkResponseToStream } from './spark';
+ describe('SparkAIStream', () => {
+   beforeAll(() => {});
+ 
++  it('should handle reasoning content in stream', async () => {
++    const data = [
++      {
++        id: 'test-id',
++        object: 'chat.completion.chunk',
++        created: 1734395014,
++        model: 'x1',
++        choices: [
++          {
++            delta: {
++              reasoning_content: 'Hello',
++              role: 'assistant',
++            },
++            index: 0,
++            finish_reason: null,
++          },
++        ],
++      },
++      {
++        id: 'test-id',
++        object: 'chat.completion.chunk',
++        created: 1734395014,
++        model: 'x1',
++        choices: [
++          {
++            delta: {
++              reasoning_content: ' World',
++              role: 'assistant',
++            },
++            index: 0,
++            finish_reason: null,
++          },
++        ],
++      },
++    ]
++
++    const mockSparkStream = new ReadableStream({
++      start(controller) {
++        data.forEach((chunk) => {
++          controller.enqueue(chunk);
++        });
++
++        controller.close();
++      },
++    });
++
++    const protocolStream = SparkAIStream(mockSparkStream);
++
++    const decoder = new TextDecoder();
++    const chunks = [];
++
++    // @ts-ignore
++    for await (const chunk of protocolStream) {
++      chunks.push(decoder.decode(chunk, { stream: true }));
++    }
++
++    expect(chunks).toEqual([
++      'id: test-id\n',
++      'event: reasoning\n',
++      'data: "Hello"\n\n',
++      'id: test-id\n',
++      'event: reasoning\n',
++      'data: " World"\n\n',
++    ]);
++  });
++
+   it('should transform non-streaming response to stream', async () => {
+     const mockResponse = {
+       id: 'cha000ceba6@dx193d200b580b8f3532',
 diff --git a/src/libs/agent-runtime/utils/streams/spark.ts b/src/libs/agent-runtime/utils/streams/spark.ts
-index ee74f424df317..c20dec9bb6f6e 100644
+index ee74f424df317..834cd550e9414 100644
 --- a/src/libs/agent-runtime/utils/streams/spark.ts
 +++ b/src/libs/agent-runtime/utils/streams/spark.ts
-@@ -11,6 +11,8 @@ import {
+@@ -11,11 +11,15 @@ import {
    generateToolCallId,
  } from './protocol';
  
@@ -144,7 +241,24 @@ index ee74f424df317..c20dec9bb6f6e 100644
  export function transformSparkResponseToStream(data: OpenAI.ChatCompletion) {
    return new ReadableStream({
      start(controller) {
-@@ -106,7 +108,27 @@ export const transformSparkStream = (chunk: OpenAI.ChatCompletionChunk): StreamP
++      const choices = data?.choices || [];
++
+       const chunk: OpenAI.ChatCompletionChunk = {
+-        choices: data.choices.map((choice: OpenAI.ChatCompletion.Choice) => {
++        choices: choices.map((choice: OpenAI.ChatCompletion.Choice) => {
+           const toolCallsArray = choice.message.tool_calls
+             ? Array.isArray(choice.message.tool_calls)
+               ? choice.message.tool_calls
+@@ -49,7 +53,7 @@ export function transformSparkResponseToStream(data: OpenAI.ChatCompletion) {
+       controller.enqueue(chunk);
+ 
+       controller.enqueue({
+-        choices: data.choices.map((choice: OpenAI.ChatCompletion.Choice) => ({
++        choices: choices.map((choice: OpenAI.ChatCompletion.Choice) => ({
+           delta: {
+             content: null,
+             role: choice.message.role,
+@@ -106,7 +110,27 @@ export const transformSparkStream = (chunk: OpenAI.ChatCompletionChunk): StreamP
      return { data: item.finish_reason, id: chunk.id, type: 'stop' };
    }
  
@@ -172,7 +286,7 @@ index ee74f424df317..c20dec9bb6f6e 100644
      return { data: item.delta.content, id: chunk.id, type: 'text' };
    }
  
-@@ -114,6 +136,11 @@ export const transformSparkStream = (chunk: OpenAI.ChatCompletionChunk): StreamP
+@@ -114,6 +138,11 @@ export const transformSparkStream = (chunk: OpenAI.ChatCompletionChunk): StreamP
      return { data: item.delta, id: chunk.id, type: 'data' };
    }
  
