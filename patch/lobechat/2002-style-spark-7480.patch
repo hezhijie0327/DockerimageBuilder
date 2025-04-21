@@ -131,3 +131,56 @@ index 95d3f3e81d45a..3dfce3e844db1 100644
      handleStream: SparkAIStream,
      handleTransformResponseToStream: transformSparkResponseToStream,
      noUserId: true,
+diff --git a/src/libs/agent-runtime/utils/streams/spark.ts b/src/libs/agent-runtime/utils/streams/spark.ts
+index ee74f424df317..c20dec9bb6f6e 100644
+--- a/src/libs/agent-runtime/utils/streams/spark.ts
++++ b/src/libs/agent-runtime/utils/streams/spark.ts
+@@ -11,6 +11,8 @@ import {
+   generateToolCallId,
+ } from './protocol';
+ 
++import { convertUsage } from '../usageConverter';
++
+ export function transformSparkResponseToStream(data: OpenAI.ChatCompletion) {
+   return new ReadableStream({
+     start(controller) {
+@@ -106,7 +108,27 @@ export const transformSparkStream = (chunk: OpenAI.ChatCompletionChunk): StreamP
+     return { data: item.finish_reason, id: chunk.id, type: 'stop' };
+   }
+ 
++  if (
++    item.delta &&
++    'reasoning_content' in item.delta &&
++    typeof item.delta.reasoning_content === 'string' &&
++    item.delta.reasoning_content !== ''
++  ) {
++    return { data: item.delta.reasoning_content, id: chunk.id, type: 'reasoning' };
++  }
++
+   if (typeof item.delta?.content === 'string') {
++    /*
++    处理 v1 endpoint usage，混合在最后一个 content 内容中
++    {"code":0,"message":"Success","sid":"cha000d05ef@dx196553ae415b80a432","id":"cha000d05ef@dx196553ae415b80a432","created":1745186655,"choices":[{"delta":{"role":"assistant","content":"😊"},"index":0}],"usage":{"prompt_tokens":1,"completion_tokens":418,"total_tokens":419}}
++    */
++    if (chunk.usage) {
++      return [
++        { data: item.delta.content, id: chunk.id, type: 'text' },
++        { data: convertUsage(chunk.usage), id: chunk.id, type: 'usage' },
++      ] as any;
++    }
++
+     return { data: item.delta.content, id: chunk.id, type: 'text' };
+   }
+ 
+@@ -114,6 +136,11 @@ export const transformSparkStream = (chunk: OpenAI.ChatCompletionChunk): StreamP
+     return { data: item.delta, id: chunk.id, type: 'data' };
+   }
+ 
++  // 处理 v2 endpoint usage
++  if (chunk.usage) {
++    return { data: convertUsage(chunk.usage), id: chunk.id, type: 'usage' };
++  }
++
+   return {
+     data: { delta: item.delta, id: chunk.id, index: item.index },
+     id: chunk.id,
