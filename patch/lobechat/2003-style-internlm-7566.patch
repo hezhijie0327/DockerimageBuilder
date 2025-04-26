@@ -1,0 +1,84 @@
+diff --git a/src/config/aiModels/internlm.ts b/src/config/aiModels/internlm.ts
+index d1e35ad8ea605..ba6c74b6e2c6b 100644
+--- a/src/config/aiModels/internlm.ts
++++ b/src/config/aiModels/internlm.ts
+@@ -27,7 +27,6 @@ const internlmChatModels: AIChatModelCard[] = [
+     description:
+       '我们仍在维护的老版本模型，经过多轮迭代有着极其优异且稳定的性能，包含 7B、20B 多种模型参数量可选，支持 1M 的上下文长度以及更强的指令跟随和工具调用能力。默认指向我们最新发布的 InternLM2.5 系列模型，当前指向 internlm2.5-20b-chat。',
+     displayName: 'InternLM2.5',
+-    enabled: true,
+     id: 'internlm2.5-latest',
+     pricing: {
+       input: 0,
+@@ -37,12 +36,29 @@ const internlmChatModels: AIChatModelCard[] = [
+   },
+   {
+     abilities: {
+-      functionCall: true,
++      vision: true,
+     },
+     contextWindowTokens: 32_768,
+-    description: 'InternLM2 版本最大的模型，专注于高度复杂的任务',
+-    displayName: 'InternLM2 Pro Chat',
+-    id: 'internlm2-pro-chat',
++    description:
++      '我们最新发布多模态大模型，具备更强的图文理解能力、长时序图片理解能力，性能比肩顶尖闭源模型。默认指向我们最新发布的 InternVL 系列模型，当前指向 internvl3-78b。',
++    displayName: 'InternVL3',
++    enabled: true,
++    id: 'internvl3-latest',
++    pricing: {
++      input: 0,
++      output: 0,
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      vision: true,
++    },
++    contextWindowTokens: 32_768,
++    description:
++      '我们仍在维护的 InternVL2.5 版本，具备优异且稳定的性能。默认指向我们最新发布的 InternVL2.5 系列模型，当前指向 internvl2.5-78b。',
++    displayName: 'InternVL2.5',
++    id: 'internvl2.5-latest',
+     pricing: {
+       input: 0,
+       output: 0,
+diff --git a/src/libs/agent-runtime/internlm/index.ts b/src/libs/agent-runtime/internlm/index.ts
+index d3e465364b3e0..784248bdd51df 100644
+--- a/src/libs/agent-runtime/internlm/index.ts
++++ b/src/libs/agent-runtime/internlm/index.ts
+@@ -23,6 +23,14 @@ export const LobeInternLMAI = LobeOpenAICompatibleFactory({
+   models: async ({ client }) => {
+     const { LOBE_DEFAULT_MODEL_LIST } = await import('@/config/aiModels');
+ 
++    const functionCallKeywords = [
++      'internlm',
++    ]
++
++    const visionKeywords = [
++      'internvl',
++    ]
++
+     const modelsPage = await client.models.list() as any;
+     const modelList: InternLMModelCard[] = modelsPage.data;
+ 
+@@ -35,14 +43,16 @@ export const LobeInternLMAI = LobeOpenAICompatibleFactory({
+           displayName: knownModel?.displayName ?? undefined,
+           enabled: knownModel?.enabled || false,
+           functionCall:
+-            knownModel?.abilities?.functionCall
++            functionCallKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.functionCall
+             || false,
+           id: model.id,
+           reasoning:
+             knownModel?.abilities?.reasoning
+             || false,
+           vision:
+-            knownModel?.abilities?.vision
++            visionKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
++            || knownModel?.abilities?.vision
+             || false,
+         };
+       })
