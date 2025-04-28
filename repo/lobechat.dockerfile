@@ -1,4 +1,4 @@
-# Current Version: 1.5.2
+# Current Version: 1.5.3
 
 ARG NODEJS_VERSION="22"
 
@@ -52,7 +52,8 @@ ENV \
     APP_URL="http://app.com" \
     DATABASE_DRIVER="node" \
     DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
-    KEY_VAULTS_SECRET="use-for-build"
+    KEY_VAULTS_SECRET="use-for-build" \
+    FEATURE_FLAGS="-check_updates,+pin_list,-welcome_suggest"
 
 WORKDIR /app
 
