@@ -1,4 +1,4 @@
-# Current Version: 1.5.2
+# Current Version: 1.5.3
 
 ARG GCC_VERSION="14"
 
@@ -22,6 +22,7 @@ RUN \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export UNBOUND_CUSTOM_VERSION="${UNBOUND_VERSION}-ZHIJIE-${UNBOUND_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/UNBOUND" \
+    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/unbound/*.patch \
     && sed -i "s/\(PACKAGE_STRING='unbound \)[0-9]\+\(\.[0-9]\+\)*'/\1${UNBOUND_CUSTOM_VERSION}'/;s/\(PACKAGE_VERSION='\)[0-9]\+\(\.[0-9]\+\)*'/\1${UNBOUND_CUSTOM_VERSION}'/" "${WORKDIR}/BUILDTMP/UNBOUND/configure" \
     && mkdir -p "${WORKDIR}/BUILDTMP/UNBOUND/etc/unbound" \
     && wget -O "${WORKDIR}/BUILDTMP/UNBOUND/etc/unbound/icannbundle.pem" "https://data.iana.org/root-anchors/icannbundle.pem" \
