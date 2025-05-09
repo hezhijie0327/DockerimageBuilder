@@ -1,0 +1,477 @@
+diff --git a/cachedb/cachedb.c b/cachedb/cachedb.c
+index eca3b7cb7..24f458e8f 100644
+--- a/cachedb/cachedb.c
++++ b/cachedb/cachedb.c
+@@ -419,7 +419,7 @@ prep_data(struct module_qstate* qstate, struct sldns_buffer* buf)
+ 	                qstate->return_msg->rep);
+ 	if(!reply_info_answer_encode(&qstate->return_msg->qinfo,
+ 		qstate->return_msg->rep, 0, qstate->query_flags,
+-		buf, 0, 1, qstate->env->scratch, 65535, &edns, 1, 0))
++		buf, 0, 1, qstate->env->scratch, 65535, &edns, 1, 0, 1))
+ 		return 0;
+ 
+ 	/* TTLs in the return_msg are relative to time(0) so we have to
+diff --git a/daemon/worker.c b/daemon/worker.c
+index 713de3163..7bce4d5a1 100644
+--- a/daemon/worker.c
++++ b/daemon/worker.c
+@@ -564,7 +564,7 @@ answer_norec_from_cache(struct worker* worker, struct query_info* qinfo,
+ 	}
+ 	if(!reply_info_answer_encode(&msg->qinfo, msg->rep, id, flags,
+ 		repinfo->c->buffer, 0, 1, worker->scratchpad,
+-		udpsize, edns, (int)(edns->bits & EDNS_DO), secure)) {
++		udpsize, edns, (int)(edns->bits & EDNS_DO), secure, 1)) {
+ 		if(!inplace_cb_reply_servfail_call(&worker->env, qinfo, NULL, NULL,
+ 			LDNS_RCODE_SERVFAIL, edns, repinfo, worker->scratchpad,
+ 			worker->env.now_tv))
+@@ -802,7 +802,7 @@ answer_from_cache(struct worker* worker, struct query_info* qinfo,
+ 		if(!reply_info_answer_encode(qinfo, encode_rep, id, flags,
+ 			repinfo->c->buffer, timenow, 1, worker->scratchpad,
+ 			udpsize, edns, (int)(edns->bits & EDNS_DO),
+-			*is_secure_answer)) {
++			*is_secure_answer, 1)) {
+ 			if(!inplace_cb_reply_servfail_call(&worker->env, qinfo,
+ 				NULL, NULL, LDNS_RCODE_SERVFAIL, edns, repinfo,
+ 				worker->scratchpad, worker->env.now_tv))
+diff --git a/services/authzone.c b/services/authzone.c
+index 6f6c55d43..90a1e4cb2 100644
+--- a/services/authzone.c
++++ b/services/authzone.c
+@@ -3542,7 +3542,7 @@ auth_answer_encode(struct query_info* qinfo, struct module_env* env,
+ 		*(uint16_t*)sldns_buffer_begin(buf),
+ 		sldns_buffer_read_u16_at(buf, 2),
+ 		buf, 0, 0, temp, udpsize, edns,
+-		(int)(edns->bits&EDNS_DO), 0)) {
++		(int)(edns->bits&EDNS_DO), 0, 0)) {
+ 		error_encode(buf, (LDNS_RCODE_SERVFAIL|BIT_AA), qinfo,
+ 			*(uint16_t*)sldns_buffer_begin(buf),
+ 			sldns_buffer_read_u16_at(buf, 2), edns);
+diff --git a/services/localzone.c b/services/localzone.c
+index d21e0c48a..5314319aa 100644
+--- a/services/localzone.c
++++ b/services/localzone.c
+@@ -1322,7 +1322,7 @@ local_encode(struct query_info* qinfo, struct module_env* env,
+ 	if(!inplace_cb_reply_local_call(env, qinfo, NULL, &rep, rcode, edns,
+ 		repinfo, temp, env->now_tv) || !reply_info_answer_encode(qinfo, &rep,
+ 		*(uint16_t*)sldns_buffer_begin(buf), sldns_buffer_read_u16_at(buf, 2),
+-		buf, 0, 0, temp, udpsize, edns, (int)(edns->bits&EDNS_DO), 0)) {
++		buf, 0, 0, temp, udpsize, edns, (int)(edns->bits&EDNS_DO), 0, 0)) {
+ 		error_encode(buf, (LDNS_RCODE_SERVFAIL|BIT_AA), qinfo,
+ 			*(uint16_t*)sldns_buffer_begin(buf),
+ 			sldns_buffer_read_u16_at(buf, 2), edns);
+diff --git a/services/mesh.c b/services/mesh.c
+index 156cde791..f864437b2 100644
+--- a/services/mesh.c
++++ b/services/mesh.c
+@@ -1263,7 +1263,7 @@ mesh_do_callback(struct mesh_state* m, int rcode, struct reply_info* rep,
+ 			!reply_info_answer_encode(&m->s.qinfo, rep, r->qid,
+ 			r->qflags, r->buf, 0, 1,
+ 			m->s.env->scratch, udp_size, &r->edns,
+-			(int)(r->edns.bits & EDNS_DO), secure))
++			(int)(r->edns.bits & EDNS_DO), secure, 0))
+ 		{
+ 			fptr_ok(fptr_whitelist_mesh_cb(r->cb));
+ 			(*r->cb)(r->cb_arg, LDNS_RCODE_SERVFAIL, r->buf,
+@@ -1451,7 +1451,7 @@ mesh_send_reply(struct mesh_state* m, int rcode, struct reply_info* rep,
+ 			!reply_info_answer_encode(&m->s.qinfo, rep, r->qid,
+ 			r->qflags, r_buffer, 0, 1, m->s.env->scratch,
+ 			udp_size, &r->edns, (int)(r->edns.bits & EDNS_DO),
+-			secure))
++			secure, 0))
+ 		{
+ 			if(!inplace_cb_reply_servfail_call(m->s.env, &m->s.qinfo, &m->s,
+ 			rep, LDNS_RCODE_SERVFAIL, &r->edns, &r->query_reply, m->s.region, &r->start_time))
+diff --git a/services/rpz.c b/services/rpz.c
+index 3b92ee538..162881c2f 100644
+--- a/services/rpz.c
++++ b/services/rpz.c
+@@ -1807,7 +1807,7 @@ rpz_local_encode(struct module_env* env, struct query_info* qinfo,
+ 		repinfo, temp, env->now_tv) ||
+ 	  !reply_info_answer_encode(qinfo, &rep,
+ 		*(uint16_t*)sldns_buffer_begin(buf), sldns_buffer_read_u16_at(buf, 2),
+-		buf, 0, 0, temp, udpsize, edns, (int)(edns->bits&EDNS_DO), 0)) {
++		buf, 0, 0, temp, udpsize, edns, (int)(edns->bits&EDNS_DO), 0, 0)) {
+ 		error_encode(buf, (LDNS_RCODE_SERVFAIL|BIT_AA), qinfo,
+ 			*(uint16_t*)sldns_buffer_begin(buf),
+ 			sldns_buffer_read_u16_at(buf, 2), edns);
+diff --git a/testcode/unitmain.c b/testcode/unitmain.c
+index 653d3efbe..763c9385f 100644
+--- a/testcode/unitmain.c
++++ b/testcode/unitmain.c
+@@ -1110,7 +1110,7 @@ static void edns_ede_encode_encodedecode(struct query_info* qinfo,
+ 	/* encode */
+ 	unit_assert(
+ 		reply_info_answer_encode(qinfo, rep, 1, rep->flags, pkt,
+-		0, 0, region, 65535, edns, 0, 0));
++		0, 0, region, 65535, edns, 0, 0, 0));
+ 	/* buffer ready for reading; skip after the question section */
+ 	sldns_buffer_skip(pkt, LDNS_HEADER_SIZE);
+ 	(void)query_dname_len(pkt);
+diff --git a/testdata/serve_expired_client_timeout_no_prefetch.rpl b/testdata/serve_expired_client_timeout_no_prefetch.rpl
+index aed397d9e..0177dd14a 100644
+--- a/testdata/serve_expired_client_timeout_no_prefetch.rpl
++++ b/testdata/serve_expired_client_timeout_no_prefetch.rpl
+@@ -98,11 +98,11 @@ ENTRY_BEGIN
+ 	SECTION QUESTION
+ 		example.com. IN A
+ 	SECTION ANSWER
+-		example.com.  0 IN A 5.6.7.8
++		example.com.  1 IN A 5.6.7.8
+ 	SECTION AUTHORITY
+-		example.com. 3590 IN NS ns.example.com.
++		example.com. 3591 IN NS ns.example.com.
+ 	SECTION ADDITIONAL
+-		ns.example.com. 3590 IN A 1.2.3.4
++		ns.example.com. 3591 IN A 1.2.3.4
+ ENTRY_END
+ 
+ ; If a prefetch triggers the test will fail with 'messages pending'.
+diff --git a/testdata/ttl_zero_cacherep.rpl b/testdata/ttl_zero_cacherep.rpl
+new file mode 100644
+index 000000000..7e9eb5394
+--- /dev/null
++++ b/testdata/ttl_zero_cacherep.rpl
+@@ -0,0 +1,290 @@
++; config options
++server:
++	target-fetch-policy: "0 0 0 0 0"
++	prefetch: no
++	serve-expired: no
++
++stub-zone:
++	name: "."
++	stub-addr: 193.0.14.129 	# K.ROOT-SERVERS.NET.
++CONFIG_END
++
++SCENARIO_BEGIN Test TTL for the last zero second of cached messages.
++
++; K.ROOT-SERVERS.NET.
++RANGE_BEGIN 0 100
++	ADDRESS 193.0.14.129 
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR NOERROR
++SECTION QUESTION
++. IN NS
++SECTION ANSWER
++. IN NS	K.ROOT-SERVERS.NET.
++SECTION ADDITIONAL
++K.ROOT-SERVERS.NET.	IN	A	193.0.14.129
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode subdomain
++ADJUST copy_id copy_query
++REPLY QR NOERROR
++SECTION QUESTION
++com. IN A
++SECTION AUTHORITY
++com.	IN NS	a.gtld-servers.net.
++SECTION ADDITIONAL
++a.gtld-servers.net.	IN 	A	192.5.6.30
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA NOERROR
++SECTION QUESTION
++a.gtld-servers.net.	IN A
++SECTION ANSWER
++a.gtld-servers.net.	IN A	192.5.6.30
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA NOERROR
++SECTION QUESTION
++K.ROOT-SERVERS.NET.	IN	A
++SECTION ANSWER
++K.ROOT-SERVERS.NET.	IN	A	193.0.14.129
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA NOERROR
++SECTION QUESTION
++a.gtld-servers.net.	IN AAAA
++SECTION AUTHORITY
++. 86400 IN SOA . . 20070304 28800 7200 604800 86400
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA NOERROR
++SECTION QUESTION
++K.ROOT-SERVERS.NET.	IN	AAAA
++SECTION AUTHORITY
++. 86400 IN SOA . . 20070304 28800 7200 604800 86400
++ENTRY_END
++
++RANGE_END
++
++; a.gtld-servers.net.
++RANGE_BEGIN 0 300
++	ADDRESS 192.5.6.30
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR NOERROR
++SECTION QUESTION
++com. IN NS
++SECTION ANSWER
++com.	IN NS	a.gtld-servers.net.
++SECTION ADDITIONAL
++a.gtld-servers.net.	IN 	A	192.5.6.30
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode subdomain
++ADJUST copy_id copy_query
++REPLY QR NOERROR
++SECTION QUESTION
++example.com. IN A
++SECTION AUTHORITY
++example.com.	IN NS	ns.example.com.
++SECTION ADDITIONAL
++ns.example.com.		IN 	A	1.2.3.4
++ENTRY_END
++RANGE_END
++
++; ns.example.com
++RANGE_BEGIN 0 100
++	ADDRESS 1.2.3.4
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA NOERROR
++SECTION QUESTION
++example.com. IN NS
++SECTION ANSWER
++example.com.	IN NS	ns.example.com.
++SECTION ADDITIONAL
++ns.example.com.		IN 	A	1.2.3.4
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA NOERROR
++SECTION QUESTION
++www.example.com. IN A
++SECTION ANSWER
++www.example.com. 10	IN A 1.2.3.4
++ENTRY_END
++RANGE_END
++
++; ns.example.com
++RANGE_BEGIN 100 300
++	ADDRESS 1.2.3.4
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA REFUSED
++SECTION QUESTION
++example.com. IN NS
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA REFUSED
++SECTION QUESTION
++ns.example.com. IN A
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR AA REFUSED
++SECTION QUESTION
++ns.example.com. IN AAAA
++ENTRY_END
++
++ENTRY_BEGIN
++MATCH opcode qtype qname
++ADJUST copy_id
++REPLY QR REFUSED
++SECTION QUESTION
++www.example.com. IN A
++ENTRY_END
++RANGE_END
++
++STEP 1 TIME_PASSES ELAPSE 10
++
++STEP 10 QUERY
++ENTRY_BEGIN
++REPLY RD
++SECTION QUESTION
++www.example.com. IN A
++ENTRY_END
++
++STEP 20 CHECK_ANSWER
++ENTRY_BEGIN
++MATCH all ttl
++REPLY QR RD RA NOERROR
++SECTION QUESTION
++www.example.com. IN A
++SECTION ANSWER
++www.example.com. 10 IN A 1.2.3.4
++ENTRY_END
++
++STEP 30 TIME_PASSES ELAPSE 5
++
++STEP 40 QUERY
++ENTRY_BEGIN
++REPLY RD
++SECTION QUESTION
++www.example.com. IN A
++ENTRY_END
++
++STEP 50 CHECK_ANSWER
++ENTRY_BEGIN
++MATCH all ttl
++REPLY QR RD RA NOERROR
++SECTION QUESTION
++www.example.com. IN A
++SECTION ANSWER
++www.example.com. 5 IN A 1.2.3.4
++ENTRY_END
++
++STEP 60 TIME_PASSES ELAPSE 3
++
++STEP 70 QUERY
++ENTRY_BEGIN
++REPLY RD
++SECTION QUESTION
++www.example.com. IN A
++ENTRY_END
++
++STEP 80 CHECK_ANSWER
++ENTRY_BEGIN
++MATCH all ttl
++REPLY QR RD RA NOERROR
++SECTION QUESTION
++www.example.com. IN A
++SECTION ANSWER
++www.example.com. 2 IN A 1.2.3.4
++ENTRY_END
++
++STEP 90 TIME_PASSES ELAPSE 1
++
++STEP 100 QUERY
++ENTRY_BEGIN
++REPLY RD
++SECTION QUESTION
++www.example.com. IN A
++ENTRY_END
++
++STEP 110 CHECK_ANSWER
++ENTRY_BEGIN
++MATCH all ttl
++REPLY QR RD RA NOERROR
++SECTION QUESTION
++www.example.com. IN A
++SECTION ANSWER
++www.example.com. 1 IN A 1.2.3.4
++ENTRY_END
++
++STEP 120 TIME_PASSES ELAPSE 1
++
++STEP 130 QUERY
++ENTRY_BEGIN
++REPLY RD
++SECTION QUESTION
++www.example.com. IN A
++ENTRY_END
++
++STEP 140 CHECK_ANSWER
++ENTRY_BEGIN
++MATCH all ttl
++REPLY QR RD RA NOERROR
++SECTION QUESTION
++www.example.com. IN A
++SECTION ANSWER
++; note that it did not send 0 TTL. The message can be cached by the receiver
++; during the last second of the TTL.
++www.example.com. 1 IN A 1.2.3.4
++ENTRY_END
++
++STEP 150 TIME_PASSES ELAPSE 1
++
++STEP 160 QUERY
++ENTRY_BEGIN
++REPLY RD
++SECTION QUESTION
++www.example.com. IN A
++ENTRY_END
++
++STEP 170 CHECK_ANSWER
++ENTRY_BEGIN
++MATCH all ttl
++REPLY QR RD RA SERVFAIL
++SECTION QUESTION
++www.example.com. IN A
++SECTION ANSWER
++ENTRY_END
++
++SCENARIO_END
+diff --git a/util/data/msgencode.c b/util/data/msgencode.c
+index 6d116fb52..3129018db 100644
+--- a/util/data/msgencode.c
++++ b/util/data/msgencode.c
+@@ -997,7 +997,7 @@ int
+ reply_info_answer_encode(struct query_info* qinf, struct reply_info* rep, 
+ 	uint16_t id, uint16_t qflags, sldns_buffer* pkt, time_t timenow,
+ 	int cached, struct regional* region, uint16_t udpsize, 
+-	struct edns_data* edns, int dnssec, int secure)
++	struct edns_data* edns, int dnssec, int secure, int cached_ttl)
+ {
+ 	uint16_t flags;
+ 	unsigned int attach_edns = 0;
+@@ -1022,6 +1022,17 @@ reply_info_answer_encode(struct query_info* qinf, struct reply_info* rep,
+ 		flags &= ~BIT_AD;
+ 	}
+ 	log_assert(flags & BIT_QR); /* QR bit must be on in our replies */
++	if(cached_ttl && rep->ttl - timenow == 0) {
++		/* The last remaining second of the TTL for a cached response
++		 * is replied. This makes a 0 in the protocol message. The
++		 * response is valid for the cache, but the DNS TTL 0 item
++		 * causes the received to drop the contents. Even though the
++		 * contents are cachable, so the time used is decremented
++		 * to change that into 1 second, and it can be cached, and
++		 * used for expired response generation, and does not give
++		 * repeated queries during that last second. */
++		timenow --;
++	}
+ 	if(udpsize < LDNS_HEADER_SIZE)
+ 		return 0;
+ 	/* currently edns does not change during calculations;
+diff --git a/util/data/msgencode.h b/util/data/msgencode.h
+index 6aff06099..bff6f7a40 100644
+--- a/util/data/msgencode.h
++++ b/util/data/msgencode.h
+@@ -64,12 +64,16 @@ struct edns_data;
+  *	or if edns_present = 0, it is not included.
+  * @param dnssec: if 0 DNSSEC records are omitted from the answer.
+  * @param secure: if 1, the AD bit is set in the reply.
++ * @param cached_ttl: the ttl is from a cache response. So that means it
++ *	was some value minus the current time, and not an authoritative
++ *	response with an autoritative TTL or a direct upstream response,
++ *	that could have upstream TTL 0 items.
+  * @return: 0 on error (server failure).
+  */
+ int reply_info_answer_encode(struct query_info* qinf, struct reply_info* rep, 
+ 	uint16_t id, uint16_t qflags, struct sldns_buffer* dest, time_t timenow,
+ 	int cached, struct regional* region, uint16_t udpsize, 
+-	struct edns_data* edns, int dnssec, int secure);
++	struct edns_data* edns, int dnssec, int secure, int cached_ttl);
+ 
+ /**
+  * Regenerate the wireformat from the stored msg reply.
