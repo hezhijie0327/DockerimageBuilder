@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG BUN_VERSION="1"
 ARG GOLANG_VERSION="1"
@@ -61,7 +61,7 @@ COPY --from=get_info /tmp/BUILDTMP/NEWAPI/ .
 COPY --from=build_newapi_web /newapi/dist ./web/dist
 
 RUN \
-    go build -ldflags "-s -w -X 'one-api/common.Version=$(cat NEWAPI_CUSTOM_VERSION)'" -o one-api
+    go build -ldflags "-s -w -X 'one-api/common.Version=$(cat NEWAPI_CUSTOM_VERSION)'" -o newapi
 
 FROM scratch AS rebased_newapi
 
@@ -72,10 +72,11 @@ COPY --from=build_newapi /newapi/newapi /newapi
 FROM scratch
 
 ENV \
-    PORT="3000"
+    PORT="3000" \
+    SQLITE_PATH="/newapi.db"
 
 COPY --from=rebased_newapi / /
 
 EXPOSE 3000/tcp
 
-ENTRYPOINT ["/one-api"]
+ENTRYPOINT ["/newapi"]
