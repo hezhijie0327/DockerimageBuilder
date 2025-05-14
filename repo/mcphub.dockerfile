@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG NODEJS_VERSION="22"
 
@@ -8,8 +8,15 @@ WORKDIR /tmp
 
 RUN \
     export WORKDIR=$(pwd) \
-    && git clone -b main --depth=1 https://github.com/samanhappy/mcphub "${WORKDIR}/BUILDTMP/MCPHUB" \
-    && git clone -b main --depth=1 https://github.com/hezhijie0327/DockerimageBuilder "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
+    && cat "/opt/package.json" | jq -Sr ".repo.mcphub" > "${WORKDIR}/mcphub.json" \
+    && cat "${WORKDIR}/mcphub.json" | jq -Sr ".version" \
+    && cat "${WORKDIR}/mcphub.json" | jq -Sr ".source" > "${WORKDIR}/mcphub.source.autobuild" \
+    && cat "${WORKDIR}/mcphub.json" | jq -Sr ".source_branch" > "${WORKDIR}/mcphub.source_branch.autobuild" \
+    && cat "${WORKDIR}/mcphub.json" | jq -Sr ".patch" > "${WORKDIR}/mcphub.patch.autobuild" \
+    && cat "${WORKDIR}/mcphub.json" | jq -Sr ".patch_branch" > "${WORKDIR}/mcphub.patch_branch.autobuild" \
+    && cat "${WORKDIR}/mcphub.json" | jq -Sr ".version" > "${WORKDIR}/mcphub.version.autobuild" \
+    && git clone -b $(cat "${WORKDIR}/mcphub.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/mcphub.source.autobuild") "${WORKDIR}/BUILDTMP/MCPHUB" \
+    && git clone -b $(cat "${WORKDIR}/mcphub.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/mcphub.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"\
     && export MCPHUB_SHA=$(cd "${WORKDIR}/BUILDTMP/MCPHUB" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export MCPHUB_VERSION=$(cat "${WORKDIR}/mcphub.version.autobuild") \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
