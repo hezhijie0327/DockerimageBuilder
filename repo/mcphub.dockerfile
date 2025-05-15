@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 ARG NODEJS_VERSION="22"
 
@@ -59,12 +59,19 @@ COPY --from=build_mcphub /root/.local/bin/ /bin/
 
 RUN \
     apk update \
-    && apk add --no-cache python3 \
+    && apk add --no-cache \
+        git \
+        python3 \
     && apk upgrade --no-cache \
     && sed -i "s/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g" "/etc/apk/repositories" \
     && rm -rf /tmp/* /var/cache/apk/*
 
 FROM scratch
+
+ENV \
+    PORT="3000" \
+    INIT_TIMEOUT="300000" \
+    REQUEST_TIMEOUT="300000"
 
 COPY --from=rebase_mcphub / /
 
