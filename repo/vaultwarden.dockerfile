@@ -1,4 +1,4 @@
-# Current Version: 1.2.7
+# Current Version: 1.2.8
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -52,7 +52,6 @@ RUN \
           python3 \
     && export VAULT_VERSION=$(cat ./Dockerfile | grep "ARG VAULT_VERSION" | cut -d '=' -f 2) \
     && ./scripts/checkout_web_vault.sh \
-    && ./scripts/patch_web_vault.sh \
     && ./scripts/build_web_vault.sh \
     && mv "${VAULT_FOLDER}/apps/web/build" ./web-vault \
     && sed -i "s/Promise.resolve(\"[0-9]\+\(\.[0-9]\+\)*\")/Promise.resolve(\"$(cat /vaultwarden/VAULTWARDEN_CUSTOM_VERSION)\")/g" ./web-vault/app/main.*.js
