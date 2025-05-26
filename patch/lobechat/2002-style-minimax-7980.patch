@@ -67,10 +67,10 @@ index f72fca635724d..2f2ffbb3bb4df 100644
        } as any;
      },
 diff --git a/src/libs/model-runtime/utils/streams/openai.ts b/src/libs/model-runtime/utils/streams/openai.ts
-index 3d9bdf0655093..296126c901ea8 100644
+index 3d9bdf0655093..37e4fb5639ead 100644
 --- a/src/libs/model-runtime/utils/streams/openai.ts
 +++ b/src/libs/model-runtime/utils/streams/openai.ts
-@@ -99,8 +99,29 @@ export const transformOpenAIStream = (
+@@ -99,11 +99,54 @@ export const transformOpenAIStream = (
      if (item.finish_reason) {
        // one-api 的流式接口，会出现既有 finish_reason ，也有 content 的情况
        //  {"id":"demo","model":"deepl-en","choices":[{"index":0,"delta":{"role":"assistant","content":"Introduce yourself."},"finish_reason":"stop"}]}
@@ -101,3 +101,71 @@ index 3d9bdf0655093..296126c901ea8 100644
          return { data: item.delta.content, id: chunk.id, type: 'text' };
        }
  
++      // xAI Live Search 功能返回引用源
++      // {"id":"8721eebb-6465-4c47-ba2e-8e2ec0f97055","object":"chat.completion.chunk","created":1747809109,"model":"grok-3","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":"stop"}],"system_fingerprint":"fp_1affcf9872","citations":["https://world.huanqiu.com/"]}
++      if ((chunk as any).citations) {
++        const citations = (chunk as any).citations;
++
++        return [
++          {
++            data: {
++              citations: citations.map(
++                (item: any) =>
++                  ({
++                    title: item,
++                    url: item,
++                  }) as CitationItem,
++              ),
++            },
++            id: chunk.id,
++            type: 'grounding',
++          },
++        ];
++      }
++
+       if (chunk.usage) {
+         const usage = chunk.usage;
+         return { data: convertUsage(usage), id: chunk.id, type: 'usage' };
+@@ -146,7 +189,9 @@ export const transformOpenAIStream = (
+             // in Hunyuan api, the citation is in every chunk
+             ('search_info' in chunk && (chunk.search_info as any)?.search_results) ||
+             // in Wenxin api, the citation is in the first and last chunk
+-            ('search_results' in chunk && chunk.search_results);
++            ('search_results' in chunk && chunk.search_results) ||
++            // in Zhipu api, the citation is in the first chunk
++            ('web_search' in chunk && chunk.web_search);
+ 
+           if (citations) {
+             streamContext.returnedCitation = true;
+@@ -154,13 +199,10 @@ export const transformOpenAIStream = (
+             return [
+               {
+                 data: {
+-                  citations: (citations as any[]).map(
+-                    (item) =>
+-                      ({
+-                        title: typeof item === 'string' ? item : item.title,
+-                        url: typeof item === 'string' ? item : item.url,
+-                      }) as CitationItem,
+-                  ),
++                  citations: (citations as any[]).map((item) => ({
++                    title: typeof item === 'string' ? item : item.title,
++                    url: typeof item === 'string' ? item : item.url || item.link,
++                  })).filter(c => c.title && c.url),
+                 },
+                 id: chunk.id,
+                 type: 'grounding',
+diff --git a/src/libs/model-runtime/zhipu/index.ts b/src/libs/model-runtime/zhipu/index.ts
+index 85ace600ccc34..d1daa9b6013f7 100644
+--- a/src/libs/model-runtime/zhipu/index.ts
++++ b/src/libs/model-runtime/zhipu/index.ts
+@@ -22,6 +22,9 @@ export const LobeZhipuAI = LobeOpenAICompatibleFactory({
+               type: 'web_search',
+               web_search: {
+                 enable: true,
++                result_sequence: 'before', // 将搜索结果返回顺序更改为 before 适配最小化 OpenAIStream 改动
++                search_engine: process.env.ZHIPU_SEARCH_ENGINE || 'search_std', // search_std, search_pro
++                search_result: true,
+               },
+             },
+           ]
