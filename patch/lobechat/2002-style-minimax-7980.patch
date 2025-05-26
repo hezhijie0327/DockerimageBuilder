@@ -67,10 +67,10 @@ index f72fca635724d..2f2ffbb3bb4df 100644
        } as any;
      },
 diff --git a/src/libs/model-runtime/utils/streams/openai.ts b/src/libs/model-runtime/utils/streams/openai.ts
-index 3d9bdf0655093..c7acfe7a7ca93 100644
+index 3d9bdf0655093..b299c353b2f68 100644
 --- a/src/libs/model-runtime/utils/streams/openai.ts
 +++ b/src/libs/model-runtime/utils/streams/openai.ts
-@@ -99,11 +99,59 @@ export const transformOpenAIStream = (
+@@ -99,11 +99,60 @@ export const transformOpenAIStream = (
      if (item.finish_reason) {
        // one-api 的流式接口，会出现既有 finish_reason ，也有 content 的情况
        //  {"id":"demo","model":"deepl-en","choices":[{"index":0,"delta":{"role":"assistant","content":"Introduce yourself."},"finish_reason":"stop"}]}
@@ -86,6 +86,7 @@ index 3d9bdf0655093..c7acfe7a7ca93 100644
        }
  
 +      // MiniMax 内建搜索功能会在最后一个流中的 message 数组中返回 4 个 Object，其中最后一个为 annotations
++      // {"id":"0483bf14ba55225a66de2342a21b4003","choices":[{"finish_reason":"tool_calls","index":0,"messages":[{"content":"","role":"user","reasoning_content":""},{"content":"","role":"assistant","tool_calls":[{"id":"call_function_0872338692","type":"web_search","function":{"name":"get_search_result","arguments":"{\"query_tag\":[\"天气\"],\"query_list\":[\"上海 2025年5月26日 天气\"]}"}}],"reasoning_content":""},{"content":"","role":"tool","tool_call_id":"call_function_0872338692","reasoning_content":""},{"content":"","role":"assistant","name":"海螺AI","annotations":[{"text":"【5†source】","url":"https://mtianqi.eastday.com/tianqi/shanghai/20250526.html","quote":"上海天气预报提供上海2025年05月26日天气"}],"audio_content":"","reasoning_content":""}]}],"created":1748274196,"model":"MiniMax-Text-01","object":"chat.completion","usage":{"total_tokens":13110,"total_characters":0,"prompt_tokens":12938,"completion_tokens":172},"base_resp":{"status_code":0,"status_msg":"Invalid parameters detected, json: unknown field \"user\""}}
 +      if (item.messages && item.messages.length > 0) {
 +        const citations = item.messages[item.messages.length - 1].annotations;
 +
@@ -131,7 +132,7 @@ index 3d9bdf0655093..c7acfe7a7ca93 100644
        if (chunk.usage) {
          const usage = chunk.usage;
          return { data: convertUsage(usage), id: chunk.id, type: 'usage' };
-@@ -146,7 +194,9 @@ export const transformOpenAIStream = (
+@@ -146,7 +195,9 @@ export const transformOpenAIStream = (
              // in Hunyuan api, the citation is in every chunk
              ('search_info' in chunk && (chunk.search_info as any)?.search_results) ||
              // in Wenxin api, the citation is in the first and last chunk
@@ -142,7 +143,7 @@ index 3d9bdf0655093..c7acfe7a7ca93 100644
  
            if (citations) {
              streamContext.returnedCitation = true;
-@@ -154,13 +204,10 @@ export const transformOpenAIStream = (
+@@ -154,13 +205,10 @@ export const transformOpenAIStream = (
              return [
                {
                  data: {
