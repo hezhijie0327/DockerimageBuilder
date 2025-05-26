@@ -209,9 +209,18 @@ index 56b10a4b8cd1c..95567b2eeb7f0 100644
      if (!!thinking && thinking.type === 'enabled') {
        const maxTokens = getMaxTokens() || 32_000; // Claude Opus 4 has minimum maxOutput
 diff --git a/src/libs/model-runtime/utils/streams/anthropic.ts b/src/libs/model-runtime/utils/streams/anthropic.ts
-index 597329e728dc2..2ee51a810d29f 100644
+index 597329e728dc2..48481d78172d2 100644
 --- a/src/libs/model-runtime/utils/streams/anthropic.ts
 +++ b/src/libs/model-runtime/utils/streams/anthropic.ts
+@@ -1,7 +1,7 @@
+ import Anthropic from '@anthropic-ai/sdk';
+ import type { Stream } from '@anthropic-ai/sdk/streaming';
+ 
+-import { ModelTokensUsage } from '@/types/message';
++import { ModelTokensUsage, CitationItem } from '@/types/message';
+ 
+ import { ChatStreamCallbacks } from '../../types';
+ import {
 @@ -59,6 +59,7 @@ export const transformAnthropicStream = (
            return { data: chunk.content_block.text, id: context.id, type: 'data' };
          }
@@ -220,14 +229,31 @@ index 597329e728dc2..2ee51a810d29f 100644
          case 'tool_use': {
            const toolChunk = chunk.content_block;
  
-@@ -148,6 +149,10 @@ export const transformAnthropicStream = (
-           };
-         }
+@@ -85,6 +86,27 @@ export const transformAnthropicStream = (
  
-+        case 'citations_delta': {
-+          return { data: chunk.delta.citation, id: context.id, type: 'grounding' };
+           return { data: [toolCall], id: context.id, type: 'tool_calls' };
+         }
++
++        case 'web_search_tool_result': {
++          const citations = chunk.content_block.content;
++
++          return [
++            {
++              data: {
++                citations: (citations as any[]).map(
++                  (item) =>
++                    ({
++                      title: item.title,
++                      url: item.url,
++                    }) as CitationItem,
++                ),
++              },
++              id: context.id,
++              type: 'grounding',
++            },
++          ];
 +        }
 +
-         default: {
-           break;
-         }
+         case 'thinking': {
+           const thinkingChunk = chunk.content_block;
+ 
