@@ -67,40 +67,45 @@ index f72fca635724d..2f2ffbb3bb4df 100644
        } as any;
      },
 diff --git a/src/libs/model-runtime/utils/streams/openai.ts b/src/libs/model-runtime/utils/streams/openai.ts
-index 3d9bdf0655093..37e4fb5639ead 100644
+index 3d9bdf0655093..c7acfe7a7ca93 100644
 --- a/src/libs/model-runtime/utils/streams/openai.ts
 +++ b/src/libs/model-runtime/utils/streams/openai.ts
-@@ -99,11 +99,54 @@ export const transformOpenAIStream = (
+@@ -99,11 +99,59 @@ export const transformOpenAIStream = (
      if (item.finish_reason) {
        // one-api 的流式接口，会出现既有 finish_reason ，也有 content 的情况
        //  {"id":"demo","model":"deepl-en","choices":[{"index":0,"delta":{"role":"assistant","content":"Introduce yourself."},"finish_reason":"stop"}]}
 -
        if (typeof item.delta?.content === 'string' && !!item.delta.content) {
-+        // MiniMax 的内建 web_search 会在第一个流中返回引用源，需要先转为 JSON 数组后解析
++        // MiniMax 内建搜索功能会在第一个 tools 流中 content 返回引用源，需要忽略
 +        // {"id":"0483748a25071c611e2f48d2982fbe96","choices":[{"finish_reason":"stop","index":0,"delta":{"content":"[{\"no\":1,\"url\":\"https://www.xiaohongshu.com/discovery/item/66d8de3c000000001f01e752\",\"title\":\"郑钦文为国而战，没有理由不坚持🏅\",\"content\":\"·2024年08月03日\\n中国队选手郑钦文夺得巴黎奥运会网球女单比赛金牌（巴黎奥运第16金）\\n#巴黎奥运会[话题]# #郑钦文[话题]# #人物素材积累[话题]# #作文素材积累[话题]# #申论素材[话题]#\",\"web_icon\":\"https://www.xiaohongshu.com/favicon.ico\"}]","role":"tool","tool_call_id":"call_function_6696730535"}}],"created":1748255114,"model":"abab6.5s-chat","object":"chat.completion.chunk","usage":{"total_tokens":0,"total_characters":0},"input_sensitive":false,"output_sensitive":false,"input_sensitive_type":0,"output_sensitive_type":0,"output_sensitive_int":0}
 +        if (typeof item.delta?.role === 'string' && item.delta.role === 'tool') {
-+          const citations = JSON.parse(item.delta.content);
-+
-+          return [
-+            {
-+              data: {
-+                citations: (citations as any[]).map(
-+                  (item) =>
-+                    ({
-+                      title: item.title,
-+                      url: item.url,
-+                    }) as CitationItem,
-+                ),
-+              },
-+              id: chunk.id,
-+              type: 'grounding',
-+            },
-+          ];
++          return { data: null, id: chunk.id, type: 'text' };
 +        }
 +
          return { data: item.delta.content, id: chunk.id, type: 'text' };
        }
  
++      // MiniMax 内建搜索功能会在最后一个流中的 message 数组中返回 4 个 Object，其中最后一个为 annotations
++      if (item.messages && item.messages.length > 0) {
++        const citations = item.messages[item.messages.length - 1].annotations;
++
++        return [
++          {
++            data: {
++              citations: citations.map(
++                (item: any) =>
++                  ({
++                    title: item.url,
++                    url: item.url,
++                  }) as CitationItem,
++              ),
++            },
++            id: chunk.id,
++            type: 'grounding',
++          },
++        ];
++      }
++
 +      // xAI Live Search 功能返回引用源
 +      // {"id":"8721eebb-6465-4c47-ba2e-8e2ec0f97055","object":"chat.completion.chunk","created":1747809109,"model":"grok-3","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":"stop"}],"system_fingerprint":"fp_1affcf9872","citations":["https://world.huanqiu.com/"]}
 +      if ((chunk as any).citations) {
@@ -126,7 +131,7 @@ index 3d9bdf0655093..37e4fb5639ead 100644
        if (chunk.usage) {
          const usage = chunk.usage;
          return { data: convertUsage(usage), id: chunk.id, type: 'usage' };
-@@ -146,7 +189,9 @@ export const transformOpenAIStream = (
+@@ -146,7 +194,9 @@ export const transformOpenAIStream = (
              // in Hunyuan api, the citation is in every chunk
              ('search_info' in chunk && (chunk.search_info as any)?.search_results) ||
              // in Wenxin api, the citation is in the first and last chunk
@@ -137,7 +142,7 @@ index 3d9bdf0655093..37e4fb5639ead 100644
  
            if (citations) {
              streamContext.returnedCitation = true;
-@@ -154,13 +199,10 @@ export const transformOpenAIStream = (
+@@ -154,13 +204,10 @@ export const transformOpenAIStream = (
              return [
                {
                  data: {
@@ -151,7 +156,7 @@ index 3d9bdf0655093..37e4fb5639ead 100644
 +                  citations: (citations as any[]).map((item) => ({
 +                    title: typeof item === 'string' ? item : item.title,
 +                    url: typeof item === 'string' ? item : item.url || item.link,
-+                  })).filter(c => c.title && c.url),
++                  })).filter(c => c.title && c.url), // Zhipu 内建搜索工具有时会返回空 link 引发程序崩溃
                  },
                  id: chunk.id,
                  type: 'grounding',
