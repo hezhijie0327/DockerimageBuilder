@@ -67,10 +67,10 @@ index f72fca635724d..2f2ffbb3bb4df 100644
        } as any;
      },
 diff --git a/src/libs/model-runtime/utils/streams/openai.ts b/src/libs/model-runtime/utils/streams/openai.ts
-index 3d9bdf0655093..a39765c2b5eb5 100644
+index 3d9bdf0655093..97b93be3811db 100644
 --- a/src/libs/model-runtime/utils/streams/openai.ts
 +++ b/src/libs/model-runtime/utils/streams/openai.ts
-@@ -99,11 +99,60 @@ export const transformOpenAIStream = (
+@@ -99,16 +99,65 @@ export const transformOpenAIStream = (
      if (item.finish_reason) {
        // one-api 的流式接口，会出现既有 finish_reason ，也有 content 的情况
        //  {"id":"demo","model":"deepl-en","choices":[{"index":0,"delta":{"role":"assistant","content":"Introduce yourself."},"finish_reason":"stop"}]}
@@ -107,6 +107,11 @@ index 3d9bdf0655093..a39765c2b5eb5 100644
 +        ];
 +      }
 +
+       if (chunk.usage) {
+         const usage = chunk.usage;
+         return { data: convertUsage(usage), id: chunk.id, type: 'usage' };
+       }
+ 
 +      // xAI Live Search 功能返回引用源
 +      // {"id":"8721eebb-6465-4c47-ba2e-8e2ec0f97055","object":"chat.completion.chunk","created":1747809109,"model":"grok-3","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":"stop"}],"system_fingerprint":"fp_1affcf9872","citations":["https://world.huanqiu.com/"]}
 +      if ((chunk as any).citations) {
@@ -129,9 +134,9 @@ index 3d9bdf0655093..a39765c2b5eb5 100644
 +        ];
 +      }
 +
-       if (chunk.usage) {
-         const usage = chunk.usage;
-         return { data: convertUsage(usage), id: chunk.id, type: 'usage' };
+       return { data: item.finish_reason, id: chunk.id, type: 'stop' };
+     }
+ 
 @@ -146,7 +195,9 @@ export const transformOpenAIStream = (
              // in Hunyuan api, the citation is in every chunk
              ('search_info' in chunk && (chunk.search_info as any)?.search_results) ||
