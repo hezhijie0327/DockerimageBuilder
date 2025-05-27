@@ -209,7 +209,7 @@ index 56b10a4b8cd1c..95567b2eeb7f0 100644
      if (!!thinking && thinking.type === 'enabled') {
        const maxTokens = getMaxTokens() || 32_000; // Claude Opus 4 has minimum maxOutput
 diff --git a/src/libs/model-runtime/utils/streams/anthropic.ts b/src/libs/model-runtime/utils/streams/anthropic.ts
-index 597329e728dc2..48481d78172d2 100644
+index 597329e728dc2..756b2a72bccfa 100644
 --- a/src/libs/model-runtime/utils/streams/anthropic.ts
 +++ b/src/libs/model-runtime/utils/streams/anthropic.ts
 @@ -1,7 +1,7 @@
@@ -221,7 +221,15 @@ index 597329e728dc2..48481d78172d2 100644
  
  import { ChatStreamCallbacks } from '../../types';
  import {
-@@ -59,6 +59,7 @@ export const transformAnthropicStream = (
+@@ -23,6 +23,7 @@ export const transformAnthropicStream = (
+   switch (chunk.type) {
+     case 'message_start': {
+       context.id = chunk.message.id;
++      context.returnedCitationArray = [];
+       let totalInputTokens = chunk.message.usage?.input_tokens;
+ 
+       if (
+@@ -59,6 +60,7 @@ export const transformAnthropicStream = (
            return { data: chunk.content_block.text, id: context.id, type: 'data' };
          }
  
@@ -229,11 +237,12 @@ index 597329e728dc2..48481d78172d2 100644
          case 'tool_use': {
            const toolChunk = chunk.content_block;
  
-@@ -85,6 +86,27 @@ export const transformAnthropicStream = (
+@@ -85,6 +87,29 @@ export const transformAnthropicStream = (
  
            return { data: [toolCall], id: context.id, type: 'tool_calls' };
          }
 +
++        /*
 +        case 'web_search_tool_result': {
 +          const citations = chunk.content_block.content;
 +
@@ -253,7 +262,71 @@ index 597329e728dc2..48481d78172d2 100644
 +            },
 +          ];
 +        }
++        */
 +
          case 'thinking': {
            const thinkingChunk = chunk.content_block;
  
+@@ -148,6 +173,19 @@ export const transformAnthropicStream = (
+           };
+         }
+ 
++        case 'citations_delta': {
++          const citations = (chunk as any).delta.citation;
++
++          if (context.returnedCitationArray) {
++            context.returnedCitationArray.push({
++              title: citations.title,
++              url: citations.url,
++            } as CitationItem)
++          }
++
++          return { data: null, id: context.id, type: 'text' };
++        }
++
+         default: {
+           break;
+         }
+@@ -180,7 +218,17 @@ export const transformAnthropicStream = (
+     }
+ 
+     case 'message_stop': {
+-      return { data: 'message_stop', id: context.id, type: 'stop' };
++      return [
++        ...(context.returnedCitationArray?.length 
++          ? [{ 
++              data: { citations: context.returnedCitationArray }, 
++              id: context.id, 
++              type: 'grounding' 
++            }] 
++          : []
++        ),
++        { data: 'message_stop', id: context.id, type: 'stop' }
++      ] as any;
+     }
+ 
+     default: {
+diff --git a/src/libs/model-runtime/utils/streams/protocol.ts b/src/libs/model-runtime/utils/streams/protocol.ts
+index c6775b08f241c..219068b22c926 100644
+--- a/src/libs/model-runtime/utils/streams/protocol.ts
++++ b/src/libs/model-runtime/utils/streams/protocol.ts
+@@ -1,4 +1,4 @@
+-import { ModelSpeed, ModelTokensUsage } from '@/types/message';
++import { CitationItem, ModelSpeed, ModelTokensUsage } from '@/types/message';
+ import { safeParseJSON } from '@/utils/safeParseJSON';
+ 
+ import { AgentRuntimeErrorType } from '../../error';
+@@ -16,6 +16,13 @@ export interface StreamContext {
+    * Same as Hunyuan and Wenxin
+    */
+   returnedCitation?: boolean;
++  /**
++   * Claude's citations are inline and interleaved with text output.
++   * Each text segment may carry references to sources (e.g., web search results) 
++   * relevant to that specific portion of the generated content.
++   * This array accumulates all citation items received during the streaming response.
++   */
++  returnedCitationArray?: CitationItem[];
+   thinking?: {
+     id: string;
+     name: string;
