@@ -1,0 +1,119 @@
+diff --git a/searx/plugins/site_filter.py b/searx/plugins/site_filter.py
+new file mode 100644
+index 00000000000..d046d15a412
+--- /dev/null
++++ b/searx/plugins/site_filter.py
+@@ -0,0 +1,113 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++# pylint: disable=missing-module-docstring, missing-class-docstring, protected-access
++from __future__ import annotations
++import re
++import typing
++from urllib.parse import urlparse
++
++import searx.result_types as result_types
++from searx.plugins import Plugin, PluginInfo
++
++if typing.TYPE_CHECKING:
++    from searx.search import SearchWithPlugins
++    from searx.extended_types import SXNG_Request
++    from searx.plugins import PluginCfg
++
++
++class SXNGPlugin(Plugin):
++    """Filter search results to only include URLs from the specified domain
++    when a 'site:domain.com' query syntax is used.
++    """
++
++    id = "site_filter"
++    default_on = True
++
++    def __init__(self, plg_cfg: "PluginCfg") -> None:
++        super().__init__(plg_cfg)
++
++        self.info = PluginInfo(
++            id=self.id,
++            name="Site Filter",
++            description="Filter results to the site specified in 'site:domain.com' queries",
++            preference_section="general",
++        )
++
++    def _extract_site_domains(self, query: str) -> list[str]:
++        """Extract all site: domains from the query string.
++
++        Handles patterns like:
++        - site:example.org
++        - site:https://example.org
++        - site:"example.org"
++        """
++        # Pattern to match site: followed by domain (with optional quotes and protocol)
++        pattern = r'\bsite\s*:\s*(?:"([^"]+)"|([^\s]+))'
++        matches = re.findall(pattern, query, re.IGNORECASE)
++
++        domains = []
++        for match in matches:
++            # match is a tuple (quoted_domain, unquoted_domain)
++            domain = match[0] or match[1]
++            if domain:
++                # Remove any protocol prefix
++                domain = re.sub(r'^[a-zA-Z][a-zA-Z0-9+.-]*://', '', domain)
++                # Clean up the domain
++                domain = domain.lower().strip().rstrip('/').rstrip('.')
++                if domain:
++                    domains.append(domain)
++
++        return domains
++
++    def _is_domain_match(self, url: str, target_domain: str) -> bool:
++        """Check if URL matches the target domain or its subdomains."""
++        try:
++            parsed = urlparse(url)
++            netloc = parsed.netloc.lower().rstrip('.')
++
++            # Exact match
++            if netloc == target_domain:
++                return True
++
++            # Subdomain match (e.g., www.example.org matches example.org)
++            if netloc.endswith(f".{target_domain}"):
++                return True
++
++            return False
++
++        except Exception:
++            return False
++
++    def _should_include_result(self, result, target_domains: list[str]) -> bool:
++        """Check if result should be included based on site filters.
++
++        When site: filter is specified, ONLY results from those domains should be included.
++        """
++        if not hasattr(result, 'url') or not result.url:
++            return False
++
++        # Result URL must match at least one of the target domains
++        for domain in target_domains:
++            if self._is_domain_match(result.url, domain):
++                return True
++
++        # If no domain matches, exclude this result
++        return False
++
++    def post_search(self, request: "SXNG_Request", search: "SearchWithPlugins") -> result_types.EngineResults:
++        results = search.result_container.get_ordered_results()
++        query = search.search_query.query
++
++        # Extract all site: domains from the query
++        target_domains = self._extract_site_domains(query)
++
++        # If no site: filter found, return all results unchanged
++        if not target_domains:
++            return results
++
++        # Filter results to only include URLs from the specified domains
++        filtered_results = []
++        for result in results:
++            if self._should_include_result(result, target_domains):
++                filtered_results.append(result)
++
++        return filtered_results
