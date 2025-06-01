@@ -324,12 +324,12 @@ index 0000000000000..3f1f860e172ac
 +
 +  return;
 +};
-diff --git a/src/server/services/search/impls/bochaai/index.ts b/src/server/services/search/impls/bochaai/index.ts
+diff --git a/src/server/services/search/impls/bocha/index.ts b/src/server/services/search/impls/bocha/index.ts
 new file mode 100644
-index 0000000000000..da73214505a02
+index 0000000000000..6944465d1eb10
 --- /dev/null
-+++ b/src/server/services/search/impls/bochaai/index.ts
-@@ -0,0 +1,132 @@
++++ b/src/server/services/search/impls/bocha/index.ts
+@@ -0,0 +1,133 @@
 +import { TRPCError } from '@trpc/server';
 +import debug from 'debug';
 +import urlJoin from 'url-join';
@@ -337,18 +337,18 @@ index 0000000000000..da73214505a02
 +import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
 +
 +import { SearchServiceImpl } from '../type';
-+import { BoChaAIResponse } from './type';
++import { BochaResponse } from './type';
 +
-+interface BoChaAIQueryParams {
++interface BochaQueryParams {
 +  count?: number;
 +  exclude?: string;
 +  freshness?: string;
 +  include?: string;
 +  query: string;
-+  summery?: boolean;
++  summary?: boolean;
 +}
 +
-+const log = debug('lobe-search:BoChaAI');
++const log = debug('lobe-search:Bocha');
 +
 +const timeRangeMapping = {
 +  day: 'oneDay',
@@ -358,12 +358,12 @@ index 0000000000000..da73214505a02
 +};
 +
 +/**
-+ * BoChaAI implementation of the search service
++ * Bocha implementation of the search service
 + * Primarily used for web crawling
 + */
-+export class BoChaAIImpl implements SearchServiceImpl {
++export class BochaImpl implements SearchServiceImpl {
 +  private get apiKey(): string | undefined {
-+    return process.env.BOCHAAI_API_KEY;
++    return process.env.BOCHA_API_KEY;
 +  }
 +
 +  private get baseUrl(): string {
@@ -372,15 +372,16 @@ index 0000000000000..da73214505a02
 +  }
 +
 +  async query(query: string, params: SearchParams = {}): Promise<UniformSearchResponse> {
-+    log('Starting BoChaAI query with query: "%s", params: %o', query, params);
++    log('Starting Bocha query with query: "%s", params: %o', query, params);
 +    const endpoint = urlJoin(this.baseUrl, '/web-search');
 +
-+    const defaultQueryParams: BoChaAIQueryParams = {
++    const defaultQueryParams: BochaQueryParams = {
 +      count: 15,
 +      query,
++      summary: true,
 +    };
 +
-+    let body: BoChaAIQueryParams = {
++    let body: BochaQueryParams = {
 +      ...defaultQueryParams,
 +      freshness:
 +        params?.searchTimeRange && params.searchTimeRange !== 'anytime'
@@ -406,37 +407,37 @@ index 0000000000000..da73214505a02
 +      log('Received response with status: %d', response.status);
 +      costTime = Date.now() - startAt;
 +    } catch (error) {
-+      log.extend('error')('BoChaAI fetch error: %o', error);
++      log.extend('error')('Bocha fetch error: %o', error);
 +      throw new TRPCError({
 +        cause: error,
 +        code: 'SERVICE_UNAVAILABLE',
-+        message: 'Failed to connect to BoChaAI.',
++        message: 'Failed to connect to Bocha.',
 +      });
 +    }
 +
 +    if (!response.ok) {
 +      const errorBody = await response.text();
 +      log.extend('error')(
-+        `BoChaAI request failed with status ${response.status}: %s`,
++        `Bocha request failed with status ${response.status}: %s`,
 +        errorBody.length > 200 ? `${errorBody.slice(0, 200)}...` : errorBody,
 +      );
 +      throw new TRPCError({
 +        cause: errorBody,
 +        code: 'SERVICE_UNAVAILABLE',
-+        message: `BoChaAI request failed: ${response.statusText}`,
++        message: `Bocha request failed: ${response.statusText}`,
 +      });
 +    }
 +
 +    try {
-+      const bochaaiResponse = (await response.json()) as BoChaAIResponse;
++      const bochaResponse = (await response.json()) as BochaResponse;
 +
-+      log('Parsed BoChaAI response: %o', bochaaiResponse);
++      log('Parsed Bocha response: %o', bochaResponse);
 +
-+      const mappedResults = (bochaaiResponse.data.webPages.value || []).map(
++      const mappedResults = (bochaResponse.data.webPages.value || []).map(
 +        (result): UniformSearchResult => ({
 +          category: 'general', // Default category
-+          content: result.snippet || '', // Prioritize content, fallback to snippet
-+          engines: ['bochaai'], // Use 'bochaai' as the engine name
++          content: result.summary || result.snippet || '', // Prioritize content, fallback to snippet
++          engines: ['bocha'], // Use 'bocha' as the engine name
 +          parsedUrl: result.url ? new URL(result.url).hostname : '', // Basic URL parsing
 +          score: 1, // Default score to 1
 +          title: result.name || '',
@@ -453,35 +454,35 @@ index 0000000000000..da73214505a02
 +        results: mappedResults,
 +      };
 +    } catch (error) {
-+      log.extend('error')('Error parsing BoChaAI response: %o', error);
++      log.extend('error')('Error parsing Bocha response: %o', error);
 +      throw new TRPCError({
 +        cause: error,
 +        code: 'INTERNAL_SERVER_ERROR',
-+        message: 'Failed to parse BoChaAI response.',
++        message: 'Failed to parse Bocha response.',
 +      });
 +    }
 +  }
 +}
-diff --git a/src/server/services/search/impls/bochaai/type.ts b/src/server/services/search/impls/bochaai/type.ts
+diff --git a/src/server/services/search/impls/bocha/type.ts b/src/server/services/search/impls/bocha/type.ts
 new file mode 100644
-index 0000000000000..759493763e9c0
+index 0000000000000..3fe7bfef037c0
 --- /dev/null
-+++ b/src/server/services/search/impls/bochaai/type.ts
-@@ -0,0 +1,46 @@
-+export interface BoChaAISearchParameters {
++++ b/src/server/services/search/impls/bocha/type.ts
+@@ -0,0 +1,47 @@
++export interface BochaSearchParameters {
 +  count?: number;
 +  exclude?: string;
 +  freshness?: string;
 +  include?: string;
 +  query: string;
-+  summery?: boolean;
++  summary?: boolean;
 +}
 +
-+interface BoChaAIQueryContext {
++interface BochaQueryContext {
 +  originalQuery: string;
 +}
 +
-+interface BoChaAIValue {
++interface BochaValue {
 +  cachedPageUrl?: string;
 +  dateLastCrawled?: string;
 +  displayUrl?: string;
@@ -492,25 +493,26 @@ index 0000000000000..759493763e9c0
 +  name: string;
 +  siteName?: string;
 +  snippet?: string;
++  summary?: string;
 +  url: string;
 +}
 +
-+interface BoChaAIWebPages {
++interface BochaWebPages {
 +  totalEstimatedMatches?: number;
-+  value?: BoChaAIValue[];
++  value?: BochaValue[];
 +  webSearchUrl?: string;
 +}
 +
-+interface BoChaAIData {
++interface BochaData {
 +  images?: any;
-+  queryContext?: BoChaAIQueryContext;
++  queryContext?: BochaQueryContext;
 +  videos?: any;
-+  webPages: BoChaAIWebPages;
++  webPages: BochaWebPages;
 +}
 +
-+export interface BoChaAIResponse {
++export interface BochaResponse {
 +  code?: number;
-+  data: BoChaAIData;
++  data: BochaData;
 +  log_id?: string;
 +  msg?: string | null;
 +}
@@ -879,11 +881,11 @@ index 0000000000000..f7a53969dc9ab
 +  success?: boolean;
 +}
 diff --git a/src/server/services/search/impls/index.ts b/src/server/services/search/impls/index.ts
-index 77607c98108c5..eed5b67e8cd76 100644
+index 77607c98108c5..a71a38507d519 100644
 --- a/src/server/services/search/impls/index.ts
 +++ b/src/server/services/search/impls/index.ts
 @@ -1,13 +1,24 @@
-+import { BoChaAIImpl } from './bochaai';
++import { BochaImpl } from './bocha';
 +import { ExaImpl } from './exa';
 +import { FirecrawlImpl } from './firecrawl';
 +import { JinaImpl } from './jina';
@@ -897,7 +899,7 @@ index 77607c98108c5..eed5b67e8cd76 100644
   * Available search service implementations
   */
  export enum SearchImplType {
-+  BoChaAI = 'bochaai',
++  Bocha = 'bocha',
 +  Exa = 'exa',
 +  Firecrawl = 'firecrawl',
 +  Jina = 'jina',
@@ -911,8 +913,8 @@ index 77607c98108c5..eed5b67e8cd76 100644
    type: SearchImplType = SearchImplType.SearXNG,
  ): SearchServiceImpl => {
    switch (type) {
-+    case SearchImplType.BoChaAI: {
-+      return new BoChaAIImpl();
++    case SearchImplType.Bocha: {
++      return new BochaImpl();
 +    }
 +
 +    case SearchImplType.Exa: {
