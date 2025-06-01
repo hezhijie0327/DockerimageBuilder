@@ -1,3 +1,102 @@
+diff --git a/packages/web-crawler/src/crawImpl/exa.ts b/packages/web-crawler/src/crawImpl/exa.ts
+new file mode 100644
+index 0000000000000..8f3c4cf7939c7
+--- /dev/null
++++ b/packages/web-crawler/src/crawImpl/exa.ts
+@@ -0,0 +1,93 @@
++import { CrawlImpl, CrawlSuccessResult } from '../type';
++import { NetworkConnectionError, PageNotFoundError, TimeoutError } from '../utils/errorType';
++import { DEFAULT_TIMEOUT, withTimeout } from '../utils/withTimeout';
++
++interface ExaResults {
++  author?: string;
++  favicon?: string;
++  id?: string;
++  image?: string;
++  publishedDate?: string;
++  summary?: string;
++  text: string;
++  title: string;
++  url: string;
++}
++
++interface ExaResponse {
++  requestId?: string;
++  results: ExaResults[];
++}
++
++export const exa: CrawlImpl = async (url) => {
++  // Get API key from environment variable
++  const apiKey = process.env.EXA_API_KEY;
++
++  let res: Response;
++
++  try {
++    res = await withTimeout(
++      fetch('https://api.exa.ai/contents', {
++        body: JSON.stringify({
++          livecrawl: 'fallback', // always, fallback
++          text: true,
++          urls: [url],
++        }),
++        headers: {
++          'x-api-key': !apiKey ? '' : apiKey,
++          'Content-Type': 'application/json',
++        },
++        method: 'POST',
++      }),
++      DEFAULT_TIMEOUT,
++    );
++  } catch (e) {
++    const error = e as Error;
++    if (error.message === 'fetch failed') {
++      throw new NetworkConnectionError();
++    }
++
++    if (error instanceof TimeoutError) {
++      throw error;
++    }
++
++    throw e;
++  }
++
++  if (!res.ok) {
++    if (res.status === 404) {
++      throw new PageNotFoundError(res.statusText);
++    }
++
++    throw new Error(`Exa request failed with status ${res.status}: ${res.statusText}`);
++  }
++
++  try {
++    const data = (await res.json()) as ExaResponse;
++
++    if (!data.results || data.results.length === 0) {
++      console.warn( 'Exa API returned no results for URL:', url )
++      return
++    }
++
++    const firstResult = data.results[0];
++
++    // Check if content is empty or too short
++    if (!firstResult.text || firstResult.text.length < 100) {
++      return;
++    }
++
++    return {
++      content: firstResult.text,
++      contentType: 'text',
++      length: firstResult.text.length,
++      siteName: new URL(url).hostname,
++      title: firstResult.title,
++      url: firstResult.url || url,
++    } satisfies CrawlSuccessResult;
++  } catch (error) {
++    console.error(error);
++  }
++
++  return;
++};
 diff --git a/packages/web-crawler/src/crawImpl/firecrawl.ts b/packages/web-crawler/src/crawImpl/firecrawl.ts
 new file mode 100644
 index 0000000000000..642cab87dc017
@@ -102,11 +201,12 @@ index 0000000000000..642cab87dc017
 +  return;
 +};
 diff --git a/packages/web-crawler/src/crawImpl/index.ts b/packages/web-crawler/src/crawImpl/index.ts
-index c58d77b2d8b9b..2c1b6bad85806 100644
+index c58d77b2d8b9b..208b44d52545e 100644
 --- a/packages/web-crawler/src/crawImpl/index.ts
 +++ b/packages/web-crawler/src/crawImpl/index.ts
-@@ -1,13 +1,17 @@
+@@ -1,13 +1,19 @@
  import { browserless } from './browserless';
++import { exa } from './exa';
 +import { firecrawl } from './firecrawl';
  import { jina } from './jina';
  import { naive } from './naive';
@@ -115,6 +215,7 @@ index c58d77b2d8b9b..2c1b6bad85806 100644
  
  export const crawlImpls = {
    browserless,
++  exa,
 +  firecrawl,
    jina,
    naive,
@@ -223,6 +324,371 @@ index 0000000000000..3f1f860e172ac
 +
 +  return;
 +};
+diff --git a/src/server/services/search/impls/bochaai/index.ts b/src/server/services/search/impls/bochaai/index.ts
+new file mode 100644
+index 0000000000000..da73214505a02
+--- /dev/null
++++ b/src/server/services/search/impls/bochaai/index.ts
+@@ -0,0 +1,132 @@
++import { TRPCError } from '@trpc/server';
++import debug from 'debug';
++import urlJoin from 'url-join';
++
++import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
++
++import { SearchServiceImpl } from '../type';
++import { BoChaAIResponse } from './type';
++
++interface BoChaAIQueryParams {
++  count?: number;
++  exclude?: string;
++  freshness?: string;
++  include?: string;
++  query: string;
++  summery?: boolean;
++}
++
++const log = debug('lobe-search:BoChaAI');
++
++const timeRangeMapping = {
++  day: 'oneDay',
++  month: 'oneMonth',
++  week: 'oneWeek',
++  year: 'oneYear',
++};
++
++/**
++ * BoChaAI implementation of the search service
++ * Primarily used for web crawling
++ */
++export class BoChaAIImpl implements SearchServiceImpl {
++  private get apiKey(): string | undefined {
++    return process.env.BOCHAAI_API_KEY;
++  }
++
++  private get baseUrl(): string {
++    // Assuming the base URL is consistent with the crawl endpoint
++    return 'https://api.bochaai.com/v1';
++  }
++
++  async query(query: string, params: SearchParams = {}): Promise<UniformSearchResponse> {
++    log('Starting BoChaAI query with query: "%s", params: %o', query, params);
++    const endpoint = urlJoin(this.baseUrl, '/web-search');
++
++    const defaultQueryParams: BoChaAIQueryParams = {
++      count: 15,
++      query,
++    };
++
++    let body: BoChaAIQueryParams = {
++      ...defaultQueryParams,
++      freshness:
++        params?.searchTimeRange && params.searchTimeRange !== 'anytime'
++          ? timeRangeMapping[params.searchTimeRange as keyof typeof timeRangeMapping] ?? undefined
++          : undefined,
++    };
++
++    log('Constructed request body: %o', body);
++
++    let response: Response;
++    const startAt = Date.now();
++    let costTime = 0;
++    try {
++      log('Sending request to endpoint: %s', endpoint);
++      response = await fetch(endpoint, {
++        body: JSON.stringify(body),
++        headers: {
++          'Authorization': this.apiKey ? `Bearer ${this.apiKey}` : '',
++          'Content-Type': 'application/json',
++        },
++        method: 'POST',
++      });
++      log('Received response with status: %d', response.status);
++      costTime = Date.now() - startAt;
++    } catch (error) {
++      log.extend('error')('BoChaAI fetch error: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'SERVICE_UNAVAILABLE',
++        message: 'Failed to connect to BoChaAI.',
++      });
++    }
++
++    if (!response.ok) {
++      const errorBody = await response.text();
++      log.extend('error')(
++        `BoChaAI request failed with status ${response.status}: %s`,
++        errorBody.length > 200 ? `${errorBody.slice(0, 200)}...` : errorBody,
++      );
++      throw new TRPCError({
++        cause: errorBody,
++        code: 'SERVICE_UNAVAILABLE',
++        message: `BoChaAI request failed: ${response.statusText}`,
++      });
++    }
++
++    try {
++      const bochaaiResponse = (await response.json()) as BoChaAIResponse;
++
++      log('Parsed BoChaAI response: %o', bochaaiResponse);
++
++      const mappedResults = (bochaaiResponse.data.webPages.value || []).map(
++        (result): UniformSearchResult => ({
++          category: 'general', // Default category
++          content: result.snippet || '', // Prioritize content, fallback to snippet
++          engines: ['bochaai'], // Use 'bochaai' as the engine name
++          parsedUrl: result.url ? new URL(result.url).hostname : '', // Basic URL parsing
++          score: 1, // Default score to 1
++          title: result.name || '',
++          url: result.url,
++        }),
++      );
++
++      log('Mapped %d results to SearchResult format', mappedResults.length);
++
++      return {
++        costTime,
++        query: query,
++        resultNumbers: mappedResults.length,
++        results: mappedResults,
++      };
++    } catch (error) {
++      log.extend('error')('Error parsing BoChaAI response: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'INTERNAL_SERVER_ERROR',
++        message: 'Failed to parse BoChaAI response.',
++      });
++    }
++  }
++}
+diff --git a/src/server/services/search/impls/bochaai/type.ts b/src/server/services/search/impls/bochaai/type.ts
+new file mode 100644
+index 0000000000000..759493763e9c0
+--- /dev/null
++++ b/src/server/services/search/impls/bochaai/type.ts
+@@ -0,0 +1,46 @@
++export interface BoChaAISearchParameters {
++  count?: number;
++  exclude?: string;
++  freshness?: string;
++  include?: string;
++  query: string;
++  summery?: boolean;
++}
++
++interface BoChaAIQueryContext {
++  originalQuery: string;
++}
++
++interface BoChaAIValue {
++  cachedPageUrl?: string;
++  dateLastCrawled?: string;
++  displayUrl?: string;
++  id?: string | null;
++  isFamilyFriendly?: boolean;
++  isNavigational?: boolean;
++  language?: string;
++  name: string;
++  siteName?: string;
++  snippet?: string;
++  url: string;
++}
++
++interface BoChaAIWebPages {
++  totalEstimatedMatches?: number;
++  value?: BoChaAIValue[];
++  webSearchUrl?: string;
++}
++
++interface BoChaAIData {
++  images?: any;
++  queryContext?: BoChaAIQueryContext;
++  videos?: any;
++  webPages: BoChaAIWebPages;
++}
++
++export interface BoChaAIResponse {
++  code?: number;
++  data: BoChaAIData;
++  log_id?: string;
++  msg?: string | null;
++}
+diff --git a/src/server/services/search/impls/exa/index.ts b/src/server/services/search/impls/exa/index.ts
+new file mode 100644
+index 0000000000000..6903629274b35
+--- /dev/null
++++ b/src/server/services/search/impls/exa/index.ts
+@@ -0,0 +1,124 @@
++import { TRPCError } from '@trpc/server';
++import debug from 'debug';
++import urlJoin from 'url-join';
++
++import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
++
++import { SearchServiceImpl } from '../type';
++import { ExaResponse } from './type';
++
++interface ExaQueryParams {
++  category?: string;
++  endCrawlDate?: string;
++  endPublishedDate?: string;
++  excludeDomains?: string[];
++  excludeText?: string[];
++  includeDomains?: string[];
++  includeText?: string[];
++  numResults?: number;
++  query: string;
++  startCrawlDate?: string;
++  startPublishedDate?: string;
++  type?: string;
++}
++
++const log = debug('lobe-search:Exa');
++
++/**
++ * Exa implementation of the search service
++ * Primarily used for web crawling
++ */
++export class ExaImpl implements SearchServiceImpl {
++  private get apiKey(): string | undefined {
++    return process.env.EXA_API_KEY;
++  }
++
++  private get baseUrl(): string {
++    // Assuming the base URL is consistent with the crawl endpoint
++    return 'https://api.exa.ai';
++  }
++
++  async query(query: string, params: SearchParams = {}): Promise<UniformSearchResponse> {
++    log('Starting Exa query with query: "%s", params: %o', query, params);
++    const endpoint = urlJoin(this.baseUrl, '/search');
++
++    let body: ExaQueryParams = {
++      numResults: 15,
++      query,
++      type: 'auto',
++    };
++
++    log('Constructed request body: %o', body);
++
++    let response: Response;
++    const startAt = Date.now();
++    let costTime = 0;
++    try {
++      log('Sending request to endpoint: %s', endpoint);
++      response = await fetch(endpoint, {
++        body: JSON.stringify(body),
++        headers: {
++          'x-api-key': this.apiKey ? this.apiKey : '',
++          'Content-Type': 'application/json',
++        },
++        method: 'POST',
++      });
++      log('Received response with status: %d', response.status);
++      costTime = Date.now() - startAt;
++    } catch (error) {
++      log.extend('error')('Exa fetch error: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'SERVICE_UNAVAILABLE',
++        message: 'Failed to connect to Exa.',
++      });
++    }
++
++    if (!response.ok) {
++      const errorBody = await response.text();
++      log.extend('error')(
++        `Exa request failed with status ${response.status}: %s`,
++        errorBody.length > 200 ? `${errorBody.slice(0, 200)}...` : errorBody,
++      );
++      throw new TRPCError({
++        cause: errorBody,
++        code: 'SERVICE_UNAVAILABLE',
++        message: `Exa request failed: ${response.statusText}`,
++      });
++    }
++
++    try {
++      const exaResponse = (await response.json()) as ExaResponse;
++
++      log('Parsed Exa response: %o', exaResponse);
++
++      const mappedResults = (exaResponse.results || []).map(
++        (result): UniformSearchResult => ({
++          category: 'general', // Default category
++          content: result.text || '', // Prioritize content, fallback to snippet
++          engines: ['exa'], // Use 'exa' as the engine name
++          parsedUrl: result.url ? new URL(result.url).hostname : '', // Basic URL parsing
++          score: result.score || 0, // Default score to 0 if undefined
++          title: result.title || '',
++          url: result.url,
++        }),
++      );
++
++      log('Mapped %d results to SearchResult format', mappedResults.length);
++
++      return {
++        costTime,
++        query: query,
++        resultNumbers: mappedResults.length,
++        results: mappedResults,
++      };
++    } catch (error) {
++      log.extend('error')('Error parsing Exa response: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'INTERNAL_SERVER_ERROR',
++        message: 'Failed to parse Exa response.',
++      });
++    }
++  }
++}
+diff --git a/src/server/services/search/impls/exa/type.ts b/src/server/services/search/impls/exa/type.ts
+new file mode 100644
+index 0000000000000..9937a62fbcad8
+--- /dev/null
++++ b/src/server/services/search/impls/exa/type.ts
+@@ -0,0 +1,39 @@
++export interface ExaSearchParameters {
++  category?: string;
++  endCrawlDate?: string;
++  endPublishedDate?: string;
++  excludeDomains?: string[];
++  excludeText?: string[];
++  includeDomains?: string[];
++  includeText?: string[];
++  numResults?: number;
++  query: string;
++  startCrawlDate?: string;
++  startPublishedDate?: string;
++  type?: string;
++}
++
++interface ExaCostDollars {
++  total: number;
++}
++
++interface ExaResults {
++  author?: string | null;
++  favicon?: string;
++  id?: string;
++  image?: string;
++  publishedDate?: string | null;
++  score?: number | null;
++  summery?: string;
++  text: string;
++  title: string;
++  url: string;
++}
++
++export interface ExaResponse {
++  costDollars?: ExaCostDollars;
++  requestId?: string;
++  resolvedSearchType?: string;
++  results: ExaResults[];
++  searchType?: string;
++}
 diff --git a/src/server/services/search/impls/firecrawl/index.ts b/src/server/services/search/impls/firecrawl/index.ts
 new file mode 100644
 index 0000000000000..139698c7b1b00
@@ -413,10 +879,12 @@ index 0000000000000..f7a53969dc9ab
 +  success?: boolean;
 +}
 diff --git a/src/server/services/search/impls/index.ts b/src/server/services/search/impls/index.ts
-index 77607c98108c5..e16964158e818 100644
+index 77607c98108c5..eed5b67e8cd76 100644
 --- a/src/server/services/search/impls/index.ts
 +++ b/src/server/services/search/impls/index.ts
-@@ -1,13 +1,20 @@
+@@ -1,13 +1,24 @@
++import { BoChaAIImpl } from './bochaai';
++import { ExaImpl } from './exa';
 +import { FirecrawlImpl } from './firecrawl';
 +import { JinaImpl } from './jina';
  import { Search1APIImpl } from './search1api';
@@ -429,6 +897,8 @@ index 77607c98108c5..e16964158e818 100644
   * Available search service implementations
   */
  export enum SearchImplType {
++  BoChaAI = 'bochaai',
++  Exa = 'exa',
 +  Firecrawl = 'firecrawl',
 +  Jina = 'jina',
    SearXNG = 'searxng',
@@ -437,10 +907,18 @@ index 77607c98108c5..e16964158e818 100644
  }
  
  /**
-@@ -17,10 +24,22 @@ export const createSearchServiceImpl = (
+@@ -17,10 +28,30 @@ export const createSearchServiceImpl = (
    type: SearchImplType = SearchImplType.SearXNG,
  ): SearchServiceImpl => {
    switch (type) {
++    case SearchImplType.BoChaAI: {
++      return new BoChaAIImpl();
++    }
++
++    case SearchImplType.Exa: {
++      return new ExaImpl();
++    }
++
 +    case SearchImplType.Firecrawl: {
 +      return new FirecrawlImpl();
 +    }
