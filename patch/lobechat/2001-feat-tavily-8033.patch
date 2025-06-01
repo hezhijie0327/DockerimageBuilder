@@ -1,8 +1,112 @@
+diff --git a/packages/web-crawler/src/crawImpl/firecrawl.ts b/packages/web-crawler/src/crawImpl/firecrawl.ts
+new file mode 100644
+index 0000000000000..9d3609fa763f9
+--- /dev/null
++++ b/packages/web-crawler/src/crawImpl/firecrawl.ts
+@@ -0,0 +1,96 @@
++import { CrawlImpl, CrawlSuccessResult } from '../type';
++import { NetworkConnectionError, PageNotFoundError, TimeoutError } from '../utils/errorType';
++import { DEFAULT_TIMEOUT, withTimeout } from '../utils/withTimeout';
++
++interface FirecrawlMetadata {
++  description: string;
++  keywords: string;
++  language: string;
++  ogDescription?: string;
++  ogImage?: string;
++  ogLocaleAlternate?: string[];
++  ogSiteName?: string;
++  ogTitle?: string;
++  ogUrl?: string;
++  robots: string;
++  statusCode: number;
++  sourceURL: string;
++  title: string;
++}
++
++interface FirecrawlResults {
++  html?: string;
++  markdown?: string;
++  metadata: FirecrawlMetadata;
++}
++
++interface FirecrawlResponse {
++  success: boolean;
++  data: FirecrawlResults;
++}
++
++export const firecrawl: CrawlImpl = async (url) => {
++  // Get API key from environment variable
++  const apiKey = process.env.FIRECRAWL_API_KEY;
++
++  let res: Response;
++
++  try {
++    res = await withTimeout(
++      fetch('https://api.firecrawl.dev/v1/scrape', {
++        body: JSON.stringify({
++          formats: ["markdown"], // ["markdown", "html"]
++          url,
++        }),
++        headers: {
++          'Authorization': !apiKey ? '' : `Bearer ${apiKey}`,
++          'Content-Type': 'application/json',
++        },
++        method: 'POST',
++      }),
++      DEFAULT_TIMEOUT,
++    );
++  } catch (e) {
++    const error = e as Error;
++    if (error.message === 'fetch failed') {
++      throw new NetworkConnectionError();
++    }
++
++    if (error instanceof TimeoutError) {
++      throw error;
++    }
++
++    throw e;
++  }
++
++  if (!res.ok) {
++    if (res.status === 404) {
++      throw new PageNotFoundError(res.statusText);
++    }
++
++    throw new Error(`Firecrawl request failed with status ${res.status}: ${res.statusText}`);
++  }
++
++  try {
++    const data = (await res.json()) as FirecrawlResponse;
++
++    // Check if content is empty or too short
++    if (!data.data.markdown || data.data.markdown.length < 100) {
++      return;
++    }
++
++    return {
++      content: data.data.markdown,
++      contentType: 'text',
++      description: data.data.metadata.description,
++      length: data.data.markdown.length,
++      siteName: new URL(url).hostname,
++      title: data.data.metadata.title,
++      url: url,
++    } satisfies CrawlSuccessResult;
++  } catch (error) {
++    console.error(error);
++  }
++
++  return;
++};
 diff --git a/packages/web-crawler/src/crawImpl/index.ts b/packages/web-crawler/src/crawImpl/index.ts
-index c58d77b2d8b9b..8aaa4a62625cb 100644
+index c58d77b2d8b9b..2c1b6bad85806 100644
 --- a/packages/web-crawler/src/crawImpl/index.ts
 +++ b/packages/web-crawler/src/crawImpl/index.ts
-@@ -2,12 +2,14 @@ import { browserless } from './browserless';
+@@ -1,13 +1,17 @@
+ import { browserless } from './browserless';
++import { firecrawl } from './firecrawl';
  import { jina } from './jina';
  import { naive } from './naive';
  import { search1api } from './search1api';
@@ -10,6 +114,7 @@ index c58d77b2d8b9b..8aaa4a62625cb 100644
  
  export const crawlImpls = {
    browserless,
++  firecrawl,
    jina,
    naive,
    search1api,
@@ -117,11 +222,201 @@ index 0000000000000..3f1f860e172ac
 +
 +  return;
 +};
+diff --git a/src/server/services/search/impls/firecrawl/index.ts b/src/server/services/search/impls/firecrawl/index.ts
+new file mode 100644
+index 0000000000000..d7e59e3cf263f
+--- /dev/null
++++ b/src/server/services/search/impls/firecrawl/index.ts
+@@ -0,0 +1,142 @@
++import { TRPCError } from '@trpc/server';
++import debug from 'debug';
++import urlJoin from 'url-join';
++
++import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
++
++import { SearchServiceImpl } from '../type';
++import { FirecrawlResponse } from './type';
++
++interface FirecrawlScrapeOptions {
++  formats: string[];
++}
++
++interface FirecrawlQueryParams {
++  country?: string;
++  lang?: string;
++  limit?: number;
++  query: string;
++  scrapeOptions?: FirecrawlScrapeOptions;
++  tbs?: string;
++  timeout?: number;
++}
++
++const log = debug('lobe-search:Firecrawl');
++
++const timeRangeMapping = {
++  day: 'qdr:d',
++  week: 'qdr:w',
++  month: 'qdr:m',
++  year: 'qdr:y',
++};
++
++/**
++ * Firecrawl implementation of the search service
++ * Primarily used for web crawling
++ */
++export class FirecrawlImpl implements SearchServiceImpl {
++  private get apiKey(): string | undefined {
++    return process.env.FIRECRAWL_API_KEY;
++  }
++
++  private get baseUrl(): string {
++    // Assuming the base URL is consistent with the crawl endpoint
++    return 'https://api.firecrawl.dev/v1';
++  }
++
++  async query(query: string, params: SearchParams = {}): Promise<UniformSearchResponse> {
++    log('Starting Firecrawl query with query: "%s", params: %o', query, params);
++    const endpoint = urlJoin(this.baseUrl, '/search');
++
++    const defaultQueryParams: FirecrawlQueryParams = {
++      limit: 15,
++      query,
++      /*
++      scrapeOptions: {
++        formats: ["markdown"]
++      },
++      */
++    };
++
++    let body: FirecrawlQueryParams = {
++      ...defaultQueryParams,
++      tbs:
++        params?.searchTimeRange && params.searchTimeRange !== 'anytime'
++          ? timeRangeMapping[params.searchTimeRange as keyof typeof timeRangeMapping] ?? undefined
++          : undefined,
++    };
++
++    log('Constructed request body: %o', body);
++
++    let response: Response;
++    const startAt = Date.now();
++    let costTime = 0;
++    try {
++      log('Sending request to endpoint: %s', endpoint);
++      response = await fetch(endpoint, {
++        body: JSON.stringify(body),
++        headers: {
++          'Authorization': this.apiKey ? `Bearer ${this.apiKey}` : '',
++          'Content-Type': 'application/json',
++        },
++        method: 'POST',
++      });
++      log('Received response with status: %d', response.status);
++      costTime = Date.now() - startAt;
++    } catch (error) {
++      log.extend('error')('Firecrawl fetch error: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'SERVICE_UNAVAILABLE',
++        message: 'Failed to connect to Firecrawl.',
++      });
++    }
++
++    if (!response.ok) {
++      const errorBody = await response.text();
++      log.extend('error')(
++        `Firecrawl request failed with status ${response.status}: %s`,
++        errorBody.length > 200 ? `${errorBody.slice(0, 200)}...` : errorBody,
++      );
++      throw new TRPCError({
++        cause: errorBody,
++        code: 'SERVICE_UNAVAILABLE',
++        message: `Firecrawl request failed: ${response.statusText}`,
++      });
++    }
++
++    try {
++      const firecrawlResponse = (await response.json()) as FirecrawlResponse;
++
++      log('Parsed Firecrawl response: %o', firecrawlResponse);
++
++      const mappedResults = (firecrawlResponse.data || []).map(
++        (result): UniformSearchResult => ({
++          category: 'general', // Default category
++          content: result.description || '', // Prioritize content, fallback to snippet
++          engines: ['firecrawl'], // Use 'firecrawl' as the engine name
++          parsedUrl: result.url ? new URL(result.url).hostname : '', // Basic URL parsing
++          score: 1, // Default score to 1
++          title: result.title || '',
++          url: result.url,
++        }),
++      );
++
++      log('Mapped %d results to SearchResult format', mappedResults.length);
++
++      return {
++        costTime,
++        query: query,
++        resultNumbers: mappedResults.length,
++        results: mappedResults,
++      };
++    } catch (error) {
++      log.extend('error')('Error parsing Firecrawl response: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'INTERNAL_SERVER_ERROR',
++        message: 'Failed to parse Firecrawl response.',
++      });
++    }
++  }
++}
+diff --git a/src/server/services/search/impls/firecrawl/type.ts b/src/server/services/search/impls/firecrawl/type.ts
+new file mode 100644
+index 0000000000000..be44e02755170
+--- /dev/null
++++ b/src/server/services/search/impls/firecrawl/type.ts
+@@ -0,0 +1,35 @@
++interface FirecrawlScrapeOptions {
++  formats: string[];
++}
++
++export interface FirecrawlSearchParameters {
++  country?: string;
++  lang?: string;
++  limit?: number;
++  query: string;
++  scrapeOptions?: FirecrawlScrapeOptions;
++  tbs?: string;
++  timeout?: number;
++}
++
++interface FirecrawlMetadata {
++  description?: string;
++  sourceURL?: string;
++  statusCode?: number;
++  title: string;
++}
++
++interface FirecrawlData {
++  description?: string;
++  html?: string;
++  links?: string[];
++  markdown?: string;
++  metadata?: FirecrawlMetadata;
++  title?: string;
++  url: string;
++}
++
++export interface FirecrawlResponse {
++  success?: boolean;
++  data: FirecrawlData[];
++}
 diff --git a/src/server/services/search/impls/index.ts b/src/server/services/search/impls/index.ts
-index 77607c98108c5..1bac6ce7f83c6 100644
+index 77607c98108c5..10486d1937b66 100644
 --- a/src/server/services/search/impls/index.ts
 +++ b/src/server/services/search/impls/index.ts
-@@ -1,5 +1,7 @@
+@@ -1,13 +1,18 @@
++import { FirecrawlImpl } from './firecrawl';
  import { Search1APIImpl } from './search1api';
  import { SearXNGImpl } from './searxng';
 +import { TavilyImpl } from './tavily';
@@ -129,15 +424,25 @@ index 77607c98108c5..1bac6ce7f83c6 100644
  import { SearchServiceImpl } from './type';
  
  /**
-@@ -8,6 +10,7 @@ import { SearchServiceImpl } from './type';
+  * Available search service implementations
+  */
  export enum SearchImplType {
++  Firecrawl = 'firecrawl',
    SearXNG = 'searxng',
    Search1API = 'search1api',
 +  Tavily = 'tavily',
  }
  
  /**
-@@ -21,6 +24,10 @@ export const createSearchServiceImpl = (
+@@ -17,10 +22,18 @@ export const createSearchServiceImpl = (
+   type: SearchImplType = SearchImplType.SearXNG,
+ ): SearchServiceImpl => {
+   switch (type) {
++    case SearchImplType.Firecrawl: {
++      return new FirecrawlImpl();
++    }
++
+     case SearchImplType.SearXNG: {
        return new SearXNGImpl();
      }
  
