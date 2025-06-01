@@ -326,10 +326,10 @@ index 0000000000000..3f1f860e172ac
 +};
 diff --git a/src/server/services/search/impls/bocha/index.ts b/src/server/services/search/impls/bocha/index.ts
 new file mode 100644
-index 0000000000000..6944465d1eb10
+index 0000000000000..8e9bf5e9934bf
 --- /dev/null
 +++ b/src/server/services/search/impls/bocha/index.ts
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,124 @@
 +import { TRPCError } from '@trpc/server';
 +import debug from 'debug';
 +import urlJoin from 'url-join';
@@ -337,16 +337,7 @@ index 0000000000000..6944465d1eb10
 +import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
 +
 +import { SearchServiceImpl } from '../type';
-+import { BochaResponse } from './type';
-+
-+interface BochaQueryParams {
-+  count?: number;
-+  exclude?: string;
-+  freshness?: string;
-+  include?: string;
-+  query: string;
-+  summary?: boolean;
-+}
++import { BochaSearchParameters, BochaResponse } from './type';
 +
 +const log = debug('lobe-search:Bocha');
 +
@@ -375,13 +366,13 @@ index 0000000000000..6944465d1eb10
 +    log('Starting Bocha query with query: "%s", params: %o', query, params);
 +    const endpoint = urlJoin(this.baseUrl, '/web-search');
 +
-+    const defaultQueryParams: BochaQueryParams = {
++    const defaultQueryParams: BochaSearchParameters = {
 +      count: 15,
 +      query,
 +      summary: true,
 +    };
 +
-+    let body: BochaQueryParams = {
++    let body: BochaSearchParameters = {
 +      ...defaultQueryParams,
 +      freshness:
 +        params?.searchTimeRange && params.searchTimeRange !== 'anytime'
@@ -518,10 +509,10 @@ index 0000000000000..3fe7bfef037c0
 +}
 diff --git a/src/server/services/search/impls/exa/index.ts b/src/server/services/search/impls/exa/index.ts
 new file mode 100644
-index 0000000000000..bb3790a7cbb30
+index 0000000000000..c21dacf14a248
 --- /dev/null
 +++ b/src/server/services/search/impls/exa/index.ts
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,109 @@
 +import { TRPCError } from '@trpc/server';
 +import debug from 'debug';
 +import urlJoin from 'url-join';
@@ -529,22 +520,7 @@ index 0000000000000..bb3790a7cbb30
 +import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
 +
 +import { SearchServiceImpl } from '../type';
-+import { ExaResponse } from './type';
-+
-+interface ExaQueryParams {
-+  category?: string;
-+  endCrawlDate?: string;
-+  endPublishedDate?: string;
-+  excludeDomains?: string[];
-+  excludeText?: string[];
-+  includeDomains?: string[];
-+  includeText?: string[];
-+  numResults?: number;
-+  query: string;
-+  startCrawlDate?: string;
-+  startPublishedDate?: string;
-+  type?: string;
-+}
++import { ExaSearchParameters, ExaResponse } from './type';
 +
 +const log = debug('lobe-search:Exa');
 +
@@ -566,7 +542,7 @@ index 0000000000000..bb3790a7cbb30
 +    log('Starting Exa query with query: "%s", params: %o', query, params);
 +    const endpoint = urlJoin(this.baseUrl, '/search');
 +
-+    let body: ExaQueryParams = {
++    let body: ExaSearchParameters = {
 +      numResults: 15,
 +      query,
 +      type: 'auto',
@@ -693,10 +669,10 @@ index 0000000000000..9937a62fbcad8
 +}
 diff --git a/src/server/services/search/impls/firecrawl/index.ts b/src/server/services/search/impls/firecrawl/index.ts
 new file mode 100644
-index 0000000000000..139698c7b1b00
+index 0000000000000..5227a3fc4e7b0
 --- /dev/null
 +++ b/src/server/services/search/impls/firecrawl/index.ts
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,128 @@
 +import { TRPCError } from '@trpc/server';
 +import debug from 'debug';
 +import urlJoin from 'url-join';
@@ -704,21 +680,7 @@ index 0000000000000..139698c7b1b00
 +import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
 +
 +import { SearchServiceImpl } from '../type';
-+import { FirecrawlResponse } from './type';
-+
-+interface FirecrawlScrapeOptions {
-+  formats: string[];
-+}
-+
-+interface FirecrawlQueryParams {
-+  country?: string;
-+  lang?: string;
-+  limit?: number;
-+  query: string;
-+  scrapeOptions?: FirecrawlScrapeOptions;
-+  tbs?: string;
-+  timeout?: number;
-+}
++import { FirecrawlSearchParameters, FirecrawlResponse } from './type';
 +
 +const log = debug('lobe-search:Firecrawl');
 +
@@ -747,7 +709,7 @@ index 0000000000000..139698c7b1b00
 +    log('Starting Firecrawl query with query: "%s", params: %o', query, params);
 +    const endpoint = urlJoin(this.baseUrl, '/search');
 +
-+    const defaultQueryParams: FirecrawlQueryParams = {
++    const defaultQueryParams: FirecrawlSearchParameters = {
 +      limit: 15,
 +      query,
 +      /*
@@ -757,7 +719,7 @@ index 0000000000000..139698c7b1b00
 +      */
 +    };
 +
-+    let body: FirecrawlQueryParams = {
++    let body: FirecrawlSearchParameters = {
 +      ...defaultQueryParams,
 +      tbs:
 +        params?.searchTimeRange && params.searchTimeRange !== 'anytime'
@@ -942,10 +904,10 @@ index 77607c98108c5..a71a38507d519 100644
      }
 diff --git a/src/server/services/search/impls/jina/index.ts b/src/server/services/search/impls/jina/index.ts
 new file mode 100644
-index 0000000000000..25a170b9932ff
+index 0000000000000..b735aed83daf9
 --- /dev/null
 +++ b/src/server/services/search/impls/jina/index.ts
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,109 @@
 +import { TRPCError } from '@trpc/server';
 +import debug from 'debug';
 +import urlJoin from 'url-join';
@@ -953,11 +915,7 @@ index 0000000000000..25a170b9932ff
 +import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
 +
 +import { SearchServiceImpl } from '../type';
-+import { JinaResponse } from './type';
-+
-+interface JinaQueryParams {
-+  q: string;
-+}
++import { JinaSearchParameters, JinaResponse } from './type';
 +
 +const log = debug('lobe-search:Jina');
 +
@@ -979,7 +937,7 @@ index 0000000000000..25a170b9932ff
 +    log('Starting Jina query with query: "%s", params: %o', query, params);
 +    const endpoint = urlJoin(this.baseUrl, '/');
 +
-+    let body: JinaQueryParams = {
++    let body: JinaSearchParameters = {
 +      q: query,
 +    };
 +
@@ -1093,10 +1051,10 @@ index 0000000000000..dbba283e2510b
 +}
 diff --git a/src/server/services/search/impls/tavily/index.ts b/src/server/services/search/impls/tavily/index.ts
 new file mode 100644
-index 0000000000000..e39c8c80488f7
+index 0000000000000..d900528777298
 --- /dev/null
 +++ b/src/server/services/search/impls/tavily/index.ts
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,124 @@
 +import { TRPCError } from '@trpc/server';
 +import debug from 'debug';
 +import urlJoin from 'url-join';
@@ -1104,23 +1062,7 @@ index 0000000000000..e39c8c80488f7
 +import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
 +
 +import { SearchServiceImpl } from '../type';
-+import { TavilyResponse } from './type';
-+
-+interface TavilyQueryParams {
-+  chunks_per_source?: number;
-+  days?: number;
-+  exclude_domains?: string[];
-+  include_answer?: boolean | string;
-+  include_domains?: string[];
-+  include_image_descriptions?: boolean;
-+  include_images?: boolean;
-+  include_raw_content?: boolean;
-+  max_results?: number;
-+  query: string;
-+  search_depth?: string;
-+  time_range?: string;
-+  topic?: string;
-+}
++import { TavilySearchParameters, TavilyResponse } from './type';
 +
 +const log = debug('lobe-search:Tavily');
 +
@@ -1142,7 +1084,7 @@ index 0000000000000..e39c8c80488f7
 +    log('Starting Tavily query with query: "%s", params: %o', query, params);
 +    const endpoint = urlJoin(this.baseUrl, '/search');
 +
-+    const defaultQueryParams: TavilyQueryParams = {
++    const defaultQueryParams: TavilySearchParameters = {
 +      include_answer: false,
 +      include_image_descriptions: true,
 +      include_images: false,
@@ -1152,7 +1094,7 @@ index 0000000000000..e39c8c80488f7
 +      search_depth: process.env.TAVILY_SEARCH_DEPTH || 'basic' // basic or advanced
 +    };
 +
-+    let body: TavilyQueryParams = {
++    let body: TavilySearchParameters = {
 +      ...defaultQueryParams,
 +      time_range:
 +        params?.searchTimeRange && params.searchTimeRange !== 'anytime'
