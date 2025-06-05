@@ -1,4 +1,4 @@
-# Current Version: 1.1.3
+# Current Version: 1.1.4
 
 ARG POSTGRES_VERSION="17"
 
@@ -14,6 +14,9 @@ RUN \
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
 
+ENV \
+    CLANG_VERSION="19"
+
 WORKDIR /tmp
 
 RUN \
@@ -25,14 +28,14 @@ RUN \
         git \
         make \
         gcc \
-        clang \
+        clang${CLANG_VERSION} \
         jq \
         pkgconf \
         openblas-dev \
         postgresql-dev \
-        clang-libclang \
-        clang-static \
-        llvm-static \
+        clang${CLANG_VERSION}-libclang \
+        clang${CLANG_VERSION}-static \
+        llvm${CLANG_VERSION}-static \
         openssl-libs-static
 
 FROM build_basic AS build_icu
