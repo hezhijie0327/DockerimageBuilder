@@ -1,251 +1,29 @@
-diff --git a/src/libs/model-runtime/anthropic/index.ts b/src/libs/model-runtime/anthropic/index.ts
-index 28aa43b9201e9..f1e321ba35c6f 100644
---- a/src/libs/model-runtime/anthropic/index.ts
-+++ b/src/libs/model-runtime/anthropic/index.ts
-@@ -18,6 +18,8 @@ import { StreamingResponse } from '../utils/response';
- import { AnthropicStream } from '../utils/streams';
- import { handleAnthropicError } from './handleAnthropicError';
+diff --git a/src/services/chat.ts b/src/services/chat.ts
+index 553f2ec299071..1ec1ce834bcb7 100644
+--- a/src/services/chat.ts
++++ b/src/services/chat.ts
+@@ -41,6 +41,7 @@ import { createErrorResponse } from '@/utils/errorResponse';
+ import { FetchSSEOptions, fetchSSE, getMessageError } from '@/utils/fetch';
+ import { genToolCallingName } from '@/utils/toolCall';
+ import { createTraceHeader, getTraceId } from '@/utils/trace';
++import { parsePlaceholderVariablesMessages } from '@/utils/placeholderParser';
  
-+import { parsePlaceholderVariablesMessages } from '../utils/placeholderParser';
-+
- export interface AnthropicModelCard {
-   display_name: string;
-   id: string;
-@@ -122,8 +124,9 @@ export class LobeAnthropicAI implements LobeRuntimeAI {
-       return undefined;
-     };
+ import { createHeaderWithAuth, createPayloadWithKeyVaults } from './_auth';
+ import { API_ENDPOINTS } from './_url';
+@@ -193,7 +194,7 @@ class ChatService {
  
--    const system_message = messages.find((m) => m.role === 'system');
--    const user_messages = messages.filter((m) => m.role !== 'system');
-+    const payload_messages = parsePlaceholderVariablesMessages(messages);
-+    const system_message = payload_messages.find((m) => m.role === 'system');
-+    const user_messages = payload_messages.filter((m) => m.role !== 'system');
- 
-     const systemPrompts = !!system_message?.content
-       ? ([
-diff --git a/src/libs/model-runtime/bedrock/index.ts b/src/libs/model-runtime/bedrock/index.ts
-index b72c2172714b4..191eb90b856da 100644
---- a/src/libs/model-runtime/bedrock/index.ts
-+++ b/src/libs/model-runtime/bedrock/index.ts
-@@ -25,6 +25,8 @@ import {
-   createBedrockStream,
- } from '../utils/streams';
- 
-+import { parsePlaceholderVariablesMessages } from '../utils/placeholderParser';
-+
- export interface LobeBedrockAIParams {
-   accessKeyId?: string;
-   accessKeySecret?: string;
-@@ -117,8 +119,10 @@ export class LobeBedrockAI implements LobeRuntimeAI {
-     options?: ChatMethodOptions,
-   ): Promise<Response> => {
-     const { max_tokens, messages, model, temperature, top_p, tools } = payload;
--    const system_message = messages.find((m) => m.role === 'system');
--    const user_messages = messages.filter((m) => m.role !== 'system');
-+
-+    const payload_messages = parsePlaceholderVariablesMessages(messages);
-+    const system_message = payload_messages.find((m) => m.role === 'system');
-+    const user_messages = payload_messages.filter((m) => m.role !== 'system');
- 
-     const command = new InvokeModelWithResponseStreamCommand({
-       accept: 'application/json',
-@@ -172,11 +176,14 @@ export class LobeBedrockAI implements LobeRuntimeAI {
-     options?: ChatMethodOptions,
-   ): Promise<Response> => {
-     const { max_tokens, messages, model } = payload;
-+
-+    const payload_messages = parsePlaceholderVariablesMessages(messages);
-+
-     const command = new InvokeModelWithResponseStreamCommand({
-       accept: 'application/json',
-       body: JSON.stringify({
-         max_gen_len: max_tokens || 400,
--        prompt: experimental_buildLlama2Prompt(messages as any),
-+        prompt: experimental_buildLlama2Prompt(payload_messages as any),
-       }),
-       contentType: 'application/json',
-       modelId: model,
-diff --git a/src/libs/model-runtime/cloudflare/index.ts b/src/libs/model-runtime/cloudflare/index.ts
-index c8ae4f96ee0b1..87b5c517fe399 100644
---- a/src/libs/model-runtime/cloudflare/index.ts
-+++ b/src/libs/model-runtime/cloudflare/index.ts
-@@ -14,6 +14,8 @@ import { debugStream } from '../utils/debugStream';
- import { StreamingResponse } from '../utils/response';
- import { createCallbacksTransformer } from '../utils/streams';
- 
-+import { parsePlaceholderVariablesMessages } from '../utils/placeholderParser';
-+
- export interface CloudflareModelCard {
-   description: string;
-   name: string;
-@@ -56,7 +58,8 @@ export class LobeCloudflareAI implements LobeRuntimeAI {
- 
-   async chat(payload: ChatStreamPayload, options?: ChatMethodOptions): Promise<Response> {
-     try {
--      const { model, tools, ...restPayload } = payload;
-+      const { messages, model, tools, ...restPayload } = payload;
-+      const payload_messages = parsePlaceholderVariablesMessages(messages);
-       const functions = tools?.map((tool) => tool.function);
-       const headers = options?.headers || {};
-       if (this.apiKey) {
-@@ -64,7 +67,7 @@ export class LobeCloudflareAI implements LobeRuntimeAI {
-       }
-       const url = new URL(model, this.baseURL);
-       const response = await fetch(url, {
--        body: JSON.stringify({ tools: functions, ...restPayload }),
-+        body: JSON.stringify({ messages: payload_messages, tools: functions, ...restPayload }),
-         headers: { 'Content-Type': 'application/json', ...headers },
-         method: 'POST',
-         signal: options?.signal,
-diff --git a/src/libs/model-runtime/google/index.ts b/src/libs/model-runtime/google/index.ts
-index aae1b60b928fe..d117024b9f6f8 100644
---- a/src/libs/model-runtime/google/index.ts
-+++ b/src/libs/model-runtime/google/index.ts
-@@ -33,6 +33,8 @@ import {
- } from '../utils/streams';
- import { parseDataUri } from '../utils/uriParser';
- 
-+import { parsePlaceholderVariablesMessages } from '../utils/placeholderParser';
-+
- const modelsOffSafetySettings = new Set(['gemini-2.0-flash-exp']);
- 
- const modelsWithModalities = new Set([
-@@ -250,8 +252,9 @@ export class LobeGoogleAI implements LobeRuntimeAI {
-   }
- 
-   private buildPayload(payload: ChatStreamPayload) {
--    const system_message = payload.messages.find((m) => m.role === 'system');
--    const user_messages = payload.messages.filter((m) => m.role !== 'system');
-+    const payload_messages = parsePlaceholderVariablesMessages(payload.messages);
-+    const system_message = payload_messages.find((m) => m.role === 'system');
-+    const user_messages = payload_messages.filter((m) => m.role !== 'system');
- 
-     return {
-       ...payload,
-diff --git a/src/libs/model-runtime/huggingface/index.ts b/src/libs/model-runtime/huggingface/index.ts
-index dc0254d3f3a36..6c29fcac37364 100644
---- a/src/libs/model-runtime/huggingface/index.ts
-+++ b/src/libs/model-runtime/huggingface/index.ts
-@@ -8,6 +8,8 @@ import { ModelProvider } from '../types';
- import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
- import { convertIterableToStream } from '../utils/streams';
- 
-+import { parsePlaceholderVariablesMessages } from '../utils/placeholderParser';
-+
- export interface HuggingFaceModelCard {
-   id: string;
-   tags: string[];
-@@ -33,7 +35,7 @@ export const LobeHuggingFaceAI = createOpenAICompatibleRuntime({
-       const hfRes = client.chatCompletionStream({
-         endpointUrl: instance.baseURL ? urlJoin(instance.baseURL, payload.model) : instance.baseURL,
-         max_tokens: max_tokens,
--        messages: payload.messages,
-+        messages: parsePlaceholderVariablesMessages(payload.messages),
+     const oaiMessages = this.processMessages(
+       {
+-        messages,
++        messages: parsePlaceholderVariablesMessages(messages),
          model: payload.model,
-         stream: true,
-         temperature: payload.temperature,
-diff --git a/src/libs/model-runtime/ollama/index.ts b/src/libs/model-runtime/ollama/index.ts
-index d7fd5eacdfd07..5781fc5f234ee 100644
---- a/src/libs/model-runtime/ollama/index.ts
-+++ b/src/libs/model-runtime/ollama/index.ts
-@@ -22,6 +22,8 @@ import { OllamaStream, convertIterableToStream, createModelPullStream } from '..
- import { parseDataUri } from '../utils/uriParser';
- import { OllamaMessage } from './type';
- 
-+import { parsePlaceholderVariablesMessages } from '../utils/placeholderParser';
-+
- export interface OllamaModelCard {
-   name: string;
- }
-@@ -52,8 +54,10 @@ export class LobeOllamaAI implements LobeRuntimeAI {
- 
-       options?.signal?.addEventListener('abort', abort);
- 
-+      const payload_messages = parsePlaceholderVariablesMessages(payload.messages);
-+
-       const response = await this.client.chat({
--        messages: this.buildOllamaMessages(payload.messages),
-+        messages: this.buildOllamaMessages(payload_messages),
-         model: payload.model,
-         options: {
-           frequency_penalty: payload.frequency_penalty,
-diff --git a/src/libs/model-runtime/sensenova/index.ts b/src/libs/model-runtime/sensenova/index.ts
-index 9fe2cffd043f4..2effe10669c08 100644
---- a/src/libs/model-runtime/sensenova/index.ts
-+++ b/src/libs/model-runtime/sensenova/index.ts
-@@ -4,6 +4,8 @@ import { ModelProvider } from '../types';
- import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
- import { convertSenseNovaMessage } from '../utils/sensenovaHelpers';
- 
-+import { parsePlaceholderVariablesMessages } from '../utils/placeholderParser';
-+
- export interface SenseNovaModelCard {
-   id: string;
- }
-@@ -15,6 +17,8 @@ export const LobeSenseNovaAI = createOpenAICompatibleRuntime({
-       const { frequency_penalty, max_tokens, messages, model, temperature, top_p, ...rest } =
-         payload;
- 
-+      const payload_messages = parsePlaceholderVariablesMessages(messages);
-+
-       return {
-         ...rest,
-         frequency_penalty:
-@@ -22,7 +26,7 @@ export const LobeSenseNovaAI = createOpenAICompatibleRuntime({
-             ? frequency_penalty
-             : undefined,
-         max_new_tokens: max_tokens !== undefined && max_tokens > 0 ? max_tokens : undefined,
--        messages: messages.map((message) =>
-+        messages: payload_messages.map((message) =>
-           message.role !== 'user' || !model || !/^Sense(Nova-V6|Chat-Vision)/.test(model)
-             ? message
-             : { ...message, content: convertSenseNovaMessage(message.content) },
-diff --git a/src/libs/model-runtime/utils/openaiHelpers.ts b/src/libs/model-runtime/utils/openaiHelpers.ts
-index a07bb96f82468..4745cd1c0a884 100644
---- a/src/libs/model-runtime/utils/openaiHelpers.ts
-+++ b/src/libs/model-runtime/utils/openaiHelpers.ts
-@@ -6,9 +6,12 @@ import { imageUrlToBase64 } from '@/utils/imageToBase64';
- 
- import { parseDataUri } from './uriParser';
- 
-+import { parsePlaceholderVariables } from './placeholderParser';
-+
- export const convertMessageContent = async (
-   content: OpenAI.ChatCompletionContentPart,
- ): Promise<OpenAI.ChatCompletionContentPart> => {
-+  // 处理图片URL转换
-   if (content.type === 'image_url') {
-     const { type } = parseDataUri(content.image_url.url);
- 
-@@ -21,6 +24,14 @@ export const convertMessageContent = async (
-       };
-     }
-   }
-+  
-+  // 处理文本内容中的预留值
-+  if (content.type === 'text' && typeof content.text === 'string') {
-+    return {
-+      ...content,
-+      text: parsePlaceholderVariables(content.text),
-+    };
-+  }
- 
-   return content;
- };
-@@ -31,7 +42,7 @@ export const convertOpenAIMessages = async (messages: OpenAI.ChatCompletionMessa
-       ...message,
-       content:
-         typeof message.content === 'string'
--          ? message.content
-+          ? parsePlaceholderVariables(message.content)
-           : await Promise.all(
-               (message.content || []).map((c) =>
-                 convertMessageContent(c as OpenAI.ChatCompletionContentPart),
-diff --git a/src/libs/model-runtime/utils/placeholderParser.ts b/src/libs/model-runtime/utils/placeholderParser.ts
+         provider: payload.provider!,
+         tools: pluginIds,
+diff --git a/src/utils/placeholderParser.ts b/src/utils/placeholderParser.ts
 new file mode 100644
 index 0000000000000..d490449b1cf64
 --- /dev/null
-+++ b/src/libs/model-runtime/utils/placeholderParser.ts
++++ b/src/utils/placeholderParser.ts
 @@ -0,0 +1,102 @@
 +import { v4 as uuidv4 } from 'uuid';
 +
