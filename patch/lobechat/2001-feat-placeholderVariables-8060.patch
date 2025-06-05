@@ -21,10 +21,10 @@ index 553f2ec299071..1ec1ce834bcb7 100644
          tools: pluginIds,
 diff --git a/src/utils/placeholderParser.ts b/src/utils/placeholderParser.ts
 new file mode 100644
-index 0000000000000..9a8875afb6acf
+index 0000000000000..41ec79ab2d141
 --- /dev/null
 +++ b/src/utils/placeholderParser.ts
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,109 @@
 +import { v4 as uuidv4 } from 'uuid';
 +
 +import { useUserStore } from '@/store/user';
@@ -44,6 +44,7 @@ index 0000000000000..9a8875afb6acf
 + * | `{{locale}}` | zh-CN |
 + * | `{{minute}}` | 30 |
 + * | `{{month}}` | 12 |
++ * | `{{nickname}}` | 社区版用户 |
 + * | `{{random_hex}}` | de0dbd |
 + * | `{{random_int}}` | 68 |
 + * | `{{random}}` | 100041 |
@@ -59,7 +60,7 @@ index 0000000000000..9a8875afb6acf
 + * @param text - 包含模板变量的文本
 + * @returns 替换后的文本
 + */
-+export const parsePlaceholderVariables = (text: any): any => {
++export const parsePlaceholderVariables = (text: string): string => {
 +  const now = new Date();
 +
 +  const variables: Record<string, string> = {
@@ -71,6 +72,7 @@ index 0000000000000..9a8875afb6acf
 +    locale: Intl.DateTimeFormat().resolvedOptions().locale,
 +    minute: now.getMinutes().toString().padStart(2, '0'),
 +    month: (now.getMonth() + 1).toString().padStart(2, '0'),
++    nickname: userProfileSelectors.nickName(useUserStore.getState()) ?? '',
 +    random: Math.floor(Math.random() * 1_000_000 + 1).toString(),
 +    random_hex: Math.floor(Math.random() * 16_777_215).toString(16).padStart(6, '0'),
 +    random_int: Math.floor(Math.random() * 100 + 1).toString(),
@@ -78,13 +80,13 @@ index 0000000000000..9a8875afb6acf
 +    time: now.toLocaleTimeString(),
 +    timestamp: Date.now().toString(),
 +    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-+    username: userProfileSelectors.username(useUserStore.getState()),
++    username: userProfileSelectors.username(useUserStore.getState()) ?? '',
 +    uuid: uuidv4(),
 +    weekday: now.toLocaleDateString('en-US', { weekday: 'long' }),
 +    year: now.getFullYear().toString(),
 +  };
 +
-+  return text.replaceAll(/{{(\w+)}}/g, (match, key) => {
++  return text.replaceAll(/{{(\w+)}}/g, (match: string, key: string) => {
 +    return variables[key] || match;
 +  });
 +};
