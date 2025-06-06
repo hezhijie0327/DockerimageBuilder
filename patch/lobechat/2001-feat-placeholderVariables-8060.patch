@@ -246,14 +246,14 @@ index 9b2e7fdc3aa49..67c44c7f6e21d 100644
      },
      submit: '更新聊天偏好',
 diff --git a/src/services/chat.ts b/src/services/chat.ts
-index 553f2ec299071..eaa2686017c6b 100644
+index 553f2ec299071..7a839868f6890 100644
 --- a/src/services/chat.ts
 +++ b/src/services/chat.ts
 @@ -41,6 +41,7 @@ import { createErrorResponse } from '@/utils/errorResponse';
  import { FetchSSEOptions, fetchSSE, getMessageError } from '@/utils/fetch';
  import { genToolCallingName } from '@/utils/toolCall';
  import { createTraceHeader, getTraceId } from '@/utils/trace';
-+import { parsePlaceholderVariablesMessages } from '@/utils/parserPlaceholder';
++import { parsePlaceholderVariablesMessages } from '@/utils/client/parserPlaceholder';
  
  import { createHeaderWithAuth, createPayloadWithKeyVaults } from './_auth';
  import { API_ENDPOINTS } from './_url';
@@ -345,36 +345,26 @@ index 09dabd22394fa..32660a57c15dd 100644
        ? agentConfig.params.max_tokens
        : undefined;
 diff --git a/src/store/user/slices/auth/selectors.ts b/src/store/user/slices/auth/selectors.ts
-index 3caed3e49706c..1648c5c798a7e 100644
+index 3caed3e49706c..afea18b72bf46 100644
 --- a/src/store/user/slices/auth/selectors.ts
 +++ b/src/store/user/slices/auth/selectors.ts
-@@ -23,14 +23,15 @@ const nickName = (s: UserStore) => {
+@@ -36,6 +36,7 @@ const username = (s: UserStore) => {
  };
  
- const username = (s: UserStore) => {
-+  const defaultUserName = s.user?.username || s.user?.fullName;
-   if (!enableAuth) {
-     if (isDesktop) {
--      return s.user?.username;
-+      return defaultUserName;
-     }
-     return DEFAULT_USERNAME;
-   }
- 
--  if (s.isSignedIn) return s.user?.username;
-+  if (s.isSignedIn) return defaultUserName;
- 
-   return 'anonymous';
- };
-diff --git a/src/utils/parserPlaceholder.ts b/src/utils/parserPlaceholder.ts
+ export const userProfileSelectors = {
++  fullName: (s: UserStore): string => s.user?.fullName || '',
+   nickName,
+   userAvatar: (s: UserStore): string => s.user?.avatar || '',
+   userId: (s: UserStore) => s.user?.id,
+diff --git a/src/utils/client/parserPlaceholder.ts b/src/utils/client/parserPlaceholder.ts
 new file mode 100644
-index 0000000000000..86c4c2749cc28
+index 0000000000000..f62dd75ca4629
 --- /dev/null
-+++ b/src/utils/parserPlaceholder.ts
++++ b/src/utils/client/parserPlaceholder.ts
 @@ -0,0 +1,190 @@
 +import { template } from 'lodash-es';
 +
-+import { v4 as uuidv4 } from 'uuid';
++import { uuid } from '@/utils/uuid';
 +
 +import { useUserStore } from '@/store/user';
 +import { userProfileSelectors } from '@/store/user/selectors';
@@ -432,7 +422,7 @@ index 0000000000000..86c4c2749cc28
 +  *
 +  */
 +  nickname: () => userProfileSelectors.nickName(useUserStore.getState()) ?? '',
-+  username: () => userProfileSelectors.username(useUserStore.getState()) ?? '',
++  username: () => userProfileSelectors.username(useUserStore.getState()) ?? userProfileSelectors.fullName(useUserStore.getState()) ?? '',
 +
 +  /**
 +  * 随机值类模板变量
@@ -464,8 +454,8 @@ index 0000000000000..86c4c2749cc28
 +  * | `{{uuid_short}}` | dd90b35 |
 +  *
 +  */
-+  uuid: () => uuidv4(),
-+  uuid_short: () => uuidv4().split('-')[0],
++  uuid: () => uuid(),
++  uuid_short: () => uuid().split('-')[0],
 +
 +  /**
 +  * 平台类模板变量
