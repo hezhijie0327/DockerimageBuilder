@@ -1,4 +1,4 @@
-# Current Version: 1.2.2
+# Current Version: 1.2.3
 
 ARG GOLANG_VERSION="1"
 
@@ -38,7 +38,6 @@ ENV \
 RUN \
     export GOARCH=$(cat '/cloudflared/SYS_ARCH') \
            GOOS="linux" \
-    && .teamcity/install-cloudflare-go.sh \
     && make cloudflared
 
 FROM scratch AS rebased_cloudflared
