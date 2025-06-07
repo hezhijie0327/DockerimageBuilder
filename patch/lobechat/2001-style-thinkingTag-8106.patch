@@ -1,3 +1,60 @@
+diff --git a/src/libs/model-runtime/utils/streams/openai.ts b/src/libs/model-runtime/utils/streams/openai.ts
+index fbb5ad1678f8f..b6c8b0fdea618 100644
+--- a/src/libs/model-runtime/utils/streams/openai.ts
++++ b/src/libs/model-runtime/utils/streams/openai.ts
+@@ -242,7 +242,28 @@ export const transformOpenAIStream = (
+           }
+         }
+ 
+-        return { data: content, id: chunk.id, type: 'text' };
++        // 处理 <think> & </think> 思考链
++        if (!streamContext?.thinkingInContent) {
++          // 如果 content 包含 <think> 则进入 reasoning 模式
++          if (content.includes('<think>')) {
++            streamContext.thinkingInContent = true;
++
++            // 清理 <think> 标签
++            return { data: content.replace(/<\/?think>/g, '').trim(), id: chunk.id, type: 'reasoning' };
++          }
++
++          return { data: content, id: chunk.id, type: 'text' };
++        } else {
++          // 如果 content 包含 </think> 则退出 reasoning 模式
++          if (content.includes('</think>')) {
++            streamContext.thinkingInContent = false;
++
++            // 清理 <think> 标签
++            return { data: content.replace(/<\/?think>/g, '').trim(), id: chunk.id, type: 'text' };
++          }
++
++          return { data: content, id: chunk.id, type: 'reasoning' };
++        }
+       }
+     }
+ 
+diff --git a/src/libs/model-runtime/utils/streams/protocol.ts b/src/libs/model-runtime/utils/streams/protocol.ts
+index a0e6f0832e03a..fe1df5db3274d 100644
+--- a/src/libs/model-runtime/utils/streams/protocol.ts
++++ b/src/libs/model-runtime/utils/streams/protocol.ts
+@@ -27,6 +27,18 @@ export interface StreamContext {
+     id: string;
+     name: string;
+   };
++  /**
++   * Indicates whether the current state is within a "thinking" segment of the model output
++   * (e.g., when processing lmstudio responses).
++   *
++   * When parsing output containing <think> and </think> tags:
++   * - Set to `true` upon encountering a <think> tag (entering reasoning mode)
++   * - Set to `false` upon encountering a </think> tag (exiting reasoning mode)
++   *
++   * While `thinkingInContent` is `true`, subsequent content should be stored in `reasoning_content`.
++   * When `false`, content should be stored in the regular `content` field.
++   */
++  thinkingInContent?: boolean;
+   tool?: {
+     id: string;
+     index: number;
 diff --git a/src/services/chat.ts b/src/services/chat.ts
 index 76b7941ba50d5..553afe3aa3f54 100644
 --- a/src/services/chat.ts
