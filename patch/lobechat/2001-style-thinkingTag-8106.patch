@@ -1,5 +1,5 @@
 diff --git a/src/libs/model-runtime/perplexity/index.test.ts b/src/libs/model-runtime/perplexity/index.test.ts
-index 660c63b0f25c6..a546b426a460f 100644
+index 660c63b0f25c6..8b2018bdaf80d 100644
 --- a/src/libs/model-runtime/perplexity/index.test.ts
 +++ b/src/libs/model-runtime/perplexity/index.test.ts
 @@ -231,8 +231,8 @@ describe('LobePerplexityAI', () => {
@@ -8,7 +8,7 @@ index 660c63b0f25c6..a546b426a460f 100644
            'id: 506d64fb-e7f2-4d94-b80f-158369e9446d',
 -          'event: text',
 -          'data: "<think>"\n',
-+          'event: reasoning',
++          'event: data',
 +          'data: ""\n',
            'id: 506d64fb-e7f2-4d94-b80f-158369e9446d',
            'event: grounding',
@@ -93,7 +93,7 @@ index f841b599dafed..7a879d9d76ff1 100644
        vi.spyOn(uuidModule, 'nanoid').mockReturnValueOnce('1');
  
 diff --git a/src/libs/model-runtime/utils/streams/ollama.ts b/src/libs/model-runtime/utils/streams/ollama.ts
-index 6e5575c7e5423..04cffef39d57d 100644
+index 6e5575c7e5423..a68c54a73ce2c 100644
 --- a/src/libs/model-runtime/utils/streams/ollama.ts
 +++ b/src/libs/model-runtime/utils/streams/ollama.ts
 @@ -32,7 +32,22 @@ const transformOllamaStream = (chunk: ChatResponse, stack: StreamContext): Strea
@@ -103,7 +103,7 @@ index 6e5575c7e5423..04cffef39d57d 100644
 -  return { data: chunk.message.content, id: stack.id, type: 'text' };
 +
 +  // 处理 <think> & </think> 思考链，清除 <think> 标签和周围空白
-+  const thinkingContent = chunk.message.content.replace(/\s*<\/?think>\s*/g, '');
++  const thinkingContent = chunk.message.content.replace(/<\/?think>/g, '');
 +  // 判断是否有 <think> 或 </think> 标签，更新状态
 +  if (chunk.message.content.includes('<think>')) {
 +    stack.thinkingInContent = true;
@@ -295,7 +295,7 @@ index 32f03e3855dd5..3158f6a58179e 100644
        const data = [
          {
 diff --git a/src/libs/model-runtime/utils/streams/openai.ts b/src/libs/model-runtime/utils/streams/openai.ts
-index fbb5ad1678f8f..d96113bc3e25e 100644
+index fbb5ad1678f8f..ed408251b04ef 100644
 --- a/src/libs/model-runtime/utils/streams/openai.ts
 +++ b/src/libs/model-runtime/utils/streams/openai.ts
 @@ -242,7 +242,21 @@ export const transformOpenAIStream = (
@@ -304,7 +304,7 @@ index fbb5ad1678f8f..d96113bc3e25e 100644
  
 -        return { data: content, id: chunk.id, type: 'text' };
 +        // 处理 <think> & </think> 思考链，清除 <think> 标签和周围空白
-+        const thinkingContent = content.replace(/\s*<\/?think>\s*/g, '');
++        const thinkingContent = content.replace(/<\/?think>/g, '');
 +        // 判断是否有 <think> 或 </think> 标签，更新状态
 +        if (content.includes('<think>')) {
 +          streamContext.thinkingInContent = true;
