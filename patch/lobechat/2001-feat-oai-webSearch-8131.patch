@@ -1,39 +1,8 @@
 diff --git a/src/config/aiModels/openai.ts b/src/config/aiModels/openai.ts
-index aefa5402d0e8e..af232edd547dd 100644
+index aefa5402d0e8e..8be1c2ffde9da 100644
 --- a/src/config/aiModels/openai.ts
 +++ b/src/config/aiModels/openai.ts
-@@ -12,6 +12,7 @@ export const openaiChatModels: AIChatModelCard[] = [
-     abilities: {
-       functionCall: true,
-       reasoning: true,
-+      search: true,
-       vision: true,
-     },
-     contextWindowTokens: 200_000,
-@@ -29,6 +30,7 @@ export const openaiChatModels: AIChatModelCard[] = [
-     releasedAt: '2025-04-17',
-     settings: {
-       extendParams: ['reasoningEffort'],
-+      searchImpl: 'params',
-     },
-     type: 'chat',
-   },
-@@ -36,6 +38,7 @@ export const openaiChatModels: AIChatModelCard[] = [
-     abilities: {
-       functionCall: true,
-       reasoning: true,
-+      search: true,
-       vision: true,
-     },
-     contextWindowTokens: 200_000,
-@@ -53,12 +56,14 @@ export const openaiChatModels: AIChatModelCard[] = [
-     releasedAt: '2025-04-17',
-     settings: {
-       extendParams: ['reasoningEffort'],
-+      searchImpl: 'params',
-     },
-     type: 'chat',
-   },
+@@ -59,6 +59,7 @@ export const openaiChatModels: AIChatModelCard[] = [
    {
      abilities: {
        functionCall: true,
@@ -41,7 +10,7 @@ index aefa5402d0e8e..af232edd547dd 100644
        vision: true,
      },
      contextWindowTokens: 1_047_576,
-@@ -73,11 +78,15 @@ export const openaiChatModels: AIChatModelCard[] = [
+@@ -73,11 +74,15 @@ export const openaiChatModels: AIChatModelCard[] = [
        output: 8,
      },
      releasedAt: '2025-04-14',
@@ -57,7 +26,7 @@ index aefa5402d0e8e..af232edd547dd 100644
        vision: true,
      },
      contextWindowTokens: 1_047_576,
-@@ -93,6 +102,9 @@ export const openaiChatModels: AIChatModelCard[] = [
+@@ -93,6 +98,9 @@ export const openaiChatModels: AIChatModelCard[] = [
        output: 1.6,
      },
      releasedAt: '2025-04-14',
@@ -67,27 +36,14 @@ index aefa5402d0e8e..af232edd547dd 100644
      type: 'chat',
    },
    {
-@@ -117,6 +129,7 @@ export const openaiChatModels: AIChatModelCard[] = [
-     abilities: {
-       functionCall: true,
-       reasoning: true,
-+      search: true,
+@@ -135,6 +143,28 @@ export const openaiChatModels: AIChatModelCard[] = [
      },
-     contextWindowTokens: 200_000,
-     description:
-@@ -132,6 +145,31 @@ export const openaiChatModels: AIChatModelCard[] = [
-     releasedAt: '2025-01-31',
-     settings: {
-       extendParams: ['reasoningEffort'],
-+      searchImpl: 'params',
-+    },
-+    type: 'chat',
-+  },
+     type: 'chat',
+   },
 +  {
 +    abilities: {
 +      functionCall: true,
 +      reasoning: true,
-+      search: true,
 +      vision: true,
 +    },
 +    contextWindowTokens: 200_000,
@@ -103,30 +59,22 @@ index aefa5402d0e8e..af232edd547dd 100644
 +    releasedAt: '2025-03-19',
 +    settings: {
 +      extendParams: ['reasoningEffort'],
-+      searchImpl: 'params',
-     },
-     type: 'chat',
-   },
-@@ -158,7 +196,9 @@ export const openaiChatModels: AIChatModelCard[] = [
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       reasoning: true,
+@@ -158,6 +188,7 @@ export const openaiChatModels: AIChatModelCard[] = [
    },
    {
      abilities: {
 +      functionCall: true,
        reasoning: true,
-+      search: true,
        vision: true,
      },
-     contextWindowTokens: 200_000,
-@@ -175,6 +215,7 @@ export const openaiChatModels: AIChatModelCard[] = [
-     releasedAt: '2024-12-17',
-     settings: {
-       extendParams: ['reasoningEffort'],
-+      searchImpl: 'params',
-     },
-     type: 'chat',
-   },
 diff --git a/src/libs/model-runtime/openai/index.ts b/src/libs/model-runtime/openai/index.ts
-index 3263a9b4b49a3..8dabb752ab9b3 100644
+index 3263a9b4b49a3..77e0b7c72ea5f 100644
 --- a/src/libs/model-runtime/openai/index.ts
 +++ b/src/libs/model-runtime/openai/index.ts
 @@ -9,14 +9,16 @@ export interface OpenAIModelCard {
@@ -172,7 +120,7 @@ index 3263a9b4b49a3..8dabb752ab9b3 100644
      },
    },
    debug: {
-@@ -57,8 +58,21 @@ export const LobeOpenAI = createOpenAICompatibleRuntime({
+@@ -57,17 +58,32 @@ export const LobeOpenAI = createOpenAICompatibleRuntime({
    },
    provider: ModelProvider.OpenAI,
    responses: {
@@ -196,8 +144,11 @@ index 3263a9b4b49a3..8dabb752ab9b3 100644
        if (prunePrefixes.some((prefix) => model.startsWith(prefix))) {
          if (!payload.reasoning) {
            payload.reasoning = { summary: 'auto' };
-@@ -67,7 +81,7 @@ export const LobeOpenAI = createOpenAICompatibleRuntime({
+         } else {
+           payload.reasoning.summary = 'auto';
          }
++
++        return pruneReasoningPayload(payload) as any;
        }
  
 -      return { ...payload, stream: payload.stream ?? true };
@@ -206,7 +157,7 @@ index 3263a9b4b49a3..8dabb752ab9b3 100644
    },
  });
 diff --git a/src/libs/model-runtime/utils/openaiCompatibleFactory/index.ts b/src/libs/model-runtime/utils/openaiCompatibleFactory/index.ts
-index cce5f49427833..20b30bcb00515 100644
+index cce5f49427833..9cf4969601122 100644
 --- a/src/libs/model-runtime/utils/openaiCompatibleFactory/index.ts
 +++ b/src/libs/model-runtime/utils/openaiCompatibleFactory/index.ts
 @@ -209,14 +209,9 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
@@ -237,17 +188,25 @@ index cce5f49427833..20b30bcb00515 100644
          const messages = await convertOpenAIMessages(postPayload.messages);
  
          let response: Stream<OpenAI.Chat.Completions.ChatCompletionChunk>;
-@@ -478,7 +478,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+@@ -478,11 +478,12 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
      ): Promise<Response> {
        const inputStartAt = Date.now();
  
 -      const { messages, ...res } = responses?.handlePayload
-+      const { messages, tools, ...res } = responses?.handlePayload
++      const { messages, reasoning_effort, tools, ...res } = responses?.handlePayload
          ? (responses?.handlePayload(payload, this._options) as ChatStreamPayload)
          : payload;
  
-@@ -492,7 +492,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+       // remove penalty params
++      delete res.apiMode;
+       delete res.frequency_penalty;
+       delete res.presence_penalty;
+ 
+@@ -490,9 +491,10 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+ 
+       const postPayload = {
          ...res,
++        ...(reasoning_effort ? { reasoning: { effort: reasoning_effort } } : {}),
          input,
          store: false,
 -        tools: payload.tools?.map((tool) => this.convertChatCompletionToolToResponseTool(tool)),
