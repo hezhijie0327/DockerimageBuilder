@@ -1,0 +1,314 @@
+diff --git a/src/config/aiModels/openai.ts b/src/config/aiModels/openai.ts
+index aefa5402d0e8e..af232edd547dd 100644
+--- a/src/config/aiModels/openai.ts
++++ b/src/config/aiModels/openai.ts
+@@ -12,6 +12,7 @@ export const openaiChatModels: AIChatModelCard[] = [
+     abilities: {
+       functionCall: true,
+       reasoning: true,
++      search: true,
+       vision: true,
+     },
+     contextWindowTokens: 200_000,
+@@ -29,6 +30,7 @@ export const openaiChatModels: AIChatModelCard[] = [
+     releasedAt: '2025-04-17',
+     settings: {
+       extendParams: ['reasoningEffort'],
++      searchImpl: 'params',
+     },
+     type: 'chat',
+   },
+@@ -36,6 +38,7 @@ export const openaiChatModels: AIChatModelCard[] = [
+     abilities: {
+       functionCall: true,
+       reasoning: true,
++      search: true,
+       vision: true,
+     },
+     contextWindowTokens: 200_000,
+@@ -53,12 +56,14 @@ export const openaiChatModels: AIChatModelCard[] = [
+     releasedAt: '2025-04-17',
+     settings: {
+       extendParams: ['reasoningEffort'],
++      searchImpl: 'params',
+     },
+     type: 'chat',
+   },
+   {
+     abilities: {
+       functionCall: true,
++      search: true,
+       vision: true,
+     },
+     contextWindowTokens: 1_047_576,
+@@ -73,11 +78,15 @@ export const openaiChatModels: AIChatModelCard[] = [
+       output: 8,
+     },
+     releasedAt: '2025-04-14',
++    settings: {
++      searchImpl: 'params',
++    },
+     type: 'chat',
+   },
+   {
+     abilities: {
+       functionCall: true,
++      search: true,
+       vision: true,
+     },
+     contextWindowTokens: 1_047_576,
+@@ -93,6 +102,9 @@ export const openaiChatModels: AIChatModelCard[] = [
+       output: 1.6,
+     },
+     releasedAt: '2025-04-14',
++    settings: {
++      searchImpl: 'params',
++    },
+     type: 'chat',
+   },
+   {
+@@ -117,6 +129,7 @@ export const openaiChatModels: AIChatModelCard[] = [
+     abilities: {
+       functionCall: true,
+       reasoning: true,
++      search: true,
+     },
+     contextWindowTokens: 200_000,
+     description:
+@@ -132,6 +145,31 @@ export const openaiChatModels: AIChatModelCard[] = [
+     releasedAt: '2025-01-31',
+     settings: {
+       extendParams: ['reasoningEffort'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      vision: true,
++    },
++    contextWindowTokens: 200_000,
++    description:
++      'o1 系列模型经过强化学习训练，能够在回答前进行思考，并执行复杂的推理任务。o1-pro 模型使用了更多计算资源，以进行更深入的思考，从而持续提供更优质的回答。',
++    displayName: 'o1-pro',
++    id: 'o1-pro',
++    maxOutput: 100_000,
++    pricing: {
++      input: 150,
++      output: 600,
++    },
++    releasedAt: '2025-03-19',
++    settings: {
++      extendParams: ['reasoningEffort'],
++      searchImpl: 'params',
+     },
+     type: 'chat',
+   },
+@@ -158,7 +196,9 @@ export const openaiChatModels: AIChatModelCard[] = [
+   },
+   {
+     abilities: {
++      functionCall: true,
+       reasoning: true,
++      search: true,
+       vision: true,
+     },
+     contextWindowTokens: 200_000,
+@@ -175,6 +215,7 @@ export const openaiChatModels: AIChatModelCard[] = [
+     releasedAt: '2024-12-17',
+     settings: {
+       extendParams: ['reasoningEffort'],
++      searchImpl: 'params',
+     },
+     type: 'chat',
+   },
+diff --git a/src/libs/model-runtime/openai/index.ts b/src/libs/model-runtime/openai/index.ts
+index 3263a9b4b49a3..8dabb752ab9b3 100644
+--- a/src/libs/model-runtime/openai/index.ts
++++ b/src/libs/model-runtime/openai/index.ts
+@@ -9,14 +9,16 @@ export interface OpenAIModelCard {
+ 
+ const prunePrefixes = ['o1', 'o3', 'o4'];
+ 
++const oaiSearchContextSize = process.env.OPENAI_SEARCH_CONTEXT_SIZE; // low, medium, high
++
+ export const LobeOpenAI = createOpenAICompatibleRuntime({
+   baseURL: 'https://api.openai.com/v1',
+   chatCompletion: {
+     handlePayload: (payload) => {
+-      const { model } = payload;
++      const { enabledSearch, model, ...rest } = payload;
+ 
+-      if (model === 'o1-pro') {
+-        return { ...payload, apiMode: 'responses' } as ChatStreamPayload;
++      if (model === 'o1-pro' || enabledSearch) {
++        return { ...rest, apiMode: 'responses', enabledSearch, model } as ChatStreamPayload;
+       }
+ 
+       if (prunePrefixes.some((prefix) => model.startsWith(prefix))) {
+@@ -24,11 +26,10 @@ export const LobeOpenAI = createOpenAICompatibleRuntime({
+       }
+ 
+       if (model.includes('-search-')) {
+-        const oaiSearchContextSize = process.env.OPENAI_SEARCH_CONTEXT_SIZE; // low, medium, high
+-
+         return {
+-          ...payload,
++          ...rest,
+           frequency_penalty: undefined,
++          model,
+           presence_penalty: undefined,
+           stream: payload.stream ?? true,
+           temperature: undefined,
+@@ -41,7 +42,7 @@ export const LobeOpenAI = createOpenAICompatibleRuntime({
+         } as any;
+       }
+ 
+-      return { ...payload, stream: payload.stream ?? true };
++      return { ...rest, model, stream: payload.stream ?? true };
+     },
+   },
+   debug: {
+@@ -57,8 +58,21 @@ export const LobeOpenAI = createOpenAICompatibleRuntime({
+   },
+   provider: ModelProvider.OpenAI,
+   responses: {
+-    handlePayload: (payload: ChatStreamPayload) => {
+-      const { model } = payload;
++    handlePayload: (payload) => {
++      const { enabledSearch, model, tools, ...rest } = payload;
++
++      const openaiTools = enabledSearch
++        ? [
++            ...(tools || []),
++            {
++              type: 'web_search_preview',
++              ...(oaiSearchContextSize && {
++                search_context_size: oaiSearchContextSize,
++              }),
++            },
++          ]
++        : tools;
++
+       if (prunePrefixes.some((prefix) => model.startsWith(prefix))) {
+         if (!payload.reasoning) {
+           payload.reasoning = { summary: 'auto' };
+@@ -67,7 +81,7 @@ export const LobeOpenAI = createOpenAICompatibleRuntime({
+         }
+       }
+ 
+-      return { ...payload, stream: payload.stream ?? true };
++      return { ...rest, model, stream: payload.stream ?? true, tools: openaiTools } as any;
+     },
+   },
+ });
+diff --git a/src/libs/model-runtime/utils/openaiCompatibleFactory/index.ts b/src/libs/model-runtime/utils/openaiCompatibleFactory/index.ts
+index cce5f49427833..20b30bcb00515 100644
+--- a/src/libs/model-runtime/utils/openaiCompatibleFactory/index.ts
++++ b/src/libs/model-runtime/utils/openaiCompatibleFactory/index.ts
+@@ -209,14 +209,9 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+     }
+ 
+     async chat(
+-      { responseMode, apiMode, ...payload }: ChatStreamPayload,
++      { responseMode, ...payload }: ChatStreamPayload,
+       options?: ChatMethodOptions,
+     ) {
+-      // new openai Response API
+-      if (apiMode === 'responses') {
+-        return this.handleResponseAPIMode(payload, options);
+-      }
+-
+       try {
+         const inputStartAt = Date.now();
+         const postPayload = chatCompletion?.handlePayload
+@@ -226,6 +221,11 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+               stream: payload.stream ?? true,
+             } as OpenAI.ChatCompletionCreateParamsStreaming);
+ 
++        // new openai Response API
++        if ((postPayload as any).apiMode === 'responses') {
++          return this.handleResponseAPIMode(payload, options);
++        }
++
+         const messages = await convertOpenAIMessages(postPayload.messages);
+ 
+         let response: Stream<OpenAI.Chat.Completions.ChatCompletionChunk>;
+@@ -478,7 +478,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+     ): Promise<Response> {
+       const inputStartAt = Date.now();
+ 
+-      const { messages, ...res } = responses?.handlePayload
++      const { messages, tools, ...res } = responses?.handlePayload
+         ? (responses?.handlePayload(payload, this._options) as ChatStreamPayload)
+         : payload;
+ 
+@@ -492,7 +492,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+         ...res,
+         input,
+         store: false,
+-        tools: payload.tools?.map((tool) => this.convertChatCompletionToolToResponseTool(tool)),
++        tools: tools?.map((tool) => this.convertChatCompletionToolToResponseTool(tool)),
+       } as OpenAI.Responses.ResponseCreateParamsStreaming;
+ 
+       if (debug?.responses?.()) {
+diff --git a/src/libs/model-runtime/utils/streams/openai/responsesStream.ts b/src/libs/model-runtime/utils/streams/openai/responsesStream.ts
+index 6c61a07edb36f..c427ba0ac615f 100644
+--- a/src/libs/model-runtime/utils/streams/openai/responsesStream.ts
++++ b/src/libs/model-runtime/utils/streams/openai/responsesStream.ts
+@@ -1,7 +1,7 @@
+ import OpenAI from 'openai';
+ import type { Stream } from 'openai/streaming';
+ 
+-import { ChatMessageError } from '@/types/message';
++import { ChatMessageError, CitationItem } from '@/types/message';
+ 
+ import { AgentRuntimeErrorType } from '../../../error';
+ import { convertResponseUsage } from '../../usageConverter';
+@@ -107,14 +107,41 @@ const transformOpenAIStream = (
+       }
+ 
+       case 'response.completed': {
++        const response_completed_results = [];
++
++        if ((chunk as any).response.output) {
++          const outputs = (chunk as any).response.output;
++          const lastMessage = outputs?.[outputs.length - 1];
++          const lastContent = lastMessage?.content?.[lastMessage.content.length - 1];
++
++          const citations = lastContent?.annotations;
++          if (citations) {
++            response_completed_results.push({
++              data: {
++                citations: citations.map(
++                  (item: any) =>
++                    ({
++                      title: item.title,
++                      url: item.url,
++                    }) as CitationItem,
++                ),
++              },
++              id: chunk.response.id,
++              type: 'grounding',
++            });
++          }
++        }
++
+         if (chunk.response.usage) {
+-          return {
++          response_completed_results.push({
+             data: convertResponseUsage(chunk.response.usage),
+             id: chunk.response.id,
+             type: 'usage',
+-          };
++          });
+         }
+ 
++        if (response_completed_results.length > 0) return response_completed_results as any;
++
+         return { data: chunk, id: streamContext.id, type: 'data' };
+       }
+ 
