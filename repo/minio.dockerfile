@@ -1,4 +1,4 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
 ARG GOLANG_VERSION="1"
 
@@ -32,14 +32,13 @@ ENV \
 COPY --from=get_info /tmp/BUILDTMP/MINIO /minio
 
 RUN \
-    go build -o minio -trimpath -ldflags "$(go run buildscripts/gen-ldflags.go) -X github.com/minio/minio/cmd.ReleaseTag=DEVELOPMENT.$(cat /minio/MINIO_CUSTOM_VERSION)" \
-    && cp -rf "${WORKDIR}/BUILDTMP/MINIO/minio" "${WORKDIR}/BUILDKIT/minio"
+    go build -o minio -trimpath -ldflags "$(go run buildscripts/gen-ldflags.go) -X github.com/minio/minio/cmd.ReleaseTag=DEVELOPMENT.$(cat /minio/MINIO_CUSTOM_VERSION)"
 
 FROM scratch AS rebased_minio
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_alist /alist/minio /minio
+COPY --from=build_minio /minio/minio /minio
 
 FROM scratch
 
