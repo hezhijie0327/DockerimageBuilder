@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 ARG GOLANG_VERSION="1"
 
@@ -41,6 +41,10 @@ COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 COPY --from=build_minio /minio/minio /minio
 
 FROM scratch
+
+ENV \
+    MINIO_BROWSER="off" MINIO_UPDATE="off" \
+    MINIO_ROOT_USER="" MINIO_ROOT_PASSWORD=""
 
 COPY --from=rebased_minio / /
 
