@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 2.2.1
+# Current Version: 2.2.2
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -63,8 +63,6 @@ function GetLatestVersion() {
 function GenerateReplacements() {
     replacement_list=(
         "s/{ADGUARDHOME_VERSION}/${ADGUARDHOME_VERSION_FIXED:-${ADGUARDHOME_VERSION}}/g"
-        "s/{ALIST_VERSION}/${ALIST_VERSION_FIXED:-${ALIST_VERSION}}/g"
-        "s/{ALIST_WEB_VERSION}/${ALIST_WEB_VERSION_FIXED:-${ALIST_WEB_VERSION}}/g"
         "s/{BROWSERLESS_VERSION}/${BROWSERLESS_VERSION_FIXED:-${BROWSERLESS_VERSION}}/g"
         "s/{CLOUDFLARED_VERSION}/${CLOUDFLARED_VERSION_FIXED:-${CLOUDFLARED_VERSION}}/g"
         "s/{ICU_VERSION}/${ICU_VERSION_FIXED:-${ICU_VERSION}}/g"
