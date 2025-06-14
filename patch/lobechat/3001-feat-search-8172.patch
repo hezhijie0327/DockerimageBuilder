@@ -1,3 +1,168 @@
+diff --git a/src/server/services/search/impls/anspire/index.ts b/src/server/services/search/impls/anspire/index.ts
+new file mode 100644
+index 0000000000000..7745ee0973112
+--- /dev/null
++++ b/src/server/services/search/impls/anspire/index.ts
+@@ -0,0 +1,132 @@
++import { TRPCError } from '@trpc/server';
++import debug from 'debug';
++import urlJoin from 'url-join';
++
++import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
++
++import { SearchServiceImpl } from '../type';
++import { AnspireSearchParameters, AnspireResponse } from './type';
++
++const log = debug('lobe-search:Anspire');
++
++/**
++ * Anspire implementation of the search service
++ * Primarily used for web crawling
++ */
++export class AnspireImpl implements SearchServiceImpl {
++  private get apiKey(): string | undefined {
++    return process.env.ANSPIRE_API_KEY;
++  }
++
++  private get baseUrl(): string {
++    // Assuming the base URL is consistent with the crawl endpoint
++    return 'https://plugin.anspire.cn/api';
++  }
++
++  async query(query: string, params: SearchParams = {}): Promise<UniformSearchResponse> {
++    log('Starting Anspire query with query: "%s", params: %o', query, params);
++    const endpoint = urlJoin(this.baseUrl, '/ntsearch/search');
++
++    const defaultQueryParams: AnspireSearchParameters = {
++      mode: 0,
++      query,
++      top_k: 20,
++    };
++
++    let body: AnspireSearchParameters = {
++      ...defaultQueryParams,
++      ...(params?.searchTimeRange && params.searchTimeRange !== 'anytime'
++        ? (() => {
++            const now = Date.now();
++            const days = { day: 1, month: 30, week: 7, year: 365 }[params.searchTimeRange!];
++
++            if (days === undefined) return {};
++
++            return {
++              FromTime: new Date(now - days * 86_400 * 1000).toISOString().slice(0, 19).replace('T', ' '),
++              ToTime: new Date(now).toISOString().slice(0, 19).replace('T', ' '),
++            };
++          })()
++        : {}),
++    };
++
++    log('Constructed request body: %o', body);
++
++    const searchParams = new URLSearchParams();
++    for (const [key, value] of Object.entries(body)) {
++      searchParams.append(key, String(value));
++    }
++
++    let response: Response;
++    const startAt = Date.now();
++    let costTime = 0;
++    try {
++      log('Sending request to endpoint: %s', endpoint);
++      response = await fetch(`${endpoint}?${searchParams.toString()}`, {
++        headers: {
++          'Accept': '*/*',
++          'Authorization': this.apiKey ? `Bearer ${this.apiKey}` : '',
++          'Connection': 'keep-alive ',
++          'Content-Type': 'application/json',
++        },
++        method: 'GET',
++      });
++      log('Received response with status: %d', response.status);
++      costTime = Date.now() - startAt;
++    } catch (error) {
++      log.extend('error')('Anspire fetch error: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'SERVICE_UNAVAILABLE',
++        message: 'Failed to connect to Anspire.',
++      });
++    }
++
++    if (!response.ok) {
++      const errorBody = await response.text();
++      log.extend('error')(
++        `Anspire request failed with status ${response.status}: %s`,
++        errorBody.length > 200 ? `${errorBody.slice(0, 200)}...` : errorBody,
++      );
++      throw new TRPCError({
++        cause: errorBody,
++        code: 'SERVICE_UNAVAILABLE',
++        message: `Anspire request failed: ${response.statusText}`,
++      });
++    }
++
++    try {
++      const anspireResponse = (await response.json()) as AnspireResponse;
++
++      log('Parsed Anspire response: %o', anspireResponse);
++
++      const mappedResults = (anspireResponse.results || []).map(
++        (result): UniformSearchResult => ({
++          category: 'general', // Default category
++          content: result.content || '', // Prioritize content
++          engines: ['anspire'], // Use 'anspire' as the engine name
++          parsedUrl: result.url ? new URL(result.url).hostname : '', // Basic URL parsing
++          score: result.score || 0, // Default score to 0 if undefined
++          title: result.title || '',
++          url: result.url,
++        }),
++      );
++
++      log('Mapped %d results to SearchResult format', mappedResults.length);
++
++      return {
++        costTime,
++        query: query,
++        resultNumbers: mappedResults.length,
++        results: mappedResults,
++      };
++    } catch (error) {
++      log.extend('error')('Error parsing Anspire response: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'INTERNAL_SERVER_ERROR',
++        message: 'Failed to parse Anspire response.',
++      });
++    }
++  }
++}
+diff --git a/src/server/services/search/impls/anspire/type.ts b/src/server/services/search/impls/anspire/type.ts
+new file mode 100644
+index 0000000000000..e01fe6896b06a
+--- /dev/null
++++ b/src/server/services/search/impls/anspire/type.ts
+@@ -0,0 +1,21 @@
++export interface AnspireSearchParameters {
++  FromTime?: string;
++  Insite?: string;
++  mode?: number;
++  query: string;
++  top_k?: number;
++  ToTime?: string;
++}
++
++interface AnspireResults {
++  content?: string;
++  score?: number;
++  title: string;
++  url: string;
++}
++
++export interface AnspireResponse {
++  query?: string;
++  results?: AnspireResults[];
++  Uuid?: string;
++}
 diff --git a/src/server/services/search/impls/brave/index.ts b/src/server/services/search/impls/brave/index.ts
 new file mode 100644
 index 0000000000000..bb3fc590b133e
@@ -392,10 +557,11 @@ index 0000000000000..4600d604b8e24
 +  url?: any;
 +}
 diff --git a/src/server/services/search/impls/index.ts b/src/server/services/search/impls/index.ts
-index a71a38507d519..0bb8d77a30e76 100644
+index a71a38507d519..334083ca40aa6 100644
 --- a/src/server/services/search/impls/index.ts
 +++ b/src/server/services/search/impls/index.ts
-@@ -1,7 +1,10 @@
+@@ -1,7 +1,11 @@
++import { AnspireImpl } from './anspire';
  import { BochaImpl } from './bocha';
 +import { BraveImpl } from './brave';
  import { ExaImpl } from './exa';
@@ -406,9 +572,11 @@ index a71a38507d519..0bb8d77a30e76 100644
  import { Search1APIImpl } from './search1api';
  import { SearXNGImpl } from './searxng';
  import { TavilyImpl } from './tavily';
-@@ -13,9 +16,12 @@ import { SearchServiceImpl } from './type';
+@@ -12,10 +16,14 @@ import { SearchServiceImpl } from './type';
+  * Available search service implementations
   */
  export enum SearchImplType {
++  Anspire = 'anspire',
    Bocha = 'bocha',
 +  Brave = 'brave',
    Exa = 'exa',
@@ -419,7 +587,15 @@ index a71a38507d519..0bb8d77a30e76 100644
    SearXNG = 'searxng',
    Search1API = 'search1api',
    Tavily = 'tavily',
-@@ -32,6 +38,10 @@ export const createSearchServiceImpl = (
+@@ -28,10 +36,18 @@ export const createSearchServiceImpl = (
+   type: SearchImplType = SearchImplType.SearXNG,
+ ): SearchServiceImpl => {
+   switch (type) {
++    case SearchImplType.Anspire: {
++      return new AnspireImpl();
++    }
++
+     case SearchImplType.Bocha: {
        return new BochaImpl();
      }
  
@@ -430,7 +606,7 @@ index a71a38507d519..0bb8d77a30e76 100644
      case SearchImplType.Exa: {
        return new ExaImpl();
      }
-@@ -40,10 +50,18 @@ export const createSearchServiceImpl = (
+@@ -40,10 +56,18 @@ export const createSearchServiceImpl = (
        return new FirecrawlImpl();
      }
  
