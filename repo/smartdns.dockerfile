@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 ARG GCC_VERSION="14"
 
@@ -42,8 +42,8 @@ RUN \
     && sh "./package/build-pkg.sh" --platform linux --arch $(dpkg --print-architecture) --static \
     && cd "./package" \
     && tar -xvf *.tar.gz \
-    && chmod a+x "./package/smartdns/usr/sbin/smartdns" \
-    && strip -s "./package/smartdns/usr/sbin/smartdns"
+    && chmod a+x "./smartdns/usr/sbin/smartdns" \
+    && strip -s "./smartdns/usr/sbin/smartdns"
 
 FROM scratch AS rebased_smartdns
 
