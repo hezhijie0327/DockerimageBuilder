@@ -198,16 +198,20 @@ index 0000000000000..74a8251d1faf2
 +  web: BraveWeb;
 +}
 diff --git a/src/server/services/search/impls/index.ts b/src/server/services/search/impls/index.ts
-index a71a38507d519..91b89ab1f0153 100644
+index a71a38507d519..97595e3fb85f8 100644
 --- a/src/server/services/search/impls/index.ts
 +++ b/src/server/services/search/impls/index.ts
-@@ -1,4 +1,5 @@
+@@ -1,7 +1,9 @@
  import { BochaImpl } from './bocha';
 +import { BraveImpl } from './brave';
  import { ExaImpl } from './exa';
  import { FirecrawlImpl } from './firecrawl';
  import { JinaImpl } from './jina';
-@@ -13,6 +14,7 @@ import { SearchServiceImpl } from './type';
++import { KagiImpl } from './kagi';
+ import { Search1APIImpl } from './search1api';
+ import { SearXNGImpl } from './searxng';
+ import { TavilyImpl } from './tavily';
+@@ -13,9 +15,11 @@ import { SearchServiceImpl } from './type';
   */
  export enum SearchImplType {
    Bocha = 'bocha',
@@ -215,7 +219,11 @@ index a71a38507d519..91b89ab1f0153 100644
    Exa = 'exa',
    Firecrawl = 'firecrawl',
    Jina = 'jina',
-@@ -32,6 +34,10 @@ export const createSearchServiceImpl = (
++  Kagi = 'kagi',
+   SearXNG = 'searxng',
+   Search1API = 'search1api',
+   Tavily = 'tavily',
+@@ -32,6 +36,10 @@ export const createSearchServiceImpl = (
        return new BochaImpl();
      }
  
@@ -226,3 +234,161 @@ index a71a38507d519..91b89ab1f0153 100644
      case SearchImplType.Exa: {
        return new ExaImpl();
      }
+@@ -44,6 +52,10 @@ export const createSearchServiceImpl = (
+       return new JinaImpl();
+     }
+ 
++    case SearchImplType.Kagi: {
++      return new KagiImpl();
++    }
++
+     case SearchImplType.SearXNG: {
+       return new SearXNGImpl();
+     }
+diff --git a/src/server/services/search/impls/kagi/index.ts b/src/server/services/search/impls/kagi/index.ts
+new file mode 100644
+index 0000000000000..d41221cef409c
+--- /dev/null
++++ b/src/server/services/search/impls/kagi/index.ts
+@@ -0,0 +1,111 @@
++import { TRPCError } from '@trpc/server';
++import debug from 'debug';
++import urlJoin from 'url-join';
++
++import { SearchParams, UniformSearchResponse, UniformSearchResult } from '@/types/tool/search';
++
++import { SearchServiceImpl } from '../type';
++import { KagiSearchParameters, KagiResponse } from './type';
++
++const log = debug('lobe-search:Kagi');
++
++/**
++ * Kagi implementation of the search service
++ * Primarily used for web crawling
++ */
++export class KagiImpl implements SearchServiceImpl {
++  private get apiKey(): string | undefined {
++    return process.env.KAGI_API_KEY;
++  }
++
++  private get baseUrl(): string {
++    // Assuming the base URL is consistent with the crawl endpoint
++    return 'https://kagi.com/api/v0';
++  }
++
++  async query(query: string, params: SearchParams = {}): Promise<UniformSearchResponse> {
++    log('Starting Kagi query with query: "%s", params: %o', query, params);
++    const endpoint = urlJoin(this.baseUrl, '/search');
++
++    const body: KagiSearchParameters = {
++      limit: 15,
++      q: query,
++    };
++
++    log('Constructed request body: %o', body);
++
++    const searchParams = new URLSearchParams();
++    for (const [key, value] of Object.entries(body)) {
++      searchParams.append(key, String(value));
++    }
++
++    let response: Response;
++    const startAt = Date.now();
++    let costTime = 0;
++    try {
++      log('Sending request to endpoint: %s', endpoint);
++      response = await fetch(`${endpoint}?${searchParams.toString()}`, {
++        headers: {
++          'Authorization': this.apiKey ? `Bot ${this.apiKey}` : '',
++        },
++        method: 'GET',
++      });
++      log('Received response with status: %d', response.status);
++      costTime = Date.now() - startAt;
++    } catch (error) {
++      log.extend('error')('Kagi fetch error: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'SERVICE_UNAVAILABLE',
++        message: 'Failed to connect to Kagi.',
++      });
++    }
++
++    if (!response.ok) {
++      const errorBody = await response.text();
++      log.extend('error')(
++        `Kagi request failed with status ${response.status}: %s`,
++        errorBody.length > 200 ? `${errorBody.slice(0, 200)}...` : errorBody,
++      );
++      throw new TRPCError({
++        cause: errorBody,
++        code: 'SERVICE_UNAVAILABLE',
++        message: `Kagi request failed: ${response.statusText}`,
++      });
++    }
++
++    try {
++      const kagiResponse = (await response.json()) as KagiResponse;
++
++      log('Parsed Kagi response: %o', kagiResponse);
++
++      const mappedResults = (kagiResponse.data || []).map(
++        (result): UniformSearchResult => ({
++          category: 'general', // Default category
++          content: result.snippet || '', // Prioritize content
++          engines: ['kagi'], // Use 'kagi' as the engine name
++          parsedUrl: result.url ? new URL(result.url).hostname : '', // Basic URL parsing
++          score: 1, // Default score to 1
++          title: result.title || '',
++          url: result.url,
++        }),
++      );
++
++      log('Mapped %d results to SearchResult format', mappedResults.length);
++
++      return {
++        costTime,
++        query: query,
++        resultNumbers: mappedResults.length,
++        results: mappedResults,
++      };
++    } catch (error) {
++      log.extend('error')('Error parsing Kagi response: %o', error);
++      throw new TRPCError({
++        cause: error,
++        code: 'INTERNAL_SERVER_ERROR',
++        message: 'Failed to parse Kagi response.',
++      });
++    }
++  }
++}
+diff --git a/src/server/services/search/impls/kagi/type.ts b/src/server/services/search/impls/kagi/type.ts
+new file mode 100644
+index 0000000000000..1593fee367731
+--- /dev/null
++++ b/src/server/services/search/impls/kagi/type.ts
+@@ -0,0 +1,24 @@
++export interface KagiSearchParameters {
++  limit?: number;
++  q: string;
++}
++
++interface KagiThumbnail {
++  height?: number | null;
++  url: string;
++  width?: number | null;
++}
++
++interface KagiData {
++  published?: number;
++  snippet?: string;
++  t: number;
++  thumbnail?: KagiThumbnail;
++  title: string;
++  url: string;
++}
++
++export interface KagiResponse {
++  meta?: any;
++  data: KagiData[];
++}
