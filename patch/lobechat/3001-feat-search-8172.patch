@@ -1,3 +1,290 @@
+diff --git a/docs/self-hosting/advanced/online-search.mdx b/docs/self-hosting/advanced/online-search.mdx
+index 0ae3e4239ba62..a40ae2c368ad9 100644
+--- a/docs/self-hosting/advanced/online-search.mdx
++++ b/docs/self-hosting/advanced/online-search.mdx
+@@ -14,16 +14,134 @@ tags:
+ 
+ # Configuring Online Search Functionality
+ 
+-LobeChat supports configuring online search functionality for AI, allowing it to access the latest web information and provide more accurate and timely responses. The online search feature is based on the [SearXNG](https://github.com/searxng/searxng) search engine, which is a privacy-respecting metasearch engine that aggregates results from multiple search engines.
++LobeChat supports configuring **web search functionality** for AI, enabling it to retrieve real-time information from the internet to provide more accurate and up-to-date responses. Web search supports multiple search engine providers, including [SearXNG](https://github.com/searxng/searxng), [Search1API](https://www.search1api.com), [Google](https://programmablesearchengine.google.com), and [Brave](https://brave.com/search/api), among others.
+ 
+-<Callout type={'info'}>
+-  SearXNG is an open-source metasearch engine that can be self-hosted or accessed via public
+-  instances. By configuring SearXNG, LobeChat enables AI to retrieve the latest internet
+-  information, allowing it to answer time-sensitive questions and provide up-to-date news.
++<Callout type="info">
++  Web search allows AI to access time-sensitive content, such as the latest news, technology trends, or product information. You can deploy the open-source SearXNG yourself, or choose to integrate mainstream search services like Search1API, Google, Brave, etc., combining them freely based on your use case.
+ </Callout>
+ 
++By setting the search service environment variable `SEARCH_PROVIDERS` and the corresponding API Keys, LobeChat will query multiple sources and return the results. You can also configure crawler service environment variables such as `CRAWLER_IMPLS` (e.g., `browserless`, `firecrawl`, `tavily`, etc.) to extract webpage content, enhancing the capability of search + reading.
++
+ # Core Environment Variables
+ 
++## `CRAWLER_IMPLS`
++
++Configure available web crawlers for structured extraction of webpage content.
++
++```env
++CRAWLER_IMPLS="native,search1api"
++```
++
++Supported crawler types are listed below:
++
++| Value         | Description                                                                                                         | Environment Variable       |
++| ------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------- |
++| `browserless` | Headless browser crawler based on [Browserless](https://www.browserless.io/), suitable for rendering complex pages. | `BROWSERLESS_TOKEN`        |
++| `exa`         | Crawler capabilities provided by [Exa](https://exa.ai/), API required.                                              | `EXA_API_KEY`              |
++| `firecrawl`   | [Firecrawl](https://firecrawl.dev/) headless browser API, ideal for modern websites.                                | `FIRECRAWL_API_KEY`        |
++| `jina`        | Crawler service from [Jina AI](https://jina.ai/), supports fast content summarization.                              | `JINA_READER_API_KEY`      |
++| `native`      | Built-in general-purpose crawler for standard web structures.                                                       |                            |
++| `search1api`  | Page crawling capabilities from [Search1API](https://www.search1api.com), great for structured content extraction.  | `SEARCH1API_CRAWL_API_KEY` |
++| `tavily`      | Web scraping and summarization API from [Tavily](https://www.tavily.com/).                                          | `TAVILY_API_KEY`           |
++
++> 💡 Setting multiple crawlers increases success rate; the system will try different ones based on priority.
++
++---
++
++## `SEARCH_PROVIDERS`
++
++Configure which search engine providers to use for web search.
++
++```env
++SEARCH_PROVIDERS="searxng"
++```
++
++Supported search engines include:
++
++| Value        | Description                                                                              | Environment Variable                        |
++| ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------- |
++| `anspire`    | Search service provided by [Anspire](https://anspire.ai/).                               | `ANSPIRE_API_KEY`                           |
++| `bocha`      | Search service from [Bocha](https://open.bochaai.com/).                                  | `BOCHA_API_KEY`                             |
++| `brave`      | [Brave](https://search.brave.com/help/api), a privacy-friendly search source.            | `BRAVE_API_KEY`                             |
++| `exa`        | [Exa](https://exa.ai/), a search API designed for AI.                                    | `EXA_API_KEY`                               |
++| `firecrawl`  | Search capabilities via [Firecrawl](https://firecrawl.dev/).                             | `FIRECRAWL_API_KEY`                         |
++| `google`     | Uses [Google Programmable Search Engine](https://programmablesearchengine.google.com/).  | `GOOGLE_PSE_API_KEY` `GOOGLE_PSE_ENGINE_ID` |
++| `jina`       | Semantic search provided by [Jina AI](https://jina.ai/).                                 | `JINA_READER_API_KEY`                       |
++| `kagi`       | Premium search API by [Kagi](https://kagi.com/), requires a subscription key.            | `KAGI_API_KEY`                              |
++| `search1api` | Aggregated search capabilities from [Search1API](https://www.search1api.com).            | `SEARCH1API_CRAWL_API_KEY`                  |
++| `searxng`    | Use a self-hosted or public [SearXNG](https://searx.space/) instance.                    | `SEARXNG_URL`                               |
++| `tavily`     | [Tavily](https://www.tavily.com/), offers fast web summaries and answers.                | `TAVILY_API_KEY`                            |
++
++> ⚠️ Some search providers require you to apply for an API Key and configure it in your `.env` file.
++
++---
++
++## `BROWSERLESS_URL`
++
++Specifies the API endpoint for [Browserless](https://www.browserless.io/), used for web crawling tasks. Browserless is a browser automation platform based on Headless Chrome, ideal for rendering dynamic pages.
++
++```env
++BROWSERLESS_URL=https://chrome.browserless.io
++```
++
++> 📌 Usually used together with `CRAWLER_IMPLS=browserless`.
++
++---
++
++## `GOOGLE_PSE_ENGINE_ID`
++
++Configure the Search Engine ID for Google Programmable Search Engine (Google PSE), used to restrict the search scope. Must be used alongside `GOOGLE_PSE_API_KEY`.
++
++```env
++GOOGLE_PSE_ENGINE_ID=your-google-cx-id
++```
++
++> 🔑 How to get it: Visit [programmablesearchengine.google.com](https://programmablesearchengine.google.com/), create a search engine, and obtain the `cx` parameter.
++
++---
++
++## `FIRECRAWL_URL`
++
++Sets the access URL for the [Firecrawl](https://firecrawl.dev/) API, used for web content scraping. Default value:
++
++```env
++FIRECRAWL_URL=https://api.firecrawl.dev/v1
++```
++
++> ⚙️ Usually does not need to be changed unless you’re using a self-hosted version or a proxy service.
++
++---
++
++## `TAVILY_SEARCH_DEPTH`
++
++Configure the result depth for [Tavily](https://www.tavily.com/) searches.
++
++```env
++TAVILY_SEARCH_DEPTH=basic
++```
++
++Supported values:
++
++* `basic`: Fast search, returns brief results;
++* `advanced`: Deep search, returns more context and web page details.
++
++---
++
++## `TAVILY_EXTRACT_DEPTH`
++
++Configure how deeply Tavily extracts content from web pages.
++
++```env
++TAVILY_EXTRACT_DEPTH=basic
++```
++
++Supported values:
++
++* `basic`: Extracts basic info like title and content summary;
++* `advanced`: Extracts structured data, lists, charts, and more from web pages.
++
++---
++
+ ## `SEARXNG_URL`
+ 
+ The URL of the SearXNG instance, which is a necessary configuration to enable the online search functionality. For example:
+diff --git a/docs/self-hosting/advanced/online-search.zh-CN.mdx b/docs/self-hosting/advanced/online-search.zh-CN.mdx
+index bcdf065e94045..7914b05d94e3a 100644
+--- a/docs/self-hosting/advanced/online-search.zh-CN.mdx
++++ b/docs/self-hosting/advanced/online-search.zh-CN.mdx
+@@ -10,15 +10,134 @@ tags:
+ 
+ # 配置联网搜索功能
+ 
+-LobeChat 支持为 AI 配置联网搜索功能，这使得 AI 能够获取最新的网络信息，从而提供更准确、更及时的回答。联网搜索功能基于 [SearXNG](https://github.com/searxng/searxng) 搜索引擎，它是一个尊重隐私的元搜索引擎，可以聚合多个搜索引擎的结果。
++LobeChat 支持为 AI 配置**联网搜索功能**，使其能够实时获取互联网信息，从而提供更准确、最新的回答。联网搜索支持多个搜索引擎提供商，包括 [SearXNG](https://github.com/searxng/searxng)、[Search1API](https://www.search1api.com)、[Google](https://programmablesearchengine.google.com)、[Brave](https://brave.com/search/api) 等。
+ 
+-<Callout type={'info'}>
+-  SearXNG 是一个开源的元搜索引擎，可以自行部署，也可以使用公共实例。通过配置 SearXNG，LobeChat
+-  可以让 AI 获取最新的互联网信息，从而回答时效性问题、提供最新资讯。
++<Callout type="info">
++  联网搜索可以让 AI 获取时效性内容，如最新新闻、技术动态或产品信息。你可以使用开源的 SearXNG 自行部署，也可以选择集成主流搜索引擎服务，如 Search1API、Google、Brave 等，根据你的使用场景自由组合。
+ </Callout>
+ 
++通过设置搜索服务环境变量 `SEARCH_PROVIDERS` 和对应的 API Key，LobeChat 将在多个搜索源中查询并返回结果。你还可以搭配配置爬虫服务环境变量 `CRAWLER_IMPLS`（如 `browserless`、`firecrawl`、`tavily` 等）以提取网页内容，实现搜索+阅读的增强能力。
++
+ # 核心环境变量
+ 
++## `CRAWLER_IMPLS`
++
++配置可用的网页爬虫，用于对网页进行结构化内容提取。
++
++```env
++CRAWLER_IMPLS="native,search1api"
++```
++
++支持的爬虫类型如下：
++
++| 值            | 说明                                                                                   | 环境变量                   |
++| ------------- | -------------------------------------------------------------------------------------- | -------------------------- |
++| `browserless` | 基于 [Browserless](https://www.browserless.io/) 的无头浏览器爬虫，适合渲染复杂页面。   | `BROWSERLESS_TOKEN`        |
++| `exa`         | 使用 [Exa](https://exa.ai/) 提供的爬虫能力，需申请 API。                               | `EXA_API_KEY`              |
++| `firecrawl`   | [Firecrawl](https://firecrawl.dev/) 无头浏览器 API，适合现代网站抓取。                 | `FIRECRAWL_API_KEY`        |
++| `jina`        | 使用 [Jina AI](https://jina.ai/) 的爬虫服务，支持快速提取摘要信息。                    | `JINA_READER_API_KEY`      |
++| `native`      | 内置通用爬虫，适用于标准网页结构。                                                     |                            |
++| `search1api`  | 利用 [Search1API](https://www.search1api.com) 提供的页面抓取能力，适合结构化内容提取。 | `SEARCH1API_CRAWL_API_KEY` |
++| `tavily`      | 使用 [Tavily](https://www.tavily.com/) 的网页抓取与摘要 API。                          | `TAVILY_API_KEY`           |
++
++> 💡 设置多个爬虫可提升成功率，系统将根据优先级尝试不同爬虫。
++
++---
++
++## `SEARCH_PROVIDERS`
++
++配置联网搜索使用的搜索引擎提供商。
++
++```env
++SEARCH_PROVIDERS="searxng"
++```
++
++支持的搜索引擎如下：
++
++| 值           | 说明                                                                                     | 环境变量                                    |
++| ------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------- |
++| `anspire`    | 基于 [Anspire（安思派）](https://anspire.ai/) 提供的搜索服务。                           | `ANSPIRE_API_KEY`                           |
++| `bocha`      | 基于 [Bocha（博查）](https://open.bochaai.com/) 提供的搜索服务。                         | `BOCHA_API_KEY`                             |
++| `brave`      | [Brave](https://search.brave.com/help/api)，隐私友好的搜索源。                           | `BRAVE_API_KEY`                             |
++| `exa`        | [Exa](https://exa.ai/)，面向 AI 的搜索 API。                                             | `EXA_API_KEY`                               |
++| `firecrawl`  | 支持 [Firecrawl](https://firecrawl.dev/) 提供的搜索服务。                                | `FIRECRAWL_API_KEY`                         |
++| `google`     | 使用 [Google Programmable Search Engine](https://programmablesearchengine.google.com/)。 | `GOOGLE_PSE_API_KEY` `GOOGLE_PSE_ENGINE_ID` |
++| `jina`       | 使用 [Jina AI](https://jina.ai/) 提供的语义搜索服务。                                    | `JINA_READER_API_KEY`                       |
++| `kagi`       | [Kagi](https://kagi.com/) 提供的高级搜索 API，需订阅 Key。                               | `KAGI_API_KEY`                              |
++| `search1api` | 使用 [Search1API](https://www.search1api.com) 聚合搜索能力。                             | `SEARCH1API_CRAWL_API_KEY`                  |
++| `searxng`    | 使用自托管或公共 [SearXNG](https://searx.space/) 实例。                                  | `SEARXNG_URL`                               |
++| `tavily`     | [Tavily](https://www.tavily.com/)，快速网页摘要与答案返回。                              | `TAVILY_API_KEY`                            |
++
++> ⚠️ 某些搜索提供商需要单独申请 API Key，并在 `.env` 中配置相关凭证。
++
++---
++
++## `BROWSERLESS_URL`
++
++指定 [Browserless](https://www.browserless.io/) 服务的 API 地址，用于执行网页爬取任务。Browserless 是一个基于无头浏览器（Headless Chrome）的浏览器自动化平台，适合处理需要渲染的动态页面。
++
++```env
++BROWSERLESS_URL=https://chrome.browserless.io
++```
++
++> 📌 通常需要搭配 `CRAWLER_IMPLS=browserless` 启用。
++
++---
++
++## `GOOGLE_PSE_ENGINE_ID`
++
++配置 Google Programmable Search Engine（Google PSE）的搜索引擎 ID，用于限定搜索范围。需配合 `GOOGLE_PSE_API_KEY` 一起使用。
++
++```env
++GOOGLE_PSE_ENGINE_ID=your-google-cx-id
++```
++
++> 🔑 获取方式：访问 [programmablesearchengine.google.com](https://programmablesearchengine.google.com/)，创建搜索引擎后获取 `cx` 参数值。
++
++---
++
++## `FIRECRAWL_URL`
++
++设置 [Firecrawl](https://firecrawl.dev/) API 的访问地址。用于网页内容抓取，默认值如下：
++
++```env
++FIRECRAWL_URL=https://api.firecrawl.dev/v1
++```
++
++> ⚙️ 一般无需修改，除非你使用的是自托管版本或代理服务。
++
++---
++
++## `TAVILY_SEARCH_DEPTH`
++
++配置 [Tavily](https://www.tavily.com/) 搜索的结果深度。
++
++```env
++TAVILY_SEARCH_DEPTH=basic
++```
++
++支持的值：
++
++* `basic`: 快速搜索，返回简要结果；
++* `advanced`: 深度搜索，返回更多上下文和网页信息。
++
++---
++
++## `TAVILY_EXTRACT_DEPTH`
++
++配置 Tavily 在抓取网页内容时的提取深度。
++
++```env
++TAVILY_EXTRACT_DEPTH=basic
++```
++
++支持的值：
++
++* `basic`: 提取标题、正文摘要等基础信息；
++* `advanced`: 提取网页的结构化信息、列表、图表等更多内容。
++
++---
++
+ ## `SEARXNG_URL`
+ 
+ SearXNG 实例的 URL 地址，这是启用联网搜索功能的必要配置。例如：
 diff --git a/src/server/services/search/impls/anspire/index.ts b/src/server/services/search/impls/anspire/index.ts
 new file mode 100644
 index 0000000000000..7745ee0973112
