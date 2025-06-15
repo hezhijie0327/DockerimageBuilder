@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 2.2.4
+# Current Version: 2.2.5
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -15,6 +15,7 @@ export LIBEXPAT_VERSION_FIXED=""
 export LIBHIREDIS_VERSION_FIXED=""
 export LIBMNL_VERSION_FIXED=""
 export LIBNGHTTP2_VERSION_FIXED=""
+export LIBNGTCP2_VERSION_FIXED=""
 export LIBSODIUM_VERSION_FIXED=""
 export LOBECHAT_VERSION_FIXED=""
 export MINIO_VERSION_FIXED=""
@@ -41,6 +42,7 @@ function GetLatestVersion() {
     LIBHIREDIS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/redis/hiredis/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "rc" | tail -n 1 | sed "s/refs\/tags\/v//")
     LIBMNL_VERSION=$(curl -s --connect-timeout 15 "https://git.netfilter.org/libmnl/log" | grep 'release' | cut -d '<' -f 6 | cut -d ' ' -f 4 | head -n 1)
     LIBNGHTTP2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nghttp2/nghttp2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    LIBNGTCP2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/ngtcp2/ngtcp2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     LIBSODIUM_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jedisct1/libsodium/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | grep "\-RELEASE" | tail -n 1 | sed "s/refs\/tags\///;s/-RELEASE//")
     LOBECHAT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lobehub/lobe-chat/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     MINIO_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/minio/minio/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/RELEASE\." | tail -n 1 | sed "s/refs\/tags\/RELEASE\.//")
@@ -69,6 +71,7 @@ function GenerateReplacements() {
         "s/{LIBHIREDIS_VERSION}/${LIBHIREDIS_VERSION_FIXED:-${LIBHIREDIS_VERSION}}/g"
         "s/{LIBMNL_VERSION}/${LIBMNL_VERSION_FIXED:-${LIBMNL_VERSION}}/g"
         "s/{LIBNGHTTP2_VERSION}/${LIBNGHTTP2_VERSION_FIXED:-${LIBNGHTTP2_VERSION}}/g"
+        "s/{LIBNGTCP2_VERSION}/${LIBNGTCP2_VERSION_FIXED:-${LIBNGTCP2_VERSION}}/g"
         "s/{LIBSODIUM_VERSION}/${LIBSODIUM_VERSION_FIXED:-${LIBSODIUM_VERSION}}/g"
         "s/{LOBECHAT_VERSION}/${LOBECHAT_VERSION_FIXED:-${LOBECHAT_VERSION}}/g"
         "s/{MINIO_VERSION}/${MINIO_VERSION_FIXED:-${MINIO_VERSION}}/g"
