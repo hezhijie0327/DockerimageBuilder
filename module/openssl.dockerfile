@@ -1,4 +1,4 @@
-# Current Version: 1.1.2
+# Current Version: 1.1.3
 
 ARG GCC_VERSION="14"
 
@@ -29,7 +29,7 @@ RUN \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
     && ldconfig --verbose \
-    && ./config --prefix="$PREFIX/OPENSSL" \
+    && ./config --prefix="$PREFIX/OPENSSL" --static enable-ktls enable-quic \
     && make -j $(nproc) \
     && make install_sw
 
