@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 2.2.2
+# Current Version: 2.2.3
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -18,7 +18,6 @@ export LIBMNL_VERSION_FIXED=""
 export LIBNGHTTP2_VERSION_FIXED=""
 export LIBSODIUM_VERSION_FIXED=""
 export LOBECHAT_VERSION_FIXED=""
-export MCPHUB_VERSION_FIXED=""
 export MINIO_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
 export QBITTORRENT_VERSION_FIXED=""
@@ -46,7 +45,6 @@ function GetLatestVersion() {
     LIBNGHTTP2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/nghttp2/nghttp2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     LIBSODIUM_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jedisct1/libsodium/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | grep "\-RELEASE" | tail -n 1 | sed "s/refs\/tags\///;s/-RELEASE//")
     LOBECHAT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lobehub/lobe-chat/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
-    MCPHUB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/samanhappy/mcphub/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     MINIO_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/minio/minio/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/RELEASE\." | tail -n 1 | sed "s/refs\/tags\/RELEASE\.//")
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
@@ -76,7 +74,6 @@ function GenerateReplacements() {
         "s/{LIBNGHTTP2_VERSION}/${LIBNGHTTP2_VERSION_FIXED:-${LIBNGHTTP2_VERSION}}/g"
         "s/{LIBSODIUM_VERSION}/${LIBSODIUM_VERSION_FIXED:-${LIBSODIUM_VERSION}}/g"
         "s/{LOBECHAT_VERSION}/${LOBECHAT_VERSION_FIXED:-${LOBECHAT_VERSION}}/g"
-        "s/{MCPHUB_VERSION}/${MCPHUB_VERSION_FIXED:-${MCPHUB_VERSION}}/g"
         "s/{MINIO_VERSION}/${MINIO_VERSION_FIXED:-${MINIO_VERSION}}/g"
         "s/{OPENSSL_VERSION}/${OPENSSL_VERSION_FIXED:-${OPENSSL_VERSION}}/g"
         "s/{QBITTORRENT_VERSION}/${QBITTORRENT_VERSION_FIXED:-${QBITTORRENT_VERSION}}/g"
