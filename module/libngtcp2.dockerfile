@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG GCC_VERSION="14"
 
@@ -15,6 +15,8 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBNGTCP2" \
     && curl -Ls -o - $(cat "${WORKDIR}/libngtcp2.autobuild") | tar zxvf - --strip-components=1
 
+FROM ghcr.io/hezhijie0327/module:libnghttp3 AS build_libnghttp3
+
 FROM ghcr.io/hezhijie0327/module:openssl AS build_openssl
 
 FROM gcc:${GCC_VERSION} AS build_libngtcp2
@@ -22,6 +24,8 @@ FROM gcc:${GCC_VERSION} AS build_libngtcp2
 WORKDIR /libngtcp2
 
 COPY --from=get_info /tmp/BUILDTMP/LIBNGTCP2 /libngtcp2
+
+COPY --from=build_libnghttp3 / /BUILDLIB/
 
 COPY --from=build_openssl / /BUILDLIB/
 
