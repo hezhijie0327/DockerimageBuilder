@@ -1,4 +1,4 @@
-# Current Version: 1.1.6
+# Current Version: 1.1.7
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -36,6 +36,23 @@ ENV \
     PLAYWRIGHT_CORE="${PLAYWRIGHT_CORE}"
 
 WORKDIR /app
+
+RUN \
+    apt update \
+    && apt install \
+          fontconfig \
+          fonts-freefont-ttf \
+          fonts-gfs-neohellenic \
+          fonts-indic \
+          fonts-ipafont-gothic \
+          fonts-kacst \
+          fonts-liberation \
+          fonts-noto-cjk \
+          fonts-noto-color-emoji \
+          fonts-roboto \
+          fonts-thai-tlwg \
+          fonts-wqy-zenhei \
+          fonts-open-sans
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/assets /app/assets
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/bin /app/bin
