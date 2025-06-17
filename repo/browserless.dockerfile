@@ -1,4 +1,4 @@
-# Current Version: 1.1.8
+# Current Version: 1.1.9
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -65,7 +65,7 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /ap
 RUN \
     sed -i 's|Components: main|Components: main contrib non-free non-free-firmware|g' '/etc/apt/sources.list.d/debian.sources' \
     && apt update \
-    && apt install \
+    && apt install -qy \
           fontconfig \
           fonts-freefont-ttf \
           fonts-gfs-neohellenic \
@@ -109,7 +109,7 @@ COPY --from=build_browserless /distroless /
 
 COPY --from=build_browserless /app /app
 
-COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truetype/
+COPY --from=build_browserless /usr/share/fonts/ /usr/share/fonts/
 
 FROM scratch
 
