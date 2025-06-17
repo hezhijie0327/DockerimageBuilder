@@ -1,4 +1,4 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -70,7 +70,6 @@ RUN \
     && npm run build \
     && npm run build:function \
     && npm prune production \
-    && npm run install:debugger \
     && fc-cache -f -v \
     && apt-get -qq clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto
 
