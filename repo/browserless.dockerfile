@@ -1,4 +1,4 @@
-# Current Version: 1.1.7
+# Current Version: 1.1.8
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -37,23 +37,6 @@ ENV \
 
 WORKDIR /app
 
-RUN \
-    apt update \
-    && apt install \
-          fontconfig \
-          fonts-freefont-ttf \
-          fonts-gfs-neohellenic \
-          fonts-indic \
-          fonts-ipafont-gothic \
-          fonts-kacst \
-          fonts-liberation \
-          fonts-noto-cjk \
-          fonts-noto-color-emoji \
-          fonts-roboto \
-          fonts-thai-tlwg \
-          fonts-wqy-zenhei \
-          fonts-open-sans
-
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/assets /app/assets
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/bin /app/bin
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/extensions /app/extensions
@@ -71,13 +54,32 @@ RUN \
     npm i --production=false
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
 
 RUN \
-    rm -rf /app/src/routes
+    rm -rf /app/src/routes/
 
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management/
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}/
+
+RUN \
+    sed -i 's|Components: main|Components: main contrib non-free non-free-firmware|g' '/etc/apt/sources.list.d/debian.sources' \
+    && apt update \
+    && apt install \
+          fontconfig \
+          fonts-freefont-ttf \
+          fonts-gfs-neohellenic \
+          fonts-indic \
+          fonts-ipafont-gothic \
+          fonts-kacst \
+          fonts-liberation \
+          fonts-noto-cjk \
+          fonts-noto-color-emoji \
+          fonts-roboto \
+          fonts-thai-tlwg \
+          fonts-ubuntu \
+          fonts-wqy-zenhei \
+          fonts-open-sans
 
 RUN \
     if [ "${PLAYWRIGHT_CORE}" = "edge" ]; then \
