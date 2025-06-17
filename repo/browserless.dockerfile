@@ -1,4 +1,4 @@
-# Current Version: 1.1.9
+# Current Version: 1.2.0
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -63,25 +63,6 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/ro
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}/
 
 RUN \
-    sed -i 's|Components: main|Components: main contrib non-free non-free-firmware|g' '/etc/apt/sources.list.d/debian.sources' \
-    && apt update \
-    && apt install -qy \
-          fontconfig \
-          fonts-freefont-ttf \
-          fonts-gfs-neohellenic \
-          fonts-indic \
-          fonts-ipafont-gothic \
-          fonts-kacst \
-          fonts-liberation \
-          fonts-noto-cjk \
-          fonts-noto-color-emoji \
-          fonts-roboto \
-          fonts-thai-tlwg \
-          fonts-ubuntu \
-          fonts-wqy-zenhei \
-          fonts-open-sans
-
-RUN \
     if [ "${PLAYWRIGHT_CORE}" = "edge" ]; then \
         PLAYWRIGHT_CORE="msedge"; \
     fi \
@@ -109,7 +90,7 @@ COPY --from=build_browserless /distroless /
 
 COPY --from=build_browserless /app /app
 
-COPY --from=build_browserless /usr/share/fonts/ /usr/share/fonts/
+COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truetype/
 
 FROM scratch
 
