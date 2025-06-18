@@ -1,30 +1,18 @@
 diff --git a/package.json b/package.json
-index 4c31d65c6a6..52bb4dabdea 100644
+index 4c31d65c6a6..7331980b3e4 100644
 --- a/package.json
 +++ b/package.json
-@@ -67,9 +67,10 @@
-     "puppeteer-extra-plugin-stealth": "^2.11.2",
-     "queue": "^7.0.0",
+@@ -69,7 +69,7 @@
      "systeminformation": "^5.27.3",
--    "tar-fs": "^3.0.10"
-+    "tar-fs": "^3.0.10",
-+    "user-agents": "latest"
+     "tar-fs": "^3.0.10"
    },
 -  "optionalDependencies": {
 +  "devDependencies": {
      "@types/chai": "^5.2.2",
      "@types/debug": "^4.1.12",
      "@types/gradient-string": "^1.1.6",
-@@ -78,6 +79,7 @@
-     "@types/mocha": "^10.0.10",
-     "@types/node": "^24.0.3",
-     "@types/sinon": "^17.0.4",
-+    "@types/user-agents": "latest",
-     "@typescript-eslint/eslint-plugin": "^8.34.1",
-     "@typescript-eslint/parser": "^8.34.1",
-     "assert": "^2.0.0",
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..2817daca490 100644
+index 42ab7c3809c..ea7d3697c4c 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
 @@ -11,7 +11,11 @@ import {
@@ -39,17 +27,7 @@ index 42ab7c3809c..2817daca490 100644
  import { Duplex } from 'stream';
  import { EventEmitter } from 'events';
  import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-@@ -21,6 +25,9 @@ import path from 'path';
- import playwright from 'playwright-core';
- import puppeteerStealth from 'puppeteer-extra';
- 
-+// 引入随机 UA 生成库
-+import UserAgent from 'user-agents';
-+
- puppeteerStealth.use(StealthPlugin());
- 
- export class ChromiumCDP extends EventEmitter {
-@@ -173,7 +180,10 @@ export class ChromiumCDP extends EventEmitter {
+@@ -173,7 +177,10 @@ export class ChromiumCDP extends EventEmitter {
  
    public async launch({
      options,
@@ -60,7 +38,7 @@ index 42ab7c3809c..2817daca490 100644
    }: BrowserLauncherOptions): Promise<Browser> {
      this.port = await getPort();
      this.logger.info(`${this.constructor.name} got open port ${this.port}`);
-@@ -190,7 +200,11 @@ export class ChromiumCDP extends EventEmitter {
+@@ -190,7 +197,11 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
@@ -72,27 +50,7 @@ index 42ab7c3809c..2817daca490 100644
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
  
-@@ -214,11 +228,19 @@ export class ChromiumCDP extends EventEmitter {
-       }
-     }
- 
-+    // 生成随机桌面 UA
-+    const userAgent = new UserAgent([
-+      {
-+        deviceCategory: "desktop",
-+      },
-+    ]);
-+
-     const finalOptions = {
-       ...options,
-       args: [
-         `--remote-debugging-port=${this.port}`,
-         `--no-sandbox`,
-+        `--user-agent=${userAgent.data.userAgent}`, // 注入 UA
-         ...(options.args || []),
-         this.userDataDir ? `--user-data-dir=${this.userDataDir}` : '',
-       ].filter((_) => !!_),
-@@ -232,9 +254,12 @@ export class ChromiumCDP extends EventEmitter {
+@@ -232,9 +243,12 @@ export class ChromiumCDP extends EventEmitter {
        );
      }
  
