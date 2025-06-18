@@ -1,4 +1,4 @@
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -51,7 +51,9 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/tsconfig.json /app/tsconfig.json
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/startServer.cjs /app/startServer.cjs
 
 RUN \
-    npm i --production=false
+    corepack enable \
+    && corepack use pnpm \
+    && pnpm i
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
@@ -67,9 +69,9 @@ RUN \
         PLAYWRIGHT_CORE="msedge"; \
     fi \
     && ./node_modules/playwright-core/cli.js install --with-deps ${PLAYWRIGHT_CORE} \
-    && npm run build \
-    && npm run build:function \
-    && npm prune production \
+    && pnpm run build \
+    && pnpm run build:function \
+    && pnpm prune --prod \
     && fc-cache -f -v \
     && apt-get -qq clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto
 
