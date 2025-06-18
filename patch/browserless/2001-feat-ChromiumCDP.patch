@@ -1,5 +1,5 @@
 diff --git a/package.json b/package.json
-index 4c31d65c6a6..5c936c6c53e 100644
+index 4c31d65c6a6..681e5a30ab7 100644
 --- a/package.json
 +++ b/package.json
 @@ -14,7 +14,7 @@
@@ -7,19 +7,20 @@ index 4c31d65c6a6..5c936c6c53e 100644
    },
    "scripts": {
 -    "build": "npm run clean && npm run build:ts && npm run install:adblock && npm run build:schemas && npm run build:devtools && npm run build:openapi",
-+    "build": "npm run clean && npm run build:ts && npm run install:adblock && npm run install:adguard && npm run build:schemas && npm run build:devtools && npm run build:openapi",
++    "build": "npm run clean && npm run build:ts && npm run install:adblock && npm run install:adguard && npm run install:privacybadger && npm run build:schemas && npm run build:devtools && npm run build:openapi",
      "build:dev": "npm run build && npm run build:function && npm run install:debugger",
      "build:devtools": "node scripts/install-devtools.js",
      "build:function": "node scripts/build-function.js",
-@@ -24,6 +24,7 @@
+@@ -24,6 +24,8 @@
      "clean": "node scripts/clean.js",
      "dev": "npm run build:dev && env-cmd -f .env node build",
      "install:adblock": "node scripts/install-adblock.js",
 +    "install:adguard": "node scripts/install-adguard.js",
++    "install:privacybadger": "node scripts/install-privacy-badger.js",
      "install:debugger": "node scripts/install-debugger.js",
      "install:browsers": "node node_modules/playwright-core/cli.js install chromium firefox webkit msedge",
      "install:dev": "npm run install:browsers && npm run install:debugger",
-@@ -69,7 +70,7 @@
+@@ -69,7 +71,7 @@
      "systeminformation": "^5.27.3",
      "tar-fs": "^3.0.10"
    },
@@ -86,15 +87,70 @@ index 00000000000..bb300bd2dc4
 +    console.warn('Could not delete temporary download file: ' + err.message);
 +  });
 +})();
+diff --git a/scripts/install-privacy-badger.js b/scripts/install-privacy-badger.js
+new file mode 100644
+index 00000000000..fa792fa621c
+--- /dev/null
++++ b/scripts/install-privacy-badger.js
+@@ -0,0 +1,48 @@
++#!/usr/bin/env node
++/* global fetch, console, process */
++'use strict';
++
++import { createWriteStream, existsSync, mkdirSync } from 'fs';
++import path, { join } from 'path';
++import { Readable } from 'stream';
++import { deleteAsync } from 'del';
++import { moveFile } from 'move-file';
++import os from 'os';
++import unzip from 'extract-zip';
++
++(async () => {
++  const tmpDir = path.join(os.tmpdir(), '_ublite' + Date.now());
++
++  // Create temporary directory if it doesn't exist
++  if (!existsSync(tmpDir)) {
++    mkdirSync(tmpDir, { recursive: true });
++  }
++
++  const zipFile = tmpDir + '/privacy_badger.zip';
++  const tmpPrivacyBadgerPath = path.join(tmpDir);
++  const extensionsDir = join(process.cwd(), 'extensions');
++  const privacyBadgerDir = join(extensionsDir, 'privacy_badger');
++
++  const downloadUrlToDirectory = (url, dir) =>
++    fetch(url).then(
++      (response) =>
++        new Promise((resolve, reject) => {
++          // @ts-ignore
++          Readable.fromWeb(response.body)
++            .pipe(createWriteStream(dir))
++            .on('error', reject)
++            .on('finish', resolve);
++        }),
++    );
++
++  if (existsSync(privacyBadgerDir)) {
++    await deleteAsync(privacyBadgerDir);
++  }
++
++  await downloadUrlToDirectory('https://www.eff.org/files/privacy_badger-chrome.crx', zipFile);
++  await unzip(zipFile, { dir: tmpDir });
++  await moveFile(join(tmpPrivacyBadgerPath), join(extensionsDir, 'privacy_badger'));
++  await deleteAsync(zipFile, { force: true }).catch((err) => {
++    console.warn('Could not delete temporary download file: ' + err.message);
++  });
++})();
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..ce0a980a19b 100644
+index 42ab7c3809c..786ee19cd8c 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -9,9 +9,14 @@ import {
+@@ -9,9 +9,15 @@ import {
    edgeExecutablePath,
    noop,
    once,
 +  adGuardPath,
++  privacyBadgerPath,
    ublockLitePath,
  } from '@browserless.io/browserless';
 +/*
@@ -105,7 +161,7 @@ index 42ab7c3809c..ce0a980a19b 100644
  import { Duplex } from 'stream';
  import { EventEmitter } from 'events';
  import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-@@ -173,7 +178,10 @@ export class ChromiumCDP extends EventEmitter {
+@@ -173,7 +179,10 @@ export class ChromiumCDP extends EventEmitter {
  
    public async launch({
      options,
@@ -116,7 +172,7 @@ index 42ab7c3809c..ce0a980a19b 100644
    }: BrowserLauncherOptions): Promise<Browser> {
      this.port = await getPort();
      this.logger.info(`${this.constructor.name} got open port ${this.port}`);
-@@ -190,7 +198,12 @@ export class ChromiumCDP extends EventEmitter {
+@@ -190,7 +199,13 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
@@ -125,11 +181,12 @@ index 42ab7c3809c..ce0a980a19b 100644
        this.blockAds ? ublockLitePath : null,
 +      */
 +      adGuardPath,
++      privacyBadgerPath,
 +      ublockLitePath,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
  
-@@ -232,9 +245,12 @@ export class ChromiumCDP extends EventEmitter {
+@@ -232,9 +247,12 @@ export class ChromiumCDP extends EventEmitter {
        );
      }
  
@@ -143,10 +200,10 @@ index 42ab7c3809c..ce0a980a19b 100644
      this.logger.info(
        finalOptions,
 diff --git a/src/utils.ts b/src/utils.ts
-index a8146cd32de..607c0347b3e 100644
+index a8146cd32de..a5bee693d72 100644
 --- a/src/utils.ts
 +++ b/src/utils.ts
-@@ -905,6 +905,13 @@ export const getCDPClient = (page: Page): CDPSession => {
+@@ -905,6 +905,20 @@ export const getCDPClient = (page: Page): CDPSession => {
    return typeof c === 'function' ? c.call(page) : c;
  };
  
@@ -155,6 +212,13 @@ index a8146cd32de..607c0347b3e 100644
 +  '..',
 +  'extensions',
 +  'adguard',
++);
++
++export const privacyBadgerPath = path.join(
++  __dirname,
++  '..',
++  'extensions',
++  'privacy_badger',
 +);
 +
  export const ublockLitePath = path.join(
