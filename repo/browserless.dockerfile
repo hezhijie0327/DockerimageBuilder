@@ -1,4 +1,4 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
 ARG NODEJS_VERSION="22"
 ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
@@ -73,6 +73,7 @@ RUN \
     && pnpm run build:function \
     && pnpm prune --prod \
     && fc-cache -f -v \
+    && rm -rf /app/extensions/ublocklite/*.zip \
     && apt-get -qq clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto
 
 RUN \
