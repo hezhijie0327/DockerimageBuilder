@@ -1,5 +1,5 @@
 diff --git a/package.json b/package.json
-index 4c31d65c6a6..912f66aa5d8 100644
+index 4c31d65c6a6..52bb4dabdea 100644
 --- a/package.json
 +++ b/package.json
 @@ -67,9 +67,10 @@
@@ -8,7 +8,7 @@ index 4c31d65c6a6..912f66aa5d8 100644
      "systeminformation": "^5.27.3",
 -    "tar-fs": "^3.0.10"
 +    "tar-fs": "^3.0.10",
-+    "user-agents": "^1.1.574"
++    "user-agents": "latest"
    },
 -  "optionalDependencies": {
 +  "devDependencies": {
@@ -19,35 +19,41 @@ index 4c31d65c6a6..912f66aa5d8 100644
      "@types/mocha": "^10.0.10",
      "@types/node": "^24.0.3",
      "@types/sinon": "^17.0.4",
-+    "@types/user-agents": "^1.0.4",
++    "@types/user-agents": "latest",
      "@typescript-eslint/eslint-plugin": "^8.34.1",
      "@typescript-eslint/parser": "^8.34.1",
      "assert": "^2.0.0",
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..3a79d1fddc7 100644
+index 42ab7c3809c..1ebf6b6a906 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -21,6 +21,8 @@ import path from 'path';
+@@ -21,6 +21,9 @@ import path from 'path';
  import playwright from 'playwright-core';
  import puppeteerStealth from 'puppeteer-extra';
  
++// 引入随机 UA 生成库
 +import UserAgent from 'user-agents';
 +
  puppeteerStealth.use(StealthPlugin());
  
  export class ChromiumCDP extends EventEmitter {
-@@ -214,11 +216,14 @@ export class ChromiumCDP extends EventEmitter {
+@@ -214,11 +217,19 @@ export class ChromiumCDP extends EventEmitter {
        }
      }
  
-+    const userAgent = new UserAgent();
++    // 生成随机桌面 UA
++    const userAgent = new UserAgent([
++      {
++        deviceCategory: "desktop",
++      },
++    ]);
 +
      const finalOptions = {
        ...options,
        args: [
          `--remote-debugging-port=${this.port}`,
          `--no-sandbox`,
-+        `--user-agent=${userAgent.data.userAgent}`,
++        `--user-agent=${userAgent.data.userAgent}`, // 注入 UA
          ...(options.args || []),
          this.userDataDir ? `--user-data-dir=${this.userDataDir}` : '',
        ].filter((_) => !!_),
