@@ -1,7 +1,6 @@
-# Current Version: 1.2.3
+# Current Version: 1.2.4
 
 ARG NODEJS_VERSION="22"
-ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -24,16 +23,13 @@ RUN \
     && export BROWSERLESS_CUSTOM_VERSION="${BROWSERLESS_VERSION}-ZHIJIE-${BROWSERLESS_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/BROWSERLESS" \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/browserless/*.patch \
-    && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${BROWSERLESS_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/BROWSERLESS/package.json"
+    && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${BROWSERLESS_CUSTOM_VERSION}\"/g;s/optionalDependencies/devDependencies/g" "${WORKDIR}/BUILDTMP/BROWSERLESS/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_browserless
 
-ARG PLAYWRIGHT_CORE
-
 ENV \
     DEBIAN_FRONTEND="noninteractive" \
-    PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers" \
-    PLAYWRIGHT_CORE="${PLAYWRIGHT_CORE}"
+    PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers"
 
 WORKDIR /app
 
@@ -62,13 +58,10 @@ RUN \
     rm -rf /app/src/routes/
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}/
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/chromium /app/src/routes/chromium/
 
 RUN \
-    if [ "${PLAYWRIGHT_CORE}" = "edge" ]; then \
-        PLAYWRIGHT_CORE="msedge"; \
-    fi \
-    && ./node_modules/playwright-core/cli.js install --with-deps ${PLAYWRIGHT_CORE} \
+    ./node_modules/playwright-core/cli.js install --with-deps chromium \
     && pnpm run build \
     && pnpm run build:function \
     && pnpm prune --prod \
