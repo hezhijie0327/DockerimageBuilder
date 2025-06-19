@@ -1,151 +1,12 @@
-diff --git a/package.json b/package.json
-index 7f49f4ce766..59925d0856e 100644
---- a/package.json
-+++ b/package.json
-@@ -14,7 +14,7 @@
-     "browserless": "./bin/browserless.js"
-   },
-   "scripts": {
--    "build": "npm run clean && npm run build:ts && npm run install:adblock && npm run build:schemas && npm run build:devtools && npm run build:openapi",
-+    "build": "npm run clean && npm run build:ts && npm run install:adblock && npm run install:adguard && npm run install:ghostery && npm run build:schemas && npm run build:devtools && npm run build:openapi",
-     "build:dev": "npm run build && npm run build:function && npm run install:debugger",
-     "build:devtools": "node scripts/install-devtools.js",
-     "build:function": "node scripts/build-function.js",
-@@ -24,6 +24,8 @@
-     "clean": "node scripts/clean.js",
-     "dev": "npm run build:dev && env-cmd -f .env node build",
-     "install:adblock": "node scripts/install-adblock.js",
-+    "install:adguard": "node scripts/install-adguard.js",
-+    "install:ghostery": "node scripts/install-ghostery.js",
-     "install:debugger": "node scripts/install-debugger.js",
-     "install:browsers": "node node_modules/playwright-core/cli.js install chromium firefox webkit msedge",
-     "install:dev": "npm run install:browsers && npm run install:debugger",
-diff --git a/scripts/install-adguard.js b/scripts/install-adguard.js
-new file mode 100644
-index 00000000000..96906dedebd
---- /dev/null
-+++ b/scripts/install-adguard.js
-@@ -0,0 +1,52 @@
-+#!/usr/bin/env node
-+/* global fetch, console, process */
-+'use strict';
-+
-+import { createWriteStream, existsSync, mkdirSync } from 'fs';
-+import path, { join } from 'path';
-+import { Readable } from 'stream';
-+import { deleteAsync } from 'del';
-+import { moveFile } from 'move-file';
-+import os from 'os';
-+import unzip from 'extract-zip';
-+
-+(async () => {
-+  const tmpDir = path.join(os.tmpdir(), '_ublite' + Date.now());
-+
-+  // Create temporary directory if it doesn't exist
-+  if (!existsSync(tmpDir)) {
-+    mkdirSync(tmpDir, { recursive: true });
-+  }
-+
-+  const zipFile = tmpDir + '/adguard.zip';
-+  const tmpAdGuardPath = path.join(tmpDir);
-+  const extensionsDir = join(process.cwd(), 'extensions');
-+  const adguardDir = join(extensionsDir, 'adguard');
-+
-+  const downloadUrlToDirectory = (url, dir) =>
-+    fetch(url).then(
-+      (response) =>
-+        new Promise((resolve, reject) => {
-+          // @ts-ignore
-+          Readable.fromWeb(response.body)
-+            .pipe(createWriteStream(dir))
-+            .on('error', reject)
-+            .on('finish', resolve);
-+        }),
-+    );
-+
-+  if (existsSync(adguardDir)) {
-+    await deleteAsync(adguardDir);
-+  }
-+  const data = await fetch(
-+    'https://api.github.com/repos/AdguardTeam/AdguardBrowserExtension/releases/latest',
-+  );
-+  const json = await data.json();
-+
-+  await downloadUrlToDirectory(json.assets[0].browser_download_url, zipFile);
-+  await unzip(zipFile, { dir: tmpDir });
-+  await moveFile(join(tmpAdGuardPath), join(extensionsDir, 'adguard'));
-+  await deleteAsync(zipFile, { force: true }).catch((err) => {
-+    console.warn('Could not delete temporary download file: ' + err.message);
-+  });
-+})();
-diff --git a/scripts/install-ghostery.js b/scripts/install-ghostery.js
-new file mode 100644
-index 00000000000..e67fe4ae873
---- /dev/null
-+++ b/scripts/install-ghostery.js
-@@ -0,0 +1,52 @@
-+#!/usr/bin/env node
-+/* global fetch, console, process */
-+'use strict';
-+
-+import { createWriteStream, existsSync, mkdirSync } from 'fs';
-+import path, { join } from 'path';
-+import { Readable } from 'stream';
-+import { deleteAsync } from 'del';
-+import { moveFile } from 'move-file';
-+import os from 'os';
-+import unzip from 'extract-zip';
-+
-+(async () => {
-+  const tmpDir = path.join(os.tmpdir(), '_ublite' + Date.now());
-+
-+  // Create temporary directory if it doesn't exist
-+  if (!existsSync(tmpDir)) {
-+    mkdirSync(tmpDir, { recursive: true });
-+  }
-+
-+  const zipFile = tmpDir + '/ghostery.zip';
-+  const tmpGhosteryPath = path.join(tmpDir);
-+  const extensionsDir = join(process.cwd(), 'extensions');
-+  const ghosteryDir = join(extensionsDir, 'ghostery');
-+
-+  const downloadUrlToDirectory = (url, dir) =>
-+    fetch(url).then(
-+      (response) =>
-+        new Promise((resolve, reject) => {
-+          // @ts-ignore
-+          Readable.fromWeb(response.body)
-+            .pipe(createWriteStream(dir))
-+            .on('error', reject)
-+            .on('finish', resolve);
-+        }),
-+    );
-+
-+  if (existsSync(ghosteryDir)) {
-+    await deleteAsync(ghosteryDir);
-+  }
-+  const data = await fetch(
-+    'https://api.github.com/repos/ghostery/ghostery-extension/releases/latest',
-+  );
-+  const json = await data.json();
-+
-+  await downloadUrlToDirectory(json.assets[0].browser_download_url, zipFile);
-+  await unzip(zipFile, { dir: tmpDir });
-+  await moveFile(join(tmpGhosteryPath), join(extensionsDir, 'ghostery'));
-+  await deleteAsync(zipFile, { force: true }).catch((err) => {
-+    console.warn('Could not delete temporary download file: ' + err.message);
-+  });
-+})();
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..73bac7663a7 100644
+index 42ab7c3809c..c2b36e41769 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -9,9 +9,15 @@ import {
+@@ -9,9 +9,14 @@ import {
    edgeExecutablePath,
    noop,
    once,
-+  adguardPath,
-+  ghosteryPath,
++  privacyBadgerPath,
    ublockLitePath,
  } from '@browserless.io/browserless';
 +/*
@@ -156,7 +17,7 @@ index 42ab7c3809c..73bac7663a7 100644
  import { Duplex } from 'stream';
  import { EventEmitter } from 'events';
  import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-@@ -173,7 +179,10 @@ export class ChromiumCDP extends EventEmitter {
+@@ -173,7 +178,10 @@ export class ChromiumCDP extends EventEmitter {
  
    public async launch({
      options,
@@ -167,7 +28,7 @@ index 42ab7c3809c..73bac7663a7 100644
    }: BrowserLauncherOptions): Promise<Browser> {
      this.port = await getPort();
      this.logger.info(`${this.constructor.name} got open port ${this.port}`);
-@@ -190,7 +199,13 @@ export class ChromiumCDP extends EventEmitter {
+@@ -190,7 +198,12 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
@@ -175,13 +36,12 @@ index 42ab7c3809c..73bac7663a7 100644
 +      忽略 blockAds 并强制启用 uBlock
        this.blockAds ? ublockLitePath : null,
 +      */
-+      adguardPath,
-+      ghosteryPath,
++      privacyBadgerPath,
 +      ublockLitePath,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
  
-@@ -232,9 +247,12 @@ export class ChromiumCDP extends EventEmitter {
+@@ -232,9 +245,12 @@ export class ChromiumCDP extends EventEmitter {
        );
      }
  
@@ -195,25 +55,18 @@ index 42ab7c3809c..73bac7663a7 100644
      this.logger.info(
        finalOptions,
 diff --git a/src/utils.ts b/src/utils.ts
-index a8146cd32de..f1869f0b94f 100644
+index a8146cd32de..90132003a33 100644
 --- a/src/utils.ts
 +++ b/src/utils.ts
-@@ -905,6 +905,20 @@ export const getCDPClient = (page: Page): CDPSession => {
+@@ -905,6 +905,13 @@ export const getCDPClient = (page: Page): CDPSession => {
    return typeof c === 'function' ? c.call(page) : c;
  };
  
-+export const adguardPath = path.join(
++export const privacyBadgerPath = path.join(
 +  __dirname,
 +  '..',
 +  'extensions',
-+  'adguard',
-+);
-+
-+export const ghosteryPath = path.join(
-+  __dirname,
-+  '..',
-+  'extensions',
-+  'ghostery',
++  'privacy_badger',
 +);
 +
  export const ublockLitePath = path.join(
