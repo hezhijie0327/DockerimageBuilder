@@ -1,4 +1,4 @@
-# Current Version: 1.2.7
+# Current Version: 1.2.8
 
 ARG NODEJS_VERSION="22"
 
@@ -77,7 +77,7 @@ RUN \
     && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
     && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
     && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
-    && cp /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
+    && cp -P /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
     && cp /usr/local/bin/node /distroless/bin/node \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
