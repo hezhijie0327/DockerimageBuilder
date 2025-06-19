@@ -1,4 +1,4 @@
-# Current Version: 1.2.5
+# Current Version: 1.2.6
 
 ARG NODEJS_VERSION="22"
 
@@ -23,9 +23,7 @@ RUN \
     && export BROWSERLESS_CUSTOM_VERSION="${BROWSERLESS_VERSION}-ZHIJIE-${BROWSERLESS_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/BROWSERLESS" \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/browserless/*.patch \
-    && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${BROWSERLESS_CUSTOM_VERSION}\"/g;s/optionalDependencies/devDependencies/g" "${WORKDIR}/BUILDTMP/BROWSERLESS/package.json" \
-    && wget https://www.eff.org/files/privacy_badger-chrome.crx \
-    && unzip privacy_badger-chrome.crx -d ${WORKDIR}/BUILDTMP/privacy_badger || true
+    && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${BROWSERLESS_CUSTOM_VERSION}\"/g;s/optionalDependencies/devDependencies/g" "${WORKDIR}/BUILDTMP/BROWSERLESS/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_browserless
 
@@ -69,8 +67,6 @@ RUN \
     && pnpm prune --prod \
     && fc-cache -f -v \
     && apt-get -qq clean && rm -rf /app/extensions/*/*.zip /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto
-
-COPY --from=get_info /tmp/BUILDTMP/privacy_badger /app/extensions/privacy_badger
 
 RUN \
     mkdir -p /distroless/bin /distroless/lib \
