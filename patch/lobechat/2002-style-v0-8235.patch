@@ -1,0 +1,259 @@
+diff --git a/src/app/[variants]/(main)/settings/llm/ProviderList/providers.tsx b/src/app/[variants]/(main)/settings/llm/ProviderList/providers.tsx
+index f1473092be352..beb45954e8ad6 100644
+--- a/src/app/[variants]/(main)/settings/llm/ProviderList/providers.tsx
++++ b/src/app/[variants]/(main)/settings/llm/ProviderList/providers.tsx
+@@ -35,6 +35,7 @@ import {
+   TaichuProviderCard,
+   TogetherAIProviderCard,
+   UpstageProviderCard,
++  V0ProviderCard,
+   VLLMProviderCard,
+   WenxinProviderCard,
+   XAIProviderCard,
+@@ -90,6 +91,7 @@ export const useProviderList = (): ProviderItem[] => {
+       SambaNovaProviderCard,
+       Search1APIProviderCard,
+       CohereProviderCard,
++      V0ProviderCard,
+       QiniuProviderCard,
+       QwenProviderCard,
+       WenxinProviderCard,
+diff --git a/src/config/aiModels/index.ts b/src/config/aiModels/index.ts
+index 9717367ab253a..7ef270f25d311 100644
+--- a/src/config/aiModels/index.ts
++++ b/src/config/aiModels/index.ts
+@@ -45,6 +45,7 @@ import { default as taichu } from './taichu';
+ import { default as tencentcloud } from './tencentcloud';
+ import { default as togetherai } from './togetherai';
+ import { default as upstage } from './upstage';
++import { default as v0 } from './v0';
+ import { default as vertexai } from './vertexai';
+ import { default as vllm } from './vllm';
+ import { default as volcengine } from './volcengine';
+@@ -119,6 +120,7 @@ export const LOBE_DEFAULT_MODEL_LIST = buildDefaultModelList({
+   tencentcloud,
+   togetherai,
+   upstage,
++  v0,
+   vertexai,
+   vllm,
+   volcengine,
+@@ -174,6 +176,7 @@ export { default as taichu } from './taichu';
+ export { default as tencentcloud } from './tencentcloud';
+ export { default as togetherai } from './togetherai';
+ export { default as upstage } from './upstage';
++export { default as v0 } from './v0';
+ export { default as vertexai } from './vertexai';
+ export { default as vllm } from './vllm';
+ export { default as volcengine } from './volcengine';
+diff --git a/src/config/aiModels/v0.ts b/src/config/aiModels/v0.ts
+new file mode 100644
+index 0000000000000..72ad57186bceb
+--- /dev/null
++++ b/src/config/aiModels/v0.ts
+@@ -0,0 +1,62 @@
++import { AIChatModelCard } from '@/types/aiModel';
++
++const v0ChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      vision: true,
++    },
++    contextWindowTokens: 512_000,
++    description:
++      'v0-1.5-lg 模型适用于高级思考或推理任务',
++    displayName: 'v0-1.5-lg',
++    enabled: true,
++    id: 'v0-1.5-lg',
++    maxOutput: 32_000,
++    pricing: {
++      input: 15,
++      output: 75,
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      vision: true,
++    },
++    contextWindowTokens: 128_000,
++    description:
++      'v0-1.5-md 模型适用于日常任务和用户界面（UI）生成',
++    displayName: 'v0-1.5-md',
++    enabled: true,
++    id: 'v0-1.5-md',
++    maxOutput: 32_000,
++    pricing: {
++      input: 3,
++      output: 15,
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      vision: true,
++    },
++    contextWindowTokens: 128_000,
++    description:
++      'v0-1.0-md 模型是通过 v0 API 提供服务的旧版模型',
++    displayName: 'v0-1.0-md',
++    id: 'v0-1.0-md',
++    maxOutput: 32_000,
++    pricing: {
++      input: 3,
++      output: 15,
++    },
++    type: 'chat',
++  },
++];
++
++export const allModels = [...v0ChatModels];
++
++export default allModels;
+diff --git a/src/config/llm.ts b/src/config/llm.ts
+index cdb88509a28f1..d58ce147195a5 100644
+--- a/src/config/llm.ts
++++ b/src/config/llm.ts
+@@ -165,6 +165,9 @@ export const getLLMConfig = () => {
+ 
+       ENABLED_MODELSCOPE: z.boolean(),
+       MODELSCOPE_API_KEY: z.string().optional(),
++
++      ENABLED_V0: z.boolean(),
++      V0_API_KEY: z.string().optional(),
+     },
+     runtimeEnv: {
+       API_KEY_SELECT_MODE: process.env.API_KEY_SELECT_MODE,
+@@ -328,6 +331,9 @@ export const getLLMConfig = () => {
+ 
+       ENABLED_MODELSCOPE: !!process.env.MODELSCOPE_API_KEY,
+       MODELSCOPE_API_KEY: process.env.MODELSCOPE_API_KEY,
++
++      ENABLED_V0: !!process.env.V0_API_KEY,
++      V0_API_KEY: process.env.V0_API_KEY,
+     },
+   });
+ };
+diff --git a/src/config/modelProviders/index.ts b/src/config/modelProviders/index.ts
+index eb2da9a34e296..3e3f837256b80 100644
+--- a/src/config/modelProviders/index.ts
++++ b/src/config/modelProviders/index.ts
+@@ -45,6 +45,7 @@ import TaichuProvider from './taichu';
+ import TencentcloudProvider from './tencentcloud';
+ import TogetherAIProvider from './togetherai';
+ import UpstageProvider from './upstage';
++import V0Provider from './v0';
+ import VertexAIProvider from './vertexai';
+ import VLLMProvider from './vllm';
+ import VolcengineProvider from './volcengine';
+@@ -83,6 +84,7 @@ export const LOBE_DEFAULT_MODEL_LIST: ChatModelCard[] = [
+   JinaProvider.chatModels,
+   SambaNovaProvider.chatModels,
+   CohereProvider.chatModels,
++  V0Provider.chatModels,
+   ZeroOneProvider.chatModels,
+   StepfunProvider.chatModels,
+   NovitaProvider.chatModels,
+@@ -139,6 +141,7 @@ export const DEFAULT_MODEL_PROVIDER_LIST = [
+   JinaProvider,
+   SambaNovaProvider,
+   CohereProvider,
++  V0Provider,
+   QwenProvider,
+   WenxinProvider,
+   TencentcloudProvider,
+@@ -218,6 +221,7 @@ export { default as TaichuProviderCard } from './taichu';
+ export { default as TencentCloudProviderCard } from './tencentcloud';
+ export { default as TogetherAIProviderCard } from './togetherai';
+ export { default as UpstageProviderCard } from './upstage';
++export { default as V0ProviderCard } from './v0';
+ export { default as VertexAIProviderCard } from './vertexai';
+ export { default as VLLMProviderCard } from './vllm';
+ export { default as VolcengineProviderCard } from './volcengine';
+diff --git a/src/config/modelProviders/v0.ts b/src/config/modelProviders/v0.ts
+new file mode 100644
+index 0000000000000..c7091fee1b577
+--- /dev/null
++++ b/src/config/modelProviders/v0.ts
+@@ -0,0 +1,17 @@
++import { ModelProviderCard } from '@/types/llm';
++
++const V0: ModelProviderCard = {
++  chatModels: [],
++  checkModel: 'v0-1.5-md',
++  description:
++    'Vercel 是一个面向开发者的平台，提供构建和部署 Web 应用所需的工具、工作流和基础设施，无需额外配置，即可更快速地完成开发与上线。',
++  id: 'vercel',
++  modelsUrl: 'https://vercel.com/docs/v0/api#models',
++  name: 'vercel',
++  settings: {
++    sdkType: 'openai',
++  },
++  url: 'https://v0.dev',
++};
++
++export default V0;
+diff --git a/src/libs/model-runtime/runtimeMap.ts b/src/libs/model-runtime/runtimeMap.ts
+index e119615f4f620..ad1be75c12a0b 100644
+--- a/src/libs/model-runtime/runtimeMap.ts
++++ b/src/libs/model-runtime/runtimeMap.ts
+@@ -43,6 +43,7 @@ import { LobeTaichuAI } from './taichu';
+ import { LobeTencentCloudAI } from './tencentcloud';
+ import { LobeTogetherAI } from './togetherai';
+ import { LobeUpstageAI } from './upstage';
++import { LobeV0AI } from './v0';
+ import { LobeVLLMAI } from './vllm';
+ import { LobeVolcengineAI } from './volcengine';
+ import { LobeWenxinAI } from './wenxin';
+@@ -97,6 +98,7 @@ export const providerRuntimeMap = {
+   tencentcloud: LobeTencentCloudAI,
+   togetherai: LobeTogetherAI,
+   upstage: LobeUpstageAI,
++  v0: LobeV0AI,
+   vllm: LobeVLLMAI,
+   volcengine: LobeVolcengineAI,
+   wenxin: LobeWenxinAI,
+diff --git a/src/libs/model-runtime/types/type.ts b/src/libs/model-runtime/types/type.ts
+index 4836b0b565000..e95f4b90a4673 100644
+--- a/src/libs/model-runtime/types/type.ts
++++ b/src/libs/model-runtime/types/type.ts
+@@ -67,6 +67,7 @@ export enum ModelProvider {
+   TencentCloud = 'tencentcloud',
+   TogetherAI = 'togetherai',
+   Upstage = 'upstage',
++  V0 = 'v0',
+   VLLM = 'vllm',
+   VertexAI = 'vertexai',
+   Volcengine = 'volcengine',
+diff --git a/src/libs/model-runtime/v0/index.ts b/src/libs/model-runtime/v0/index.ts
+new file mode 100644
+index 0000000000000..dc6a0c878cd8b
+--- /dev/null
++++ b/src/libs/model-runtime/v0/index.ts
+@@ -0,0 +1,10 @@
++import { ModelProvider } from '../types';
++import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
++
++export const LobeV0AI = createOpenAICompatibleRuntime({
++  baseURL: 'https://api.v0.dev/v1',
++  debug: {
++    chatCompletion: () => process.env.DEBUG_V0_CHAT_COMPLETION === '1',
++  },
++  provider: ModelProvider.V0,
++});
+diff --git a/src/types/user/settings/keyVaults.ts b/src/types/user/settings/keyVaults.ts
+index 935a14817b832..5609ac0948624 100644
+--- a/src/types/user/settings/keyVaults.ts
++++ b/src/types/user/settings/keyVaults.ts
+@@ -80,6 +80,7 @@ export interface UserKeyVaults extends SearchEngineKeyVaults {
+   tencentcloud?: OpenAICompatibleKeyVault;
+   togetherai?: OpenAICompatibleKeyVault;
+   upstage?: OpenAICompatibleKeyVault;
++  v0?: OpenAICompatibleKeyVault;
+   vertexai?: OpenAICompatibleKeyVault;
+   vllm?: OpenAICompatibleKeyVault;
+   volcengine?: OpenAICompatibleKeyVault;
