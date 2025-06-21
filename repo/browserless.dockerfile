@@ -1,4 +1,4 @@
-# Current Version: 1.3.1
+# Current Version: 1.3.2
 
 ARG NODEJS_VERSION="22"
 
@@ -70,7 +70,8 @@ RUN \
     && pnpm run build:function \
     && pnpm prune --prod \
     && fc-cache -f -v \
-    && jq 'map(.enabled = true)' /app/extensions/ublocklite/rulesets/ruleset-details.json \
+    && jq 'map(.enabled = true)' /app/extensions/ublocklite/rulesets/ruleset-details.json /app/extensions/ublocklite/rulesets/ruleset-details.json.patched \
+    && mv /app/extensions/ublocklite/rulesets/ruleset-details.json.patched /app/extensions/ublocklite/rulesets/ruleset-details.json \
     && jq '.declarative_net_request.rule_resources |= map(.enabled = true)' /app/extensions/ublocklite/manifest.json > /app/extensions/ublocklite/manifest.json.patched \
     && jq --argjson ids '["adguard-mobile", "adguard-spyware-url", "block-lan", "ublock-badware", "urlhaus-full", "dpollock-0", "stevenblack-hosts"]' '.declarative_net_request.rule_resources |= map(if .id as $id | ($ids | index($id)) then .enabled = false else . end)' /app/extensions/ublocklite/manifest.json.patched > /app/extensions/ublocklite/manifest.json \
     && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto
