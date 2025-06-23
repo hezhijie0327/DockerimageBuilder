@@ -1,8 +1,8 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..6ad579f4f6d 100644
+index 42ab7c3809c..e71eb502044 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -9,11 +9,15 @@ import {
+@@ -9,11 +9,14 @@ import {
    edgeExecutablePath,
    noop,
    once,
@@ -12,33 +12,27 @@ index 42ab7c3809c..6ad579f4f6d 100644
  import puppeteer, { Browser, Page, Target } from 'puppeteer-core';
  import { Duplex } from 'stream';
  import { EventEmitter } from 'events';
-+// 引入 adblocker 及 recaptcha 插件
++// 引入 adblocker 插件
 +import AdblockPlugin from 'puppeteer-extra-plugin-adblocker';
-+import RecaptchaPlugin from 'puppeteer-extra-plugin-recaptcha';
  import StealthPlugin from 'puppeteer-extra-plugin-stealth';
  import getPort from 'get-port';
  import httpProxy from 'http-proxy';
-@@ -21,6 +25,19 @@ import path from 'path';
- import playwright from 'playwright-core';
- import puppeteerStealth from 'puppeteer-extra';
+@@ -178,6 +181,14 @@ export class ChromiumCDP extends EventEmitter {
+     this.port = await getPort();
+     this.logger.info(`${this.constructor.name} got open port ${this.port}`);
  
-+// 启用 AdblockPlugin 插件，启用 blockTrackersAndAnnoyances 功能
-+puppeteerStealth.use(AdblockPlugin({
-+  blockTrackersAndAnnoyances: true,
-+  useCache: true,
-+}));
-+// 启用 RecaptchaPlugin 插件
-+puppeteerStealth.use(RecaptchaPlugin({
-+  provider: {
-+    id: '2captcha',
-+    token: process.env.TWOCAPTCHA_API_KEY || '',
-+  },
-+  visualFeedback: true,
-+}));
- puppeteerStealth.use(StealthPlugin());
- 
- export class ChromiumCDP extends EventEmitter {
-@@ -190,6 +207,8 @@ export class ChromiumCDP extends EventEmitter {
++    // stealth 模式下，启用 AdblockPlugin 插件，启用 blockTrackersAndAnnoyances 功能
++    if (this.blockAds) {
++      puppeteerStealth.use(AdblockPlugin({
++        blockTrackersAndAnnoyances: true,
++        useCache: true,
++      }));      
++    }
++
+     const extensionLaunchArgs = options.args?.find((a) =>
+       a.startsWith('--load-extension'),
+     );
+@@ -190,6 +201,8 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
