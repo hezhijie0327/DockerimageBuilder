@@ -1,4 +1,4 @@
-# Current Version: 1.3.5
+# Current Version: 1.3.6
 
 ARG NODEJS_VERSION="22"
 
@@ -52,7 +52,7 @@ RUN \
     corepack enable \
     && corepack use pnpm \
     && pnpm i \
-    && pnpm add puppeteer-extra-plugin-adblocker puppeteer-extra-plugin-recaptcha
+    && pnpm add puppeteer-extra-plugin-adblocker
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
