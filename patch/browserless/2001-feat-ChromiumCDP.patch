@@ -1,59 +1,24 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..c2b36e41769 100644
+index 42ab7c3809c..2135d92d0ca 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -9,9 +9,14 @@ import {
+@@ -9,6 +9,7 @@ import {
    edgeExecutablePath,
    noop,
    once,
 +  privacyBadgerPath,
    ublockLitePath,
  } from '@browserless.io/browserless';
-+/*
-+移除 puppeteer，修复 TS6133
  import puppeteer, { Browser, Page, Target } from 'puppeteer-core';
-+*/
-+import { Browser, Page, Target } from 'puppeteer-core';
- import { Duplex } from 'stream';
- import { EventEmitter } from 'events';
- import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-@@ -173,7 +178,10 @@ export class ChromiumCDP extends EventEmitter {
- 
-   public async launch({
-     options,
-+    /*
-+    移除 stealth，修复 TS6133
-     stealth,
-+    */
-   }: BrowserLauncherOptions): Promise<Browser> {
-     this.port = await getPort();
-     this.logger.info(`${this.constructor.name} got open port ${this.port}`);
-@@ -190,7 +198,12 @@ export class ChromiumCDP extends EventEmitter {
+@@ -190,6 +191,8 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
-+      /*
-+      忽略 blockAds 并强制启用 uBlock
++      // 引入 Privacy Badger 插件
++      this.blockAds ? privacyBadgerPath : null,
        this.blockAds ? ublockLitePath : null,
-+      */
-+      privacyBadgerPath,
-+      ublockLitePath,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
- 
-@@ -232,9 +245,12 @@ export class ChromiumCDP extends EventEmitter {
-       );
-     }
- 
-+    /* 忽略 stealth，强制开启 stealth 模式
-     const launch = stealth
-       ? puppeteerStealth.launch.bind(puppeteerStealth)
-       : puppeteer.launch.bind(puppeteer);
-+    */
-+    const launch = puppeteerStealth.launch.bind(puppeteerStealth);
- 
-     this.logger.info(
-       finalOptions,
 diff --git a/src/utils.ts b/src/utils.ts
 index a8146cd32de..90132003a33 100644
 --- a/src/utils.ts
