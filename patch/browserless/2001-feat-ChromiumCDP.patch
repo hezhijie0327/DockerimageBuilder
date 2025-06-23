@@ -1,8 +1,8 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..2135d92d0ca 100644
+index 42ab7c3809c..6ad579f4f6d 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -9,6 +9,7 @@ import {
+@@ -9,11 +9,15 @@ import {
    edgeExecutablePath,
    noop,
    once,
@@ -10,7 +10,35 @@ index 42ab7c3809c..2135d92d0ca 100644
    ublockLitePath,
  } from '@browserless.io/browserless';
  import puppeteer, { Browser, Page, Target } from 'puppeteer-core';
-@@ -190,6 +191,8 @@ export class ChromiumCDP extends EventEmitter {
+ import { Duplex } from 'stream';
+ import { EventEmitter } from 'events';
++// 引入 adblocker 及 recaptcha 插件
++import AdblockPlugin from 'puppeteer-extra-plugin-adblocker';
++import RecaptchaPlugin from 'puppeteer-extra-plugin-recaptcha';
+ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+ import getPort from 'get-port';
+ import httpProxy from 'http-proxy';
+@@ -21,6 +25,19 @@ import path from 'path';
+ import playwright from 'playwright-core';
+ import puppeteerStealth from 'puppeteer-extra';
+ 
++// 启用 AdblockPlugin 插件，启用 blockTrackersAndAnnoyances 功能
++puppeteerStealth.use(AdblockPlugin({
++  blockTrackersAndAnnoyances: true,
++  useCache: true,
++}));
++// 启用 RecaptchaPlugin 插件
++puppeteerStealth.use(RecaptchaPlugin({
++  provider: {
++    id: '2captcha',
++    token: process.env.TWOCAPTCHA_API_KEY || '',
++  },
++  visualFeedback: true,
++}));
+ puppeteerStealth.use(StealthPlugin());
+ 
+ export class ChromiumCDP extends EventEmitter {
+@@ -190,6 +207,8 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
