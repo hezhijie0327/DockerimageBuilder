@@ -1,5 +1,5 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..51225015336 100644
+index 42ab7c3809c..ce93291f02b 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
 @@ -9,11 +9,14 @@ import {
@@ -41,6 +41,44 @@ index 42ab7c3809c..51225015336 100644
        this.blockAds ? ublockLitePath : null,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
+@@ -214,11 +227,37 @@ export class ChromiumCDP extends EventEmitter {
+       }
+     }
+ 
++    const patchOptions = [
++      // 浏览器参数
++      '--no-default-browser-check',
++      '--no-first-run',
++
++      // 反检测增强
++      '--disable-blink-features=AutomationControlled',
++      '--disable-features=WebRTC',
++      '--disable-web-security',
++      '--exclude-switches=enable-automation',
++
++      // 性能优化
++      '--aggressive-cache-discard',
++      '--disable-gpu',
++      '--max_old_space_size=4096',
++      '--memory-pressure-off',
++
++      // 容器环境
++      '--disable-dev-shm-usage',
++      '--disable-setuid-sandbox',
++      '--no-zygote',
++      '--single-process',
++    ];
++
+     const finalOptions = {
+       ...options,
+       args: [
+         `--remote-debugging-port=${this.port}`,
+         `--no-sandbox`,
++        // 注入补充 Patch 参数
++        ...patchOptions,
+         ...(options.args || []),
+         this.userDataDir ? `--user-data-dir=${this.userDataDir}` : '',
+       ].filter((_) => !!_),
 diff --git a/src/utils.ts b/src/utils.ts
 index a8146cd32de..90132003a33 100644
 --- a/src/utils.ts
