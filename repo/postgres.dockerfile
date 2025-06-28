@@ -1,4 +1,4 @@
-# Current Version: 1.2.2
+# Current Version: 1.2.3
 
 ARG POSTGRES_VERSION="17"
 
@@ -40,7 +40,7 @@ RUN \
         clang${CLANG_VERSION}-static \
         llvm${CLANG_VERSION}-static \
         openssl-libs-static \
-        && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y
+    && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y
 
 FROM build_basic AS build_icu
 
