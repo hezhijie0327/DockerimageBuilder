@@ -1,4 +1,4 @@
-# Current Version: 1.1.4
+# Current Version: 1.1.5
 
 ARG POSTGRES_VERSION="17"
 
@@ -145,7 +145,7 @@ COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/
 
 RUN \
     sed -i "/postgis/d" "/docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh" \
-    && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_cron,pg_ivm,pg_search'/" "/usr/local/share/postgresql/postgresql.conf.sample" \
+    && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron'/" "/usr/local/share/postgresql/postgresql.conf.sample" \
     && echo "cron.database_name = 'postgres'" >> "/usr/local/share/postgresql/postgresql.conf.sample"
 
 FROM scratch
