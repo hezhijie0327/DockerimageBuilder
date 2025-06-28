@@ -1,4 +1,4 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
 ARG POSTGRES_VERSION="17"
 
@@ -98,55 +98,18 @@ RUN \
     && echo "trusted = true" >> vector.control \
     && make USE_PGXS=1 -j
 
-FROM build_basic AS build_pg_cron
-
-WORKDIR /tmp/BUILDTMP
-
-RUN \
-    export WORKDIR=$(pwd) \
-    && git clone -b "main" --depth 1 "https://github.com/citusdata/pg_cron.git" "${WORKDIR}/pg_cron" \
-    && cd "${WORKDIR}/pg_cron" \
-    && echo "trusted = true" >> pg_cron.control \
-    && make USE_PGXS=1 -j
-
-FROM build_basic AS build_pg_ivm
-
-WORKDIR /tmp/BUILDTMP
-
-RUN \
-    export WORKDIR=$(pwd) \
-    && git clone -b "main" --depth 1 "https://github.com/sraoss/pg_ivm.git" "${WORKDIR}/pg_ivm" \
-    && cd "${WORKDIR}/pg_ivm" \
-    && echo "trusted = true" >> pg_ivm.control \
-    && make USE_PGXS=1 -j
-
 FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_icu /icu/ /usr/local/
 
-COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.so /usr/local/lib/postgresql/
-COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/sql/*.sql /usr/local/share/postgresql/extension/
-
-COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.so /usr/local/lib/postgresql/
-COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/sql/*.sql /usr/local/share/postgresql/extension/
-
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.so /usr/local/lib/postgresql/
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.control /usr/local/share/postgresql/extension/
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/local/share/postgresql/extension/
 
-COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/docker/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh
-
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
-
-RUN \
-    sed -i "/postgis/d" "/docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh" \
-    && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron'/" "/usr/local/share/postgresql/postgresql.conf.sample" \
-    && echo "cron.database_name = 'postgres'" >> "/usr/local/share/postgresql/postgresql.conf.sample"
 
 FROM scratch
 
