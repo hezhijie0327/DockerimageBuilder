@@ -1,4 +1,4 @@
-# Current Version: 1.2.1
+# Current Version: 1.2.2
 
 ARG POSTGRES_VERSION="17"
 
@@ -16,7 +16,9 @@ RUN \
 FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
 
 ENV \
-    CLANG_VERSION="19"
+    CLANG_VERSION="19" \
+    PATH="/root/.cargo/bin:$PATH" \
+    PGX_HOME="/var/lib/postgresql"
 
 WORKDIR /tmp
 
@@ -37,7 +39,8 @@ RUN \
         clang${CLANG_VERSION}-libclang \
         clang${CLANG_VERSION}-static \
         llvm${CLANG_VERSION}-static \
-        openssl-libs-static
+        openssl-libs-static \
+        && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y
 
 FROM build_basic AS build_icu
 
@@ -58,32 +61,6 @@ RUN \
     && make -j $(nproc) \
     && make install
 
-FROM build_basic AS build_pg_search
-
-ARG \
-    POSTGRES_VERSION
-
-ENV \
-    PATH="/root/.cargo/bin:$PATH" \
-    PGX_HOME="/var/lib/postgresql" \
-    POSTGRES_VERSION="${POSTGRES_VERSION}" \
-    RUSTFLAGS="-C target-feature=-crt-static"
-
-COPY --from=build_icu /icu/ /usr/local/
-
-WORKDIR /tmp/BUILDTMP
-
-RUN \
-    export WORKDIR=$(pwd) \
-    && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y \
-    && git clone -b dev --depth 1 "https://github.com/paradedb/paradedb" "${WORKDIR}/paradedb" \
-    && cd paradedb \
-    && export PGRX_VERSION=$(cargo tree --depth 1 -i pgrx -p pg_search | head -n 1 | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/') \
-    && cargo install --locked cargo-pgrx --version "${PGRX_VERSION}" \
-    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
-    && cd pg_search \
-    && cargo pgrx package --features icu --pg-config "/usr/local/bin/pg_config"
-
 FROM build_basic AS build_pgvector
 
 ENV \
@@ -99,16 +76,64 @@ RUN \
     && echo "trusted = true" >> vector.control \
     && make OPTFLAGS="" USE_PGXS=1 -j
 
+FROM build_basic AS build_pgvectorscale
+
+ARG \
+    POSTGRES_VERSION
+
+ENV \
+    POSTGRES_VERSION="${POSTGRES_VERSION}" \
+    RUSTFLAGS="-C target-feature=-crt-static"
+
+WORKDIR /tmp/BUILDTMP
+
+RUN \
+    export WORKDIR=$(pwd) \
+    && git clone -b main --depth 1 "https://github.com/timescale/pgvectorscale" "${WORKDIR}/pgvectorscale" \
+    && cd pgvectorscale/pgvectorscale \
+    && if [ "$(uname -m)" = "x86_64" ]; then \
+        export RUSTFLAGS="-C target-feature=-crt-static,+avx2,+fma"; \
+    fi \
+    && cargo install --locked cargo-pgrx --version $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "pgrx") | .version') \
+    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
+    && cargo pgrx package --pg-config "/usr/local/bin/pg_config"
+
+FROM build_basic AS build_pg_search
+
+ARG \
+    POSTGRES_VERSION
+
+ENV \
+    POSTGRES_VERSION="${POSTGRES_VERSION}" \
+    RUSTFLAGS="-C target-feature=-crt-static"
+
+COPY --from=build_icu /icu/ /usr/local/
+
+WORKDIR /tmp/BUILDTMP
+
+RUN \
+    export WORKDIR=$(pwd) \
+    && git clone -b dev --depth 1 "https://github.com/paradedb/paradedb" "${WORKDIR}/paradedb" \
+    && cd paradedb \
+    && export PGRX_VERSION=$(cargo tree --depth 1 -i pgrx -p pg_search | head -n 1 | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/') \
+    && cargo install --locked cargo-pgrx --version "${PGRX_VERSION}" \
+    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
+    && cd pg_search \
+    && cargo pgrx package --features icu --pg-config "/usr/local/bin/pg_config"
+
 FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_custom_patch.sh
 
-COPY --from=build_icu /icu/ /usr/local/
-
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.so /usr/local/lib/postgresql/
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.control /usr/local/share/postgresql/extension/
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/local/share/postgresql/extension/
+
+COPY --from=build_pgvectorscale /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
+COPY --from=build_pgvectorscale /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
+
+COPY --from=build_icu /icu/ /usr/local/
 
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
