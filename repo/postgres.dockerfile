@@ -1,4 +1,4 @@
-# Current Version: 1.2.3
+# Current Version: 1.2.4
 
 ARG POSTGRES_VERSION="17"
 
@@ -74,7 +74,7 @@ RUN \
     && git clone -b "master" --depth 1 "https://github.com/pgvector/pgvector.git" "${WORKDIR}/pgvector" \
     && cd "${WORKDIR}/pgvector" \
     && echo "trusted = true" >> vector.control \
-    && make OPTFLAGS="" USE_PGXS=1 -j
+    && make USE_PGXS=1 -j
 
 FROM build_basic AS build_pgvectorscale
 
