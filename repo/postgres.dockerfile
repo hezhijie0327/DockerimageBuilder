@@ -1,4 +1,4 @@
-# Current Version: 1.1.8
+# Current Version: 1.1.9
 
 ARG POSTGRES_VERSION="17"
 
@@ -10,7 +10,8 @@ RUN \
     export WORKDIR=$(pwd) \
     && cat "/opt/package.json" | jq -Sr ".module.icu" > "${WORKDIR}/icu.json" \
     && cat "${WORKDIR}/icu.json" | jq -Sr ".version" \
-    && cat "${WORKDIR}/icu.json" | jq -Sr ".source" > "${WORKDIR}/icu.autobuild"
+    && cat "${WORKDIR}/icu.json" | jq -Sr ".source" > "${WORKDIR}/icu.autobuild" \
+    && git clone -b main --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
 
@@ -101,6 +102,7 @@ RUN \
 FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_custom_patch.sh
 
 COPY --from=build_icu /icu/ /usr/local/
 
