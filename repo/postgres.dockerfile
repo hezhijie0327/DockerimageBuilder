@@ -1,4 +1,4 @@
-# Current Version: 1.1.9
+# Current Version: 1.2.0
 
 ARG POSTGRES_VERSION="17"
 
@@ -11,7 +11,7 @@ RUN \
     && cat "/opt/package.json" | jq -Sr ".module.icu" > "${WORKDIR}/icu.json" \
     && cat "${WORKDIR}/icu.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/icu.json" | jq -Sr ".source" > "${WORKDIR}/icu.autobuild" \
-    && git clone -b main --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
+    && git clone -b main --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
 
