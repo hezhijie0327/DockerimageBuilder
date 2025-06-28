@@ -1,4 +1,4 @@
-# Current Version: 1.2.0
+# Current Version: 1.2.1
 
 ARG POSTGRES_VERSION="17"
 
@@ -97,7 +97,7 @@ RUN \
     && git clone -b "master" --depth 1 "https://github.com/pgvector/pgvector.git" "${WORKDIR}/pgvector" \
     && cd "${WORKDIR}/pgvector" \
     && echo "trusted = true" >> vector.control \
-    && make USE_PGXS=1 -j
+    && make OPTFLAGS="" USE_PGXS=1 -j
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
 
