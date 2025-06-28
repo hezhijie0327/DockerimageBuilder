@@ -10,9 +10,7 @@ set -Eeuo pipefail
 for DB in template1 "$POSTGRES_DB"; do
   echo "Loading extensions into $DB"
   psql -d "$DB" <<-'EOSQL'
-    # https://github.com/paradedb/paradedb
     CREATE EXTENSION IF NOT EXISTS pg_search;
-    # https://github.com/pgvector/pgvector
     CREATE EXTENSION IF NOT EXISTS vector;
 EOSQL
 done
