@@ -1,46 +1,68 @@
 diff --git a/searx/engines/pubmed.py b/searx/engines/pubmed.py
-index be934cdc8d9..6a69c874bd2 100644
+index be934cdc8d9..71cca8a6a41 100644
 --- a/searx/engines/pubmed.py
 +++ b/searx/engines/pubmed.py
-@@ -29,8 +29,10 @@
+@@ -29,9 +29,8 @@
  
  categories = ['science', 'scientific publications']
  
-+api_key = ''
- base_url = (
+-base_url = (
 -    'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi' + '?db=pubmed&{query}&retstart={offset}&retmax={hits}'
-+    'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi'
-+    + '?db=pubmed&{query}&retstart={offset}&retmax={hits}&api_key={api_key}'
- )
+-)
++api_key = ''
++base_url = 'https://eutils.ncbi.nlm.nih.gov'
  
  # engine dependent config
-@@ -43,6 +45,7 @@ def request(query, params):
+ number_of_results = 10
+@@ -43,12 +42,16 @@ def request(query, params):
      offset = (params['pageno'] - 1) * number_of_results
  
      string_args = {
-+        'api_key': api_key,
-         'query': urlencode({'term': query}),
-         'offset': offset,
-         'hits': number_of_results,
-@@ -58,7 +61,8 @@ def response(resp):  # pylint: disable=too-many-locals
+-        'query': urlencode({'term': query}),
+-        'offset': offset,
+-        'hits': number_of_results,
++        'db': 'pubmed',
++        'term': query,
++        'retstart': offset,
++        'retmax': number_of_results,
+     }
  
-     # First retrieve notice of each result
-     pubmed_retrieve_api_url = (
+-    params['url'] = base_url.format(**string_args)
++    if api_key:
++        string_args['api_key'] = api_key
++
++    params['url'] = base_url + '/entrez/eutils/esearch.fcgi?' + urlencode(string_args)
+ 
+     return params
+ 
+@@ -56,11 +59,6 @@ def request(query, params):
+ def response(resp):  # pylint: disable=too-many-locals
+     results = []
+ 
+-    # First retrieve notice of each result
+-    pubmed_retrieve_api_url = (
 -        'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?' + 'db=pubmed&retmode=xml&id={pmids_string}'
-+        'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?'
-+        + 'db=pubmed&retmode=xml&id={pmids_string}&api_key={api_key}'
-     )
- 
+-    )
+-
      pmids_results = etree.XML(resp.content)
-@@ -68,7 +72,10 @@ def response(resp):  # pylint: disable=too-many-locals
+     pmids = pmids_results.xpath('//eSearchResult/IdList/Id')
+     pmids_string = ''
+@@ -68,9 +66,16 @@ def response(resp):  # pylint: disable=too-many-locals
      for item in pmids:
          pmids_string += item.text + ','
  
 -    retrieve_notice_args = {'pmids_string': pmids_string}
 +    retrieve_notice_args = {
-+        'api_key': api_key,
-+        'pmids_string': pmids_string,
++        'db': 'pubmed',
++        'id': pmids_string,
++        'retmode': 'xml',
 +    }
++
++    if api_key:
++        retrieve_notice_args['api_key'] = api_key
  
-     retrieve_url_encoded = pubmed_retrieve_api_url.format(**retrieve_notice_args)
+-    retrieve_url_encoded = pubmed_retrieve_api_url.format(**retrieve_notice_args)
++    retrieve_url_encoded = base_url + '/entrez/eutils/efetch.fcgi?' + urlencode(retrieve_notice_args)
  
+     search_results_response = get(retrieve_url_encoded).content
+     search_results = etree.XML(search_results_response)
