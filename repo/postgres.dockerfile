@@ -1,4 +1,4 @@
-# Current Version: 1.2.4
+# Current Version: 1.2.5
 
 ARG POSTGRES_VERSION="17"
 
@@ -89,7 +89,7 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
-    && git clone -b main --depth 1 "https://github.com/timescale/pgvectorscale" "${WORKDIR}/pgvectorscale" \
+    && git clone -b "main" --depth 1 "https://github.com/timescale/pgvectorscale" "${WORKDIR}/pgvectorscale" \
     && cd pgvectorscale/pgvectorscale \
     && if [ "$(uname -m)" = "x86_64" ]; then \
         export RUSTFLAGS="-C target-feature=-crt-static,+avx2,+fma"; \
@@ -113,7 +113,7 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
-    && git clone -b dev --depth 1 "https://github.com/paradedb/paradedb" "${WORKDIR}/paradedb" \
+    && git clone -b "main" --depth 1 "https://github.com/paradedb/paradedb" "${WORKDIR}/paradedb" \
     && cd paradedb \
     && export PGRX_VERSION=$(cargo tree --depth 1 -i pgrx -p pg_search | head -n 1 | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/') \
     && cargo install --locked cargo-pgrx --version "${PGRX_VERSION}" \
