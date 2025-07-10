@@ -1,0 +1,71 @@
+diff --git a/src/config/aiModels/xai.ts b/src/config/aiModels/xai.ts
+index 5a4b3522e8c3f..03e423ea3427b 100644
+--- a/src/config/aiModels/xai.ts
++++ b/src/config/aiModels/xai.ts
+@@ -2,6 +2,30 @@ import { AIChatModelCard } from '@/types/aiModel';
+ 
+ // https://docs.x.ai/docs/models
+ const xaiChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++    },
++    contextWindowTokens: 256_000,
++    description:
++      '我们最新最强大的旗舰模型，在自然语言处理、数学计算和推理方面表现卓越 —— 是一款完美的全能型选手。',
++    displayName: 'Grok 4 0709',
++    enabled: true,
++    id: 'grok-4-0709',
++    pricing: {
++      cachedInput: 0.75,
++      input: 3,
++      output: 15,
++    },
++    releasedAt: '2025-07-09',
++    settings: {
++      extendParams: ['reasoningEffort'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -11,7 +35,6 @@ const xaiChatModels: AIChatModelCard[] = [
+     description:
+       '旗舰级模型，擅长数据提取、编程和文本摘要等企业级应用，拥有金融、医疗、法律和科学等领域的深厚知识。',
+     displayName: 'Grok 3',
+-    enabled: true,
+     id: 'grok-3',
+     pricing: {
+       cachedInput: 0.75,
+diff --git a/src/libs/model-runtime/xai/index.ts b/src/libs/model-runtime/xai/index.ts
+index f8ce8023e9c90..ab60b43e3296a 100644
+--- a/src/libs/model-runtime/xai/index.ts
++++ b/src/libs/model-runtime/xai/index.ts
+@@ -7,6 +7,11 @@ export interface XAIModelCard {
+   id: string;
+ }
+ 
++export const GrokReasoningModels = new Set([
++  'grok-3-mini',
++  'grok-4-0709',
++]);
++
+ export const LobeXAI = createOpenAICompatibleRuntime({
+   baseURL: 'https://api.x.ai/v1',
+   chatCompletion: {
+@@ -15,9 +20,9 @@ export const LobeXAI = createOpenAICompatibleRuntime({
+ 
+       return {
+         ...rest,
+-        frequency_penalty: model.includes('grok-3-mini') ? undefined : frequency_penalty,
++        frequency_penalty: GrokReasoningModels.has(model) ? undefined : frequency_penalty,
+         model,
+-        presence_penalty: model.includes('grok-3-mini') ? undefined : presence_penalty,
++        presence_penalty: GrokReasoningModels.has(model) ? undefined : presence_penalty,
+         stream: true,
+         ...(enabledSearch && {
+           search_parameters: {
