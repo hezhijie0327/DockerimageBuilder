@@ -1,12 +1,13 @@
 diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
 new file mode 100644
-index 00000000000..77d67b272fd
+index 00000000000..7c716665311
 --- /dev/null
 +++ b/searx/plugins/advanced_search_syntax.py
-@@ -0,0 +1,412 @@
+@@ -0,0 +1,475 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Advanced search syntax plugin for SearXNG.
-+Supports site filtering, exact phrase matching, OR operations, word exclusion, and positional search."""
++Supports site filtering, exact phrase matching, &&/|| operations, word exclusion,
++positional search, and wildcard matching."""
 +
 +import typing
 +import re
@@ -27,13 +28,13 @@ index 00000000000..77d67b272fd
 +    Supports:
 +    - Site filtering: 'site:github.com' or '-site:spam.com'
 +    - Exact phrase matching: '"search phrase"'
-+    - OR operations: 'word1 OR word2'
++    - Logic operations: 'word1 && word2', 'word1 || word2'
 +    - Word exclusion: '-unwanted -"unwanted phrase"'
 +    - Positional search: 'intitle:keyword', 'inurl:keyword', 'intext:keyword'
++    - Wildcard matching: 'keyword*'
 +    """
 +
 +    id = "advanced_search_syntax"
-+    default_on = True
 +
 +    def __init__(self, plg_cfg: "PluginCfg") -> None:
 +        super().__init__(plg_cfg)
@@ -41,8 +42,8 @@ index 00000000000..77d67b272fd
 +            id=self.id,
 +            name=gettext("Advanced Search Syntax"),
 +            description=gettext(
-+                "Enhanced search with site filtering, exact phrases, OR operations, "
-+                "word exclusion, and positional search"
++                "Enhanced search with site filtering, exact phrases, &&/|| operations, "
++                "word exclusion, positional search, and wildcards"
 +            ),
 +            preference_section="general",
 +        )
@@ -54,6 +55,7 @@ index 00000000000..77d67b272fd
 +            'site_exclude': [],
 +            'exact_phrases': [],
 +            'or_groups': [],
++            'and_groups': [],
 +            'exclude_words': [],
 +            'exclude_phrases': [],
 +            'intitle_words': [],
@@ -61,6 +63,7 @@ index 00000000000..77d67b272fd
 +            'inurl_words': [],
 +            'intext_words': [],
 +            'intext_phrases': [],
++            'wildcard_terms': [],
 +            'remaining_terms': [],
 +        }
 +
@@ -155,23 +158,53 @@ index 00000000000..77d67b272fd
 +
 +        return query
 +
++    def _extract_wildcard_patterns(self, query: str, search_syntax: dict) -> str:
++        """Extract wildcard patterns from query."""
++        # Extract wildcard terms (words ending with *)
++        wildcard_matches = re.findall(r'(?:^|\s)(\w+\*)', query)
++        if wildcard_matches:
++            search_syntax['wildcard_terms'] = [term.strip() for term in wildcard_matches]
++            query = re.sub(r'(?:^|\s)\w+\*', ' ', query)
++
++        return query
++
++    def _extract_logic_patterns(self, query: str, search_syntax: dict) -> str:
++        """Extract && (AND) and || (OR) logical operations from query."""
++        # Extract || (OR) groups first (higher precedence in parsing)
++        # Pattern matches: word1 || word2 || word3 or word1||word2||word3
++        or_pattern = r'(\w+(?:\s*\|\|\s*\w+)+)'
++        or_matches = re.findall(or_pattern, query)
++        if or_matches:
++            for or_group in or_matches:
++                # Split by || and clean up whitespace
++                terms = [term.strip() for term in re.split(r'\s*\|\|\s*', or_group) if term.strip()]
++                if len(terms) > 1:  # Only add groups with multiple terms
++                    search_syntax['or_groups'].append(terms)
++            # Remove the matched OR patterns from query
++            query = re.sub(or_pattern, ' ', query)
++
++        # Extract && (AND) groups
++        # Pattern matches: word1 && word2 && word3 or word1&&word2&&word3
++        and_pattern = r'(\w+(?:\s*\&\&\s*\w+)+)'
++        and_matches = re.findall(and_pattern, query)
++        if and_matches:
++            for and_group in and_matches:
++                # Split by && and clean up whitespace
++                terms = [term.strip() for term in re.split(r'\s*\&\&\s*', and_group) if term.strip()]
++                if len(terms) > 1:  # Only add groups with multiple terms
++                    search_syntax['and_groups'].append(terms)
++            # Remove the matched AND patterns from query
++            query = re.sub(and_pattern, ' ', query)
++
++        return query
++
 +    def _extract_word_patterns(self, query: str, search_syntax: dict) -> str:
-+        """Extract excluded words and OR groups from query."""
++        """Extract excluded words from query."""
 +        # Extract excluded words (minus prefix)
 +        exclude_word_matches = re.findall(r'(?:^|\s)-([^\s"]+)', query)
 +        if exclude_word_matches:
 +            search_syntax['exclude_words'] = [word.strip() for word in exclude_word_matches]
 +            query = re.sub(r'(?:^|\s)-[^\s"]+', ' ', query)
-+
-+        # Extract OR groups
-+        or_pattern = r'(\w+(?:\s+OR\s+\w+)+)'
-+        or_matches = re.findall(or_pattern, query, re.IGNORECASE)
-+        if or_matches:
-+            for or_group in or_matches:
-+                # Split by OR and clean up
-+                terms = [term.strip() for term in re.split(r'\s+OR\s+', or_group, flags=re.IGNORECASE)]
-+                search_syntax['or_groups'].append(terms)
-+            query = re.sub(or_pattern, ' ', query, flags=re.IGNORECASE)
 +
 +        return query
 +
@@ -187,6 +220,8 @@ index 00000000000..77d67b272fd
 +        query = self._extract_site_patterns(query, search_syntax)
 +        query = self._extract_positional_patterns(query, search_syntax)
 +        query = self._extract_phrase_patterns(query, search_syntax)
++        query = self._extract_wildcard_patterns(query, search_syntax)
++        query = self._extract_logic_patterns(query, search_syntax)
 +        query = self._extract_word_patterns(query, search_syntax)
 +
 +        # Store remaining search terms
@@ -266,6 +301,20 @@ index 00000000000..77d67b272fd
 +        pattern = r'\b' + re.escape(word.lower()) + r'\b'
 +        return bool(re.search(pattern, text.lower()))
 +
++    def _text_contains_wildcard(self, text: str, wildcard_term: str) -> bool:
++        """Check if text matches wildcard pattern (case insensitive)."""
++        if not text or not wildcard_term:
++            return False
++
++        # Remove the * and create a prefix pattern
++        prefix = wildcard_term.rstrip('*').lower()
++        if not prefix:
++            return False
++
++        # Create regex pattern for word boundary + prefix
++        pattern = r'\b' + re.escape(prefix) + r'\w*'
++        return bool(re.search(pattern, text.lower()))
++
 +    def _check_positional_filters(self, result: Result, syntax: dict) -> bool:
 +        """Check if result matches positional search criteria."""
 +        # Get title, content, and URL
@@ -328,9 +377,19 @@ index 00000000000..77d67b272fd
 +            if not self._text_contains_phrase(search_text, exact_phrase):
 +                return False
 +
-+        # Check OR groups (at least one word from each group must be present)
++        # Check || (OR) groups (at least one word from each group must be present)
 +        for or_group in syntax['or_groups']:
 +            if not any(self._text_contains_word(search_text, word) for word in or_group):
++                return False
++
++        # Check && (AND) groups (all words from each group must be present)
++        for and_group in syntax['and_groups']:
++            if not all(self._text_contains_word(search_text, word) for word in and_group):
++                return False
++
++        # Check wildcard terms
++        for wildcard_term in syntax['wildcard_terms']:
++            if not self._text_contains_wildcard(search_text, wildcard_term):
 +                return False
 +
 +        # Check remaining terms (all must be present)
@@ -359,6 +418,7 @@ index 00000000000..77d67b272fd
 +                syntax['site_exclude'],
 +                syntax['exact_phrases'],
 +                syntax['or_groups'],
++                syntax['and_groups'],
 +                syntax['exclude_words'],
 +                syntax['exclude_phrases'],
 +                syntax['intitle_words'],
@@ -366,6 +426,7 @@ index 00000000000..77d67b272fd
 +                syntax['inurl_words'],
 +                syntax['intext_words'],
 +                syntax['intext_phrases'],
++                syntax['wildcard_terms'],
 +                syntax['remaining_terms'],
 +            ]
 +        )
@@ -408,8 +469,10 @@ index 00000000000..77d67b272fd
 +        content_filters_active = (
 +            syntax['exact_phrases']
 +            or syntax['or_groups']
++            or syntax['and_groups']
 +            or syntax['exclude_words']
 +            or syntax['exclude_phrases']
++            or syntax['wildcard_terms']
 +            or syntax['remaining_terms']
 +        )
 +        if content_filters_active and not self._check_content_filters(result, syntax):
