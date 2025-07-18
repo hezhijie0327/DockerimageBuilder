@@ -1,9 +1,9 @@
 diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
 new file mode 100644
-index 00000000000..7c716665311
+index 00000000000..47158264e42
 --- /dev/null
 +++ b/searx/plugins/advanced_search_syntax.py
-@@ -0,0 +1,475 @@
+@@ -0,0 +1,506 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Advanced search syntax plugin for SearXNG.
 +Supports site filtering, exact phrase matching, &&/|| operations, word exclusion,
@@ -65,6 +65,8 @@ index 00000000000..7c716665311
 +            'intext_phrases': [],
 +            'wildcard_terms': [],
 +            'remaining_terms': [],
++            'original_query': '',
++            'cleaned_query': '',
 +        }
 +
 +    def _extract_site_patterns(self, query: str, search_syntax: dict) -> str:
@@ -144,17 +146,17 @@ index 00000000000..7c716665311
 +
 +    def _extract_phrase_patterns(self, query: str, search_syntax: dict) -> str:
 +        """Extract exact phrases and excluded phrases from query."""
-+        # Extract exact phrases in quotes
-+        exact_phrase_matches = re.findall(r'"([^"]+)"', query)
-+        if exact_phrase_matches:
-+            search_syntax['exact_phrases'] = [phrase.strip() for phrase in exact_phrase_matches]
-+            query = re.sub(r'"[^"]+"', ' ', query)
-+
-+        # Extract excluded phrases (quoted with minus)
++        # Extract excluded phrases first (quoted with minus)
 +        exclude_phrase_matches = re.findall(r'-"([^"]+)"', query)
 +        if exclude_phrase_matches:
 +            search_syntax['exclude_phrases'] = [phrase.strip() for phrase in exclude_phrase_matches]
 +            query = re.sub(r'-"[^"]+"', ' ', query)
++
++        # Extract exact phrases in quotes (remaining quotes after excluding minus quotes)
++        exact_phrase_matches = re.findall(r'"([^"]+)"', query)
++        if exact_phrase_matches:
++            search_syntax['exact_phrases'] = [phrase.strip() for phrase in exact_phrase_matches]
++            query = re.sub(r'"[^"]+"', ' ', query)
 +
 +        return query
 +
@@ -200,34 +202,56 @@ index 00000000000..7c716665311
 +
 +    def _extract_word_patterns(self, query: str, search_syntax: dict) -> str:
 +        """Extract excluded words from query."""
-+        # Extract excluded words (minus prefix)
-+        exclude_word_matches = re.findall(r'(?:^|\s)-([^\s"]+)', query)
++        # Extract excluded words (minus prefix, but not site: or quoted phrases)
++        exclude_word_matches = re.findall(r'(?:^|\s)-((?!site:)[^\s"]+)', query)
 +        if exclude_word_matches:
 +            search_syntax['exclude_words'] = [word.strip() for word in exclude_word_matches]
-+            query = re.sub(r'(?:^|\s)-[^\s"]+', ' ', query)
++            query = re.sub(r'(?:^|\s)-((?!site:)[^\s"]+)', ' ', query)
 +
 +        return query
 +
++    def _clean_query(self, query: str) -> str:
++        """Clean up the query by removing extra spaces and normalizing."""
++        # Remove multiple consecutive spaces and strip
++        cleaned = re.sub(r'\s+', ' ', query).strip()
++        return cleaned
++
 +    def pre_search(self, request: SXNG_Request, search: "SearchWithPlugins") -> bool:
-+        """Parse the search query for advanced syntax patterns."""
++        """Parse the search query for advanced syntax patterns and modify the query sent to engines."""
 +        original_query = request.form.get('q', '')
-+        query = original_query
 +
 +        # Initialize storage for parsed elements
 +        search_syntax = self._initialize_search_syntax()
++        search_syntax['original_query'] = original_query
 +
-+        # Extract different pattern types
-+        query = self._extract_site_patterns(query, search_syntax)
-+        query = self._extract_positional_patterns(query, search_syntax)
-+        query = self._extract_phrase_patterns(query, search_syntax)
-+        query = self._extract_wildcard_patterns(query, search_syntax)
-+        query = self._extract_logic_patterns(query, search_syntax)
-+        query = self._extract_word_patterns(query, search_syntax)
++        # Process query to extract patterns
++        cleaned_query = original_query
++
++        # Extract different pattern types in order
++        cleaned_query = self._extract_site_patterns(cleaned_query, search_syntax)
++        cleaned_query = self._extract_positional_patterns(cleaned_query, search_syntax)
++        cleaned_query = self._extract_phrase_patterns(cleaned_query, search_syntax)
++        cleaned_query = self._extract_wildcard_patterns(cleaned_query, search_syntax)
++        cleaned_query = self._extract_logic_patterns(cleaned_query, search_syntax)
++        cleaned_query = self._extract_word_patterns(cleaned_query, search_syntax)
++
++        # Clean up the remaining query
++        cleaned_query = self._clean_query(cleaned_query)
 +
 +        # Store remaining search terms
-+        remaining_terms = [term.strip() for term in query.split() if term.strip()]
++        remaining_terms = [term.strip() for term in cleaned_query.split() if term.strip()]
 +        search_syntax['remaining_terms'] = remaining_terms
++        search_syntax['cleaned_query'] = cleaned_query
 +
++        # 关键修改：将清理后的查询设置为实际发送给搜索引擎的查询
++        # 同时保存原始查询用于UI显示
++        if hasattr(request, 'form') and 'q' in request.form:
++            # 保存原始查询，用于搜索框显示
++            request.original_query = original_query
++            # 修改实际发送给搜索引擎的查询
++            request.form['q'] = cleaned_query if cleaned_query else original_query
++
++        # Store parsed syntax for result filtering
 +        request.search_syntax = search_syntax
 +        return True
 +
@@ -479,3 +503,10 @@ index 00000000000..7c716665311
 +            return False
 +
 +        return True
++
++    def post_search(self, request: SXNG_Request, search: "SearchWithPlugins") -> None:
++        """Restore original query for UI display after search completion."""
++        # 如果有保存的原始查询，在搜索完成后恢复到form中
++        # 这样搜索框会显示用户输入的完整查询（包含高级语法）
++        if hasattr(request, 'original_query') and hasattr(request, 'form'):
++            request.form['q'] = request.original_query
