@@ -1,0 +1,70 @@
+diff --git a/searx/engines/google_pse.py b/searx/engines/google_pse.py
+new file mode 100644
+index 00000000000..267bd675489
+--- /dev/null
++++ b/searx/engines/google_pse.py
+@@ -0,0 +1,64 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""Google (Programable Search Engine) for SearXNG."""
++
++from urllib.parse import urlencode
++
++from searx.utils import html_to_text
++from searx.result_types import EngineResults, MainResult
++
++about = {
++    "website": 'https://www.google.com',
++    "wikidata_id": 'Q9366',
++    "official_api_documentation": 'https://developers.google.com/custom-search/v1/overview',
++    "use_official_api": True,
++    "require_api_key": True,
++    "results": 'JSON',
++}
++
++categories = ['general']
++
++paging = True
++results_per_page = 10
++
++safesearch = True
++time_range_support = True
++
++api_key = None
++engine_id = None
++
++time_range_dict = {'day': 'd1', 'week': 'w1', 'month': 'm1', 'year': 'y1'}
++
++base_url = "https://www.googleapis.com"
++
++
++def request(query, params):
++    query_params = {
++        "cx": engine_id,
++        "key": api_key,
++        "num": results_per_page,
++        "q": query,
++        "safe": 'active' if params['safesearch'] > 0 else 'off',
++        "start": ((params["pageno"] - 1) * results_per_page) + 1,
++    }
++
++    if time_range_dict.get(params['time_range']):
++        query_params["dateRestrict"] = time_range_dict.get(params['time_range'])
++
++    params['url'] = f'{base_url}/customsearch/v1?{urlencode(query_params)}'
++    return params
++
++
++def response(resp) -> EngineResults:
++    results = EngineResults()
++    search_results = resp.json()
++
++    for item in search_results.get('items', []):
++        results.add(
++            MainResult(
++                title=item.get('title'),
++                content=html_to_text(item.get('snippet')),
++                url=item.get('link'),
++            )
++        )
++
++    return results
