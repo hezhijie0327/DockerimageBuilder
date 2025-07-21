@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 2.2.7
+# Current Version: 2.2.8
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -24,7 +24,6 @@ export OPENSSL_VERSION_FIXED=""
 export QBITTORRENT_VERSION_FIXED=""
 export SEARXNG_VERSION_FIXED="1.0.0"
 export SIYUAN_VERSION_FIXED=""
-export SMARTDNS_VERSION_FIXED=""
 export UNBOUND_VERSION_FIXED=""
 export VALKEY_VERSION_FIXED=""
 export VAULTWARDEN_VERSION_FIXED=""
@@ -52,7 +51,6 @@ function GetLatestVersion() {
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     SEARXNG_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/searxng/searxng/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     SIYUAN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/siyuan-note/siyuan/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "\-dev" | tail -n 1 | sed "s/refs\/tags\/v//")
-    SMARTDNS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/pymumu/smartdns/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/Release" | grep -v "\-\|RC\|Special" | tail -n 1 | sed "s/refs\/tags\/Release//")
     UNBOUND_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/NLnetLabs/unbound/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "rc" | grep "^refs/tags/release\-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     VALKEY_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/valkey-io/valkey/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | grep -v "\-" | tail -n 1 | sed "s/refs\/tags\///")
     VAULTWARDEN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/dani-garcia/vaultwarden/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
@@ -82,7 +80,6 @@ function GenerateReplacements() {
         "s/{QBITTORRENT_VERSION}/${QBITTORRENT_VERSION_FIXED:-${QBITTORRENT_VERSION}}/g"
         "s/{SEARXNG_VERSION}/${SEARXNG_VERSION_FIXED:-${SEARXNG_VERSION}}/g"
         "s/{SIYUAN_VERSION}/${SIYUAN_VERSION_FIXED:-${SIYUAN_VERSION}}/g"
-        "s/{SMARTDNS_VERSION}/${SMARTDNS_VERSION_FIXED:-${SMARTDNS_VERSION}}/g"
         "s/{UNBOUND_VERSION}/${UNBOUND_VERSION_FIXED:-${UNBOUND_VERSION}}/g"
         "s/{VALKEY_VERSION}/${VALKEY_VERSION_FIXED:-${VALKEY_VERSION}}/g"
         "s/{VAULTWARDEN_VERSION}/${VAULTWARDEN_VERSION_FIXED:-${VAULTWARDEN_VERSION}}/g"
