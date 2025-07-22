@@ -1,0 +1,127 @@
+diff --git a/requirements.txt b/requirements.txt
+index 52cff1a4806..103bf76d0a5 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -19,3 +19,4 @@ tomli==2.2.1; python_version < '3.11'
+ msgspec==0.19.0
+ typer-slim==0.16.0
+ isodate==0.7.2
++whitenoise==6.9.0
+diff --git a/searx/webapp.py b/searx/webapp.py
+index cf7c5868004..120d5de43e1 100755
+--- a/searx/webapp.py
++++ b/searx/webapp.py
+@@ -30,6 +30,9 @@
+ 
+ from werkzeug.serving import is_running_from_reloader
+ 
++from whitenoise import WhiteNoise
++from whitenoise.base import Headers
++
+ import flask
+ 
+ from flask import (
+@@ -147,7 +150,7 @@
+ }
+ 
+ # Flask app
+-app = Flask(__name__, static_folder=settings['ui']['static_path'], template_folder=templates_path)
++app = Flask(__name__, static_folder=None, template_folder=templates_path)
+ 
+ app.jinja_env.trim_blocks = True
+ app.jinja_env.lstrip_blocks = True
+@@ -245,6 +248,7 @@ def custom_url_for(endpoint: str, **values):
+     if not _STATIC_FILES:
+         _STATIC_FILES = webutils.get_static_file_list()
+ 
++    # handled by WhiteNoise
+     if endpoint == "static" and values.get("filename"):
+ 
+         # We need to verify the "filename" argument: in the jinja templates
+@@ -257,9 +261,11 @@ def custom_url_for(endpoint: str, **values):
+         if arg_filename not in _STATIC_FILES:
+             # try file in the current theme
+             theme_name = sxng_request.preferences.get_value("theme")
+-            arg_filename = f"themes/{theme_name}/{arg_filename}"
+-            if arg_filename in _STATIC_FILES:
+-                values["filename"] = arg_filename
++            theme_filename = f"themes/{theme_name}/{arg_filename}"
++            if theme_filename in _STATIC_FILES:
++                values["filename"] = theme_filename
++
++        return f"/static/{values['filename']}"
+ 
+     if endpoint == "info" and "locale" not in values:
+ 
+@@ -1424,7 +1430,22 @@ def init():
+     favicons.init()
+ 
+ 
+-application = app
++def static_headers(headers: Headers, _path: str, _url: str) -> None:
++    headers['Cache-Control'] = 'public, max-age=30, stale-while-revalidate=60'
++
++    for header, value in settings['server']['default_http_headers'].items():
++        headers[header] = value
++
++
++app.wsgi_app = WhiteNoise(
++    app.wsgi_app,
++    root=settings['ui']['static_path'],
++    prefix="static",
++    max_age=None,
++    allow_all_origins=False,
++    add_headers_function=static_headers,
++)
++
+ patch_application(app)
+ init()
+ 
+diff --git a/utils/templates/etc/uwsgi/apps-archlinux/searxng.ini b/utils/templates/etc/uwsgi/apps-archlinux/searxng.ini
+index 3388e432f86..ddc7cb16039 100644
+--- a/utils/templates/etc/uwsgi/apps-archlinux/searxng.ini
++++ b/utils/templates/etc/uwsgi/apps-archlinux/searxng.ini
+@@ -75,7 +75,4 @@ pythonpath = ${SEARXNG_SRC}
+ http = ${SEARXNG_INTERNAL_HTTP}
+ buffer-size = 8192
+ 
+-# To serve the static files via the WSGI server
+-static-map = /static=${SEARXNG_STATIC}
+-static-gzip-all = True
+ offload-threads = %k
+diff --git a/utils/templates/etc/uwsgi/apps-archlinux/searxng.ini:socket b/utils/templates/etc/uwsgi/apps-archlinux/searxng.ini:socket
+index 4a55f0ab695..afe609aa632 100644
+--- a/utils/templates/etc/uwsgi/apps-archlinux/searxng.ini:socket
++++ b/utils/templates/etc/uwsgi/apps-archlinux/searxng.ini:socket
+@@ -72,7 +72,4 @@ pythonpath = ${SEARXNG_SRC}
+ socket = ${SEARXNG_UWSGI_SOCKET}
+ buffer-size = 8192
+ 
+-# To serve the static files via the WSGI server
+-static-map = /static=${SEARXNG_STATIC}
+-static-gzip-all = True
+ offload-threads = %k
+diff --git a/utils/templates/etc/uwsgi/apps-available/searxng.ini b/utils/templates/etc/uwsgi/apps-available/searxng.ini
+index e47c74abc96..80f49d89965 100644
+--- a/utils/templates/etc/uwsgi/apps-available/searxng.ini
++++ b/utils/templates/etc/uwsgi/apps-available/searxng.ini
+@@ -78,7 +78,4 @@ pythonpath = ${SEARXNG_SRC}
+ http = ${SEARXNG_INTERNAL_HTTP}
+ buffer-size = 8192
+ 
+-# To serve the static files via the WSGI server
+-static-map = /static=${SEARXNG_STATIC}
+-static-gzip-all = True
+ offload-threads = %k
+diff --git a/utils/templates/etc/uwsgi/apps-available/searxng.ini:socket b/utils/templates/etc/uwsgi/apps-available/searxng.ini:socket
+index fb96973ba19..3e65cabb96a 100644
+--- a/utils/templates/etc/uwsgi/apps-available/searxng.ini:socket
++++ b/utils/templates/etc/uwsgi/apps-available/searxng.ini:socket
+@@ -75,7 +75,4 @@ pythonpath = ${SEARXNG_SRC}
+ socket = ${SEARXNG_UWSGI_SOCKET}
+ buffer-size = 8192
+ 
+-# To serve the static files via the WSGI server
+-static-map = /static=${SEARXNG_STATIC}
+-static-gzip-all = True
+ offload-threads = %k
