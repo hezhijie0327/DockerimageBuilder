@@ -1,4 +1,4 @@
-# Current Version: 1.3.2
+# Current Version: 1.3.3
 
 ARG PYTHON_VERSION="3"
 
@@ -18,7 +18,7 @@ RUN \
     && git clone -b $(cat "${WORKDIR}/searxng.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/searxng.source.autobuild") "${WORKDIR}/BUILDTMP/SEARXNG" \
     && git clone -b $(cat "${WORKDIR}/searxng.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/searxng.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
     && export SEARXNG_SHA=$(cd "${WORKDIR}/BUILDTMP/SEARXNG" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
-    && export SEARXNG_VERSION=$(cat "${WORKDIR}/searxng.version.autobuild") \
+    && export SEARXNG_VERSION=$(date '+%Y.%m.%d') \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export SEARXNG_CUSTOM_VERSION="${SEARXNG_VERSION}-ZHIJIE-${SEARXNG_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/SEARXNG" \
