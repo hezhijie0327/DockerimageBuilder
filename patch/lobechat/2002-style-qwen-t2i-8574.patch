@@ -1,5 +1,5 @@
 diff --git a/src/config/aiModels/qwen.ts b/src/config/aiModels/qwen.ts
-index bdb30617a615b..e34ea73aba9b3 100644
+index bdb30617a615b..d1fc8e58a90b1 100644
 --- a/src/config/aiModels/qwen.ts
 +++ b/src/config/aiModels/qwen.ts
 @@ -958,8 +958,25 @@ const qwenChatModels: AIChatModelCard[] = [
@@ -30,7 +30,7 @@ index bdb30617a615b..e34ea73aba9b3 100644
      enabled: true,
      id: 'wanx2.1-t2i-turbo',
      organization: 'Qwen',
-@@ -974,6 +991,156 @@ const qwenImageModels: AIImageModelCard[] = [
+@@ -974,6 +991,164 @@ const qwenImageModels: AIImageModelCard[] = [
      releasedAt: '2025-01-08',
      type: 'image',
    },
@@ -63,6 +63,7 @@ index bdb30617a615b..e34ea73aba9b3 100644
 +      seed: { default: null },
 +      width: { default: 1024, max: 1440, min: 512, step: 1 },
 +    },
++    releasedAt: '2024-05-22',
 +    type: 'image',
 +  },
 +  {
@@ -77,11 +78,12 @@ index bdb30617a615b..e34ea73aba9b3 100644
 +      },
 +      seed: { default: null },
 +      size: {
-+        default: '1024x1024',
-+        enum: ['512x1024', '768x512', '768x1024', '1024x576', '576x1024', '1024x1024'],
++        default: '1024*1024',
++        enum: ['512*1024', '768*512', '768*1024', '1024*576', '576*1024', '1024*1024'],
 +      },
 +      steps: { default: 4, max: 12, min: 1 },
 +    },
++    releasedAt: '2024-08-07',
 +    type: 'image',
 +  },
 +  {
@@ -96,11 +98,12 @@ index bdb30617a615b..e34ea73aba9b3 100644
 +      },
 +      seed: { default: null },
 +      size: {
-+        default: '1024x1024',
-+        enum: ['512x1024', '768x512', '768x1024', '1024x576', '576x1024', '1024x1024'],
++        default: '1024*1024',
++        enum: ['512*1024', '768*512', '768*1024', '1024*576', '576*1024', '1024*1024'],
 +      },
 +      steps: { default: 50, max: 50, min: 1 },
 +    },
++    releasedAt: '2024-08-07',
 +    type: 'image',
 +  },
 +  {
@@ -115,11 +118,12 @@ index bdb30617a615b..e34ea73aba9b3 100644
 +      },
 +      seed: { default: null },
 +      size: {
-+        default: '1024x1024',
-+        enum: ['512x1024', '768x512', '768x1024', '1024x576', '576x1024', '1024x1024'],
++        default: '1024*1024',
++        enum: ['512*1024', '768*512', '768*1024', '1024*576', '576*1024', '1024*1024'],
 +      },
 +      steps: { default: 30, max: 30, min: 1 },
 +    },
++    releasedAt: '2024-08-22',
 +    type: 'image',
 +  },
 +  {
@@ -136,6 +140,7 @@ index bdb30617a615b..e34ea73aba9b3 100644
 +      steps: { default: 40, max: 500, min: 1 },
 +      width: { default: 1024, max: 1024, min: 512, step: 128 },
 +    },
++    releasedAt: '2024-10-25',
 +    type: 'image',
 +  },
 +  {
@@ -152,6 +157,7 @@ index bdb30617a615b..e34ea73aba9b3 100644
 +      steps: { default: 40, max: 500, min: 1 },
 +      width: { default: 1024, max: 1024, min: 512, step: 128 },
 +    },
++    releasedAt: '2024-10-25',
 +    type: 'image',
 +  },
 +  {
@@ -167,6 +173,7 @@ index bdb30617a615b..e34ea73aba9b3 100644
 +      steps: { default: 50, max: 500, min: 1 },
 +      width: { default: 1024, max: 1024, min: 512, step: 128 },
 +    },
++    releasedAt: '2024-04-09',
 +    type: 'image',
 +  },
 +  {
@@ -182,13 +189,14 @@ index bdb30617a615b..e34ea73aba9b3 100644
 +      steps: { default: 50, max: 500, min: 1 },
 +      width: { default: 512, max: 1024, min: 512, step: 128 },
 +    },
++    releasedAt: '2024-04-09',
 +    type: 'image',
 +  },
  ];
  
  export const allModels = [...qwenChatModels, ...qwenImageModels];
 diff --git a/src/libs/model-runtime/qwen/createImage.ts b/src/libs/model-runtime/qwen/createImage.ts
-index bfb02cea3acad..3e77b0b6cf1e2 100644
+index bfb02cea3acad..090cb290be5af 100644
 --- a/src/libs/model-runtime/qwen/createImage.ts
 +++ b/src/libs/model-runtime/qwen/createImage.ts
 @@ -18,20 +18,37 @@ interface QwenImageTaskResponse {
@@ -236,3 +244,11 @@ index bfb02cea3acad..3e77b0b6cf1e2 100644
    }
    log('Creating image task with model: %s, endpoint: %s', model, endpoint);
  
+@@ -46,6 +63,7 @@ async function createImageTask(payload: CreateImagePayload, apiKey: string): Pro
+       parameters: {
+         n: 1,
+         ...(params.seed !== undefined ? { seed: params.seed } : {}),
++        ...(params.size !== undefined ? { size: params.size } : {}),
+         ...(params.width && params.height
+           ? { size: `${params.width}*${params.height}` }
+           : { size: '1024*1024' }),
