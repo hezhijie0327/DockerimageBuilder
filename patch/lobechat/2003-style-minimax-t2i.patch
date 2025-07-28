@@ -1,5 +1,5 @@
 diff --git a/src/config/aiModels/minimax.ts b/src/config/aiModels/minimax.ts
-index 7764db0a7879d..d9e816663f604 100644
+index 7764db0a7879d..f15ee6af788c5 100644
 --- a/src/config/aiModels/minimax.ts
 +++ b/src/config/aiModels/minimax.ts
 @@ -1,4 +1,4 @@
@@ -8,7 +8,7 @@ index 7764db0a7879d..d9e816663f604 100644
  
  const minimaxChatModels: AIChatModelCard[] = [
    {
-@@ -51,6 +51,51 @@ const minimaxChatModels: AIChatModelCard[] = [
+@@ -51,6 +51,48 @@ const minimaxChatModels: AIChatModelCard[] = [
    },
  ];
  
@@ -25,12 +25,11 @@ index 7764db0a7879d..d9e816663f604 100644
 +        default: '1:1',
 +        enum: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
 +      },
-+      height: { default: 1024, max: 2048, min: 512, step: 8 },
 +      imageUrl: { default: null },
 +      prompt: {
 +        default: '',
 +      },
-+      width: { default: 1024, max: 2048, min: 512, step: 8 },
++      seed: { default: null },
 +    },
 +    releasedAt: '2025-02-28',
 +    type: 'image',
@@ -46,12 +45,10 @@ index 7764db0a7879d..d9e816663f604 100644
 +        default: '1:1',
 +        enum: ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'],
 +      },
-+      height: { default: 1024, max: 2048, min: 512, step: 8 },
-+      imageUrl: { default: null },
 +      prompt: {
 +        default: '',
 +      },
-+      width: { default: 1024, max: 2048, min: 512, step: 8 },
++      seed: { default: null },
 +    },
 +    releasedAt: '2025-02-28',
 +    type: 'image',
@@ -63,10 +60,10 @@ index 7764db0a7879d..d9e816663f604 100644
  export default allModels;
 diff --git a/src/libs/model-runtime/minimax/createImage.ts b/src/libs/model-runtime/minimax/createImage.ts
 new file mode 100644
-index 0000000000000..64420e0b2cbde
+index 0000000000000..86a23b7622bc0
 --- /dev/null
 +++ b/src/libs/model-runtime/minimax/createImage.ts
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,105 @@
 +import createDebug from 'debug';
 +
 +import { CreateImagePayload, CreateImageResponse } from '../types/image';
@@ -91,66 +88,6 @@ index 0000000000000..64420e0b2cbde
 +}
 +
 +/**
-+ * Convert standard image parameters to MiniMax format
-+ */
-+function convertImageParams(params: CreateImagePayload['params']) {
-+  const { height, seed, width } = params;
-+
-+  // Prepare the base parameters
-+  const miniMaxParams: any = {
-+    n: 1, // MiniMax supports 1-9 images
-+    prompt: params.prompt,
-+    // prompt_optimizer: true, // Enable prompt optimization by default
-+    // response_format: 'url',
-+  };
-+
-+  // Add seed if provided
-+  if (seed !== undefined) {
-+    miniMaxParams.seed = seed;
-+  }
-+
-+  // Handle width/height vs aspect_ratio
-+  if (width && height) {
-+    // Ensure dimensions are multiples of 8 and within valid range
-+    const normalizeSize = (size: number) => {
-+      const clamped = Math.max(512, Math.min(2048, size));
-+      return Math.round(clamped / 8) * 8; // Round to nearest multiple of 8
-+    };
-+    
-+    const normalizedWidth = normalizeSize(width);
-+    const normalizedHeight = normalizeSize(height);
-+    
-+    // Check if total pixels exceed 2M (recommended limit)
-+    const totalPixels = normalizedWidth * normalizedHeight;
-+    if (totalPixels > 2_000_000) {
-+      log('Warning: Image resolution (%dx%d = %d pixels) exceeds recommended 2M pixel limit', 
-+          normalizedWidth, normalizedHeight, totalPixels);
-+    }
-+    
-+    miniMaxParams.width = normalizedWidth;
-+    miniMaxParams.height = normalizedHeight;
-+  } else {
-+    // Use aspect_ratio if width/height not specified
-+    let aspect_ratio = '1:1'; // default square
-+    if (width && height) {
-+      const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
-+      const divisor = gcd(width, height);
-+      aspect_ratio = `${width / divisor}:${height / divisor}`;
-+      
-+      // Map to supported aspect ratios
-+      const supportedRatios = ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16', '21:9'];
-+      if (!supportedRatios.includes(aspect_ratio)) {
-+        aspect_ratio = '1:1'; // fallback to square
-+        log('Unsupported aspect ratio %s, falling back to 1:1', aspect_ratio);
-+      }
-+    }
-+    miniMaxParams.aspect_ratio = aspect_ratio;
-+  }
-+  
-+  return miniMaxParams;
-+}
-+
-+/**
 + * Create image using MiniMax API
 + */
 +export async function createMiniMaxImage(
@@ -159,23 +96,19 @@ index 0000000000000..64420e0b2cbde
 +): Promise<CreateImageResponse> {
 +  const { apiKey, provider } = options;
 +  const { model, params } = payload;
-+  
++
 +  try {
 +    const endpoint = 'https://api.minimaxi.com/v1/image_generation';
-+    
-+    // Convert parameters to MiniMax format
-+    const miniMaxParams = convertImageParams(params);
-+    
-+    log('Creating image with MiniMax model: %s', model);
-+    log('Parameters: %O', miniMaxParams);
-+
-+    const requestBody = {
-+      model: model || 'image-01', // Default to image-01 if no model specified
-+      ...miniMaxParams,
-+    };
 +
 +    const response = await fetch(endpoint, {
-+      body: JSON.stringify(requestBody),
++      body: JSON.stringify({
++        aspect_ratio: params.aspectRatio,
++        model,
++        n: 1,
++        prompt: params.prompt,
++        //prompt_optimizer: true, // 开启 prompt 自动优化
++        ...(params.seed !== undefined ? { seed: params.seed } : {}),
++      }),
 +      headers: {
 +        'Authorization': `Bearer ${apiKey}`,
 +        'Content-Type': 'application/json',
@@ -190,20 +123,14 @@ index 0000000000000..64420e0b2cbde
 +      } catch {
 +        // Failed to parse JSON error response
 +      }
-+      
-+      // Check if it's a MiniMax error response format
-+      const errorMessage = errorData?.base_resp?.status_msg || 
-+                          errorData?.error?.message || 
-+                          errorData?.message || 
-+                          response.statusText;
-+      
++
 +      throw new Error(
-+        `MiniMax API error (${response.status}): ${errorMessage}`
++        `MiniMax API error (${response.status}): ${errorData?.base_resp || response.statusText}`
 +      );
 +    }
 +
 +    const data: MiniMaxImageResponse = await response.json();
-+    
++
 +    log('Image generation response: %O', data);
 +
 +    // Check API response status
@@ -223,14 +150,14 @@ index 0000000000000..64420e0b2cbde
 +
 +    // Return the first generated image URL
 +    const imageUrl = data.data.image_urls[0];
-+    
++
 +    if (!imageUrl) {
 +      throw new Error('No valid image URL in response');
 +    }
 +
 +    log('Image generated successfully: %s', imageUrl);
 +
-+    return {  imageUrl };
++    return { imageUrl };
 +
 +  } catch (error) {
 +    log('Error in createMiniMaxImage: %O', error);
