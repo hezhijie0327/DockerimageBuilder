@@ -1,9 +1,9 @@
 diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
 new file mode 100644
-index 00000000000..4ec24da6650
+index 00000000000..e8d428cd392
 --- /dev/null
 +++ b/searx/plugins/advanced_search_syntax.py
-@@ -0,0 +1,336 @@
+@@ -0,0 +1,389 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Advanced search syntax plugin for SearXNG.
 +Supports site filtering, exact phrase matching, &&/|| operations, word exclusion,
@@ -13,6 +13,7 @@ index 00000000000..4ec24da6650
 +import re
 +from urllib.parse import urlparse
 +from flask_babel import gettext
++from werkzeug.datastructures import ImmutableMultiDict
 +from searx.extended_types import SXNG_Request
 +from searx.plugins import Plugin, PluginInfo
 +from searx.result_types import Result
@@ -61,6 +62,23 @@ index 00000000000..4ec24da6650
 +        # Quick check using any of our compiled patterns
 +        return any(pattern.search(query) for pattern in self._patterns.values())
 +
++    def _clean_query_for_engines(self, query: str) -> str:
++        """Clean query by removing ALL advanced syntax patterns for external engines."""
++        cleaned = query
++
++        # Remove all advanced syntax patterns in order
++        for pattern in self._patterns.values():
++            cleaned = pattern.sub(' ', cleaned)
++
++        # Additional cleanup for any remaining artifacts
++        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
++
++        # Remove empty quotes and other artifacts
++        cleaned = re.sub(r'""', '', cleaned)
++        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
++
++        return cleaned
++
 +    def _parse_advanced_syntax(self, query: str) -> tuple[str, dict]:
 +        """Parse and extract all advanced syntax patterns from query.
 +
@@ -88,39 +106,26 @@ index 00000000000..4ec24da6650
 +
 +        # 1. Site patterns
 +        syntax['site_include'] = [m.lower().strip() for m in self._patterns['site_include'].findall(query)]
-+        query = self._patterns['site_include'].sub(' ', query)
-+
 +        syntax['site_exclude'] = [m.lower().strip() for m in self._patterns['site_exclude'].findall(query)]
-+        query = self._patterns['site_exclude'].sub(' ', query)
 +
 +        # 2. Positional patterns (phrases first, then words)
 +        syntax['intitle_phrases'] = [m.strip() for m in self._patterns['intitle_phrase'].findall(query)]
-+        query = self._patterns['intitle_phrase'].sub(' ', query)
-+
 +        intitle_words = self._patterns['intitle_word'].findall(query)
 +        syntax['intitle_words'] = [
 +            w.strip() for w in intitle_words if not any(w in phrase for phrase in syntax['intitle_phrases'])
 +        ]
-+        query = self._patterns['intitle_word'].sub(' ', query)
 +
 +        syntax['intext_phrases'] = [m.strip() for m in self._patterns['intext_phrase'].findall(query)]
-+        query = self._patterns['intext_phrase'].sub(' ', query)
-+
 +        intext_words = self._patterns['intext_word'].findall(query)
 +        syntax['intext_words'] = [
 +            w.strip() for w in intext_words if not any(w in phrase for phrase in syntax['intext_phrases'])
 +        ]
-+        query = self._patterns['intext_word'].sub(' ', query)
 +
 +        syntax['inurl_words'] = [m.strip() for m in self._patterns['inurl_word'].findall(query)]
-+        query = self._patterns['inurl_word'].sub(' ', query)
 +
 +        # 3. Phrase patterns (exclude first)
 +        syntax['exclude_phrases'] = [m.strip() for m in self._patterns['exclude_phrase'].findall(query)]
-+        query = self._patterns['exclude_phrase'].sub(' ', query)
-+
 +        syntax['exact_phrases'] = [m.strip() for m in self._patterns['exact_phrase'].findall(query)]
-+        query = self._patterns['exact_phrase'].sub(' ', query)
 +
 +        # 4. Logic patterns
 +        or_matches = self._patterns['or_group'].findall(query)
@@ -128,30 +133,55 @@ index 00000000000..4ec24da6650
 +            terms = [t.strip() for t in re.split(r'\s*\|\|\s*', or_group) if t.strip()]
 +            if len(terms) > 1:
 +                syntax['or_groups'].append(terms)
-+        query = self._patterns['or_group'].sub(' ', query)
 +
 +        and_matches = self._patterns['and_group'].findall(query)
 +        for and_group in and_matches:
 +            terms = [t.strip() for t in re.split(r'\s*\&\&\s*', and_group) if t.strip()]
 +            if len(terms) > 1:
 +                syntax['and_groups'].append(terms)
-+        query = self._patterns['and_group'].sub(' ', query)
 +
 +        # 5. Wildcard and exclude patterns
 +        syntax['wildcard_terms'] = [m.strip() for m in self._patterns['wildcard'].findall(query)]
-+        query = self._patterns['wildcard'].sub(' ', query)
-+
 +        syntax['exclude_words'] = [m.strip() for m in self._patterns['exclude_word'].findall(query)]
-+        query = self._patterns['exclude_word'].sub(' ', query)
 +
-+        # 6. Clean and get remaining terms (filter out SearXNG native syntax)
-+        cleaned_query = re.sub(r'\s+', ' ', query).strip()
++        # 6. Clean query for engines and extract remaining terms
++        cleaned_query = self._clean_query_for_engines(query)
++
++        # Get remaining terms from the cleaned query
 +        remaining_terms = [
 +            term for term in cleaned_query.split() if term and not term.startswith(('!', ':')) and term != '!!'
 +        ]
 +        syntax['remaining_terms'] = remaining_terms
 +
 +        return cleaned_query, syntax
++
++    def _update_form_query(self, form, new_query: str) -> None:
++        """Safely update form query value."""
++        try:
++            # Method 1: Try direct assignment (for mutable forms)
++            if hasattr(form, 'q'):
++                form.q = new_query
++                return
++        except (AttributeError, TypeError):
++            pass
++
++        try:
++            # Method 2: Try dict-like access (for forms with __setitem__)
++            form['q'] = new_query
++            return
++        except (TypeError, KeyError):
++            pass
++
++        # Method 3: If form is immutable, we can't modify it
++        # This should be handled at the calling level
++        raise TypeError("Form object is immutable and cannot be modified")
++
++    def _create_new_form_with_query(self, original_form, new_query: str):
++        """Create a new form object with updated query."""
++        # Convert form to dict and update query
++        form_dict = dict(original_form.items()) if hasattr(original_form, 'items') else dict(original_form)
++        form_dict['q'] = new_query
++        return ImmutableMultiDict(form_dict)
 +
 +    def pre_search(self, request: SXNG_Request, search: "SearchWithPlugins") -> bool:
 +        """Parse the search query for advanced syntax patterns and modify the query sent to engines."""
@@ -166,12 +196,30 @@ index 00000000000..4ec24da6650
 +        cleaned_query, syntax = self._parse_advanced_syntax(original_query)
 +        syntax.update({'has_advanced_syntax': True, 'original_query': original_query, 'cleaned_query': cleaned_query})
 +
-+        # Update request
-+        if hasattr(request, 'form') and 'q' in request.form:
-+            request.original_query = original_query
-+            request.form['q'] = cleaned_query if cleaned_query else original_query
-+
++        # Store original query for restoration later
++        request.original_query = original_query
 +        request.search_syntax = syntax
++
++        # Update the query in form
++        if hasattr(request, 'form') and 'q' in request.form:
++            try:
++                self._update_form_query(request.form, cleaned_query or original_query)
++            except TypeError:
++                # Form is immutable, create new one
++                request.form = self._create_new_form_with_query(request.form, cleaned_query or original_query)
++
++        # Also update any other query attributes that might exist
++        if hasattr(request, 'args') and 'q' in request.args:
++            try:
++                self._update_form_query(request.args, cleaned_query or original_query)
++            except TypeError:
++                # Args might be immutable too, but we can't easily replace it
++                pass
++
++        # Force update the query parameter for search engines
++        if hasattr(search, 'search_query'):
++            search.search_query.query = cleaned_query or original_query
++
 +        return True
 +
 +    def _normalize_domain(self, domain: str) -> str:
@@ -222,7 +270,7 @@ index 00000000000..4ec24da6650
 +        if exact:  # Exact phrase match
 +            return word_lower in text_lower
 +
-+        # Whole word match - 修复：去掉不必要的else
++        # Whole word match
 +        return bool(re.search(r'\b' + re.escape(word_lower) + r'\b', text_lower))
 +
 +    def _text_matches_wildcard(self, text: str, wildcard_term: str) -> bool:
@@ -339,4 +387,9 @@ index 00000000000..4ec24da6650
 +    def post_search(self, request: SXNG_Request, search: "SearchWithPlugins") -> None:
 +        """Restore original query for UI display after search completion."""
 +        if hasattr(request, 'original_query') and hasattr(request, 'form'):
-+            request.form['q'] = request.original_query
++            # Restore original query for UI display
++            try:
++                self._update_form_query(request.form, request.original_query)
++            except TypeError:
++                # Form is immutable, create new one
++                request.form = self._create_new_form_with_query(request.form, request.original_query)
