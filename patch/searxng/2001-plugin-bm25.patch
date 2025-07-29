@@ -94,16 +94,18 @@ index 31121c7e762..006dfbe1e05 100644
          return []
 diff --git a/searx/plugins/bm25_rerank.py b/searx/plugins/bm25_rerank.py
 new file mode 100644
-index 00000000000..5ebefed4064
+index 00000000000..03c2705ed4f
 --- /dev/null
 +++ b/searx/plugins/bm25_rerank.py
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,271 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=missing-module-docstring, missing-class-docstring, protected-access
 +from __future__ import annotations
 +import math
++import re
 +import typing
 +
++import numpy as np
 +import bm25s
 +import bm25s.stopwords as stopwords_module
 +
@@ -117,8 +119,8 @@ index 00000000000..5ebefed4064
 +
 +
 +class SXNGPlugin(Plugin):
-+    """Rerank search results using the Okapi BM25 algorithm. The
-+    results are reordered to improve relevance based on the query.
++    """Rerank search results using the Okapi BM25 algorithm with adaptive strategies.
++    Optimized for large-scale result sets from multiple search engines.
 +    """
 +
 +    id = "bm25_rerank"
@@ -129,37 +131,244 @@ index 00000000000..5ebefed4064
 +
 +        self.info = PluginInfo(
 +            id=self.id,
-+            name="BM25 Rerank",
-+            description="Rerank search results using the Okapi BM25 algorithm",
++            name="Adaptive BM25 Rerank",
++            description="Intelligently rerank search results using adaptive BM25 algorithm",
 +            preference_section="general",
 +        )
 +
-+    def post_search(self, request: "SXNG_Request", search: "SearchWithPlugins") -> EngineResults:
-+        results = search.result_container.get_ordered_results()
-+        query = search.search_query.query
++    def _select_adaptive_strategy(self, results_count: int) -> tuple[str, dict]:
++        """基于结果数量自适应选择重排策略"""
 +
-+        corpus = [f"{result.content}\n{result.title}\n{result.url}" for result in results]
++        # 定义策略配置映射
++        strategy_configs = [
++            (
++                1000000,
++                "ultra_aggressive",
++                {
++                    'scaling_strength': 2.0,
++                    'boost_factor': 5.0,
++                    'top_tier_threshold': 0.95,
++                    'mid_tier_threshold': 0.8,
++                    'low_tier_threshold': 0.5,
++                },
++            ),
++            (
++                500000,
++                "mega_aggressive",
++                {'scaling_strength': 1.8, 'boost_factor': 4.0, 'top_tier_threshold': 0.9, 'mid_tier_threshold': 0.75},
++            ),
++            (
++                100000,
++                "super_aggressive",
++                {'scaling_strength': 1.6, 'boost_factor': 3.5, 'top_tier_threshold': 0.85, 'mid_tier_threshold': 0.7},
++            ),
++            (
++                50000,
++                "rank_based_aggressive",
++                {'scaling_strength': 1.5, 'boost_factor': 3.0, 'top_tier_threshold': 0.9, 'mid_tier_threshold': 0.7},
++            ),
++            (10000, "exponential_capped", {'scaling_strength': 1.2, 'boost_factor': 2.5, 'cap_threshold': 0.8}),
++            (1000, "exponential", {'scaling_strength': 1.0, 'boost_factor': 2.0, 'decay_rate': 0.1}),
++            (100, "power", {'scaling_strength': 1.1, 'boost_factor': 2.0}),
++            (0, "linear_boosted", {'scaling_strength': 0.8, 'boost_factor': 1.5}),
++        ]
 +
-+        stopwords = {
++        # 选择合适的策略
++        for threshold, strategy, params in strategy_configs:
++            if results_count > threshold:
++                return strategy, params
++
++        # 默认返回（理论上不会到达这里）
++        return "linear_boosted", {'scaling_strength': 0.8, 'boost_factor': 1.5}
++
++    def _calculate_position_multiplier(self, bm25_score: float, strategy: str, params: dict) -> float:
++        """根据策略和参数计算位置调整倍数"""
++
++        # 定义策略计算器映射
++        strategy_calculators = {
++            "ultra_aggressive": self._calc_ultra_aggressive,
++            "mega_aggressive": self._calc_mega_aggressive,
++            "super_aggressive": self._calc_super_aggressive,
++            "rank_based_aggressive": self._calc_rank_based_aggressive,
++            "exponential_capped": self._calc_exponential_capped,
++            "power": self._calc_power,
++            "linear_boosted": self._calc_linear_boosted,
++            "exponential": self._calc_exponential,
++        }
++
++        calculator = strategy_calculators.get(strategy, self._calc_exponential)
++        return calculator(bm25_score, params)
++
++    def _calc_ultra_aggressive(self, bm25_score: float, params: dict) -> float:
++        """百万级数据的极致重排策略"""
++        thresholds = [
++            (params.get('top_tier_threshold', 0.95), 0.05),
++            (params.get('mid_tier_threshold', 0.8), 0.15),
++            (params.get('low_tier_threshold', 0.5), 0.4),
++        ]
++
++        for threshold, multiplier in thresholds:
++            if bm25_score > threshold:
++                return multiplier
++        return 1.5
++
++    def _calc_mega_aggressive(self, bm25_score: float, params: dict) -> float:
++        """50万级数据策略"""
++        thresholds = [
++            (params.get('top_tier_threshold', 0.9), 0.08),
++            (params.get('mid_tier_threshold', 0.75), 0.2),
++            (0.5, 0.5),
++        ]
++
++        for threshold, multiplier in thresholds:
++            if bm25_score > threshold:
++                return multiplier
++        return 1.3
++
++    def _calc_super_aggressive(self, bm25_score: float, params: dict) -> float:
++        """10万级数据策略"""
++        thresholds = [
++            (params.get('top_tier_threshold', 0.85), 0.1),
++            (params.get('mid_tier_threshold', 0.7), 0.25),
++            (0.5, 0.6),
++        ]
++
++        for threshold, multiplier in thresholds:
++            if bm25_score > threshold:
++                return multiplier
++        return 1.2
++
++    def _calc_rank_based_aggressive(self, bm25_score: float, params: dict) -> float:
++        """5万级数据策略"""
++        thresholds = [
++            (params.get('top_tier_threshold', 0.9), 0.1),
++            (params.get('mid_tier_threshold', 0.7), 0.3),
++            (0.5, 0.7),
++        ]
++
++        for threshold, multiplier in thresholds:
++            if bm25_score > threshold:
++                return multiplier
++        return 1.2
++
++    def _calc_exponential_capped(self, bm25_score: float, params: dict) -> float:
++        """带上限的指数策略"""
++        cap = params.get('cap_threshold', 0.8)
++        boost = params.get('boost_factor', 2.5)
++
++        if bm25_score > cap:
++            return 0.2
++        return 1.0 - boost * math.exp(-3.0 * bm25_score)
++
++    def _calc_power(self, bm25_score: float, params: dict) -> float:
++        """幂函数策略"""
++        power = 1.5 + params.get('scaling_strength', 1.0) * 0.5
++        return 0.2 + 0.8 * (bm25_score**power)
++
++    def _calc_linear_boosted(self, bm25_score: float, params: dict) -> float:
++        """增强线性策略"""
++        boost = params.get('scaling_strength', 0.8)
++        return 0.4 + 0.6 * bm25_score * boost
++
++    def _calc_exponential(self, bm25_score: float, params: dict) -> float:
++        """指数策略"""
++        decay = params.get('decay_rate', 0.1)
++        boost = params.get('boost_factor', 2.0)
++        return 1.0 - boost * math.exp(-3.0 * bm25_score) * (1.0 + decay)
++
++    def _build_corpus(self, results: list) -> list:
++        """构建语料库"""
++        corpus = []
++        for result in results:
++            text_parts = []
++
++            if hasattr(result, 'title') and result.title:
++                text_parts.append(result.title)
++            if hasattr(result, 'content') and result.content:
++                text_parts.append(result.content)
++            if hasattr(result, 'url') and result.url:
++                url_words = re.findall(r'[a-zA-Z]+', result.url)
++                text_parts.append(' '.join(url_words))
++
++            corpus.append(" ".join(text_parts))
++        return corpus
++
++    def _get_stopwords(self) -> set:
++        """获取停用词集合"""
++        return {
 +            word
 +            for name, value in stopwords_module.__dict__.items()
 +            if name.startswith("STOPWORDS_") and isinstance(value, tuple)
 +            for word in value
 +        }
 +
++    def _normalize_scores(self, raw_scores: np.ndarray) -> list:
++        """标准化分数"""
++        if len(raw_scores) == 0:
++            return []
++
++        min_score, max_score = float(np.min(raw_scores)), float(np.max(raw_scores))
++        if max_score > min_score:
++            return ((raw_scores - min_score) / (max_score - min_score)).tolist()
++        return [0.5] * len(raw_scores)
++
++    def _apply_rerank(
++        self, results: list, documents: list, normalized_scores: list, strategy: str, params: dict
++    ) -> None:
++        """应用重排序"""
++        for idx, doc_index in enumerate(documents[0]):
++            if doc_index >= len(results):
++                continue
++
++            score = float(normalized_scores[idx])
++            multiplier = self._calculate_position_multiplier(score, strategy, params)
++            result = results[doc_index]
++
++            if hasattr(result, 'positions') and result.positions:
++                for i, position in enumerate(result.positions):
++                    if isinstance(position, (int, float)):
++                        position_boost = float(max(0.01, position * multiplier))
++                        result.positions[i] = position_boost
++            else:
++                initial_position = float(doc_index + 1.0) / len(results)
++                bm25_position = float(initial_position * multiplier)
++                result.positions = [bm25_position]
++
++    def _process_results(self, results: list, query: str, strategy: str, params: dict) -> None:
++        """处理搜索结果并重新排序"""
++        if len(results) < 2:
++            return
++
++        # 构建语料库和获取停用词
++        corpus = self._build_corpus(results)
++        stopwords = self._get_stopwords()
++
++        # 分词
 +        corpus_tokens = bm25s.tokenize(corpus, stopwords=stopwords)
 +        query_tokens = bm25s.tokenize(query, stopwords=stopwords)
 +
++        # BM25检索
 +        retriever = bm25s.BM25()
 +        retriever.index(corpus_tokens)
 +
 +        documents, scores = retriever.retrieve(query_tokens, k=len(corpus), return_as="tuple", show_progress=False)
 +
-+        for index in documents[0]:
-+            score = scores[0][index]
-+            for i, position in enumerate(results[index].positions):
-+                if isinstance(position, (int, float)):
-+                    results[index]["positions"][i] = position * (3.0 / (1.0 + math.exp(-score)))
++        # 标准化分数并应用重排
++        normalized_scores = self._normalize_scores(scores[0])
++        if normalized_scores:
++            self._apply_rerank(results, documents, normalized_scores, strategy, params)
++
++    def post_search(self, request: "SXNG_Request", search: "SearchWithPlugins") -> EngineResults:
++        results = search.result_container.get_ordered_results()
++
++        if len(results) < 2:
++            return search.result_container
++
++        query = search.search_query.query
++        strategy, strategy_params = self._select_adaptive_strategy(len(results))
++        self._process_results(results, query, strategy, strategy_params)
++
++        return search.result_container
 diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
 index 9f85397556a..a6b23da9124 100644
 --- a/searx/settings_defaults.py
