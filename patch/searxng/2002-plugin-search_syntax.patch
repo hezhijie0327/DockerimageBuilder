@@ -1,9 +1,9 @@
 diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
 new file mode 100644
-index 00000000000..08cf334fdc3
+index 00000000000..da836443c8c
 --- /dev/null
 +++ b/searx/plugins/advanced_search_syntax.py
-@@ -0,0 +1,565 @@
+@@ -0,0 +1,596 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=too-many-return-statements, too-many-branches
 +"""Advanced search syntax plugin for SearXNG.
@@ -90,6 +90,18 @@ index 00000000000..08cf334fdc3
 +        """Check if the query contains any advanced search syntax."""
 +        return any(pattern.search(query) for pattern in self._patterns.values())
 +
++    def _is_regex_pattern(self, text: str) -> bool:
++        """Check if text is a regex pattern in the context of advanced syntax."""
++        # 只有在特定上下文中的 /pattern/ 才被认为是正则表达式
++        # 检查是否是高级语法中的正则表达式模式
++        advanced_regex_patterns = [
++            r'(?:^|\s)(?:\+|-)?(?:intitle|inurl|intext):/[^/]+/',  # intitle:/pattern/, -inurl:/pattern/ 等
++            r'(?:^|\s)\+/[^/]+/',  # +/pattern/
++            r'(?:^|\s)-/[^/]+/',  # -/pattern/
++        ]
++
++        return any(re.search(pattern, text, re.IGNORECASE) for pattern in advanced_regex_patterns)
++
 +    def _clean_query_for_engines(self, query: str) -> str:
 +        """Clean query by removing ALL advanced syntax patterns for external engines."""
 +        cleaned = query
@@ -110,19 +122,23 @@ index 00000000000..08cf334fdc3
 +
 +        # Final check - ensure no advanced syntax remains
 +        remaining_advanced = []
++
++        # 修复：使用更精确的测试模式，避免误匹配文件路径
 +        test_patterns = [
-+            r'site:',
-+            r'intitle:',
-+            r'inurl:',
-+            r'intext:',
-+            r'-site:',
-+            r'-intitle:',
-+            r'-inurl:',
-+            r'-intext:',
-+            r'\+/',
-+            r'-/',
-+            r'/.+/',
-+            r'\+\w',
++            r'(?:^|\s)site:',
++            r'(?:^|\s)intitle:',
++            r'(?:^|\s)inurl:',
++            r'(?:^|\s)intext:',
++            r'(?:^|\s)-site:',
++            r'(?:^|\s)-intitle:',
++            r'(?:^|\s)-inurl:',
++            r'(?:^|\s)-intext:',
++            r'(?:^|\s)\+/',  # +/regex/ 格式
++            r'(?:^|\s)-/',  # -/regex/ 格式
++            # 移除了过于宽泛的 r'/.+/' 模式
++            # 使用更精确的模式来检测高级语法中的正则表达式
++            r'(?:intitle|inurl|intext):/[^/]+/',  # 只匹配高级语法中的正则表达式
++            r'(?:^|\s)\+\w',  # +word 格式
 +        ]
 +
 +        for test_pattern in test_patterns:
@@ -188,8 +204,10 @@ index 00000000000..08cf334fdc3
 +            # Skip words that start with advanced syntax indicators
 +            if self._is_advanced_syntax_word(word):
 +                continue
-+            # Skip regex patterns
-+            if word.startswith('/') and word.endswith('/') and len(word) > 2:
++
++            # 修复：使用更精确的正则表达式检测，避免误判文件路径
++            # 只有在高级语法上下文中的 /pattern/ 才被跳过
++            if self._is_regex_pattern(f" {word} "):  # 添加空格确保上下文检查
 +                continue
 +
 +            # Extract alphanumeric parts from the word
@@ -212,9 +230,22 @@ index 00000000000..08cf334fdc3
 +            '-intitle:',
 +            '-inurl:',
 +            '-intext:',
-+            '+',
-+            '-',
 +        ]
++
++        # 对于 + 和 - 前缀，需要更精确的检查
++        if word.startswith('+'):
++            # +word 或 +/regex/ 格式
++            return True
++
++        if word.startswith('-'):
++            # 检查是否是 -word 格式（但不是文件路径）
++            # 如果是 -/path/to/file 这种情况，不应该被认为是高级语法
++            if len(word) > 1 and word[1] == '/':
++                # 检查是否是 -/regex/ 格式（以 / 结尾）
++                return word.endswith('/') and len(word) > 3
++            # 其他 -word 格式
++            return not any(word.startswith(prefix) for prefix in ['-site:', '-intitle:', '-inurl:', '-intext:'])
++
 +        return any(word.startswith(prefix) for prefix in prefixes)
 +
 +    def _remove_duplicates_preserve_order(self, items: list) -> list:
