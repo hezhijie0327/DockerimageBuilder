@@ -1,0 +1,403 @@
+diff --git a/searx/plugins/semantic_rerank.py b/searx/plugins/semantic_rerank.py
+new file mode 100644
+index 00000000000..feca838f42a
+--- /dev/null
++++ b/searx/plugins/semantic_rerank.py
+@@ -0,0 +1,397 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++# pylint: disable=missing-module-docstring, missing-class-docstring, protected-access
++from __future__ import annotations
++import re
++import typing
++import hashlib
++import time
++import os
++from functools import lru_cache
++from threading import Lock
++from pathlib import Path
++
++# Handle optional dependencies with proper error handling
++try:
++    import numpy as np
++except ImportError:
++    np = None
++
++try:
++    import sentence_transformers
++except ImportError:
++    sentence_transformers = None
++
++try:
++    import torch
++except ImportError:
++    torch = None
++
++from searx.plugins import Plugin, PluginInfo
++from searx.result_types import EngineResults
++
++if typing.TYPE_CHECKING:
++    from searx.search import SearchWithPlugins
++    from searx.extended_types import SXNG_Request
++    from searx.plugins import PluginCfg
++
++# 预编译正则表达式以提升性能
++HTML_TAG_RE = re.compile(r'<[^>]+>')
++WHITESPACE_RE = re.compile(r'\s+')
++
++# 模型路径配置
++DEFAULT_MODEL_DIR = os.environ.get('SEARXNG_MODEL_DIR', '/var/cache/searxng/models')
++DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
++
++
++class FastSemanticCache:
++    """高性能语义向量缓存"""
++
++    def __init__(self, max_size: int = 800, ttl: int = 3600):
++        self.cache = {}
++        self.access_times = {}
++        self.max_size = max_size
++        self.ttl = ttl
++        self.lock = Lock()
++
++    @lru_cache(maxsize=2048)
++    def _generate_key(self, text: str) -> str:
++        """缓存的键生成"""
++        return hashlib.md5(text.encode('utf-8')).hexdigest()[:16]
++
++    def get(self, text: str):
++        """快速获取缓存的向量"""
++        key = self._generate_key(text)
++        current_time = time.time()
++
++        with self.lock:
++            if key in self.cache:
++                if current_time - self.access_times.get(key, 0) < self.ttl:
++                    self.access_times[key] = current_time
++                    return self.cache[key]
++                del self.cache[key]
++                del self.access_times[key]
++
++        return None
++
++    def set(self, text: str, vector) -> None:
++        """快速设置缓存"""
++        key = self._generate_key(text)
++        current_time = time.time()
++
++        with self.lock:
++            if len(self.cache) >= self.max_size:
++                # 删除最旧的3个条目（批量清理）
++                old_keys = sorted(self.access_times.items(), key=lambda x: x[1])[:3]
++                for old_key, _ in old_keys:
++                    self.cache.pop(old_key, None)
++                    self.access_times.pop(old_key, None)
++
++            self.cache[key] = vector
++            self.access_times[key] = current_time
++
++    def clear(self) -> None:
++        """清理缓存"""
++        with self.lock:
++            self.cache.clear()
++            self.access_times.clear()
++
++
++class ModelManager:
++    """优化的模型管理器"""
++
++    def __init__(self, model_dir: str = DEFAULT_MODEL_DIR, model_name: str = DEFAULT_MODEL_NAME):
++        self.model_dir = Path(model_dir)
++        self.model_name = model_name
++        self.local_model_path = self.model_dir / model_name
++        self.model_dir.mkdir(parents=True, exist_ok=True)
++
++    def _is_model_valid(self) -> bool:
++        """检查本地模型是否完整有效"""
++        if not self.local_model_path.exists():
++            return False
++
++        # 检查必要文件是否存在
++        if not (self.local_model_path / 'config.json').exists():
++            return False
++
++        # 检查模型文件（至少有一个）
++        model_files = ['pytorch_model.bin', 'model.safetensors']
++        return any((self.local_model_path / f).exists() for f in model_files)
++
++    def _download_model_to_local(self) -> bool:
++        """下载模型到本地目录"""
++        try:
++            if sentence_transformers is None:
++                return False
++
++            model = sentence_transformers.SentenceTransformer(self.model_name)
++            model.save(str(self.local_model_path))
++
++            return self._is_model_valid()
++
++        except (ImportError, OSError, RuntimeError, ValueError):
++            return False
++
++    def ensure_model_available(self) -> str:
++        """确保模型可用，返回本地模型路径"""
++        if self._is_model_valid():
++            return str(self.local_model_path)
++
++        if self._download_model_to_local():
++            return str(self.local_model_path)
++
++        raise RuntimeError(f"Failed to ensure model availability: {self.model_name}")
++
++    def get_model_info(self) -> dict:
++        """获取模型信息"""
++        return {
++            'model_name': self.model_name,
++            'model_dir': str(self.model_dir),
++            'local_path': str(self.local_model_path),
++            'exists': self.local_model_path.exists(),
++            'valid': self._is_model_valid(),
++        }
++
++
++class SXNGPlugin(Plugin):
++    """语义重排序插件"""
++
++    id = "semantic_rerank"
++    default_on = True
++
++    def __init__(self, plg_cfg: "PluginCfg") -> None:
++        super().__init__(plg_cfg)
++
++        # Check if required dependencies are available
++        if np is None or sentence_transformers is None or torch is None:
++            raise ImportError("Required dependencies not available: numpy, sentence_transformers, torch")
++
++        # 模型管理
++        self.model_manager = ModelManager(
++            model_dir=os.environ.get('SEARXNG_MODEL_DIR', DEFAULT_MODEL_DIR),
++            model_name=os.environ.get('SEARXNG_MODEL_NAME', DEFAULT_MODEL_NAME),
++        )
++
++        # CPU性能优化配置
++        self.cpu_batch_size = 16
++        self.max_results_limit = 200
++        self.max_length = 200
++        self.cpu_timeout = 20.0
++
++        # 运行时状态
++        self._model = None
++        self._model_load_failed = False
++        self._semantic_cache = FastSemanticCache(max_size=800, ttl=3600)
++
++        self.info = PluginInfo(
++            id=self.id,
++            name="Semantic Rerank",
++            description="A semantic reranking method using sentence embeddings.",
++            preference_section="general",
++        )
++
++    def _lazy_load_model(self) -> bool:
++        """优化的模型加载"""
++        if self._model is not None:
++            return True
++
++        if self._model_load_failed:
++            return False
++
++        try:
++            if sentence_transformers is None or torch is None:
++                self._model_load_failed = True
++                return False
++
++            # CPU优化设置
++            torch.set_num_threads(2)
++            torch.set_grad_enabled(False)
++
++            # 确保模型可用并获取本地路径
++            model_path = self.model_manager.ensure_model_available()
++            self._model = sentence_transformers.SentenceTransformer(model_path, device='cpu')
++
++            # 快速预热
++            _ = self._model.encode(["semantic rerank warmup"], show_progress_bar=False)
++
++            return True
++
++        except (ImportError, OSError, RuntimeError, ValueError):
++            self._model_load_failed = True
++            return False
++
++    def _fast_preprocess_text(self, text: str) -> str:
++        """高性能文本预处理"""
++        if not text:
++            return ""
++
++        text = HTML_TAG_RE.sub(' ', text)
++        text = WHITESPACE_RE.sub(' ', text.strip())
++
++        if len(text) > self.max_length:
++            return text[: self.max_length]
++        return text
++
++    def _compute_embeddings_cpu_optimized(self, texts: list):
++        """CPU优化的嵌入计算"""
++        if not texts:
++            return None
++
++        embeddings = []
++        texts_to_compute = []
++        indices_map = {}
++
++        # 快速缓存检查
++        for i, text in enumerate(texts):
++            cached = self._semantic_cache.get(text)
++            if cached is not None:
++                embeddings.append(cached)
++            else:
++                embeddings.append(None)
++                texts_to_compute.append(text)
++                indices_map[len(texts_to_compute) - 1] = i
++
++        if not texts_to_compute:
++            return np.array(embeddings)
++
++        try:
++            # CPU友好的小批量处理
++            computed_embeddings = []
++            batch_size = min(self.cpu_batch_size, len(texts_to_compute))
++
++            for i in range(0, len(texts_to_compute), batch_size):
++                batch = texts_to_compute[i : i + batch_size]
++                batch_emb = self._model.encode(
++                    batch,
++                    batch_size=len(batch),
++                    show_progress_bar=False,
++                    convert_to_numpy=True,
++                    normalize_embeddings=True,
++                )
++                computed_embeddings.extend(batch_emb)
++
++            # 更新缓存和结果
++            for comp_idx, embedding in enumerate(computed_embeddings):
++                orig_idx = indices_map[comp_idx]
++                embeddings[orig_idx] = embedding
++                self._semantic_cache.set(texts[orig_idx], embedding)
++
++            return np.array(embeddings)
++
++        except (RuntimeError, OSError, ValueError):
++            return None
++
++    def _calculate_semantic_scores(self, query: str, corpus: list):
++        """CPU优化的语义分数计算"""
++        if not self._lazy_load_model():
++            return None
++
++        start_time = time.time()
++        corpus_size = len(corpus)
++
++        # 严格的大小限制
++        if corpus_size > self.max_results_limit:
++            corpus = corpus[: self.max_results_limit]
++
++        try:
++            # 快速预处理
++            processed_query = self._fast_preprocess_text(query)
++            processed_corpus = [self._fast_preprocess_text(text) for text in corpus]
++
++            # 检查超时
++            if time.time() - start_time > self.cpu_timeout:
++                return None
++
++            # 获取查询嵌入
++            query_embedding = self._semantic_cache.get(processed_query)
++            if query_embedding is None:
++                query_embedding = self._model.encode(
++                    [processed_query], show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True
++                )[0]
++                self._semantic_cache.set(processed_query, query_embedding)
++
++            # 检查超时
++            if time.time() - start_time > self.cpu_timeout:
++                return None
++
++            # 获取文档嵌入
++            doc_embeddings = self._compute_embeddings_cpu_optimized(processed_corpus)
++            if doc_embeddings is None:
++                return None
++
++            # 快速相似度计算（已经预先标准化）
++            similarities = np.dot(doc_embeddings, query_embedding)
++
++            return similarities
++
++        except (RuntimeError, OSError, ValueError):
++            return None
++
++    def _position_multiplier(self, score: float) -> float:
++        """位置倍数计算"""
++        if score > 0.85:
++            return 0.05
++        if score > 0.7:
++            return 0.15
++        if score > 0.5:
++            return 0.3
++        return 0.8
++
++    def _apply_semantic_rerank(self, results: list, semantic_scores) -> None:
++        """应用语义重排序"""
++        # 创建结果索引映射
++        score_pairs = list(enumerate(semantic_scores))
++        score_pairs.sort(key=lambda x: x[1], reverse=True)
++
++        for new_pos, (old_pos, score) in enumerate(score_pairs):
++            if old_pos >= len(results):
++                continue
++
++            result = results[old_pos]
++            multiplier = self._position_multiplier(float(score))
++
++            if hasattr(result, 'positions') and result.positions:
++                result.positions[0] = float(max(0.01, result.positions[0] * multiplier))
++            else:
++                result.positions = [float((new_pos + 1.0) / len(results) * multiplier)]
++
++    def _process_semantic_results(self, results: list, query: str) -> None:
++        """语义重排序的结果处理主流程"""
++        if len(results) < 2:
++            return
++
++        # 严格限制处理数量
++        if len(results) > self.max_results_limit:
++            results = results[: self.max_results_limit]
++
++        # 快速构建语料库
++        corpus = []
++        for result in results:
++            text_parts = []
++            if hasattr(result, 'title') and result.title:
++                text_parts.append(result.title)
++            if hasattr(result, 'content') and result.content:
++                text_parts.append(result.content[:100])
++            corpus.append(" ".join(text_parts))
++
++        # 计算语义分数
++        semantic_scores = self._calculate_semantic_scores(query, corpus)
++
++        if semantic_scores is not None and len(semantic_scores) > 0:
++            # 应用语义重排序
++            self._apply_semantic_rerank(results, semantic_scores)
++
++    def post_search(self, request: "SXNG_REQUEST", search: "SearchWithPlugins") -> EngineResults:
++        results = search.result_container.get_ordered_results()
++
++        if len(results) < 2:
++            return search.result_container
++
++        query = search.search_query.query
++        self._process_semantic_results(results, query)
++
++        return search.result_container
++
++    def clear_cache(self) -> None:
++        """清理缓存"""
++        self._semantic_cache.clear()
