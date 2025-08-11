@@ -1,4 +1,4 @@
-# Current Version: 2.2.0
+# Current Version: 2.2.1
 
 ARG DOTNET_VERSION="9.0"
 ARG NODEJS_VERSION="22"
@@ -61,7 +61,7 @@ ENV \
 RUN \
     dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="/jellyfin/output" --self-contained --runtime linux-$(cat "/jellyfin/SYS_ARCH") -p:DebugSymbols=false -p:DebugType=none
 
-FROM debian:stable-slim AS rebased_jellyfin
+FROM debian:bookworm-slim AS rebased_jellyfin
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
