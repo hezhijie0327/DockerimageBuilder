@@ -1,5 +1,5 @@
 diff --git a/searx/autocomplete.py b/searx/autocomplete.py
-index 31121c7e762..5e68539b7b9 100644
+index 31121c7e762..06d32825313 100644
 --- a/searx/autocomplete.py
 +++ b/searx/autocomplete.py
 @@ -2,12 +2,17 @@
@@ -7,7 +7,7 @@ index 31121c7e762..5e68539b7b9 100644
  
  """
 -# pylint: disable=use-dict-literal
-+# pylint: disable=use-dict-literal,too-many-locals,broad-exception-caught,too-many-statements
++# pylint: disable=use-dict-literal,too-many-locals
  
  import json
  import html
@@ -32,7 +32,7 @@ index 31121c7e762..5e68539b7b9 100644
 +# 初始化 tiktoken 编码器
 +try:
 +    _tokenizer = tiktoken.encoding_for_model(PRIMARY_MODEL)
-+except Exception:
++except (KeyError, ImportError, ValueError) as e:
 +    _tokenizer = tiktoken.get_encoding(FALLBACK_ENCODING)
 +
 +
@@ -64,7 +64,7 @@ index 31121c7e762..5e68539b7b9 100644
 +                token_str = _tokenizer.decode([token])
 +                if token_str.strip():
 +                    token_strings.append(token_str.strip())
-+            except Exception:
++            except (UnicodeDecodeError, ValueError):
 +                continue
 +
 +        # 如果 tiktoken 分词失败，回退到简单空格分词
@@ -73,14 +73,14 @@ index 31121c7e762..5e68539b7b9 100644
 +
 +        return token_strings
 +
-+    except Exception:
++    except (ValueError, TypeError, AttributeError):
 +        # 异常情况下使用简单分词
 +        return preprocessed_text.split()
 +
  
  def update_kwargs(**kwargs):
      if 'timeout' not in kwargs:
-@@ -371,14 +428,144 @@ def yandex(query, _lang):
+@@ -371,14 +428,175 @@ def yandex(query, _lang):
      'swisscows': swisscows,
      'wikipedia': wikipedia,
      'yandex': yandex,
@@ -97,6 +97,78 @@ index 31121c7e762..5e68539b7b9 100644
 +            unique_results.append(result)
 +            seen.add(result)
 +    return unique_results
++
++
++def _get_strategy_params(query_length):
++    """根据查询长度选择自动补全策略参数"""
++    if query_length <= 2:
++        # 极短查询：强调前缀匹配，降低 BM25 权重
++        return {
++            'prefix_bonus': 2.0,
++            'length_penalty_rate': 0.1,
++            'exact_match_bonus': 3.0,
++            'bm25_weight': 0.3,
++        }
++    # 修复：移除不必要的 elif，改为 if
++    if query_length <= 5:
++        # 中等查询：平衡前缀匹配和语义相关性
++        return {
++            'prefix_bonus': 1.5,
++            'length_penalty_rate': 0.05,
++            'exact_match_bonus': 2.0,
++            'bm25_weight': 0.6,
++        }
++
++    # 长查询：依赖 BM25 语义理解能力
++    return {
++        'prefix_bonus': 1.2,
++        'length_penalty_rate': 0.02,
++        'exact_match_bonus': 1.5,
++        'bm25_weight': 0.8,
++    }
++
++
++def _normalize_bm25_scores(raw_scores):
++    """标准化 BM25 分数到 [0,1] 区间"""
++    if len(raw_scores) == 0:
++        return []
++
++    min_score, max_score = float(np.min(raw_scores)), float(np.max(raw_scores))
++    if max_score > min_score:
++        return ((raw_scores - min_score) / (max_score - min_score)).tolist()
++
++    return [0.5] * len(raw_scores)
++
++
++def _calculate_suggestion_score(suggestion, query_lower, bm25_score, params):
++    """计算单个建议的综合分数"""
++    suggestion_lower = suggestion.lower()
++
++    # 前缀匹配加分：自动补全的核心特性
++    prefix_boost = params['prefix_bonus'] if suggestion_lower.startswith(query_lower) else 1.0
++
++    # 完全匹配加分：用户可能已经知道想要的结果
++    exact_match_boost = params['exact_match_bonus'] if suggestion_lower == query_lower else 1.0
++
++    # 长度惩罚：自动补全偏好简洁的建议
++    length_penalty = 1.0
++    if len(suggestion) > len(query_lower) * 3:
++        excess_length = len(suggestion) - len(query_lower) * 2
++        length_penalty = 1.0 - (excess_length * params['length_penalty_rate'])
++        length_penalty = max(0.1, length_penalty)  # 避免过度惩罚
++
++    # 综合计算最终分数
++    final_score = (
++        (bm25_score * params['bm25_weight'] + (1.0 - params['bm25_weight']))
++        * prefix_boost
++        * exact_match_boost
++        * length_penalty
++    )
++
++    # 添加微小随机因子避免相同分数的不稳定排序
++    final_score += hash(suggestion) % 1000 * 0.000001
++
++    return final_score
 +
 +
 +def rerank_results(results_list, query):
@@ -126,36 +198,14 @@ index 31121c7e762..5e68539b7b9 100644
 +
 +        # 标准化 BM25 分数到 [0,1] 区间
 +        raw_scores = scores[0]
-+        if len(raw_scores) == 0:
++        normalized_scores = _normalize_bm25_scores(raw_scores)
++
++        if not normalized_scores:
 +            return corpus
 +
-+        min_score, max_score = float(np.min(raw_scores)), float(np.max(raw_scores))
-+        if max_score > min_score:
-+            normalized_scores = ((raw_scores - min_score) / (max_score - min_score)).tolist()
-+        else:
-+            normalized_scores = [0.5] * len(raw_scores)
-+
-+        # 根据查询长度选择自动补全策略参数
++        # 获取策略参数
 +        query_length = len(query.strip())
-+
-+        if query_length <= 2:
-+            # 极短查询：强调前缀匹配，降低 BM25 权重
-+            prefix_bonus = 2.0
-+            length_penalty_rate = 0.1
-+            exact_match_bonus = 3.0
-+            bm25_weight = 0.3
-+        elif query_length <= 5:
-+            # 中等查询：平衡前缀匹配和语义相关性
-+            prefix_bonus = 1.5
-+            length_penalty_rate = 0.05
-+            exact_match_bonus = 2.0
-+            bm25_weight = 0.6
-+        else:
-+            # 长查询：依赖 BM25 语义理解能力
-+            prefix_bonus = 1.2
-+            length_penalty_rate = 0.02
-+            exact_match_bonus = 1.5
-+            bm25_weight = 0.8
++        params = _get_strategy_params(query_length)
 +
 +        # 计算每个建议的综合分数
 +        final_scores = []
@@ -166,31 +216,10 @@ index 31121c7e762..5e68539b7b9 100644
 +                continue
 +
 +            suggestion = corpus[doc_index]
-+            suggestion_lower = suggestion.lower()
 +            bm25_score = float(normalized_scores[idx])
 +
-+            # 前缀匹配加分：自动补全的核心特性
-+            prefix_boost = prefix_bonus if suggestion_lower.startswith(query_lower) else 1.0
-+
-+            # 完全匹配加分：用户可能已经知道想要的结果
-+            exact_match_boost = exact_match_bonus if suggestion_lower == query_lower else 1.0
-+
-+            # 长度惩罚：自动补全偏好简洁的建议
-+            length_penalty = 1.0
-+            if len(suggestion) > len(query) * 3:
-+                excess_length = len(suggestion) - len(query) * 2
-+                length_penalty = 1.0 - (excess_length * length_penalty_rate)
-+                length_penalty = max(0.1, length_penalty)  # 避免过度惩罚
-+
-+            # 综合计算最终分数
-+            final_score = (
-+                (bm25_score * bm25_weight + (1.0 - bm25_weight)) * prefix_boost * exact_match_boost * length_penalty
-+            )
-+
-+            # 添加微小随机因子避免相同分数的不稳定排序
-+            final_score += hash(suggestion) % 1000 * 0.000001
-+
-+            final_scores.append((doc_index, float(final_score)))
++            final_score = _calculate_suggestion_score(suggestion, query_lower, bm25_score, params)
++            final_scores.append((doc_index, final_score))
 +
 +        # 按最终分数降序排列
 +        final_scores.sort(key=lambda x: x[1], reverse=True)
@@ -198,7 +227,7 @@ index 31121c7e762..5e68539b7b9 100644
 +        # 返回重排后的建议列表
 +        return [corpus[doc_index] for doc_index, _ in final_scores]
 +
-+    except Exception:
++    except (ValueError, TypeError, AttributeError, ImportError):
 +        # 异常情况下返回原始结果
 +        return corpus
 +
@@ -221,6 +250,8 @@ index 31121c7e762..5e68539b7b9 100644
      backend = backends.get(backend_name)
      if backend is None:
          return []
++
++    # 修复：移除不必要的 else，直接执行代码
      try:
          return backend(query, sxng_locale)
 -    except (HTTPError, SearxEngineResponseException):
@@ -228,12 +259,12 @@ index 31121c7e762..5e68539b7b9 100644
          return []
 diff --git a/searx/plugins/bm25_rerank.py b/searx/plugins/bm25_rerank.py
 new file mode 100644
-index 00000000000..447c91f54ce
+index 00000000000..47d0e37ec71
 --- /dev/null
 +++ b/searx/plugins/bm25_rerank.py
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,234 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
-+# pylint: disable=missing-module-docstring, missing-class-docstring, protected-access, unused-argument, broad-exception-caught
++# pylint: disable=missing-module-docstring, missing-class-docstring, protected-access
 +from __future__ import annotations
 +import re
 +import typing
@@ -282,7 +313,8 @@ index 00000000000..447c91f54ce
 +        """初始化tiktoken编码器"""
 +        try:
 +            self.tokenizer = tiktoken.encoding_for_model(PRIMARY_MODEL)
-+        except Exception:
++        except (KeyError, ValueError, ImportError):
++            # 捕获更具体的异常：模型不存在、参数错误、导入错误
 +            self.tokenizer = tiktoken.get_encoding(FALLBACK_ENCODING)
 +
 +    def _preprocess_text(self, text: str) -> str:
@@ -311,13 +343,15 @@ index 00000000000..447c91f54ce
 +                    token_str = self.tokenizer.decode([token])
 +                    if token_str.strip():
 +                        token_strings.append(token_str.strip())
-+                except Exception:
++                except (UnicodeDecodeError, ValueError):
++                    # 捕获解码相关的特定异常
 +                    continue
 +            return token_strings
-+        except Exception:
++        except (AttributeError, ValueError, TypeError):
++            # 捕获编码相关的特定异常
 +            return preprocessed_text.split()
 +
-+    def _extract_result_text(self, result, index: int) -> str:
++    def _extract_result_text(self, result) -> str:
 +        """提取搜索结果的文本内容"""
 +        text_parts = []
 +
@@ -336,7 +370,7 @@ index 00000000000..447c91f54ce
 +
 +    def _build_corpus(self, results: list) -> list[str]:
 +        """构建语料库"""
-+        return [self._extract_result_text(result, i) for i, result in enumerate(results)]
++        return [self._extract_result_text(result) for result in results]
 +
 +    def _normalize_scores(self, scores: np.ndarray) -> list[float]:
 +        """标准化分数到0-1范围"""
@@ -370,7 +404,8 @@ index 00000000000..447c91f54ce
 +            try:
 +                documents, scores_array = method_func()
 +                return documents, scores_array
-+            except Exception:
++            except (AttributeError, ValueError, RuntimeError, IndexError):
++                # 捕获BM25检索可能出现的具体异常
 +                continue
 +
 +        raise RuntimeError("所有BM25检索方法都失败")
@@ -443,7 +478,8 @@ index 00000000000..447c91f54ce
 +                if normalized_scores:
 +                    self._apply_rerank(results, documents, normalized_scores)
 +
-+        except Exception:
++        except (RuntimeError, ValueError, TypeError, AttributeError):
++            # 捕获处理过程中可能出现的具体异常
 +            pass
 +
 +    def post_search(self, request: "SXNG_Request", search: "SearchWithPlugins") -> EngineResults:
@@ -456,7 +492,8 @@ index 00000000000..447c91f54ce
 +                if query:
 +                    self._process_results(results, query)
 +
-+        except Exception:
++        except (AttributeError, TypeError):
++            # 捕获访问搜索对象属性时可能出现的具体异常
 +            pass
 +
 +        return search.result_container
