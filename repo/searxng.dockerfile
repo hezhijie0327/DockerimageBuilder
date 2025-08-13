@@ -44,7 +44,7 @@ RUN \
     && python3 -m venv /app \
     && . /app/bin/activate \
     && pip install --no-cache -r requirements.txt \
-    && pip install --no-cache bm25s httpx[socks] \
+    && pip install --no-cache bm25s httpx[socks] tiktoken \
     && python3 -m compileall -q searx \
     && find searx/static \( -name '*.html' -o -name '*.css' -o -name '*.js' \
         -o -name '*.svg' -o -name '*.ttf' -o -name '*.eot' \) \
