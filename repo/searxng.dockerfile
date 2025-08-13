@@ -1,4 +1,4 @@
-# Current Version: 1.3.3
+# Current Version: 1.3.4
 
 ARG PYTHON_VERSION="3"
 
@@ -54,14 +54,7 @@ RUN \
     && cp /usr/local/bin/python3-config /distroless/usr/local/bin/python3-config \
     && cp -rf /usr/local/include /distroless/usr/local/include \
     && cp -rf /usr/local/lib /distroless/usr/local/lib \
-    && cp /usr/lib/$(arch)-linux-gnu/libcrypto.so.3 /distroless/lib/libcrypto.so.3 \
-    && cp /usr/lib/$(arch)-linux-gnu/libffi.so.8 /distroless/lib/libffi.so.8 \
-    && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
-    && cp /usr/lib/$(arch)-linux-gnu/librt.so.1 /distroless/lib/librt.so.1 \
-    && cp /usr/lib/$(arch)-linux-gnu/libsqlite3.so.0 /distroless/lib/libsqlite3.so.0 \
-    && cp /usr/lib/$(arch)-linux-gnu/libssl.so.3 /distroless/lib/libssl.so.3 \
-    && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
-    && cp /usr/lib/$(arch)-linux-gnu/libz.so.1 /distroless/lib/libz.so.1 \
+    && cp -P /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
 FROM busybox:latest AS rebased_searxng
