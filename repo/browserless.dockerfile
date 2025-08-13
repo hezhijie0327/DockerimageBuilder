@@ -1,4 +1,4 @@
-# Current Version: 1.3.9
+# Current Version: 1.4.0
 
 ARG NODEJS_VERSION="24"
 
@@ -81,9 +81,6 @@ COPY --from=get_info /tmp/BUILDTMP/privacy_badger /app/extensions/privacy_badger
 
 RUN \
     mkdir -p /distroless/bin /distroless/lib \
-    && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
-    && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
-    && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
     && cp -P /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
     && cp /usr/local/bin/node /distroless/bin/node \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
