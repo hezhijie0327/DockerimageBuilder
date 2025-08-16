@@ -25,6 +25,7 @@ RUN \
     apt update \
     && apt install -qy \
           libzstd-dev \
+          zlib1g-dev \
     && PREFIX="/BUILDLIB" \
     && export CPPFLAGS="-I$PREFIX/include" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
