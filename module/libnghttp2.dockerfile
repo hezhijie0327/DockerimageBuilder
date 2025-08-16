@@ -15,11 +15,15 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/LIBNGHTTP2" \
     && curl -Ls -o - $(cat "${WORKDIR}/libnghttp2.autobuild") | tar zxvf - --strip-components=1
 
+FROM ghcr.io/hezhijie0327/module:openssl AS build_openssl
+
 FROM gcc:${GCC_VERSION} AS build_libnghttp2
 
 WORKDIR /libnghttp2
 
 COPY --from=get_info /tmp/BUILDTMP/LIBNGHTTP2 /libnghttp2
+
+COPY --from=build_openssl / /BUILDLIB/
 
 RUN \
     apt update \
