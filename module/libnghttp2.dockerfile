@@ -33,7 +33,7 @@ RUN \
           zlib1g-dev libssl-dev libxml2-dev libev-dev \
           libevent-dev libjansson-dev \
           libc-ares-dev libjemalloc-dev libsystemd-dev \
-          ruby-dev bison libelf-dev \
+          ruby-dev bison libelf-dev liblzma-dev \
     && PREFIX="/BUILDLIB" \
     && export CPPFLAGS="-I$PREFIX/include" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
