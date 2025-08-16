@@ -22,7 +22,10 @@ WORKDIR /libnghttp2
 COPY --from=get_info /tmp/BUILDTMP/LIBNGHTTP2 /libnghttp2
 
 RUN \
-    PREFIX="/BUILDLIB" \
+    apt update \
+    && apt install -qy \
+          libzstd-dev \
+    && PREFIX="/BUILDLIB" \
     && export CPPFLAGS="-I$PREFIX/include" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
