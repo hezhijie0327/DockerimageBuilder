@@ -26,15 +26,7 @@ COPY --from=get_info /tmp/BUILDTMP/LIBNGHTTP2 /libnghttp2
 COPY --from=build_openssl / /BUILDLIB/
 
 RUN \
-    apt update \
-    && apt install -qy \
-          g++ clang make binutils autoconf automake \
-          autotools-dev libtool pkg-config \
-          zlib1g-dev libssl-dev libxml2-dev libev-dev \
-          libevent-dev libjansson-dev \
-          libc-ares-dev libjemalloc-dev libsystemd-dev \
-          ruby-dev bison libelf-dev liblzma-dev \
-    && PREFIX="/BUILDLIB" \
+    PREFIX="/BUILDLIB" \
     && export CPPFLAGS="-I$PREFIX/include" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
