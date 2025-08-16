@@ -24,8 +24,12 @@ COPY --from=get_info /tmp/BUILDTMP/LIBNGHTTP2 /libnghttp2
 RUN \
     apt update \
     && apt install -qy \
-          libzstd-dev \
-          zlib1g-dev \
+          g++ clang make binutils autoconf automake \
+          autotools-dev libtool pkg-config \
+          zlib1g-dev libssl-dev libxml2-dev libev-dev \
+          libevent-dev libjansson-dev \
+          libc-ares-dev libjemalloc-dev libsystemd-dev \
+          ruby-dev bison libelf-dev \
     && PREFIX="/BUILDLIB" \
     && export CPPFLAGS="-I$PREFIX/include" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
