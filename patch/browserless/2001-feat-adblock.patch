@@ -1,8 +1,8 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 42ab7c3809c..956b013ba18 100644
+index 42ab7c3809c..bb22eaa272b 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -9,11 +9,17 @@ import {
+@@ -9,11 +9,15 @@ import {
    edgeExecutablePath,
    noop,
    once,
@@ -13,14 +13,12 @@ index 42ab7c3809c..956b013ba18 100644
  import puppeteer, { Browser, Page, Target } from 'puppeteer-core';
  import { Duplex } from 'stream';
  import { EventEmitter } from 'events';
-+// 引入 User-Agent 插件
-+import UserAgent from 'user-agents';
 +// 引入 adblocker 插件
 +import AdblockPlugin from 'puppeteer-extra-plugin-adblocker';
  import StealthPlugin from 'puppeteer-extra-plugin-stealth';
  import getPort from 'get-port';
  import httpProxy from 'http-proxy';
-@@ -48,6 +54,14 @@ export class ChromiumCDP extends EventEmitter {
+@@ -48,6 +52,14 @@ export class ChromiumCDP extends EventEmitter {
    }) {
      super();
  
@@ -35,7 +33,7 @@ index 42ab7c3809c..956b013ba18 100644
      this.userDataDir = userDataDir;
      this.config = config;
      this.blockAds = blockAds;
-@@ -190,6 +204,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -190,6 +202,8 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
@@ -44,7 +42,7 @@ index 42ab7c3809c..956b013ba18 100644
        this.blockAds ? ublockLitePath : null,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
-@@ -214,11 +230,59 @@ export class ChromiumCDP extends EventEmitter {
+@@ -214,11 +228,36 @@ export class ChromiumCDP extends EventEmitter {
        }
      }
  
@@ -54,7 +52,6 @@ index 42ab7c3809c..956b013ba18 100644
 +      '--disable-crashpad-for-testing',
 +      '--disable-crashpad-forwarding',
 +      '--disable-in-process-stack-traces',
-+      '--disable-web-security',
 +      '--no-default-browser-check',
 +
 +      // 反检测增强
@@ -72,35 +69,13 @@ index 42ab7c3809c..956b013ba18 100644
 +      '--single-process',
 +    ];
 +
-+    // 通过 User-Agent 随机生成 UA
-+    const mobileUA = new UserAgent({
-+      deviceCategory: 'tablet',
-+      platform: 'iPad'
-+    });
-+
-+    const mobileDeviceArgs = [
-+      // 移动设备模式
-+      '--enable-viewport',
-+      '--touch-events=enabled',
-+      '--use-mobile-user-agent',
-+      // User-Agent 库随机生成的信息
-+      `--user-agent=${mobileUA.data.userAgent}`,
-+      '--device-scale-factor=2',
-+      '--screen-height=1024',
-+      '--screen-width=768',
-+      '--window-position=0,0',
-+      '--window-size=768,1024',
-+    ];
-+
      const finalOptions = {
        ...options,
        args: [
          `--remote-debugging-port=${this.port}`,
          `--no-sandbox`,
-+        // 注入 patchOptions 参数
++        // 注入补充 Patch 参数
 +        ...patchOptions,
-+        // 注入 mobileDeviceArgs 参数
-+        ...mobileDeviceArgs,
          ...(options.args || []),
          this.userDataDir ? `--user-data-dir=${this.userDataDir}` : '',
        ].filter((_) => !!_),
