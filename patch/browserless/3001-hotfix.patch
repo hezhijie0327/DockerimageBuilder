@@ -1,0 +1,45 @@
+diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
+index f9b4db2e30a..87cc6ccfb35 100644
+--- a/src/browsers/browsers.cdp.ts
++++ b/src/browsers/browsers.cdp.ts
+@@ -13,7 +13,7 @@ import {
+   privacyBadgerPath,
+   ublockLitePath,
+ } from '@browserless.io/browserless';
+-import puppeteer, { Browser, Page, Target } from 'puppeteer-core';
++import puppeteer, { Browser, Page, Target, devices } from 'puppeteer-core';
+ import { Duplex } from 'stream';
+ import { EventEmitter } from 'events';
+ // 引入 adblocker 插件
+@@ -90,6 +90,21 @@ export class ChromiumCDP extends EventEmitter {
+       });
+ 
+       if (page) {
++        if (page) {
++        // --- 核心修改：直接在这里硬编码 iPad Mini 模拟 ---
++        const iPadMini = devices['iPad Mini'];
++        if (iPadMini) {
++            try {
++                await page.emulate(iPadMini);
++                this.logger.info(`Automatically emulated 'iPad Mini' for new page.`);
++            } catch (error) {
++                this.logger.error(`Failed to emulate 'iPad Mini': ${error.message}`);
++                // 如果模拟失败，可以根据需求选择是否关闭页面或浏览器
++            }
++        } else {
++            this.logger.warn(`'iPad Mini' device configuration not found in puppeteer.devices. Emulation skipped.`);
++        }
++
+         this.logger.trace(`Setting up file:// protocol request rejection`);
+ 
+         page.on('error', (err) => {
+@@ -229,9 +244,6 @@ export class ChromiumCDP extends EventEmitter {
+     }
+ 
+     const patchOptions = [
+-      // 预设屏幕尺寸（iPad Mini）
+-      '--window-size=768,1024',
+-
+       // 浏览器参数
+       '--disable-crashpad',
+       '--disable-crashpad-for-testing',
