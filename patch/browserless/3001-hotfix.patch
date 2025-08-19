@@ -1,33 +1,24 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index f9b4db2e30a..5abce19f55b 100644
+index f9b4db2e30a..4450288660f 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -13,7 +13,7 @@ import {
-   privacyBadgerPath,
-   ublockLitePath,
- } from '@browserless.io/browserless';
--import puppeteer, { Browser, Page, Target } from 'puppeteer-core';
-+import puppeteer, { Browser, Page, Target, Device } from 'puppeteer-core';
- import { Duplex } from 'stream';
- import { EventEmitter } from 'events';
- // 引入 adblocker 插件
 @@ -90,6 +90,20 @@ export class ChromiumCDP extends EventEmitter {
        });
  
        if (page) {
-+        // --- 核心修改：直接在这里硬编码 iPad Mini 模拟 ---
-+        const iPadMini = Device['iPad Mini'];
-+        if (iPadMini) {
-+            try {
-+                await page.emulate(iPadMini);
-+                this.logger.info(`Automatically emulated 'iPad Mini' for new page.`);
-+            } catch (error) {
-+                this.logger.error(`Failed to emulate 'iPad Mini'`);
-+                // 如果模拟失败，可以根据需求选择是否关闭页面或浏览器
-+            }
-+        } else {
-+            this.logger.warn(`'iPad Mini' device configuration not found in puppeteer.devices. Emulation skipped.`);
-+        }
++        await page.emulate({
++          viewport: {
++            width: 768,
++            height: 1024,
++            deviceScaleFactor: 2,
++            isMobile: true,
++            hasTouch: true,
++            isLandscape: false
++          },
++          userAgent:
++            'Mozilla/5.0 (iPad; CPU OS 15_0 like Mac OS X) AppleWebKit/605.1.15 ' +
++            '(KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1'
++        });
 +
          this.logger.trace(`Setting up file:// protocol request rejection`);
  
