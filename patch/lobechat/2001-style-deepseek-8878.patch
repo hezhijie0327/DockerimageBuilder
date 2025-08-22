@@ -1,0 +1,197 @@
+diff --git a/packages/model-runtime/src/deepseek/index.ts b/packages/model-runtime/src/deepseek/index.ts
+index b87281df37f14..86c9fe058081a 100644
+--- a/packages/model-runtime/src/deepseek/index.ts
++++ b/packages/model-runtime/src/deepseek/index.ts
+@@ -1,6 +1,5 @@
+-import type { ChatModelCard } from '@/types/llm';
+-
+ import { ModelProvider } from '../types';
++import { MODEL_LIST_CONFIGS, processModelList } from '../utils/modelParse';
+ import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
+ 
+ export interface DeepSeekModelCard {
+@@ -13,34 +12,10 @@ export const LobeDeepSeekAI = createOpenAICompatibleRuntime({
+     chatCompletion: () => process.env.DEBUG_DEEPSEEK_CHAT_COMPLETION === '1',
+   },
+   models: async ({ client }) => {
+-    const { LOBE_DEFAULT_MODEL_LIST } = await import('@/config/aiModels');
+-
+     const modelsPage = (await client.models.list()) as any;
+     const modelList: DeepSeekModelCard[] = modelsPage.data;
+ 
+-    return modelList
+-      .map((model) => {
+-        const knownModel = LOBE_DEFAULT_MODEL_LIST.find(
+-          (m) => model.id.toLowerCase() === m.id.toLowerCase(),
+-        );
+-
+-        return {
+-          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
+-          displayName: knownModel?.displayName ?? undefined,
+-          enabled: knownModel?.enabled || false,
+-          functionCall:
+-            !model.id.toLowerCase().includes('reasoner') ||
+-            knownModel?.abilities?.functionCall ||
+-            false,
+-          id: model.id,
+-          reasoning:
+-            model.id.toLowerCase().includes('reasoner') ||
+-            knownModel?.abilities?.reasoning ||
+-            false,
+-          vision: knownModel?.abilities?.vision || false,
+-        };
+-      })
+-      .filter(Boolean) as ChatModelCard[];
++    return processModelList(modelList, MODEL_LIST_CONFIGS.deepseek, 'deepseek');
+   },
+   provider: ModelProvider.DeepSeek,
+ });
+diff --git a/packages/model-runtime/src/utils/modelParse.ts b/packages/model-runtime/src/utils/modelParse.ts
+index de30847374d01..0ae92bbdf1f04 100644
+--- a/packages/model-runtime/src/utils/modelParse.ts
++++ b/packages/model-runtime/src/utils/modelParse.ts
+@@ -17,8 +17,8 @@ export const MODEL_LIST_CONFIGS = {
+     visionKeywords: ['claude'],
+   },
+   deepseek: {
+-    functionCallKeywords: ['v3', 'r1'],
+-    reasoningKeywords: ['r1'],
++    functionCallKeywords: ['v3', 'r1', 'deepseek-chat'],
++    reasoningKeywords: ['r1', 'deepseek-reasoner'],
+   },
+   google: {
+     functionCallKeywords: ['gemini'],
+diff --git a/packages/model-runtime/src/volcengine/index.ts b/packages/model-runtime/src/volcengine/index.ts
+index 0a22b433fda2d..1f04a84861889 100644
+--- a/packages/model-runtime/src/volcengine/index.ts
++++ b/packages/model-runtime/src/volcengine/index.ts
+@@ -7,6 +7,7 @@ const THINKING_MODELS = [
+   'thinking-pro-m',
+   'doubao-seed-1-6',
+   'doubao-1-5-ui-tars',
++  'deepseek-v3-1',
+ ];
+ 
+ export interface VolcengineModelCard {
+diff --git a/src/config/aiModels/deepseek.ts b/src/config/aiModels/deepseek.ts
+index 7773403fcfe48..70830bf5ed2b1 100644
+--- a/src/config/aiModels/deepseek.ts
++++ b/src/config/aiModels/deepseek.ts
+@@ -6,10 +6,10 @@ const deepseekChatModels: AIChatModelCard[] = [
+     abilities: {
+       functionCall: true,
+     },
+-    contextWindowTokens: 65_536,
++    contextWindowTokens: 131_072,
+     description:
+-      '最新模型 DeepSeek-V3 多项评测成绩超越 Qwen2.5-72B 和 Llama-3.1-405B 等开源模型，性能对齐领军闭源模型 GPT-4o 与 Claude-3.5-Sonnet。',
+-    displayName: 'DeepSeek V3',
++      'DeepSeek V3.1 是 DeepSeek 最新发布的通用大模型，支持混合推理架构，具备更强的 Agent 能力。',
++    displayName: 'DeepSeek V3.1',
+     enabled: true,
+     id: 'deepseek-chat',
+     maxOutput: 8192,
+@@ -21,21 +21,20 @@ const deepseekChatModels: AIChatModelCard[] = [
+         { name: 'textOutput', rate: 8, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+-    releasedAt: '2025-03-24',
++    releasedAt: '2025-08-21',
+     type: 'chat',
+   },
+   {
+     abilities: {
+-      functionCall: true,
+       reasoning: true,
+     },
+-    contextWindowTokens: 65_536,
++    contextWindowTokens: 131_072,
+     description:
+-      'DeepSeek 推出的推理模型。在输出最终回答之前，模型会先输出一段思维链内容，以提升最终答案的准确性。',
+-    displayName: 'DeepSeek R1',
++      'DeepSeek V3.1 思考模式。在输出最终回答之前，模型会先输出一段思维链内容，以提升最终答案的准确性。',
++    displayName: 'DeepSeek V3.1 Thinking',
+     enabled: true,
+     id: 'deepseek-reasoner',
+-    maxOutput: 8192,
++    maxOutput: 65_536,
+     pricing: {
+       currency: 'CNY',
+       units: [
+@@ -44,7 +43,7 @@ const deepseekChatModels: AIChatModelCard[] = [
+         { name: 'textOutput', rate: 16, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+-    releasedAt: '2025-05-28',
++    releasedAt: '2025-08-21',
+     type: 'chat',
+   },
+ ];
+diff --git a/src/config/aiModels/openrouter.ts b/src/config/aiModels/openrouter.ts
+index dafe3d1f0bdce..bfc12dba53779 100644
+--- a/src/config/aiModels/openrouter.ts
++++ b/src/config/aiModels/openrouter.ts
+@@ -11,6 +11,25 @@ const openrouterChatModels: AIChatModelCard[] = [
+     id: 'openrouter/auto',
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 163_840,
++    description:
++      'DeepSeek-V3.1是一款支持128K长上下文和高效模式切换的大型混合推理模型，它在工具调用、代码生成和复杂推理任务上实现了卓越的性能与速度。',
++    displayName: 'DeepSeek V3.1',
++    id: 'deepseek/deepseek-chat-v3.1',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.2, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.8, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2025-08-21',
++    type: 'chat',
++  },
+   {
+     abilities: {
+       reasoning: true,
+diff --git a/src/config/aiModels/volcengine.ts b/src/config/aiModels/volcengine.ts
+index 9a5aac4ef8c94..f363b07d24a20 100644
+--- a/src/config/aiModels/volcengine.ts
++++ b/src/config/aiModels/volcengine.ts
+@@ -4,6 +4,33 @@ import { AIChatModelCard, AIImageModelCard } from '@/types/aiModel';
+ // pricing https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement
+ 
+ const doubaoChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    config: {
++      deploymentName: 'deepseek-v3-1-250821',
++    },
++    contextWindowTokens: 131_072,
++    description:
++      'DeepSeek-V3.1 是深度求索全新推出的混合推理模型，支持思考与非思考2种推理模式，较 DeepSeek-R1-0528 思考效率更高。经 Post-Training 优化，Agent 工具使用与智能体任务表现大幅提升。支持 128k 上下文窗口，输出长度支持最大 64k tokens。',
++    displayName: 'DeepSeek V3.1',
++    id: 'deepseek-v3.1',
++    maxOutput: 32_768,
++    pricing: {
++      currency: 'CNY',
++      units: [
++        { name: 'textInput_cacheRead', rate: 0.8, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 12, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    settings: {
++      extendParams: ['enableReasoning'],
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
