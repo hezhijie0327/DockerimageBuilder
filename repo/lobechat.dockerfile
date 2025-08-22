@@ -1,4 +1,4 @@
-# Current Version: 1.6.3
+# Current Version: 1.6.4
 
 ARG NODEJS_VERSION="22"
 
@@ -84,7 +84,7 @@ COPY --from=build_baseos /distroless/ /
 
 COPY --from=build_lobechat /app/.next/standalone /app/
 
-COPY --from=build_lobechat /app/src/database/migrations /app/migrations
+COPY --from=build_lobechat /app/packages/database/migrations /app/migrations
 COPY --from=build_lobechat /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
 COPY --from=build_lobechat /app/scripts/migrateServerDB/errorHint.js /app/errorHint.js
 
