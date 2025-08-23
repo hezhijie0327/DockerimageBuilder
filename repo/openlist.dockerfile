@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
