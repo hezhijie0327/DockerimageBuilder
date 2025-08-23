@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="22"
@@ -23,7 +23,8 @@ RUN \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export CLOUDREVE_CUSTOM_VERSION="${CLOUDREVE_VERSION}-ZHIJIE-${CLOUDREVE_SHA}${PATCH_SHA}" \
     && echo "${CLOUDREVE_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/CLOUDREVE/CLOUDREVE_CUSTOM_VERSION" \
-    && sed -i 's|yarn version|#yarn version|g' "${WORKDIR}/BUILDTMP/CLOUDREVE/.build/build-assets.sh"
+    && sed -i 's|yarn version|#yarn version|g' "${WORKDIR}/BUILDTMP/CLOUDREVE/.build/build-assets.sh" \
+    && sed -i "s/\"version\": \"[^\"]\+\"/\"version\": \"${CLOUDREVE_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/CLOUDREVE/assets/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_cloudreve_web
 
@@ -41,7 +42,7 @@ FROM golang:${GOLANG_VERSION} AS build_cloudreve
 
 WORKDIR /cloudreve
 
-COPY --from=build_cloudreve_web /tmp/BUILDTMP/CLOUDREVE /cloudreve
+COPY --from=build_cloudreve_web /cloudreve /cloudreve
 
 ENV CGO_ENABLED="0"
 
