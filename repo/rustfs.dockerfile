@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -31,7 +31,9 @@ RUN \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export RUSTFS_CUSTOM_VERSION="${RUSTFS_VERSION}-ZHIJIE-${RUSTFS_SHA}${PATCH_SHA}" \
     && echo "${RUSTFS_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/RUSTFS/RUSTFS_CUSTOM_VERSION" \
-    && echo "${RUSTFS_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/RUSTFS_WEB/RUSTFS_CUSTOM_VERSION"
+    && echo "${RUSTFS_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/RUSTFS_WEB/RUSTFS_CUSTOM_VERSION" \
+    && cd "${WORKDIR}/BUILDTMP/RUSTFS" \
+    && git tag ${RUSTFS_CUSTOM_VERSION}
 
 FROM node:${NODEJS_VERSION}-slim AS build_rustfs_web
 
@@ -71,7 +73,8 @@ RUN \
         protobuf \
         flatbuffers \
         flatbuffers-dev \
-    && export version="$(cat /rustfs/RUSTFS_CUSTOM_VERSION)" \
+    && mkdir -p /opt/rustfs/data /opt/rustfs/logs \
+    && touch "./rustfs/build.rs" \
     && cargo run --bin gproto \
     && cargo build --release --bin rustfs -j "$(nproc)"
 
@@ -80,14 +83,17 @@ FROM scratch AS rebased_rustfs
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_rustfs /rustfs/target/release/rustfs /rustfs
+COPY --from=build_rustfs /opt/rustfs/ /
 
 FROM scratch
 
 ENV \
+    RUST_LOG="warn" \
     RUSTFS_ADDRESS=":9000" RUSTFS_CONSOLE_ENABLE="true" \
     RUSTFS_ACCESS_KEY="rustfsadmin" RUSTFS_SECRET_KEY="rustfsadmin" \
-    RUST_LOG="warn" RUSTFS_OBS_LOG_DIRECTORY="" RUSTFS_SINKS_FILE_PATH="" \
-    RUSTFS_VOLUMES="/data"
+    RUSTFS_VOLUMES="/data" \
+    RUSTFS_OBS_LOG_DIRECTORY="/logs" RUSTFS_SINKS_FILE_PATH="/logs" \
+    RUSTFS_TLS_PATH=""
 
 COPY --from=rebased_rustfs / /
 
