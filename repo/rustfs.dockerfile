@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -40,10 +40,8 @@ WORKDIR /rustfs
 COPY --from=get_info /tmp/BUILDTMP/RUSTFS_WEB /rustfs
 
 RUN \
-    npm install -g pnpm \
-    && pnpm i \
-    # .output/public
-    && pnpm run run generate
+    npm i \
+    && npm run generate
 
 FROM rust:${RUST_VERSION}-alpine AS build_rustfs
 
@@ -57,6 +55,7 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
 WORKDIR /rustfs
 
 COPY --from=get_info /tmp/BUILDTMP/RUSTFS /rustfs
+
 COPY --from=build_rustfs_web /rustfs/.output/public /rustfs/rustfs/static
 
 RUN \
@@ -72,6 +71,7 @@ RUN \
         protobuf \
         flatbuffers \
         flatbuffers-dev \
+    && export version="$(cat /rustfs/RUSTFS_CUSTOM_VERSION)" \
     && cargo run --bin gproto \
     && cargo build --release --bin rustfs -j "$(nproc)"
 
@@ -86,7 +86,7 @@ FROM scratch
 ENV \
     RUSTFS_ADDRESS=":9000" RUSTFS_CONSOLE_ENABLE="true" \
     RUSTFS_ACCESS_KEY="rustfsadmin" RUSTFS_SECRET_KEY="rustfsadmin" \
-    RUST_LOG="warn" RUSTFS_OBS_LOG_DIRECTORY="/logs" RUSTFS_SINKS_FILE_PATH="/logs" \
+    RUST_LOG="warn" RUSTFS_OBS_LOG_DIRECTORY="" RUSTFS_SINKS_FILE_PATH="" \
     RUSTFS_VOLUMES="/data"
 
 COPY --from=rebased_rustfs / /
