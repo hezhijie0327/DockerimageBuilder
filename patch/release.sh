@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Current Version: 2.3.2
+# Current Version: 2.3.3
 
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
@@ -19,6 +19,8 @@ export LIBNGHTTP3_VERSION_FIXED=""
 export LIBNGTCP2_VERSION_FIXED=""
 export LIBSODIUM_VERSION_FIXED=""
 export LOBECHAT_VERSION_FIXED=""
+export OPENLIST_VERSION_FIXED=""
+export OPENLIST_WEB_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
 export QBITTORRENT_VERSION_FIXED=""
 export RUSTFS_VERSION_FIXED="1.0.0"
@@ -47,6 +49,8 @@ function GetLatestVersion() {
     LIBNGTCP2_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/ngtcp2/ngtcp2/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     LIBSODIUM_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jedisct1/libsodium/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | grep "\-RELEASE" | tail -n 1 | sed "s/refs\/tags\///;s/-RELEASE//")
     LOBECHAT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lobehub/lobe-chat/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    OPENLIST_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/OpenListTeam/OpenList/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
+    OPENLIST_WEB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/OpenListTeam/OpenList-Frontend/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     RUSTFS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rustfs/rustfs/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | grep -v "alpha" | tail -n 1 | sed "s/refs\/tags\///")
@@ -77,6 +81,8 @@ function GenerateReplacements() {
         "s/{LIBNGTCP2_VERSION}/${LIBNGTCP2_VERSION_FIXED:-${LIBNGTCP2_VERSION}}/g"
         "s/{LIBSODIUM_VERSION}/${LIBSODIUM_VERSION_FIXED:-${LIBSODIUM_VERSION}}/g"
         "s/{LOBECHAT_VERSION}/${LOBECHAT_VERSION_FIXED:-${LOBECHAT_VERSION}}/g"
+        "s/{OPENLIST_VERSION}/${OPENLIST_VERSION_FIXED:-${OPENLIST_VERSION}}/g"
+        "s/{OPENLIST_WEB_VERSION}/${OPENLIST_WEB_VERSION_FIXED:-${OPENLIST_WEB_VERSION}}/g"
         "s/{OPENSSL_VERSION}/${OPENSSL_VERSION_FIXED:-${OPENSSL_VERSION}}/g"
         "s/{QBITTORRENT_VERSION}/${QBITTORRENT_VERSION_FIXED:-${QBITTORRENT_VERSION}}/g"
         "s/{RUSTFS_VERSION}/${RUSTFS_VERSION_FIXED:-${RUSTFS_VERSION}}/g"
