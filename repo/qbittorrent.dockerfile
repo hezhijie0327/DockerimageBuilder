@@ -1,4 +1,4 @@
-# Current Version: 1.3.4
+# Current Version: 1.3.5
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -28,7 +28,9 @@ RUN \
     && git commit -m "Update qBittorrent version to ${QBITTORRENT_CUSTOM_VERSION}" \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
-    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH"
+    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
+    && wget -O "${WORKDIR}/BUILDTMP/VueTorrent.zip" "https://github.com/VueTorrent/VueTorrent/archive/refs/heads/nightly-release.zip" \
+    && unzip "${WORKDIR}/BUILDTMP/VueTorrent.zip" -d "${WORKDIR}/BUILDTMP"
 
 FROM alpine:latest AS build_qbittorrent
 
@@ -52,6 +54,7 @@ RUN \
 FROM scratch AS rebased_qbittorrent
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=get_info /tmp/BUILDTMP/VueTorrent-nightly-release /VueTorrent
 
 COPY --from=build_qbittorrent /qbittorrent/completed/qbittorrent-nox /qbittorrent-nox
 
