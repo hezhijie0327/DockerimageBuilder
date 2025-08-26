@@ -1,4 +1,4 @@
-# Current Version: 1.3.8
+# Current Version: 1.3.9
 
 ARG NODEJS_VERSION="22"
 
@@ -38,7 +38,8 @@ RUN \
     && git commit -m "Update qBittorrent version to ${QBITTORRENT_CUSTOM_VERSION}" \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
-    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH"
+    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
+    && cp -f "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/vuetorrent/locales/zh-Hans.json" "${WORKDIR}/BUILDTMP/VUETORRENT/src/locales/zh-Hans.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_vuetorrent
 
