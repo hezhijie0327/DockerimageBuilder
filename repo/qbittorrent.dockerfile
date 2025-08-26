@@ -1,4 +1,6 @@
-# Current Version: 1.3.5
+# Current Version: 1.3.6
+
+ARG NODEJS_VERSION="22"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -29,8 +31,17 @@ RUN \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
-    && wget -O "${WORKDIR}/BUILDTMP/VueTorrent.zip" "https://github.com/VueTorrent/VueTorrent/archive/refs/heads/nightly-release.zip" \
-    && unzip "${WORKDIR}/BUILDTMP/VueTorrent.zip" -d "${WORKDIR}/BUILDTMP"
+    && git clone -n "master" --depth=1 "https://github.com/VueTorrent/VueTorrent.git" "${WORKDIR}/BUILDTMP/VUETORRENT"
+
+FROM node:${NODEJS_VERSION}-slim AS build_vuetorrent
+
+WORKDIR /vuetorrent
+
+COPY --from=get_info /tmp/BUILDTMP/VUETORRENT /vuetorrent
+
+RUN \
+    npm install \
+    && npm run build
 
 FROM alpine:latest AS build_qbittorrent
 
@@ -54,7 +65,8 @@ RUN \
 FROM scratch AS rebased_qbittorrent
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=get_info /tmp/BUILDTMP/VueTorrent-nightly-release /VueTorrent
+
+COPY --from=build_vuetorrent /vuetorrent/vuetorrent /VueTorrent
 
 COPY --from=build_qbittorrent /qbittorrent/completed/qbittorrent-nox /qbittorrent-nox
 
