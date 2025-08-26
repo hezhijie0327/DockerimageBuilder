@@ -1,4 +1,4 @@
-# Current Version: 1.3.6
+# Current Version: 1.3.7
 
 ARG NODEJS_VERSION="22"
 
@@ -31,7 +31,7 @@ RUN \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
-    && git clone -n "master" --depth=1 "https://github.com/VueTorrent/VueTorrent.git" "${WORKDIR}/BUILDTMP/VUETORRENT"
+    && git clone -b "master" --depth=1 "https://github.com/VueTorrent/VueTorrent.git" "${WORKDIR}/BUILDTMP/VUETORRENT"
 
 FROM node:${NODEJS_VERSION}-slim AS build_vuetorrent
 
