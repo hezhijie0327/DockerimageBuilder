@@ -1,4 +1,4 @@
-# Current Version: 1.3.7
+# Current Version: 1.3.8
 
 ARG NODEJS_VERSION="22"
 
@@ -15,8 +15,16 @@ RUN \
     && cat "${WORKDIR}/qbittorrent.json" | jq -Sr ".patch" > "${WORKDIR}/qbittorrent.patch.autobuild" \
     && cat "${WORKDIR}/qbittorrent.json" | jq -Sr ".patch_branch" > "${WORKDIR}/qbittorrent.patch_branch.autobuild" \
     && cat "${WORKDIR}/qbittorrent.json" | jq -Sr ".version" > "${WORKDIR}/qbittorrent.version.autobuild" \
+    && cat "/opt/package.json" | jq -Sr ".repo.vuetorrent" > "${WORKDIR}/vuetorrent.json" \
+    && cat "${WORKDIR}/vuetorrent.json" | jq -Sr ".version" \
+    && cat "${WORKDIR}/vuetorrent.json" | jq -Sr ".source" > "${WORKDIR}/vuetorrent.source.autobuild" \
+    && cat "${WORKDIR}/vuetorrent.json" | jq -Sr ".source_branch" > "${WORKDIR}/vuetorrent.source_branch.autobuild" \
+    && cat "${WORKDIR}/vuetorrent.json" | jq -Sr ".patch" > "${WORKDIR}/vuetorrent.patch.autobuild" \
+    && cat "${WORKDIR}/vuetorrent.json" | jq -Sr ".patch_branch" > "${WORKDIR}/vuetorrent.patch_branch.autobuild" \
+    && cat "${WORKDIR}/vuetorrent.json" | jq -Sr ".version" > "${WORKDIR}/vuetorrent.version.autobuild" \
     && git clone -b $(cat "${WORKDIR}/qbittorrent.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/qbittorrent.source.autobuild") "${WORKDIR}/BUILDTMP/QBITTORRENT" \
     && git clone -b $(cat "${WORKDIR}/qbittorrent.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/qbittorrent.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
+    && git clone -b $(cat "${WORKDIR}/vuetorrent.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/vuetorrent.source.autobuild") "${WORKDIR}/BUILDTMP/VUETORRENT" \
     && export QBITTORRENT_SHA=$(cd "${WORKDIR}/BUILDTMP/QBITTORRENT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export QBITTORRENT_VERSION=$(cat "${WORKDIR}/qbittorrent.version.autobuild") \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
@@ -30,8 +38,7 @@ RUN \
     && git commit -m "Update qBittorrent version to ${QBITTORRENT_CUSTOM_VERSION}" \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
-    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
-    && git clone -b "master" --depth=1 "https://github.com/VueTorrent/VueTorrent.git" "${WORKDIR}/BUILDTMP/VUETORRENT"
+    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH"
 
 FROM node:${NODEJS_VERSION}-slim AS build_vuetorrent
 
