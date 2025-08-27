@@ -1,4 +1,4 @@
-# Current Version: 1.4.1
+# Current Version: 1.4.2
 
 ARG NODEJS_VERSION="22"
 
@@ -31,7 +31,7 @@ RUN \
     && export QBITTORRENT_CUSTOM_VERSION="-ZHIJIE-${QBITTORRENT_SHA}${PATCH_SHA}" \
     && export VUETORRENT_SHA=$(cd "${WORKDIR}/BUILDTMP/VUETORRENT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export VUETORRENT_VERSION=$(cat "${WORKDIR}/vuetorrent.version.autobuild") \
-    && export VUETORRENT_CUSTOM_VERSION="-ZHIJIE-${VUETORRENT_SHA}${PATCH_SHA}" \
+    && export VUETORRENT_CUSTOM_VERSION="${VUETORRENT_VERSION}-ZHIJIE-${VUETORRENT_SHA}${PATCH_SHA}" \
     && cat "${WORKDIR}/BUILDTMP/QBITTORRENT/src/base/version.h.in" | sed "s/#define QBT_VERSION_MAJOR [[:xdigit:]]\+/#define QBT_VERSION_MAJOR $(echo $QBITTORRENT_VERSION | cut -d '.' -f 1)/g;s/#define QBT_VERSION_MINOR [[:xdigit:]]\+/#define QBT_VERSION_MINOR $(echo $QBITTORRENT_VERSION | cut -d '.' -f 2)/g;s/#define QBT_VERSION_BUGFIX [[:xdigit:]]\+/#define QBT_VERSION_BUGFIX $(echo $QBITTORRENT_VERSION | cut -d '.' -f 3)/g;s/#define QBT_VERSION_BUILD [[:xdigit:]]\+/#define QBT_VERSION_BUILD $(TEMP_BUILD=$(echo $QBITTORRENT_VERSION | cut -d '.' -f 4) && echo ${TEMP_BUILD:-0})/g" | sed "s/#define QBT_VERSION_STATUS \"\(alpha\|beta\)[[:xdigit:]]\+\"/#define QBT_VERSION_STATUS \"${QBITTORRENT_CUSTOM_VERSION}\"/g" > "${WORKDIR}/BUILDTMP/QBITTORRENT/src/base/version.h.in.patch" \
     && mv "${WORKDIR}/BUILDTMP/QBITTORRENT/src/base/version.h.in.patch" "${WORKDIR}/BUILDTMP/QBITTORRENT/src/base/version.h.in" \
     && git config --global user.email "you@example.com" \
