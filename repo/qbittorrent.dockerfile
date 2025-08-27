@@ -1,4 +1,4 @@
-# Current Version: 1.4.0
+# Current Version: 1.4.1
 
 ARG NODEJS_VERSION="22"
 
@@ -29,6 +29,9 @@ RUN \
     && export QBITTORRENT_VERSION=$(cat "${WORKDIR}/qbittorrent.version.autobuild") \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export QBITTORRENT_CUSTOM_VERSION="-ZHIJIE-${QBITTORRENT_SHA}${PATCH_SHA}" \
+    && export VUETORRENT_SHA=$(cd "${WORKDIR}/BUILDTMP/VUETORRENT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
+    && export VUETORRENT_VERSION=$(cat "${WORKDIR}/vuetorrent.version.autobuild") \
+    && export VUETORRENT_CUSTOM_VERSION="-ZHIJIE-${VUETORRENT_SHA}${PATCH_SHA}" \
     && cat "${WORKDIR}/BUILDTMP/QBITTORRENT/src/base/version.h.in" | sed "s/#define QBT_VERSION_MAJOR [[:xdigit:]]\+/#define QBT_VERSION_MAJOR $(echo $QBITTORRENT_VERSION | cut -d '.' -f 1)/g;s/#define QBT_VERSION_MINOR [[:xdigit:]]\+/#define QBT_VERSION_MINOR $(echo $QBITTORRENT_VERSION | cut -d '.' -f 2)/g;s/#define QBT_VERSION_BUGFIX [[:xdigit:]]\+/#define QBT_VERSION_BUGFIX $(echo $QBITTORRENT_VERSION | cut -d '.' -f 3)/g;s/#define QBT_VERSION_BUILD [[:xdigit:]]\+/#define QBT_VERSION_BUILD $(TEMP_BUILD=$(echo $QBITTORRENT_VERSION | cut -d '.' -f 4) && echo ${TEMP_BUILD:-0})/g" | sed "s/#define QBT_VERSION_STATUS \"\(alpha\|beta\)[[:xdigit:]]\+\"/#define QBT_VERSION_STATUS \"${QBITTORRENT_CUSTOM_VERSION}\"/g" > "${WORKDIR}/BUILDTMP/QBITTORRENT/src/base/version.h.in.patch" \
     && mv "${WORKDIR}/BUILDTMP/QBITTORRENT/src/base/version.h.in.patch" "${WORKDIR}/BUILDTMP/QBITTORRENT/src/base/version.h.in" \
     && git config --global user.email "you@example.com" \
@@ -38,7 +41,9 @@ RUN \
     && git commit -m "Update qBittorrent version to ${QBITTORRENT_CUSTOM_VERSION}" \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
-    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH"
+    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
+    && cp -f "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/vuetorrent/locales/zh-Hans.json" "${WORKDIR}/BUILDTMP/VUETORRENT/src/locales/zh-Hans.json" \
+    && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${VUETORRENT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/VUETORRENT/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_vuetorrent
 
