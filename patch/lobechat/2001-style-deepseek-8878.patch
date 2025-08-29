@@ -46,8 +46,34 @@ index b87281df37f14..86c9fe058081a 100644
    },
    provider: ModelProvider.DeepSeek,
  });
+diff --git a/packages/model-runtime/src/google/index.ts b/packages/model-runtime/src/google/index.ts
+index 075515414dccb..f8b665ffdaf9a 100644
+--- a/packages/model-runtime/src/google/index.ts
++++ b/packages/model-runtime/src/google/index.ts
+@@ -134,7 +134,7 @@ export class LobeGoogleAI implements LobeRuntimeAI {
+       const thinkingConfig: ThinkingConfig = {
+         includeThoughts:
+           !!thinkingBudget ||
+-          (!thinkingBudget && model && (model.includes('-2.5-') || model.includes('thinking')))
++            (!thinkingBudget && model && (model.includes('-2.5-') || model.includes('thinking')))
+             ? true
+             : undefined,
+         // https://ai.google.dev/gemini-api/docs/thinking#set-budget
+diff --git a/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap b/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
+index 3ba5b78c3c180..a510307ca03fb 100644
+--- a/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
++++ b/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
+@@ -138,7 +138,7 @@ Designed for a wide variety of tasks, it empowers developers and researchers to
+     "description": "The uncensored llama3 model is a powerhouse of creativity, excelling in both roleplay and story writing. It offers a liberating experience during roleplays, free from any restrictions. This model stands out for its immense creativity, boasting a vast array of unique ideas and plots, truly a treasure trove for those seeking originality. Its unrestricted nature during roleplays allows for the full breadth of imagination to unfold, akin to an enhanced, big-brained version of Stheno. Perfect for creative minds seeking a boundless platform for their imaginative expressions, the uncensored llama3 model is an ideal choice",
+     "displayName": "L3 70B Euryale v2.1",
+     "enabled": false,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "sao10k/l3-70b-euryale-v2.1",
+     "maxOutput": undefined,
+     "reasoning": true,
 diff --git a/packages/model-runtime/src/utils/modelParse.ts b/packages/model-runtime/src/utils/modelParse.ts
-index de30847374d01..0ae92bbdf1f04 100644
+index 53d535e403c56..28c90dfbb65c1 100644
 --- a/packages/model-runtime/src/utils/modelParse.ts
 +++ b/packages/model-runtime/src/utils/modelParse.ts
 @@ -17,8 +17,8 @@ export const MODEL_LIST_CONFIGS = {
@@ -57,10 +83,29 @@ index de30847374d01..0ae92bbdf1f04 100644
 -    functionCallKeywords: ['v3', 'r1'],
 -    reasoningKeywords: ['r1'],
 +    functionCallKeywords: ['v3', 'r1', 'deepseek-chat'],
-+    reasoningKeywords: ['r1', 'deepseek-reasoner'],
++    reasoningKeywords: ['r1', 'deepseek-reasoner', 'v3.1'],
    },
    google: {
      functionCallKeywords: ['gemini'],
+diff --git a/packages/model-runtime/src/utils/streams/google-ai.ts b/packages/model-runtime/src/utils/streams/google-ai.ts
+index 3e431c2c16be1..5080e5c8440e7 100644
+--- a/packages/model-runtime/src/utils/streams/google-ai.ts
++++ b/packages/model-runtime/src/utils/streams/google-ai.ts
+@@ -167,9 +167,13 @@ const transformGoogleGenerativeAIStream = (
+         if (candidate.finishReason) {
+           const chunks: StreamProtocolChunk[] = [imageChunk];
+           if (chunk.usageMetadata) {
++            // usageChunks already includes the 'stop' chunk as its first entry when usage exists,
++            // so append usageChunks to avoid sending a duplicate 'stop'.
+             chunks.push(...usageChunks);
++          } else {
++            // No usage metadata, we need to send the stop chunk explicitly.
++            chunks.push({ data: candidate.finishReason, id: context?.id, type: 'stop' });
+           }
+-          chunks.push({ data: candidate.finishReason, id: context?.id, type: 'stop' });
+           return chunks;
+         }
+ 
 diff --git a/packages/model-runtime/src/volcengine/index.ts b/packages/model-runtime/src/volcengine/index.ts
 index 0a22b433fda2d..1f04a84861889 100644
 --- a/packages/model-runtime/src/volcengine/index.ts
@@ -73,8 +118,126 @@ index 0a22b433fda2d..1f04a84861889 100644
  ];
  
  export interface VolcengineModelCard {
+diff --git a/src/config/aiModels/aihubmix.ts b/src/config/aiModels/aihubmix.ts
+index 345916fdf8e71..0dccae60d7f87 100644
+--- a/src/config/aiModels/aihubmix.ts
++++ b/src/config/aiModels/aihubmix.ts
+@@ -323,6 +323,27 @@ const aihubmixModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      vision: true,
++    },
++    contextWindowTokens: 256_000,
++    description:
++      '我们最新最强大的旗舰模型，在自然语言处理、数学计算和推理方面表现卓越 —— 是一款完美的全能型选手。',
++    displayName: 'Grok 4 0709',
++    enabled: true,
++    id: 'grok-4',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 3.3, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 16.5, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2025-07-09',
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -331,7 +352,6 @@ const aihubmixModels: AIChatModelCard[] = [
+     description:
+       '旗舰级模型，擅长数据提取、编程和文本摘要等企业级应用，拥有金融、医疗、法律和科学等领域的深厚知识。',
+     displayName: 'Grok 3',
+-    enabled: true,
+     id: 'grok-3',
+     pricing: {
+       units: [
+@@ -352,7 +372,6 @@ const aihubmixModels: AIChatModelCard[] = [
+     description:
+       '轻量级模型，回话前会先思考。运行快速、智能，适用于不需要深层领域知识的逻辑任务，并能获取原始的思维轨迹。',
+     displayName: 'Grok 3 Mini',
+-    enabled: true,
+     id: 'grok-3-mini',
+     pricing: {
+       units: [
+@@ -535,11 +554,29 @@ const aihubmixModels: AIChatModelCard[] = [
+       functionCall: true,
+       reasoning: true,
+     },
+-    contextWindowTokens: 65_536,
++    contextWindowTokens: 131_072,
++    description:
++      'DeepSeek-V3.1 是深度求索全新推出的混合推理模型，支持思考与非思考2种推理模式，较 DeepSeek-R1-0528 思考效率更高。经 Post-Training 优化，Agent 工具使用与智能体任务表现大幅提升。',
++    displayName: 'DeepSeek V3.1',
++    enabled: true,
++    id: 'DeepSeek-V3.1',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.56, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 1.68, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 131_072,
+     description:
+       '已升级至最新版本250528；字节火山云开源部署的满血 R1，总参数量 671B，输入最高 64k。目前最稳定，推荐用这个。',
+     displayName: 'DeepSeek R1',
+-    enabled: true,
+     id: 'DeepSeek-R1',
+     pricing: {
+       units: [
+@@ -571,10 +608,9 @@ const aihubmixModels: AIChatModelCard[] = [
+     abilities: {
+       functionCall: true,
+     },
+-    contextWindowTokens: 65_536,
++    contextWindowTokens: 131_072,
+     description: '字节火山云开源部署目前最稳定，推荐用这个。已经自动升级为最新发布的版本 250324 。',
+     displayName: 'DeepSeek V3',
+-    enabled: true,
+     id: 'DeepSeek-V3',
+     pricing: {
+       units: [
+@@ -657,6 +693,25 @@ const aihubmixModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      imageOutput: true,
++      vision: true,
++    },
++    contextWindowTokens: 32_768 + 8192,
++    description: 'Gemini 2.5 Flash 实验模型，支持图像生成',
++    displayName: 'Gemini 2.5 Flash Image Preview',
++    id: 'gemini-2.5-flash-image-preview',
++    maxOutput: 8192,
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 30, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2025-08-26',
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
 diff --git a/src/config/aiModels/deepseek.ts b/src/config/aiModels/deepseek.ts
-index 7773403fcfe48..70830bf5ed2b1 100644
+index 7773403fcfe48..b0bbc27fc7ddd 100644
 --- a/src/config/aiModels/deepseek.ts
 +++ b/src/config/aiModels/deepseek.ts
 @@ -6,10 +6,10 @@ const deepseekChatModels: AIChatModelCard[] = [
@@ -91,7 +254,7 @@ index 7773403fcfe48..70830bf5ed2b1 100644
      enabled: true,
      id: 'deepseek-chat',
      maxOutput: 8192,
-@@ -21,21 +21,20 @@ const deepseekChatModels: AIChatModelCard[] = [
+@@ -21,7 +21,7 @@ const deepseekChatModels: AIChatModelCard[] = [
          { name: 'textOutput', rate: 8, strategy: 'fixed', unit: 'millionTokens' },
        ],
      },
@@ -100,8 +263,8 @@ index 7773403fcfe48..70830bf5ed2b1 100644
      type: 'chat',
    },
    {
-     abilities: {
--      functionCall: true,
+@@ -29,13 +29,13 @@ const deepseekChatModels: AIChatModelCard[] = [
+       functionCall: true,
        reasoning: true,
      },
 -    contextWindowTokens: 65_536,
@@ -118,7 +281,7 @@ index 7773403fcfe48..70830bf5ed2b1 100644
      pricing: {
        currency: 'CNY',
        units: [
-@@ -44,7 +43,7 @@ const deepseekChatModels: AIChatModelCard[] = [
+@@ -44,7 +44,7 @@ const deepseekChatModels: AIChatModelCard[] = [
          { name: 'textOutput', rate: 16, strategy: 'fixed', unit: 'millionTokens' },
        ],
      },
@@ -127,8 +290,323 @@ index 7773403fcfe48..70830bf5ed2b1 100644
      type: 'chat',
    },
  ];
+diff --git a/src/config/aiModels/modelscope.ts b/src/config/aiModels/modelscope.ts
+index de387d5e27003..4abb28f881943 100644
+--- a/src/config/aiModels/modelscope.ts
++++ b/src/config/aiModels/modelscope.ts
+@@ -7,22 +7,22 @@ const modelscopeChatModels: AIChatModelCard[] = [
+       reasoning: true,
+     },
+     contextWindowTokens: 131_072,
+-    description:
+-      'DeepSeek R1 通过利用增加的计算资源和在后训练过程中引入算法优化机制，显著提高了其推理和推断能力的深度。该模型在各种基准评估中表现出色，包括数学、编程和一般逻辑方面。其整体性能现已接近领先模型，如 O3 和 Gemini 2.5 Pro。',
+-    displayName: 'DeepSeek-R1-0528',
++    description: 'DeepSeek-V3.1 模型为混合推理架构模型，同时支持思考模式与非思考模式。',
++    displayName: 'DeepSeek-V3.1',
+     enabled: true,
+-    id: 'deepseek-ai/DeepSeek-R1-0528',
++    id: 'deepseek-ai/DeepSeek-V3.1',
+     type: 'chat',
+   },
+   {
+     abilities: {
+       functionCall: true,
++      reasoning: true,
+     },
+     contextWindowTokens: 131_072,
+-    description: 'DeepSeek-V3是DeepSeek第三代模型的最新版本，具有强大的推理和对话能力。',
+-    displayName: 'DeepSeek-V3',
+-    enabled: true,
+-    id: 'deepseek-ai/DeepSeek-V3',
++    description:
++      'DeepSeek R1 通过利用增加的计算资源和在后训练过程中引入算法优化机制，显著提高了其推理和推断能力的深度。该模型在各种基准评估中表现出色，包括数学、编程和一般逻辑方面。其整体性能现已接近领先模型，如 O3 和 Gemini 2.5 Pro。',
++    displayName: 'DeepSeek-R1-0528',
++    id: 'deepseek-ai/DeepSeek-R1-0528',
+     type: 'chat',
+   },
+   {
+@@ -33,10 +33,19 @@ const modelscopeChatModels: AIChatModelCard[] = [
+     contextWindowTokens: 131_072,
+     description: 'DeepSeek-R1是DeepSeek最新的推理模型，专注于复杂推理任务。',
+     displayName: 'DeepSeek-R1',
+-    enabled: true,
+     id: 'deepseek-ai/DeepSeek-R1',
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++    },
++    contextWindowTokens: 131_072,
++    description: 'DeepSeek-V3是DeepSeek第三代模型的最新版本，具有强大的推理和对话能力。',
++    displayName: 'DeepSeek-V3',
++    id: 'deepseek-ai/DeepSeek-V3',
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+diff --git a/src/config/aiModels/novita.ts b/src/config/aiModels/novita.ts
+index d791792a21ef9..8ba0faab8c2b5 100644
+--- a/src/config/aiModels/novita.ts
++++ b/src/config/aiModels/novita.ts
+@@ -2,6 +2,130 @@ import { AIChatModelCard } from '@/types/aiModel';
+ 
+ // https://novita.ai/pricing
+ const novitaChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 163_840,
++    displayName: 'DeepSeek V3.1',
++    id: 'deepseek/deepseek-v3.1',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.55, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 1.66, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++    },
++    contextWindowTokens: 262_144,
++    displayName: 'Qwen3 Coder 480B A35B Instruct',
++    id: 'qwen/qwen3-coder-480b-a35b-instruct',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.35, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 1.5, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 131_072,
++    displayName: 'OpenAI GPT OSS 120B',
++    id: 'openai/gpt-oss-120b',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.1, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.5, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      reasoning: true,
++    },
++    contextWindowTokens: 131_072,
++    displayName: 'OpenAI: GPT OSS 20B',
++    id: 'openai/gpt-oss-20b',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.05, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.2, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 131_072,
++    displayName: 'GLM-4.5',
++    id: 'zai-org/glm-4.5',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.6, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 2.2, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++    },
++    contextWindowTokens: 262_144,
++    displayName: 'Qwen3 235B A22B Instruct 2507',
++    id: 'qwen/qwen3-235b-a22b-instruct-2507',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.15, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.8, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 131_072,
++    displayName: 'Qwen3 235B A22b Thinking 2507',
++    id: 'qwen/qwen3-235b-a22b-thinking-2507',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      reasoning: true,
++    },
++    contextWindowTokens: 131_072,
++    displayName: 'BaiChuan M2 32B',
++    id: 'baichuan/baichuan-m2-32b',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.07, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.07, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       reasoning: true,
+@@ -34,6 +158,9 @@ const novitaChatModels: AIChatModelCard[] = [
+     type: 'chat',
+   },
+   {
++    abilities: {
++      functionCall: true,
++    },
+     contextWindowTokens: 120_000,
+     displayName: 'ERNIE 4.5 0.3B',
+     id: 'baidu/ernie-4.5-0.3b',
+@@ -46,13 +173,16 @@ const novitaChatModels: AIChatModelCard[] = [
+     type: 'chat',
+   },
+   {
++    abilities: {
++      functionCall: true,
++    },
+     contextWindowTokens: 120_000,
+     displayName: 'ERNIE 4.5 21B A3B',
+     id: 'baidu/ernie-4.5-21B-a3b',
+     pricing: {
+       units: [
+-        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+-        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 0.07, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.28, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+     type: 'chat',
+@@ -74,6 +204,7 @@ const novitaChatModels: AIChatModelCard[] = [
+   },
+   {
+     abilities: {
++      functionCall: true,
+       reasoning: true,
+       vision: true,
+     },
+@@ -82,8 +213,8 @@ const novitaChatModels: AIChatModelCard[] = [
+     id: 'baidu/ernie-4.5-vl-28b-a3b',
+     pricing: {
+       units: [
+-        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+-        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 0.14, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.56, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+     type: 'chat',
+@@ -211,6 +342,7 @@ const novitaChatModels: AIChatModelCard[] = [
+   {
+     abilities: {
+       functionCall: true,
++      vision: true,
+     },
+     contextWindowTokens: 131_072,
+     displayName: 'Llama 4 Scout 17B Instruct',
+@@ -227,6 +359,7 @@ const novitaChatModels: AIChatModelCard[] = [
+   {
+     abilities: {
+       functionCall: true,
++      vision: true,
+     },
+     contextWindowTokens: 1_048_576,
+     displayName: 'Llama 4 Maverick 17B Instruct',
+@@ -234,7 +367,7 @@ const novitaChatModels: AIChatModelCard[] = [
+     id: 'meta-llama/llama-4-maverick-17b-128e-instruct-fp8',
+     pricing: {
+       units: [
+-        { name: 'textInput', rate: 0.2, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 0.17, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textOutput', rate: 0.85, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+@@ -286,7 +419,7 @@ const novitaChatModels: AIChatModelCard[] = [
+     id: 'google/gemma-3-27b-it',
+     pricing: {
+       units: [
+-        { name: 'textInput', rate: 0.2, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 0.119, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textOutput', rate: 0.2, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+@@ -562,6 +695,9 @@ const novitaChatModels: AIChatModelCard[] = [
+     type: 'chat',
+   },
+   {
++    abilities: {
++      functionCall: true,
++    },
+     contextWindowTokens: 8192,
+     displayName: 'L3 70B Euryale v2.1',
+     id: 'sao10k/l3-70b-euryale-v2.1',
+@@ -653,6 +789,9 @@ const novitaChatModels: AIChatModelCard[] = [
+     type: 'chat',
+   },
+   {
++    abilities: {
++      functionCall: true,
++    },
+     contextWindowTokens: 8192,
+     displayName: 'L31 70B Euryale v2.2',
+     id: 'sao10k/l31-70b-euryale-v2.2',
+@@ -673,8 +812,8 @@ const novitaChatModels: AIChatModelCard[] = [
+     id: 'qwen/qwen2.5-7b-instruct',
+     pricing: {
+       units: [
+-        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+-        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 0.07, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.07, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+     type: 'chat',
+@@ -688,8 +827,8 @@ const novitaChatModels: AIChatModelCard[] = [
+     id: 'thudm/glm-4-32b-0414',
+     pricing: {
+       units: [
+-        { name: 'textInput', rate: 0.24, strategy: 'fixed', unit: 'millionTokens' },
+-        { name: 'textOutput', rate: 0.24, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 0.55, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 1.66, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+     type: 'chat',
 diff --git a/src/config/aiModels/openrouter.ts b/src/config/aiModels/openrouter.ts
-index dafe3d1f0bdce..bfc12dba53779 100644
+index cc05ebf24c54c..e33e94a58db75 100644
 --- a/src/config/aiModels/openrouter.ts
 +++ b/src/config/aiModels/openrouter.ts
 @@ -11,6 +11,25 @@ const openrouterChatModels: AIChatModelCard[] = [
@@ -156,7 +634,235 @@ index dafe3d1f0bdce..bfc12dba53779 100644
 +  },
    {
      abilities: {
-       reasoning: true,
+       imageOutput: true,
+diff --git a/src/config/aiModels/qwen.ts b/src/config/aiModels/qwen.ts
+index 5165437f598d6..631a492d6fd1c 100644
+--- a/src/config/aiModels/qwen.ts
++++ b/src/config/aiModels/qwen.ts
+@@ -3,6 +3,25 @@ import { AIChatModelCard, AIImageModelCard } from '@/types/aiModel';
+ // https://help.aliyun.com/zh/model-studio/models?spm=a2c4g.11186623
+ 
+ const qwenChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 131_072,
++    description: 'DeepSeek-V3.1 模型为混合推理架构模型，同时支持思考模式与非思考模式。',
++    displayName: 'DeepSeek V3.1',
++    id: 'deepseek-v3.1',
++    maxOutput: 65_536,
++    pricing: {
++      currency: 'CNY',
++      units: [
++        { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 12, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       search: true,
+@@ -11,7 +30,6 @@ const qwenChatModels: AIChatModelCard[] = [
+     description:
+       '总参数 1T，激活参数 32B。 非思维模型中，在前沿知识、数学和编码方面达到了顶尖水平，更擅长通用 Agent 任务。 针对代理任务进行了精心优化，不仅能回答问题，还能采取行动。 最适用于即兴、通用聊天和代理体验，是一款无需长时间思考的反射级模型。',
+     displayName: 'Kimi K2 Instruct',
+-    enabled: true,
+     id: 'Moonshot-Kimi-K2-Instruct',
+     maxOutput: 8192,
+     organization: 'Qwen',
+@@ -45,7 +63,7 @@ const qwenChatModels: AIChatModelCard[] = [
+     pricing: {
+       currency: 'CNY',
+       units: [
+-        { name: 'textInput_cacheRead', rate: 2.4, strategy: 'fixed', unit: 'millionTokens' }, // tokens 32K ~ 128K
++        { name: 'textInput_cacheRead', rate: 6 * 0.2, strategy: 'fixed', unit: 'millionTokens' }, // tokens 32K ~ 128K
+         { name: 'textInput', rate: 6, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textOutput', rate: 24, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+@@ -70,7 +88,7 @@ const qwenChatModels: AIChatModelCard[] = [
+     pricing: {
+       currency: 'CNY',
+       units: [
+-        { name: 'textInput_cacheRead', rate: 0.6, strategy: 'fixed', unit: 'millionTokens' }, // tokens 32K ~ 128K
++        { name: 'textInput_cacheRead', rate: 1.5 * 0.2, strategy: 'fixed', unit: 'millionTokens' }, // tokens 32K ~ 128K
+         { name: 'textInput', rate: 1.5, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textOutput', rate: 6, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+@@ -155,7 +173,6 @@ const qwenChatModels: AIChatModelCard[] = [
+     description:
+       '基于Qwen3的思考模式开源模型，相较上一版本（通义千问3-30B-A3B）逻辑能力、通用能力、知识增强及创作能力均有大幅提升，适用于高难度强推理场景。',
+     displayName: 'Qwen3 30B A3B Thinking 2507',
+-    enabled: true,
+     id: 'qwen3-30b-a3b-thinking-2507',
+     maxOutput: 32_768,
+     organization: 'Qwen',
+@@ -180,7 +197,6 @@ const qwenChatModels: AIChatModelCard[] = [
+     description:
+       '相较上一版本（Qwen3-30B-A3B）中英文和多语言整体通用能力有大幅提升。主观开放类任务专项优化，显著更加符合用户偏好，能够提供更有帮助性的回复。',
+     displayName: 'Qwen3 30B A3B Instruct 2507',
+-    enabled: true,
+     id: 'qwen3-30b-a3b-instruct-2507',
+     maxOutput: 32_768,
+     organization: 'Qwen',
+@@ -466,9 +482,9 @@ const qwenChatModels: AIChatModelCard[] = [
+           name: 'textInput_cacheRead',
+           strategy: 'tiered',
+           tiers: [
+-            { rate: 0.15 * 0.4, upTo: 0.128 },
+-            { rate: 0.6 * 0.4, upTo: 0.256 },
+-            { rate: 1.2 * 0.4, upTo: 'infinity' },
++            { rate: 0.15 * 0.2, upTo: 0.128 },
++            { rate: 0.6 * 0.2, upTo: 0.256 },
++            { rate: 1.2 * 0.2, upTo: 'infinity' },
+           ],
+           unit: 'millionTokens',
+         },
+@@ -500,7 +516,7 @@ const qwenChatModels: AIChatModelCard[] = [
+     pricing: {
+       currency: 'CNY',
+       units: [
+-        { name: 'textInput_cacheRead', rate: 0.12, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput_cacheRead', rate: 0.3 * 0.2, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textInput', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textOutput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+@@ -534,9 +550,9 @@ const qwenChatModels: AIChatModelCard[] = [
+         {
+           lookup: {
+             prices: {
+-              '[0, 128_000]': 0.8 * 0.4,
+-              '[128_000, 256_000]': 2.4 * 0.4,
+-              '[256_000, infinity]': 4.8 * 0.4,
++              '[0, 128_000]': 0.8 * 0.2,
++              '[128_000, 256_000]': 2.4 * 0.2,
++              '[256_000, infinity]': 4.8 * 0.2,
+             },
+             pricingParams: ['textInputRange'],
+           },
+@@ -602,7 +618,7 @@ const qwenChatModels: AIChatModelCard[] = [
+     pricing: {
+       currency: 'CNY',
+       units: [
+-        { name: 'textInput_cacheRead', rate: 0.96, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput_cacheRead', rate: 2.4 * 0.2, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textInput', rate: 2.4, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textOutput', rate: 9.6, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+@@ -695,7 +711,7 @@ const qwenChatModels: AIChatModelCard[] = [
+     pricing: {
+       currency: 'CNY',
+       units: [
+-        { name: 'textInput_cacheRead', rate: 0.8 * 0.4, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput_cacheRead', rate: 0.8 * 0.2, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textInput', rate: 0.8, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textOutput', rate: 2, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+@@ -719,7 +735,7 @@ const qwenChatModels: AIChatModelCard[] = [
+     pricing: {
+       currency: 'CNY',
+       units: [
+-        { name: 'textInput_cacheRead', rate: 1.6 * 0.4, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput_cacheRead', rate: 1.6 * 0.2, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textInput', rate: 1.6, strategy: 'fixed', unit: 'millionTokens' },
+         { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+diff --git a/src/config/aiModels/siliconcloud.ts b/src/config/aiModels/siliconcloud.ts
+index 790dc7a4cba72..c2be09cba352c 100644
+--- a/src/config/aiModels/siliconcloud.ts
++++ b/src/config/aiModels/siliconcloud.ts
+@@ -2,6 +2,45 @@ import { AIChatModelCard, AIImageModelCard } from '@/types/aiModel';
+ 
+ // https://siliconflow.cn/zh-cn/models
+ const siliconcloudChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 163_840,
++    description:
++      'DeepSeek-V3.1 是由深度求索（DeepSeek AI）发布的混合模式大语言模型，它在前代模型的基础上进行了多方面的重要升级。该模型的一大创新是集成了“思考模式”（Thinking Mode）和“非思考模式”（Non-thinking Mode）于一体，用户可以通过调整聊天模板灵活切换，以适应不同的任务需求。通过专门的训练后优化，V3.1 在工具调用和 Agent 任务方面的性能得到了显著增强，能够更好地支持外部搜索工具和执行多步复杂任务。该模型基于 DeepSeek-V3.1-Base 进行后训练，通过两阶段长文本扩展方法，大幅增加了训练数据量，使其在处理长文档和长篇代码方面表现更佳。作为一个开源模型，DeepSeek-V3.1 在编码、数学和推理等多个基准测试中展现了与顶尖闭源模型相媲美的能力，同时凭借其混合专家（MoE）架构，在保持巨大模型容量的同时，有效降低了推理成本。',
++    displayName: 'DeepSeek V3.1',
++    enabled: true,
++    id: 'deepseek-ai/DeepSeek-V3.1',
++    pricing: {
++      currency: 'CNY',
++      units: [
++        { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 12, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 163_840,
++    description:
++      'DeepSeek-V3.1 是由深度求索（DeepSeek AI）发布的混合模式大语言模型，它在前代模型的基础上进行了多方面的重要升级。该模型的一大创新是集成了“思考模式”（Thinking Mode）和“非思考模式”（Non-thinking Mode）于一体，用户可以通过调整聊天模板灵活切换，以适应不同的任务需求。通过专门的训练后优化，V3.1 在工具调用和 Agent 任务方面的性能得到了显著增强，能够更好地支持外部搜索工具和执行多步复杂任务。该模型基于 DeepSeek-V3.1-Base 进行后训练，通过两阶段长文本扩展方法，大幅增加了训练数据量，使其在处理长文档和长篇代码方面表现更佳。作为一个开源模型，DeepSeek-V3.1 在编码、数学和推理等多个基准测试中展现了与顶尖闭源模型相媲美的能力，同时凭借其混合专家（MoE）架构，在保持巨大模型容量的同时，有效降低了推理成本。',
++    displayName: 'DeepSeek V3.1 (Pro)',
++    id: 'Pro/deepseek-ai/DeepSeek-V3.1',
++    pricing: {
++      currency: 'CNY',
++      units: [
++        { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 12, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -452,7 +491,6 @@ const siliconcloudChatModels: AIChatModelCard[] = [
+     description:
+       'Qwen3是一款能力大幅提升的新一代通义千问大模型，在推理、通用、Agent和多语言等多个核心能力上均达到业界领先水平，并支持思考模式切换。',
+     displayName: 'Qwen3 8B (Free)',
+-    enabled: true,
+     id: 'Qwen/Qwen3-8B',
+     organization: 'Qwen',
+     pricing: {
+diff --git a/src/config/aiModels/vertexai.ts b/src/config/aiModels/vertexai.ts
+index aa4db0e3ffa49..6dcf334c40887 100644
+--- a/src/config/aiModels/vertexai.ts
++++ b/src/config/aiModels/vertexai.ts
+@@ -40,7 +40,6 @@ const vertexaiChatModels: AIChatModelCard[] = [
+     description:
+       'Gemini 2.5 Pro Preview 是 Google 最先进的思维模型，能够对代码、数学和STEM领域的复杂问题进行推理，以及使用长上下文分析大型数据集、代码库和文档。',
+     displayName: 'Gemini 2.5 Pro Preview 05-06',
+-    enabled: true,
+     id: 'gemini-2.5-pro-preview-05-06',
+     maxOutput: 65_536,
+     pricing: {
+@@ -109,7 +108,6 @@ const vertexaiChatModels: AIChatModelCard[] = [
+     contextWindowTokens: 1_048_576 + 65_536,
+     description: 'Gemini 2.5 Flash Preview 是 Google 性价比最高的模型，提供全面的功能。',
+     displayName: 'Gemini 2.5 Flash Preview 04-17',
+-    enabled: true,
+     id: 'gemini-2.5-flash-preview-04-17',
+     maxOutput: 65_536,
+     pricing: {
+@@ -153,7 +151,6 @@ const vertexaiChatModels: AIChatModelCard[] = [
+     contextWindowTokens: 1_000_000 + 64_000,
+     description: 'Gemini 2.5 Flash-Lite 是 Google 最小、性价比最高的模型，专为大规模使用而设计。',
+     displayName: 'Gemini 2.5 Flash-Lite',
+-    enabled: true,
+     id: 'gemini-2.5-flash-lite',
+     maxOutput: 64_000,
+     pricing: {
+@@ -180,7 +177,6 @@ const vertexaiChatModels: AIChatModelCard[] = [
+     description:
+       'Gemini 2.5 Flash-Lite Preview 是 Google 最小、性价比最高的模型，专为大规模使用而设计。',
+     displayName: 'Gemini 2.5 Flash-Lite Preview 06-17',
+-    enabled: true,
+     id: 'gemini-2.5-flash-lite-preview-06-17',
+     maxOutput: 64_000,
+     pricing: {
 diff --git a/src/config/aiModels/volcengine.ts b/src/config/aiModels/volcengine.ts
 index 9a5aac4ef8c94..f363b07d24a20 100644
 --- a/src/config/aiModels/volcengine.ts
@@ -195,3 +901,50 @@ index 9a5aac4ef8c94..f363b07d24a20 100644
    {
      abilities: {
        functionCall: true,
+diff --git a/src/config/aiModels/xai.ts b/src/config/aiModels/xai.ts
+index 498ba391ca26b..f6424c2f5981b 100644
+--- a/src/config/aiModels/xai.ts
++++ b/src/config/aiModels/xai.ts
+@@ -127,6 +127,30 @@ const xaiChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 256_000,
++    description:
++      '轻量级模型，回话前会先思考。运行快速、智能，适用于不需要深层领域知识的逻辑任务，并能获取原始的思维轨迹。',
++    displayName: 'Grok Code Fast 1',
++    id: 'grok-code-fast-1',
++    pricing: {
++      units: [
++        { name: 'textInput_cacheRead', rate: 0.02, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 0.2, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 1.5, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2025-08-27',
++    settings: {
++      extendParams: ['reasoningEffort'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+diff --git a/src/config/modelProviders/modelscope.ts b/src/config/modelProviders/modelscope.ts
+index 58324e9e04e9b..5c82806a5d744 100644
+--- a/src/config/modelProviders/modelscope.ts
++++ b/src/config/modelProviders/modelscope.ts
+@@ -51,6 +51,7 @@ const ModelScope: ModelProviderCard = {
+   modelList: { showModelFetcher: true },
+   name: 'ModelScope',
+   settings: {
++    disableBrowserRequest: true, // CORS Error
+     proxyUrl: {
+       placeholder: 'https://api-inference.modelscope.cn/v1',
+     },
