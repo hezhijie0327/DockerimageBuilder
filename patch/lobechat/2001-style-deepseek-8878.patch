@@ -1,127 +1,7 @@
-diff --git a/packages/model-runtime/src/deepseek/index.ts b/packages/model-runtime/src/deepseek/index.ts
-index b87281df37f14..86c9fe058081a 100644
---- a/packages/model-runtime/src/deepseek/index.ts
-+++ b/packages/model-runtime/src/deepseek/index.ts
-@@ -1,6 +1,5 @@
--import type { ChatModelCard } from '@/types/llm';
--
- import { ModelProvider } from '../types';
-+import { MODEL_LIST_CONFIGS, processModelList } from '../utils/modelParse';
- import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
- 
- export interface DeepSeekModelCard {
-@@ -13,34 +12,10 @@ export const LobeDeepSeekAI = createOpenAICompatibleRuntime({
-     chatCompletion: () => process.env.DEBUG_DEEPSEEK_CHAT_COMPLETION === '1',
-   },
-   models: async ({ client }) => {
--    const { LOBE_DEFAULT_MODEL_LIST } = await import('@/config/aiModels');
--
-     const modelsPage = (await client.models.list()) as any;
-     const modelList: DeepSeekModelCard[] = modelsPage.data;
- 
--    return modelList
--      .map((model) => {
--        const knownModel = LOBE_DEFAULT_MODEL_LIST.find(
--          (m) => model.id.toLowerCase() === m.id.toLowerCase(),
--        );
--
--        return {
--          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
--          displayName: knownModel?.displayName ?? undefined,
--          enabled: knownModel?.enabled || false,
--          functionCall:
--            !model.id.toLowerCase().includes('reasoner') ||
--            knownModel?.abilities?.functionCall ||
--            false,
--          id: model.id,
--          reasoning:
--            model.id.toLowerCase().includes('reasoner') ||
--            knownModel?.abilities?.reasoning ||
--            false,
--          vision: knownModel?.abilities?.vision || false,
--        };
--      })
--      .filter(Boolean) as ChatModelCard[];
-+    return processModelList(modelList, MODEL_LIST_CONFIGS.deepseek, 'deepseek');
-   },
-   provider: ModelProvider.DeepSeek,
- });
-diff --git a/packages/model-runtime/src/google/index.ts b/packages/model-runtime/src/google/index.ts
-index 075515414dccb..f8b665ffdaf9a 100644
---- a/packages/model-runtime/src/google/index.ts
-+++ b/packages/model-runtime/src/google/index.ts
-@@ -134,7 +134,7 @@ export class LobeGoogleAI implements LobeRuntimeAI {
-       const thinkingConfig: ThinkingConfig = {
-         includeThoughts:
-           !!thinkingBudget ||
--          (!thinkingBudget && model && (model.includes('-2.5-') || model.includes('thinking')))
-+            (!thinkingBudget && model && (model.includes('-2.5-') || model.includes('thinking')))
-             ? true
-             : undefined,
-         // https://ai.google.dev/gemini-api/docs/thinking#set-budget
-diff --git a/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap b/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
-index 3ba5b78c3c180..a510307ca03fb 100644
---- a/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
-+++ b/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
-@@ -138,7 +138,7 @@ Designed for a wide variety of tasks, it empowers developers and researchers to
-     "description": "The uncensored llama3 model is a powerhouse of creativity, excelling in both roleplay and story writing. It offers a liberating experience during roleplays, free from any restrictions. This model stands out for its immense creativity, boasting a vast array of unique ideas and plots, truly a treasure trove for those seeking originality. Its unrestricted nature during roleplays allows for the full breadth of imagination to unfold, akin to an enhanced, big-brained version of Stheno. Perfect for creative minds seeking a boundless platform for their imaginative expressions, the uncensored llama3 model is an ideal choice",
-     "displayName": "L3 70B Euryale v2.1",
-     "enabled": false,
--    "functionCall": false,
-+    "functionCall": true,
-     "id": "sao10k/l3-70b-euryale-v2.1",
-     "maxOutput": undefined,
-     "reasoning": true,
-diff --git a/packages/model-runtime/src/utils/modelParse.ts b/packages/model-runtime/src/utils/modelParse.ts
-index 53d535e403c56..28c90dfbb65c1 100644
---- a/packages/model-runtime/src/utils/modelParse.ts
-+++ b/packages/model-runtime/src/utils/modelParse.ts
-@@ -17,8 +17,8 @@ export const MODEL_LIST_CONFIGS = {
-     visionKeywords: ['claude'],
-   },
-   deepseek: {
--    functionCallKeywords: ['v3', 'r1'],
--    reasoningKeywords: ['r1'],
-+    functionCallKeywords: ['v3', 'r1', 'deepseek-chat'],
-+    reasoningKeywords: ['r1', 'deepseek-reasoner', 'v3.1'],
-   },
-   google: {
-     functionCallKeywords: ['gemini'],
-diff --git a/packages/model-runtime/src/utils/streams/google-ai.ts b/packages/model-runtime/src/utils/streams/google-ai.ts
-index 3e431c2c16be1..5080e5c8440e7 100644
---- a/packages/model-runtime/src/utils/streams/google-ai.ts
-+++ b/packages/model-runtime/src/utils/streams/google-ai.ts
-@@ -167,9 +167,13 @@ const transformGoogleGenerativeAIStream = (
-         if (candidate.finishReason) {
-           const chunks: StreamProtocolChunk[] = [imageChunk];
-           if (chunk.usageMetadata) {
-+            // usageChunks already includes the 'stop' chunk as its first entry when usage exists,
-+            // so append usageChunks to avoid sending a duplicate 'stop'.
-             chunks.push(...usageChunks);
-+          } else {
-+            // No usage metadata, we need to send the stop chunk explicitly.
-+            chunks.push({ data: candidate.finishReason, id: context?.id, type: 'stop' });
-           }
--          chunks.push({ data: candidate.finishReason, id: context?.id, type: 'stop' });
-           return chunks;
-         }
- 
-diff --git a/packages/model-runtime/src/volcengine/index.ts b/packages/model-runtime/src/volcengine/index.ts
-index 0a22b433fda2d..1f04a84861889 100644
---- a/packages/model-runtime/src/volcengine/index.ts
-+++ b/packages/model-runtime/src/volcengine/index.ts
-@@ -7,6 +7,7 @@ const THINKING_MODELS = [
-   'thinking-pro-m',
-   'doubao-seed-1-6',
-   'doubao-1-5-ui-tars',
-+  'deepseek-v3-1',
- ];
- 
- export interface VolcengineModelCard {
-diff --git a/src/config/aiModels/aihubmix.ts b/src/config/aiModels/aihubmix.ts
+diff --git a/packages/model-bank/src/aiModels/aihubmix.ts b/packages/model-bank/src/aiModels/aihubmix.ts
 index 345916fdf8e71..0dccae60d7f87 100644
---- a/src/config/aiModels/aihubmix.ts
-+++ b/src/config/aiModels/aihubmix.ts
+--- a/packages/model-bank/src/aiModels/aihubmix.ts
++++ b/packages/model-bank/src/aiModels/aihubmix.ts
 @@ -323,6 +323,27 @@ const aihubmixModels: AIChatModelCard[] = [
      },
      type: 'chat',
@@ -236,10 +116,10 @@ index 345916fdf8e71..0dccae60d7f87 100644
    {
      abilities: {
        functionCall: true,
-diff --git a/src/config/aiModels/deepseek.ts b/src/config/aiModels/deepseek.ts
+diff --git a/packages/model-bank/src/aiModels/deepseek.ts b/packages/model-bank/src/aiModels/deepseek.ts
 index 7773403fcfe48..b0bbc27fc7ddd 100644
---- a/src/config/aiModels/deepseek.ts
-+++ b/src/config/aiModels/deepseek.ts
+--- a/packages/model-bank/src/aiModels/deepseek.ts
++++ b/packages/model-bank/src/aiModels/deepseek.ts
 @@ -6,10 +6,10 @@ const deepseekChatModels: AIChatModelCard[] = [
      abilities: {
        functionCall: true,
@@ -290,10 +170,10 @@ index 7773403fcfe48..b0bbc27fc7ddd 100644
      type: 'chat',
    },
  ];
-diff --git a/src/config/aiModels/modelscope.ts b/src/config/aiModels/modelscope.ts
+diff --git a/packages/model-bank/src/aiModels/modelscope.ts b/packages/model-bank/src/aiModels/modelscope.ts
 index de387d5e27003..4abb28f881943 100644
---- a/src/config/aiModels/modelscope.ts
-+++ b/src/config/aiModels/modelscope.ts
+--- a/packages/model-bank/src/aiModels/modelscope.ts
++++ b/packages/model-bank/src/aiModels/modelscope.ts
 @@ -7,22 +7,22 @@ const modelscopeChatModels: AIChatModelCard[] = [
        reasoning: true,
      },
@@ -346,10 +226,10 @@ index de387d5e27003..4abb28f881943 100644
    {
      abilities: {
        functionCall: true,
-diff --git a/src/config/aiModels/novita.ts b/src/config/aiModels/novita.ts
+diff --git a/packages/model-bank/src/aiModels/novita.ts b/packages/model-bank/src/aiModels/novita.ts
 index d791792a21ef9..8ba0faab8c2b5 100644
---- a/src/config/aiModels/novita.ts
-+++ b/src/config/aiModels/novita.ts
+--- a/packages/model-bank/src/aiModels/novita.ts
++++ b/packages/model-bank/src/aiModels/novita.ts
 @@ -2,6 +2,130 @@ import { AIChatModelCard } from '@/types/aiModel';
  
  // https://novita.ai/pricing
@@ -605,10 +485,10 @@ index d791792a21ef9..8ba0faab8c2b5 100644
        ],
      },
      type: 'chat',
-diff --git a/src/config/aiModels/openrouter.ts b/src/config/aiModels/openrouter.ts
-index cc05ebf24c54c..e33e94a58db75 100644
---- a/src/config/aiModels/openrouter.ts
-+++ b/src/config/aiModels/openrouter.ts
+diff --git a/packages/model-bank/src/aiModels/openrouter.ts b/packages/model-bank/src/aiModels/openrouter.ts
+index cc05ebf24c54c..9c52248c79133 100644
+--- a/packages/model-bank/src/aiModels/openrouter.ts
++++ b/packages/model-bank/src/aiModels/openrouter.ts
 @@ -11,6 +11,25 @@ const openrouterChatModels: AIChatModelCard[] = [
      id: 'openrouter/auto',
      type: 'chat',
@@ -635,10 +515,36 @@ index cc05ebf24c54c..e33e94a58db75 100644
    {
      abilities: {
        imageOutput: true,
-diff --git a/src/config/aiModels/qwen.ts b/src/config/aiModels/qwen.ts
+@@ -44,6 +63,25 @@ const openrouterChatModels: AIChatModelCard[] = [
+     releasedAt: '2025-08-26',
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++    },
++    contextWindowTokens: 163_840,
++    description:
++      'DeepSeek-V3.1是一款支持128K长上下文和高效模式切换的大型混合推理模型，它在工具调用、代码生成和复杂推理任务上实现了卓越的性能与速度。',
++    displayName: 'DeepSeek V3.1',
++    id: 'deepseek/deepseek-chat-v3.1',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0.2, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0.8, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2025-08-21',
++    type: 'chat',
++  },
+   {
+     abilities: {
+       reasoning: true,
+diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
 index 5165437f598d6..631a492d6fd1c 100644
---- a/src/config/aiModels/qwen.ts
-+++ b/src/config/aiModels/qwen.ts
+--- a/packages/model-bank/src/aiModels/qwen.ts
++++ b/packages/model-bank/src/aiModels/qwen.ts
 @@ -3,6 +3,25 @@ import { AIChatModelCard, AIImageModelCard } from '@/types/aiModel';
  // https://help.aliyun.com/zh/model-studio/models?spm=a2c4g.11186623
  
@@ -769,10 +675,10 @@ index 5165437f598d6..631a492d6fd1c 100644
          { name: 'textInput', rate: 1.6, strategy: 'fixed', unit: 'millionTokens' },
          { name: 'textOutput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
        ],
-diff --git a/src/config/aiModels/siliconcloud.ts b/src/config/aiModels/siliconcloud.ts
+diff --git a/packages/model-bank/src/aiModels/siliconcloud.ts b/packages/model-bank/src/aiModels/siliconcloud.ts
 index 790dc7a4cba72..c2be09cba352c 100644
---- a/src/config/aiModels/siliconcloud.ts
-+++ b/src/config/aiModels/siliconcloud.ts
+--- a/packages/model-bank/src/aiModels/siliconcloud.ts
++++ b/packages/model-bank/src/aiModels/siliconcloud.ts
 @@ -2,6 +2,45 @@ import { AIChatModelCard, AIImageModelCard } from '@/types/aiModel';
  
  // https://siliconflow.cn/zh-cn/models
@@ -827,10 +733,10 @@ index 790dc7a4cba72..c2be09cba352c 100644
      id: 'Qwen/Qwen3-8B',
      organization: 'Qwen',
      pricing: {
-diff --git a/src/config/aiModels/vertexai.ts b/src/config/aiModels/vertexai.ts
+diff --git a/packages/model-bank/src/aiModels/vertexai.ts b/packages/model-bank/src/aiModels/vertexai.ts
 index aa4db0e3ffa49..6dcf334c40887 100644
---- a/src/config/aiModels/vertexai.ts
-+++ b/src/config/aiModels/vertexai.ts
+--- a/packages/model-bank/src/aiModels/vertexai.ts
++++ b/packages/model-bank/src/aiModels/vertexai.ts
 @@ -40,7 +40,6 @@ const vertexaiChatModels: AIChatModelCard[] = [
      description:
        'Gemini 2.5 Pro Preview 是 Google 最先进的思维模型，能够对代码、数学和STEM领域的复杂问题进行推理，以及使用长上下文分析大型数据集、代码库和文档。',
@@ -863,10 +769,10 @@ index aa4db0e3ffa49..6dcf334c40887 100644
      id: 'gemini-2.5-flash-lite-preview-06-17',
      maxOutput: 64_000,
      pricing: {
-diff --git a/src/config/aiModels/volcengine.ts b/src/config/aiModels/volcengine.ts
+diff --git a/packages/model-bank/src/aiModels/volcengine.ts b/packages/model-bank/src/aiModels/volcengine.ts
 index 9a5aac4ef8c94..f363b07d24a20 100644
---- a/src/config/aiModels/volcengine.ts
-+++ b/src/config/aiModels/volcengine.ts
+--- a/packages/model-bank/src/aiModels/volcengine.ts
++++ b/packages/model-bank/src/aiModels/volcengine.ts
 @@ -4,6 +4,33 @@ import { AIChatModelCard, AIImageModelCard } from '@/types/aiModel';
  // pricing https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement
  
@@ -901,11 +807,11 @@ index 9a5aac4ef8c94..f363b07d24a20 100644
    {
      abilities: {
        functionCall: true,
-diff --git a/src/config/aiModels/xai.ts b/src/config/aiModels/xai.ts
-index 498ba391ca26b..f6424c2f5981b 100644
---- a/src/config/aiModels/xai.ts
-+++ b/src/config/aiModels/xai.ts
-@@ -127,6 +127,30 @@ const xaiChatModels: AIChatModelCard[] = [
+diff --git a/packages/model-bank/src/aiModels/xai.ts b/packages/model-bank/src/aiModels/xai.ts
+index a89db578020d8..73a7c5de72599 100644
+--- a/packages/model-bank/src/aiModels/xai.ts
++++ b/packages/model-bank/src/aiModels/xai.ts
+@@ -152,6 +152,30 @@ const xaiChatModels: AIChatModelCard[] = [
      },
      type: 'chat',
    },
@@ -936,6 +842,121 @@ index 498ba391ca26b..f6424c2f5981b 100644
    {
      abilities: {
        functionCall: true,
+diff --git a/packages/model-runtime/src/deepseek/index.ts b/packages/model-runtime/src/deepseek/index.ts
+index 17bcc223951b9..14b42300e8924 100644
+--- a/packages/model-runtime/src/deepseek/index.ts
++++ b/packages/model-runtime/src/deepseek/index.ts
+@@ -1,6 +1,5 @@
+-import type { ChatModelCard } from '@/types/llm';
+-
+ import { ModelProvider } from '../types';
++import { MODEL_LIST_CONFIGS, processModelList } from '../utils/modelParse';
+ import { createOpenAICompatibleRuntime } from '../utils/openaiCompatibleFactory';
+ 
+ export interface DeepSeekModelCard {
+@@ -18,29 +17,7 @@ export const LobeDeepSeekAI = createOpenAICompatibleRuntime({
+     const modelsPage = (await client.models.list()) as any;
+     const modelList: DeepSeekModelCard[] = modelsPage.data;
+ 
+-    return modelList
+-      .map((model) => {
+-        const knownModel = LOBE_DEFAULT_MODEL_LIST.find(
+-          (m) => model.id.toLowerCase() === m.id.toLowerCase(),
+-        );
+-
+-        return {
+-          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
+-          displayName: knownModel?.displayName ?? undefined,
+-          enabled: knownModel?.enabled || false,
+-          functionCall:
+-            !model.id.toLowerCase().includes('reasoner') ||
+-            knownModel?.abilities?.functionCall ||
+-            false,
+-          id: model.id,
+-          reasoning:
+-            model.id.toLowerCase().includes('reasoner') ||
+-            knownModel?.abilities?.reasoning ||
+-            false,
+-          vision: knownModel?.abilities?.vision || false,
+-        };
+-      })
+-      .filter(Boolean) as ChatModelCard[];
++    return processModelList(modelList, MODEL_LIST_CONFIGS.deepseek, 'deepseek');
+   },
+   provider: ModelProvider.DeepSeek,
+ });
+diff --git a/packages/model-runtime/src/google/index.ts b/packages/model-runtime/src/google/index.ts
+index ce9262d60f304..6f2a31af64c5d 100644
+--- a/packages/model-runtime/src/google/index.ts
++++ b/packages/model-runtime/src/google/index.ts
+@@ -134,7 +134,7 @@ export class LobeGoogleAI implements LobeRuntimeAI {
+       const thinkingConfig: ThinkingConfig = {
+         includeThoughts:
+           !!thinkingBudget ||
+-          (!thinkingBudget && model && (model.includes('-2.5-') || model.includes('thinking')))
++            (!thinkingBudget && model && (model.includes('-2.5-') || model.includes('thinking')))
+             ? true
+             : undefined,
+         // https://ai.google.dev/gemini-api/docs/thinking#set-budget
+diff --git a/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap b/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
+index 7a1f1301566a0..da512116271d3 100644
+--- a/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
++++ b/packages/model-runtime/src/novita/__snapshots__/index.test.ts.snap
+@@ -298,7 +298,7 @@ Designed for a wide variety of tasks, it empowers developers and researchers to
+     "description": "The uncensored llama3 model is a powerhouse of creativity, excelling in both roleplay and story writing. It offers a liberating experience during roleplays, free from any restrictions. This model stands out for its immense creativity, boasting a vast array of unique ideas and plots, truly a treasure trove for those seeking originality. Its unrestricted nature during roleplays allows for the full breadth of imagination to unfold, akin to an enhanced, big-brained version of Stheno. Perfect for creative minds seeking a boundless platform for their imaginative expressions, the uncensored llama3 model is an ideal choice",
+     "displayName": "sao10k/l3-70b-euryale-v2.1",
+     "enabled": false,
+-    "functionCall": false,
++    "functionCall": true,
+     "id": "sao10k/l3-70b-euryale-v2.1",
+     "maxOutput": undefined,
+     "pricing": {
+diff --git a/packages/model-runtime/src/utils/modelParse.ts b/packages/model-runtime/src/utils/modelParse.ts
+index 8736e96e2f8e0..ae309b2d74063 100644
+--- a/packages/model-runtime/src/utils/modelParse.ts
++++ b/packages/model-runtime/src/utils/modelParse.ts
+@@ -17,8 +17,8 @@ export const MODEL_LIST_CONFIGS = {
+     visionKeywords: ['claude'],
+   },
+   deepseek: {
+-    functionCallKeywords: ['v3', 'r1'],
+-    reasoningKeywords: ['r1'],
++    functionCallKeywords: ['v3', 'r1', 'deepseek-chat'],
++    reasoningKeywords: ['r1', 'deepseek-reasoner', 'v3.1'],
+   },
+   google: {
+     functionCallKeywords: ['gemini'],
+diff --git a/packages/model-runtime/src/utils/streams/google-ai.ts b/packages/model-runtime/src/utils/streams/google-ai.ts
+index 3e431c2c16be1..5080e5c8440e7 100644
+--- a/packages/model-runtime/src/utils/streams/google-ai.ts
++++ b/packages/model-runtime/src/utils/streams/google-ai.ts
+@@ -167,9 +167,13 @@ const transformGoogleGenerativeAIStream = (
+         if (candidate.finishReason) {
+           const chunks: StreamProtocolChunk[] = [imageChunk];
+           if (chunk.usageMetadata) {
++            // usageChunks already includes the 'stop' chunk as its first entry when usage exists,
++            // so append usageChunks to avoid sending a duplicate 'stop'.
+             chunks.push(...usageChunks);
++          } else {
++            // No usage metadata, we need to send the stop chunk explicitly.
++            chunks.push({ data: candidate.finishReason, id: context?.id, type: 'stop' });
+           }
+-          chunks.push({ data: candidate.finishReason, id: context?.id, type: 'stop' });
+           return chunks;
+         }
+ 
+diff --git a/packages/model-runtime/src/volcengine/index.ts b/packages/model-runtime/src/volcengine/index.ts
+index 0a22b433fda2d..1f04a84861889 100644
+--- a/packages/model-runtime/src/volcengine/index.ts
++++ b/packages/model-runtime/src/volcengine/index.ts
+@@ -7,6 +7,7 @@ const THINKING_MODELS = [
+   'thinking-pro-m',
+   'doubao-seed-1-6',
+   'doubao-1-5-ui-tars',
++  'deepseek-v3-1',
+ ];
+ 
+ export interface VolcengineModelCard {
 diff --git a/src/config/modelProviders/modelscope.ts b/src/config/modelProviders/modelscope.ts
 index 58324e9e04e9b..5c82806a5d744 100644
 --- a/src/config/modelProviders/modelscope.ts
