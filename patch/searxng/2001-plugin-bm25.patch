@@ -1,8 +1,8 @@
 diff --git a/searx/autocomplete.py b/searx/autocomplete.py
-index 31121c7e762..06d32825313 100644
+index f887e5c56e6..e5402e633f8 100644
 --- a/searx/autocomplete.py
 +++ b/searx/autocomplete.py
-@@ -2,12 +2,17 @@
+@@ -2,13 +2,18 @@
  """This module implements functions needed for the autocompleter.
  
  """
@@ -12,6 +12,7 @@ index 31121c7e762..06d32825313 100644
  import json
  import html
 +import re
+ import typing as t
  from urllib.parse import urlencode, quote_plus
  
 +import numpy as np
@@ -21,9 +22,9 @@ index 31121c7e762..06d32825313 100644
  import lxml.etree
  import lxml.html
  from httpx import HTTPError
-@@ -22,6 +27,58 @@
- from searx.exceptions import SearxEngineResponseException
- from searx.utils import extr, gen_useragent
+@@ -25,6 +30,58 @@
+ if t.TYPE_CHECKING:
+     from searx.extended_types import SXNG_Response
  
 +# Tiktoken 配置常量
 +PRIMARY_MODEL = "gpt-oss-120b"
@@ -78,9 +79,9 @@ index 31121c7e762..06d32825313 100644
 +        return preprocessed_text.split()
 +
  
- def update_kwargs(**kwargs):
+ def update_kwargs(**kwargs) -> None:  # type: ignore
      if 'timeout' not in kwargs:
-@@ -371,14 +428,175 @@ def yandex(query, _lang):
+@@ -361,14 +418,175 @@ def yandex(query: str, _sxng_locale: str) -> list[str]:
      'swisscows': swisscows,
      'wikipedia': wikipedia,
      'yandex': yandex,
@@ -232,7 +233,7 @@ index 31121c7e762..06d32825313 100644
 +        return corpus
 +
 +
- def search_autocomplete(backend_name, query, sxng_locale):
+ def search_autocomplete(backend_name: str, query: str, sxng_locale: str) -> list[str]:
 +    if backend_name == 'custom':
 +        custom_backends = settings.get('search', {}).get('autocomplete_engines', [])
 +        custom_backends = [backend.strip() for backend in custom_backends if backend.strip() in backends]
@@ -428,13 +429,13 @@ index 00000000000..ac58c531c24
 +
 +        return search.result_container
 diff --git a/searx/results.py b/searx/results.py
-index 351292f655c..f34cfbf7b96 100644
+index 02b7bb204a4..99c1b74c331 100644
 --- a/searx/results.py
 +++ b/searx/results.py
-@@ -15,16 +15,20 @@
- 
- 
- def calculate_score(result, priority) -> float:
+@@ -18,16 +18,20 @@ def calculate_score(
+     result: MainResult | LegacyResult,
+     priority: MainResult.PriorityType,
+ ) -> float:
 -    weight = 1.0
 +    positions = result['positions']
 +    original_positions = positions[1:]
@@ -456,10 +457,10 @@ index 351292f655c..f34cfbf7b96 100644
              continue
          if priority == 'high':
 diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
-index 9f85397556a..a6b23da9124 100644
+index fd7d6d8cc55..5824e88f127 100644
 --- a/searx/settings_defaults.py
 +++ b/searx/settings_defaults.py
-@@ -156,6 +156,7 @@ def apply_schema(settings, schema, path_list):
+@@ -177,6 +177,7 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
      'search': {
          'safe_search': SettingsValue((0, 1, 2), 0),
          'autocomplete': SettingsValue(str, ''),
