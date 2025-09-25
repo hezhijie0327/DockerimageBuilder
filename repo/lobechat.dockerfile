@@ -1,6 +1,6 @@
-# Current Version: 1.6.9
+# Current Version: 1.7.0
 
-ARG NODEJS_VERSION="22"
+ARG NODEJS_VERSION="24"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -33,8 +33,11 @@ RUN \
     apt update \
     && apt install proxychains-ng -qy \
     && mkdir -p /distroless/bin /distroless/etc /distroless/lib \
-    && cp -P /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
+    && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
+    && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
     && cp /usr/local/bin/node /distroless/bin/node \
+    && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
+    && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
     && cp /usr/bin/proxychains4 /distroless/bin/proxychains \
     && cp /etc/proxychains4.conf /distroless/etc/proxychains4.conf \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
