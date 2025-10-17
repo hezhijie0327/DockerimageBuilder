@@ -1,4 +1,4 @@
-# Current Version: 1.7.0
+# Current Version: 1.7.1
 
 ARG NODEJS_VERSION="24"
 
@@ -53,7 +53,7 @@ ENV \
     DATABASE_DRIVER="node" \
     DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
     KEY_VAULTS_SECRET="use-for-build" \
-    FEATURE_FLAGS="-check_updates,-dalle,+pin_list,-speech_to_text,-welcome_suggest"
+    FEATURE_FLAGS="-check_updates,-dalle,+group_chat,+pin_list,-speech_to_text,-welcome_suggest"
 
 WORKDIR /app
 
@@ -102,7 +102,7 @@ ENV \
     NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca --max-http-header-size=65536" NODE_EXTRA_CA_CERTS="" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" NEXT_AUTH_SSO_SESSION_STRATEGY="database" \
-    FEATURE_FLAGS="-check_updates,-dalle,+pin_list,-speech_to_text,-welcome_suggest" \
+    FEATURE_FLAGS="-check_updates,-dalle,+group_chat,+pin_list,-speech_to_text,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
 COPY --from=rebased_lobechat / /
