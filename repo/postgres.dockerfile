@@ -1,6 +1,6 @@
-# Current Version: 1.2.6
+# Current Version: 1.2.7
 
-ARG POSTGRES_VERSION="18"
+ARG POSTGRES_VERSION="17"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
