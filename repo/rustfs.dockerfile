@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -42,7 +42,9 @@ WORKDIR /rustfs
 COPY --from=get_info /tmp/BUILDTMP/RUSTFS_WEB /rustfs
 
 RUN \
-    npm install -g pnpm \
+    npm i -g corepack@latest \
+    && corepack enable \
+    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
     && pnpm i \
     && pnpm run generate
 
