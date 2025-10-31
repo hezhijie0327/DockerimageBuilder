@@ -1,4 +1,4 @@
-# Current Version: 1.7.1
+# Current Version: 1.7.2
 
 ARG NODEJS_VERSION="24"
 
@@ -23,7 +23,7 @@ RUN \
     && export LOBECHAT_CUSTOM_VERSION="${LOBECHAT_VERSION}-ZHIJIE-${LOBECHAT_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/LOBECHAT" \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch \
-    && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json"
+    && sed -i "s/\"version\": \".*\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_baseos
 
