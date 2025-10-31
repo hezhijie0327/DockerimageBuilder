@@ -1,4 +1,4 @@
-# Current Version: 1.0.3
+# Current Version: 1.0.4
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -42,8 +42,11 @@ WORKDIR /rustfs
 COPY --from=get_info /tmp/BUILDTMP/RUSTFS_WEB /rustfs
 
 RUN \
-    npm i \
-    && npm run generate
+    npm i -g corepack@latest \
+    && corepack enable \
+    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
+    && pnpm i \
+    && pnpm run generate
 
 FROM rust:${RUST_VERSION}-alpine AS build_rustfs
 
@@ -97,6 +100,6 @@ ENV \
 
 COPY --from=rebased_rustfs / /
 
-EXPOSE 9000/tcp
+EXPOSE 9000/tcp 9001/tcp
 
 ENTRYPOINT ["/rustfs"]
