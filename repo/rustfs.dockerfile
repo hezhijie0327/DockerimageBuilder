@@ -1,4 +1,4 @@
-# Current Version: 1.0.2
+# Current Version: 1.0.3
 
 ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
@@ -89,7 +89,7 @@ FROM scratch
 
 ENV \
     RUST_LOG="warn" \
-    RUSTFS_ADDRESS=":9000" RUSTFS_CONSOLE_ENABLE="true" \
+    RUSTFS_ADDRESS=":9000" RUSTFS_CONSOLE_ADDRESS=":9001" RUSTFS_CONSOLE_ENABLE="true" \
     RUSTFS_ACCESS_KEY="rustfsadmin" RUSTFS_SECRET_KEY="rustfsadmin" \
     RUSTFS_VOLUMES="/data" \
     RUSTFS_OBS_LOG_DIRECTORY="/logs" RUSTFS_SINKS_FILE_PATH="/logs" \
