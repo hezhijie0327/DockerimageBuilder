@@ -42,8 +42,9 @@ WORKDIR /rustfs
 COPY --from=get_info /tmp/BUILDTMP/RUSTFS_WEB /rustfs
 
 RUN \
-    npm i \
-    && npm run generate
+    npm install -g pnpm \
+    && pnpm i \
+    && pnpm run generate
 
 FROM rust:${RUST_VERSION}-alpine AS build_rustfs
 
