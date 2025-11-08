@@ -1,4 +1,4 @@
-# Current Version: 1.7.5
+# Current Version: 1.7.6
 
 ARG NODEJS_VERSION="24"
 
@@ -99,7 +99,7 @@ FROM scratch
 ENV \
     DATABASE_DRIVER="node" \
     NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="" \
-    NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca --max-http-header-size=65536" NODE_EXTRA_CA_CERTS="" \
+    NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" NEXT_AUTH_SSO_SESSION_STRATEGY="database" \
     FEATURE_FLAGS="-check_updates,+group_chat,+pin_list,-speech_to_text,-welcome_suggest" \
