@@ -1,4 +1,4 @@
-From d7a70755a2c5133513da98af4b3b5c286038ea24 Mon Sep 17 00:00:00 2001
+From 54b50333351ae503a12dabfbd6c644c4d95878dc Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Fri, 14 Nov 2025 18:40:53 +0800
 Subject: [PATCH] fix: hotfix
@@ -6,13 +6,16 @@ Subject: [PATCH] fix: hotfix
 fix: hotfix
 
 fix: hotfix
+
+fix: hotfix
 ---
- next.config.ts                                 | 4 +++-
- package.json                                   | 2 +-
- packages/file-loaders/package.json             | 3 +--
- packages/file-loaders/test/setup.ts            | 8 --------
- src/features/FileViewer/Renderer/PDF/index.tsx | 3 ++-
- 5 files changed, 7 insertions(+), 13 deletions(-)
+ next.config.ts                                 |  4 +++-
+ package.json                                   |  5 +++--
+ packages/file-loaders/package.json             |  3 +--
+ packages/file-loaders/src/loaders/pdf/index.ts | 13 ++++++++++---
+ packages/file-loaders/test/setup.ts            |  8 --------
+ src/features/FileViewer/Renderer/PDF/index.tsx |  3 ++-
+ 6 files changed, 19 insertions(+), 17 deletions(-)
 
 diff --git a/next.config.ts b/next.config.ts
 index 121d45b..fe71fab 100644
@@ -30,7 +33,7 @@ index 121d45b..fe71fab 100644
    turbopack: {},
  
 diff --git a/package.json b/package.json
-index 5141419..66a78da 100644
+index 5141419..c41bc66 100644
 --- a/package.json
 +++ b/package.json
 @@ -251,7 +251,7 @@
@@ -42,6 +45,16 @@ index 5141419..66a78da 100644
      "pdfkit": "^0.17.2",
      "pg": "^8.16.3",
      "pino": "^10.1.0",
+@@ -402,7 +402,8 @@
+       "@vercel/speed-insights"
+     ],
+     "overrides": {
+-      "eta": "4.0.1"
++      "eta": "4.0.1",
++      "pdfjs-dist": "5.4.394"
+     }
+   }
+ }
 diff --git a/packages/file-loaders/package.json b/packages/file-loaders/package.json
 index 5f83688..9da8818 100644
 --- a/packages/file-loaders/package.json
@@ -61,6 +74,38 @@ index 5f83688..9da8818 100644
      "word-extractor": "^1.0.4",
      "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
      "yauzl": "^3.2.0"
+diff --git a/packages/file-loaders/src/loaders/pdf/index.ts b/packages/file-loaders/src/loaders/pdf/index.ts
+index 4d1d586..e05cd0d 100644
+--- a/packages/file-loaders/src/loaders/pdf/index.ts
++++ b/packages/file-loaders/src/loaders/pdf/index.ts
+@@ -1,7 +1,7 @@
+ import debug from 'debug';
+ import { readFile } from 'node:fs/promises';
+ import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
+-import { getDocument, version } from 'pdfjs-dist/legacy/build/pdf.mjs';
++import { GlobalWorkerOptions, getDocument, version } from 'pdfjs-dist/legacy/build/pdf.mjs';
+ // @ts-ignore
+ import * as _pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
+ import type { TextContent } from 'pdfjs-dist/types/src/display/api';
+@@ -18,9 +18,16 @@ export class PdfLoader implements FileLoaderInterface {
+   private pdfInstance: PDFDocumentProxy | null = null;
+   private pdfjsWorker = _pdfjsWorker;
+ 
++  constructor() {
++    // Set the worker source for PDF.js
++    if (typeof window === 'undefined') {
++      // Node.js environment - use the worker file
++      GlobalWorkerOptions.workerSrc = this.pdfjsWorker;
++    }
++  }
++
+   private async getPDFFile(filePath: string) {
+-    // GlobalWorkerOptions.workerSrc should have been set at the module level.
+-    // We are now relying on pdfjs-dist to use this path when it creates a worker.
++    // GlobalWorkerOptions.workerSrc is set in constructor
+ 
+     log('Reading PDF file:', filePath);
+     const dataBuffer = await readFile(filePath);
 diff --git a/packages/file-loaders/test/setup.ts b/packages/file-loaders/test/setup.ts
 index 4c82dd6..419facc 100644
 --- a/packages/file-loaders/test/setup.ts
