@@ -1,5 +1,56 @@
+From cd6e874be89277047ef18d8e2201d50495b87c6c Mon Sep 17 00:00:00 2001
+From: Zhijie He <hezhijie0327@hotmail.com>
+Date: Fri, 14 Nov 2025 18:40:53 +0800
+Subject: [PATCH] fix: hotfix
+
+---
+ next.config.ts                                 | 4 +++-
+ package.json                                   | 5 +++--
+ packages/file-loaders/package.json             | 1 -
+ packages/file-loaders/test/setup.ts            | 8 --------
+ src/features/FileViewer/Renderer/PDF/index.tsx | 3 ++-
+ 5 files changed, 8 insertions(+), 13 deletions(-)
+
+diff --git a/next.config.ts b/next.config.ts
+index 121d45b..3e86ae3 100644
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -268,7 +268,9 @@ const nextConfig: NextConfig = {
+   ],
+ 
+   // when external packages in dev mode with turbopack, this config will lead to bundle error
+-  serverExternalPackages: isProd ? ['@electric-sql/pglite', 'pdfkit'] : ['pdfkit'],
++  serverExternalPackages: isProd
++    ? ['@electric-sql/pglite', 'pdfkit', '@napi-rs/canvas', 'pdf-parse', 'pdfjs-dist']
++    : ['pdfkit', '@napi-rs/canvas', 'pdf-parse', 'pdfjs-dist'],
+   transpilePackages: ['pdfjs-dist', 'mermaid'],
+   turbopack: {},
+ 
+diff --git a/package.json b/package.json
+index 5141419..3489626 100644
+--- a/package.json
++++ b/package.json
+@@ -251,7 +251,7 @@
+     "partial-json": "^0.1.7",
+     "path-browserify-esm": "^1.0.6",
+     "pdf-parse": "^1.1.4",
+-    "pdfjs-dist": "4.8.69",
++    "pdfjs-dist": "4.10.38",
+     "pdfkit": "^0.17.2",
+     "pg": "^8.16.3",
+     "pino": "^10.1.0",
+@@ -402,7 +402,8 @@
+       "@vercel/speed-insights"
+     ],
+     "overrides": {
+-      "eta": "4.0.1"
++      "eta": "4.0.1",
++      "pdfjs-dist": "4.10.38"
+     }
+   }
+ }
 diff --git a/packages/file-loaders/package.json b/packages/file-loaders/package.json
-index 5f83688d97533..82b0dc01747a4 100644
+index 5f83688..82b0dc0 100644
 --- a/packages/file-loaders/package.json
 +++ b/packages/file-loaders/package.json
 @@ -25,7 +25,6 @@
@@ -11,7 +62,7 @@ index 5f83688d97533..82b0dc01747a4 100644
      "concat-stream": "^2.0.0",
      "debug": "^4.3.4",
 diff --git a/packages/file-loaders/test/setup.ts b/packages/file-loaders/test/setup.ts
-index 4c82dd694632e..419facc8033dc 100644
+index 4c82dd6..419facc 100644
 --- a/packages/file-loaders/test/setup.ts
 +++ b/packages/file-loaders/test/setup.ts
 @@ -1,11 +1,3 @@
@@ -26,3 +77,20 @@ index 4c82dd694632e..419facc8033dc 100644
  // Polyfill URL.createObjectURL and URL.revokeObjectURL for pdfjs-dist
  if (typeof global.URL.createObjectURL === 'undefined') {
    global.URL.createObjectURL = () => 'blob:http://localhost/fake-blob-url';
+diff --git a/src/features/FileViewer/Renderer/PDF/index.tsx b/src/features/FileViewer/Renderer/PDF/index.tsx
+index 72d483f..d7a1235 100644
+--- a/src/features/FileViewer/Renderer/PDF/index.tsx
++++ b/src/features/FileViewer/Renderer/PDF/index.tsx
+@@ -46,7 +46,8 @@ const PDFViewer = memo<PDFViewerProps>(({ url, fileId }) => {
+ 
+   useResizeObserver(containerRef, onResize);
+ 
+-  const onDocumentLoadSuccess = ({ numPages: nextNumPages }: PDFDocumentProxy) => {
++  const onDocumentLoadSuccess = (document: PDFDocumentProxy) => {
++    const { numPages: nextNumPages } = document;
+     setNumPages(nextNumPages);
+     setIsLoaded(true);
+   };
+-- 
+2.51.2
+
