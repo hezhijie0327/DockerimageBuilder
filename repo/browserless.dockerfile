@@ -1,4 +1,4 @@
-# Current Version: 1.4.2
+# Current Version: 1.4.3
 
 ARG NODEJS_VERSION="24"
 
@@ -50,7 +50,7 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/startServer.cjs /app/startServer.
 
 RUN \
     corepack enable \
-    && corepack use pnpm \
+    && corepack use pnpm@10 \
     && pnpm i \
     && pnpm add puppeteer-extra-plugin-adblocker
 
