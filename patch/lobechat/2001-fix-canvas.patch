@@ -1,141 +1,24 @@
-From 54b50333351ae503a12dabfbd6c644c4d95878dc Mon Sep 17 00:00:00 2001
+From ed3b839ada7c7cd306957153ff60b496888477ff Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
-Date: Fri, 14 Nov 2025 18:40:53 +0800
+Date: Fri, 14 Nov 2025 19:20:09 +0800
 Subject: [PATCH] fix: hotfix
 
-fix: hotfix
-
-fix: hotfix
-
-fix: hotfix
 ---
- next.config.ts                                 |  4 +++-
- package.json                                   |  5 +++--
- packages/file-loaders/package.json             |  3 +--
- packages/file-loaders/src/loaders/pdf/index.ts | 13 ++++++++++---
- packages/file-loaders/test/setup.ts            |  8 --------
- src/features/FileViewer/Renderer/PDF/index.tsx |  3 ++-
- 6 files changed, 19 insertions(+), 17 deletions(-)
+ package.json | 1 +
+ 1 file changed, 1 insertion(+)
 
-diff --git a/next.config.ts b/next.config.ts
-index 121d45b..fe71fab 100644
---- a/next.config.ts
-+++ b/next.config.ts
-@@ -268,7 +268,9 @@ const nextConfig: NextConfig = {
-   ],
- 
-   // when external packages in dev mode with turbopack, this config will lead to bundle error
--  serverExternalPackages: isProd ? ['@electric-sql/pglite', 'pdfkit'] : ['pdfkit'],
-+  serverExternalPackages: isProd
-+    ? ['@electric-sql/pglite', 'pdfkit', '@napi-rs/canvas', 'pdf-parse']
-+    : ['pdfkit', '@napi-rs/canvas', 'pdf-parse'],
-   transpilePackages: ['pdfjs-dist', 'mermaid'],
-   turbopack: {},
- 
 diff --git a/package.json b/package.json
-index 5141419..c41bc66 100644
+index 40a5873..8c983e1 100644
 --- a/package.json
 +++ b/package.json
-@@ -251,7 +251,7 @@
-     "partial-json": "^0.1.7",
-     "path-browserify-esm": "^1.0.6",
-     "pdf-parse": "^1.1.4",
--    "pdfjs-dist": "4.8.69",
-+    "pdfjs-dist": "5.4.394",
-     "pdfkit": "^0.17.2",
-     "pg": "^8.16.3",
-     "pino": "^10.1.0",
-@@ -402,7 +402,8 @@
-       "@vercel/speed-insights"
-     ],
-     "overrides": {
--      "eta": "4.0.1"
-+      "eta": "4.0.1",
-+      "pdfjs-dist": "5.4.394"
-     }
-   }
- }
-diff --git a/packages/file-loaders/package.json b/packages/file-loaders/package.json
-index 5f83688..9da8818 100644
---- a/packages/file-loaders/package.json
-+++ b/packages/file-loaders/package.json
-@@ -25,13 +25,12 @@
-     "test:coverage": "vitest --coverage --silent='passed-only'"
-   },
-   "dependencies": {
--    "@napi-rs/canvas": "^0.1.70",
-     "@xmldom/xmldom": "^0.9.8",
-     "concat-stream": "^2.0.0",
-     "debug": "^4.3.4",
-     "mammoth": "^1.8.0",
-     "officeparser": "5.1.1",
--    "pdfjs-dist": "4.10.38",
-+    "pdfjs-dist": "5.4.394",
-     "word-extractor": "^1.0.4",
-     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-     "yauzl": "^3.2.0"
-diff --git a/packages/file-loaders/src/loaders/pdf/index.ts b/packages/file-loaders/src/loaders/pdf/index.ts
-index 4d1d586..e05cd0d 100644
---- a/packages/file-loaders/src/loaders/pdf/index.ts
-+++ b/packages/file-loaders/src/loaders/pdf/index.ts
-@@ -1,7 +1,7 @@
- import debug from 'debug';
- import { readFile } from 'node:fs/promises';
- import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
--import { getDocument, version } from 'pdfjs-dist/legacy/build/pdf.mjs';
-+import { GlobalWorkerOptions, getDocument, version } from 'pdfjs-dist/legacy/build/pdf.mjs';
- // @ts-ignore
- import * as _pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs';
- import type { TextContent } from 'pdfjs-dist/types/src/display/api';
-@@ -18,9 +18,16 @@ export class PdfLoader implements FileLoaderInterface {
-   private pdfInstance: PDFDocumentProxy | null = null;
-   private pdfjsWorker = _pdfjsWorker;
- 
-+  constructor() {
-+    // Set the worker source for PDF.js
-+    if (typeof window === 'undefined') {
-+      // Node.js environment - use the worker file
-+      GlobalWorkerOptions.workerSrc = this.pdfjsWorker;
-+    }
-+  }
-+
-   private async getPDFFile(filePath: string) {
--    // GlobalWorkerOptions.workerSrc should have been set at the module level.
--    // We are now relying on pdfjs-dist to use this path when it creates a worker.
-+    // GlobalWorkerOptions.workerSrc is set in constructor
- 
-     log('Reading PDF file:', filePath);
-     const dataBuffer = await readFile(filePath);
-diff --git a/packages/file-loaders/test/setup.ts b/packages/file-loaders/test/setup.ts
-index 4c82dd6..419facc 100644
---- a/packages/file-loaders/test/setup.ts
-+++ b/packages/file-loaders/test/setup.ts
-@@ -1,11 +1,3 @@
--// Polyfill DOMMatrix for pdfjs-dist in Node.js environment
--import { DOMMatrix } from '@napi-rs/canvas';
--
--if (typeof global.DOMMatrix === 'undefined') {
--  // @ts-ignore
--  global.DOMMatrix = DOMMatrix;
--}
--
- // Polyfill URL.createObjectURL and URL.revokeObjectURL for pdfjs-dist
- if (typeof global.URL.createObjectURL === 'undefined') {
-   global.URL.createObjectURL = () => 'blob:http://localhost/fake-blob-url';
-diff --git a/src/features/FileViewer/Renderer/PDF/index.tsx b/src/features/FileViewer/Renderer/PDF/index.tsx
-index 72d483f..d7a1235 100644
---- a/src/features/FileViewer/Renderer/PDF/index.tsx
-+++ b/src/features/FileViewer/Renderer/PDF/index.tsx
-@@ -46,7 +46,8 @@ const PDFViewer = memo<PDFViewerProps>(({ url, fileId }) => {
- 
-   useResizeObserver(containerRef, onResize);
- 
--  const onDocumentLoadSuccess = ({ numPages: nextNumPages }: PDFDocumentProxy) => {
-+  const onDocumentLoadSuccess = (document: PDFDocumentProxy) => {
-+    const { numPages: nextNumPages } = document;
-     setNumPages(nextNumPages);
-     setIsLoaded(true);
-   };
+@@ -175,6 +175,7 @@
+     "@lobehub/tts": "^2.0.1",
+     "@lobehub/ui": "^2.13.8",
+     "@modelcontextprotocol/sdk": "^1.22.0",
++    "@napi-rs/canvas": "^0.1.82",
+     "@neondatabase/serverless": "^1.0.2",
+     "@next/third-parties": "^16.0.1",
+     "@opentelemetry/exporter-jaeger": "^2.2.0",
 -- 
 2.51.2
 
