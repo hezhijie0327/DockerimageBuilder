@@ -1,4 +1,4 @@
-# Current Version: 1.2.7
+# Current Version: 1.2.8
 
 ARG POSTGRES_VERSION="17"
 
@@ -139,7 +139,7 @@ COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
 
 RUN \
-    sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search'/" "/usr/local/share/postgresql/postgresql.conf.sample"
+    sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,vector'/" "/usr/local/share/postgresql/postgresql.conf.sample"
 
 FROM scratch
 
