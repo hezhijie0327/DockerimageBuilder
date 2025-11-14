@@ -1,6 +1,6 @@
-# Current Version: 1.2.8
+# Current Version: 1.2.7
 
-ARG POSTGRES_VERSION="18"
+ARG POSTGRES_VERSION="17"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -139,7 +139,7 @@ COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
 
 RUN \
-    sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search'/" "/usr/local/share/postgresql/postgresql.conf.sample"
+    sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,vector,vectorscale'/" "/usr/local/share/postgresql/postgresql.conf.sample"
 
 FROM scratch
 
