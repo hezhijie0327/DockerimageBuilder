@@ -1,0 +1,602 @@
+diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
+new file mode 100644
+index 00000000000..da836443c8c
+--- /dev/null
++++ b/searx/plugins/advanced_search_syntax.py
+@@ -0,0 +1,596 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++# pylint: disable=too-many-return-statements, too-many-branches
++"""Advanced search syntax plugin for SearXNG.
++Supports site filtering, +word/+/regex/ inclusion, word exclusion,
++positive/negative positional search with /regex/ support."""
++
++import typing
++import re
++from urllib.parse import urlparse
++from flask_babel import gettext
++from werkzeug.datastructures import ImmutableMultiDict
++from searx.extended_types import SXNG_Request
++from searx.plugins import Plugin, PluginInfo
++from searx.result_types import Result
++
++if typing.TYPE_CHECKING:
++    from searx.plugins import PluginCfg
++    from searx.search import SearchWithPlugins
++
++
++class SXNGPlugin(Plugin):
++    """Plugin that enhances search with advanced syntax support."""
++
++    id = "advanced_search_syntax"
++
++    def __init__(self, plg_cfg: "PluginCfg") -> None:
++        super().__init__(plg_cfg)
++        self.info = PluginInfo(
++            id=self.id,
++            name=gettext("Advanced Search Syntax"),
++            description=gettext(
++                "Enhanced search with site filtering, +word/+/regex/ inclusion, "
++                "word exclusion, and positive/negative positional search with /regex/ support"
++            ),
++            preference_section="general",
++        )
++
++        # Pre-compile regex patterns for better performance
++        self._patterns = {
++            'site_include': re.compile(r'(?:^|\s)site:([^\s]+)', re.IGNORECASE),
++            'site_exclude': re.compile(r'(?:^|\s)-site:([^\s]+)', re.IGNORECASE),
++            # Positive positional patterns (with /regex/ support)
++            'intitle_regex': re.compile(r'intitle:/([^/]+)/', re.IGNORECASE),
++            'intitle_word': re.compile(r'intitle:([^\s/]+)', re.IGNORECASE),
++            'inurl_regex': re.compile(r'inurl:/([^/]+)/', re.IGNORECASE),
++            'inurl_word': re.compile(r'inurl:([^\s/]+)', re.IGNORECASE),
++            'intext_regex': re.compile(r'intext:/([^/]+)/', re.IGNORECASE),
++            'intext_word': re.compile(r'intext:([^\s/]+)', re.IGNORECASE),
++            # Negative positional patterns (with /regex/ support)
++            'neg_intitle_regex': re.compile(r'-intitle:/([^/]+)/', re.IGNORECASE),
++            'neg_intitle_word': re.compile(r'-intitle:([^\s/]+)', re.IGNORECASE),
++            'neg_inurl_regex': re.compile(r'-inurl:/([^/]+)/', re.IGNORECASE),
++            'neg_inurl_word': re.compile(r'-inurl:([^\s/]+)', re.IGNORECASE),
++            'neg_intext_regex': re.compile(r'-intext:/([^/]+)/', re.IGNORECASE),
++            'neg_intext_word': re.compile(r'-intext:([^\s/]+)', re.IGNORECASE),
++            # Include/exclude patterns (with /regex/ support)
++            'include_regex': re.compile(r'\+/([^/]+)/'),  # +/regex/
++            'include_word': re.compile(r'(?:^|\s)\+([^\s/]+)'),  # +word
++            'exclude_regex': re.compile(r'-/([^/]+)/'),  # -/regex/
++            'exclude_word': re.compile(r'(?:^|\s)-((?!site:|intitle:|inurl:|intext:)[^\s/]+)'),  # -word
++        }
++
++        # Cache for compiled user regex patterns to improve performance
++        self._regex_cache = {}
++
++    def _compile_user_regex(self, pattern: str) -> re.Pattern:
++        """Safely compile user-provided regex patterns with caching."""
++        if pattern in self._regex_cache:
++            return self._regex_cache[pattern]
++
++        try:
++            # Compile with case-insensitive flag and limit complexity
++            compiled = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
++            self._regex_cache[pattern] = compiled
++            return compiled
++        except re.error:
++            # If regex is invalid, fall back to literal string matching
++            escaped = re.escape(pattern)
++            compiled = re.compile(escaped, re.IGNORECASE)
++            self._regex_cache[pattern] = compiled
++            return compiled
++
++    def _has_advanced_syntax(self, query: str) -> bool:
++        """Check if the query contains any advanced search syntax."""
++        return any(pattern.search(query) for pattern in self._patterns.values())
++
++    def _is_regex_pattern(self, text: str) -> bool:
++        """Check if text is a regex pattern in the context of advanced syntax."""
++        # 只有在特定上下文中的 /pattern/ 才被认为是正则表达式
++        # 检查是否是高级语法中的正则表达式模式
++        advanced_regex_patterns = [
++            r'(?:^|\s)(?:\+|-)?(?:intitle|inurl|intext):/[^/]+/',  # intitle:/pattern/, -inurl:/pattern/ 等
++            r'(?:^|\s)\+/[^/]+/',  # +/pattern/
++            r'(?:^|\s)-/[^/]+/',  # -/pattern/
++        ]
++
++        return any(re.search(pattern, text, re.IGNORECASE) for pattern in advanced_regex_patterns)
++
++    def _clean_query_for_engines(self, query: str) -> str:
++        """Clean query by removing ALL advanced syntax patterns for external engines."""
++        cleaned = query
++
++        # Debug: show what we're cleaning
++        # print(f"DEBUG - Before cleaning: {cleaned}")
++
++        # Remove ALL advanced syntax patterns - 确保没有高级语法发送给引擎
++        for pattern in self._patterns.values():
++            cleaned = pattern.sub(' ', cleaned)
++            # Debug output for each pattern (commented out to avoid unused variables)
++            # if before != cleaned:
++            #     print(f"DEBUG - Removed pattern: '{before}' -> '{cleaned}'")
++
++        # Additional cleanup for any remaining artifacts
++        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
++        cleaned = re.sub(r'""', '', cleaned)
++
++        # Final check - ensure no advanced syntax remains
++        remaining_advanced = []
++
++        # 修复：使用更精确的测试模式，避免误匹配文件路径
++        test_patterns = [
++            r'(?:^|\s)site:',
++            r'(?:^|\s)intitle:',
++            r'(?:^|\s)inurl:',
++            r'(?:^|\s)intext:',
++            r'(?:^|\s)-site:',
++            r'(?:^|\s)-intitle:',
++            r'(?:^|\s)-inurl:',
++            r'(?:^|\s)-intext:',
++            r'(?:^|\s)\+/',  # +/regex/ 格式
++            r'(?:^|\s)-/',  # -/regex/ 格式
++            # 移除了过于宽泛的 r'/.+/' 模式
++            # 使用更精确的模式来检测高级语法中的正则表达式
++            r'(?:intitle|inurl|intext):/[^/]+/',  # 只匹配高级语法中的正则表达式
++            r'(?:^|\s)\+\w',  # +word 格式
++        ]
++
++        for test_pattern in test_patterns:
++            if re.search(test_pattern, cleaned):
++                remaining_advanced.append(test_pattern)
++
++        if remaining_advanced:
++            print(f"WARNING - Advanced syntax still present after cleaning: {remaining_advanced}")
++            print(f"WARNING - Cleaned query: '{cleaned}'")
++            # More aggressive cleaning if needed
++            for test_pattern in test_patterns:
++                cleaned = re.sub(test_pattern + r'[^\s]*', ' ', cleaned)
++            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
++
++        # print(f"DEBUG - Final cleaned query: '{cleaned}'")
++        return cleaned
++
++    def _extract_remaining_terms(self, original_query: str, syntax: dict) -> list:
++        """Extract remaining search terms from original query after removing all advanced syntax."""
++        # Start with all words from original query
++        all_words = re.findall(r'[^\s]+', original_query)
++
++        # Remove words that are part of advanced syntax
++        excluded_words = set()
++
++        # Add words from site patterns
++        for site in syntax['site_include'] + syntax['site_exclude']:
++            excluded_words.update(re.findall(r'\w+', site.lower()))
++
++        # Add words from all regex patterns
++        for pattern_list in [
++            syntax['include_regexes'],
++            syntax['exclude_regexes'],
++            syntax['intitle_regexes'],
++            syntax['intext_regexes'],
++            syntax['inurl_regexes'],
++            syntax['neg_intitle_regexes'],
++            syntax['neg_intext_regexes'],
++            syntax['neg_inurl_regexes'],
++        ]:
++            for pattern in pattern_list:
++                # For regex patterns, try to extract literal words (conservative approach)
++                literal_words = re.findall(r'\b[a-zA-Z]{3,}\b', pattern.lower())
++                excluded_words.update(literal_words)
++
++        # Add words from all word patterns
++        for word_list in [
++            syntax['include_words'],
++            syntax['exclude_words'],
++            syntax['intitle_words'],
++            syntax['inurl_words'],
++            syntax['intext_words'],
++            syntax['neg_intitle_words'],
++            syntax['neg_inurl_words'],
++            syntax['neg_intext_words'],
++        ]:
++            for word in word_list:
++                excluded_words.update(re.findall(r'\w+', word.lower()))
++
++        # Return words that are not part of any advanced syntax
++        remaining = []
++        for word in all_words:
++            # Skip words that start with advanced syntax indicators
++            if self._is_advanced_syntax_word(word):
++                continue
++
++            # 修复：使用更精确的正则表达式检测，避免误判文件路径
++            # 只有在高级语法上下文中的 /pattern/ 才被跳过
++            if self._is_regex_pattern(f" {word} "):  # 添加空格确保上下文检查
++                continue
++
++            # Extract alphanumeric parts from the word
++            word_parts = re.findall(r'\w+', word.lower())
++            # If none of the word parts are in excluded_words, keep the original word
++            if word_parts and not any(part in excluded_words for part in word_parts):
++                remaining.append(word)
++
++        # Remove duplicates while preserving order
++        return self._remove_duplicates_preserve_order(remaining)
++
++    def _is_advanced_syntax_word(self, word: str) -> bool:
++        """Check if word starts with advanced syntax indicators."""
++        prefixes = [
++            'site:',
++            'intitle:',
++            'inurl:',
++            'intext:',
++            '-site:',
++            '-intitle:',
++            '-inurl:',
++            '-intext:',
++        ]
++
++        # 对于 + 和 - 前缀，需要更精确的检查
++        if word.startswith('+'):
++            # +word 或 +/regex/ 格式
++            return True
++
++        if word.startswith('-'):
++            # 检查是否是 -word 格式（但不是文件路径）
++            # 如果是 -/path/to/file 这种情况，不应该被认为是高级语法
++            if len(word) > 1 and word[1] == '/':
++                # 检查是否是 -/regex/ 格式（以 / 结尾）
++                return word.endswith('/') and len(word) > 3
++            # 其他 -word 格式
++            return not any(word.startswith(prefix) for prefix in ['-site:', '-intitle:', '-inurl:', '-intext:'])
++
++        return any(word.startswith(prefix) for prefix in prefixes)
++
++    def _remove_duplicates_preserve_order(self, items: list) -> list:
++        """Remove duplicates while preserving order."""
++        seen = set()
++        unique_items = []
++        for item in items:
++            item_lower = item.lower()
++            if item_lower not in seen:
++                seen.add(item_lower)
++                unique_items.append(item)
++        return unique_items
++
++    def _parse_advanced_syntax(self, query: str) -> tuple[str, dict]:
++        """Parse and extract all advanced syntax patterns from query."""
++        syntax = {
++            'site_include': [],
++            'site_exclude': [],
++            'include_regexes': [],
++            'include_words': [],
++            'exclude_regexes': [],
++            'exclude_words': [],
++            # Positive positional
++            'intitle_words': [],
++            'intitle_regexes': [],
++            'inurl_words': [],
++            'inurl_regexes': [],
++            'intext_words': [],
++            'intext_regexes': [],
++            # Negative positional
++            'neg_intitle_words': [],
++            'neg_intitle_regexes': [],
++            'neg_inurl_words': [],
++            'neg_inurl_regexes': [],
++            'neg_intext_words': [],
++            'neg_intext_regexes': [],
++            'remaining_terms': [],
++        }
++
++        # Extract patterns in order (most specific first)
++
++        # 1. Site patterns
++        syntax['site_include'] = [m.lower().strip() for m in self._patterns['site_include'].findall(query)]
++        syntax['site_exclude'] = [m.lower().strip() for m in self._patterns['site_exclude'].findall(query)]
++
++        # 2. Positive positional patterns
++        syntax['intitle_regexes'] = [m.strip() for m in self._patterns['intitle_regex'].findall(query)]
++        intitle_words = self._patterns['intitle_word'].findall(query)
++        syntax['intitle_words'] = [
++            w.strip() for w in intitle_words if not any(w in regex for regex in syntax['intitle_regexes'])
++        ]
++
++        syntax['intext_regexes'] = [m.strip() for m in self._patterns['intext_regex'].findall(query)]
++        intext_words = self._patterns['intext_word'].findall(query)
++        syntax['intext_words'] = [
++            w.strip() for w in intext_words if not any(w in regex for regex in syntax['intext_regexes'])
++        ]
++
++        syntax['inurl_regexes'] = [m.strip() for m in self._patterns['inurl_regex'].findall(query)]
++        inurl_words = self._patterns['inurl_word'].findall(query)
++        syntax['inurl_words'] = [
++            w.strip() for w in inurl_words if not any(w in regex for regex in syntax['inurl_regexes'])
++        ]
++
++        # 3. Negative positional patterns
++        syntax['neg_intitle_regexes'] = [m.strip() for m in self._patterns['neg_intitle_regex'].findall(query)]
++        neg_intitle_words = self._patterns['neg_intitle_word'].findall(query)
++        syntax['neg_intitle_words'] = [
++            w.strip() for w in neg_intitle_words if not any(w in regex for regex in syntax['neg_intitle_regexes'])
++        ]
++
++        syntax['neg_intext_regexes'] = [m.strip() for m in self._patterns['neg_intext_regex'].findall(query)]
++        neg_intext_words = self._patterns['neg_intext_word'].findall(query)
++        syntax['neg_intext_words'] = [
++            w.strip() for w in neg_intext_words if not any(w in regex for regex in syntax['neg_intext_regexes'])
++        ]
++
++        syntax['neg_inurl_regexes'] = [m.strip() for m in self._patterns['neg_inurl_regex'].findall(query)]
++        neg_inurl_words = self._patterns['neg_inurl_word'].findall(query)
++        syntax['neg_inurl_words'] = [
++            w.strip() for w in neg_inurl_words if not any(w in regex for regex in syntax['neg_inurl_regexes'])
++        ]
++
++        # 4. Include/Exclude patterns
++        syntax['include_regexes'] = [m.strip() for m in self._patterns['include_regex'].findall(query)]
++        syntax['include_words'] = [m.strip() for m in self._patterns['include_word'].findall(query)]
++        syntax['exclude_regexes'] = [m.strip() for m in self._patterns['exclude_regex'].findall(query)]
++        syntax['exclude_words'] = [m.strip() for m in self._patterns['exclude_word'].findall(query)]
++
++        # 5. Clean query for engines - 确保完全移除所有高级语法
++        cleaned_query = self._clean_query_for_engines(query)
++
++        # 6. Extract remaining terms from original query (not cleaned query)
++        syntax['remaining_terms'] = self._extract_remaining_terms(query, syntax)
++
++        return cleaned_query, syntax
++
++    def _update_form_query(self, form, new_query: str) -> None:
++        """Safely update form query value."""
++        try:
++            if hasattr(form, 'q'):
++                form.q = new_query
++                return
++        except (AttributeError, TypeError):
++            pass
++
++        try:
++            form['q'] = new_query
++            return
++        except (TypeError, KeyError):
++            pass
++
++        raise TypeError("Form object is immutable and cannot be modified")
++
++    def _create_new_form_with_query(self, original_form, new_query: str):
++        """Create a new form object with updated query."""
++        form_dict = dict(original_form.items()) if hasattr(original_form, 'items') else dict(original_form)
++        form_dict['q'] = new_query
++        return ImmutableMultiDict(form_dict)
++
++    def pre_search(self, request: SXNG_Request, search: "SearchWithPlugins") -> bool:
++        """Parse the search query for advanced syntax patterns and modify the query sent to engines."""
++        original_query = request.form.get('q', '')
++
++        # Only process queries that contain advanced syntax
++        if not self._has_advanced_syntax(original_query):
++            request.search_syntax = {'has_advanced_syntax': False, 'original_query': original_query}
++            return True
++
++        # Parse advanced syntax
++        cleaned_query, syntax = self._parse_advanced_syntax(original_query)
++        syntax.update({'has_advanced_syntax': True, 'original_query': original_query, 'cleaned_query': cleaned_query})
++
++        # Store original query for restoration later
++        request.original_query = original_query
++        request.search_syntax = syntax
++
++        # Debug output - can be uncommented for debugging
++        # print(f"DEBUG - Original: {original_query}")
++        # print(f"DEBUG - Cleaned for engines: '{cleaned_query}'")
++        # print(f"DEBUG - Extracted syntax: {syntax}")
++
++        # Update the query in form
++        if hasattr(request, 'form') and 'q' in request.form:
++            try:
++                self._update_form_query(request.form, cleaned_query or original_query)
++            except TypeError:
++                request.form = self._create_new_form_with_query(request.form, cleaned_query or original_query)
++
++        if hasattr(request, 'args') and 'q' in request.args:
++            try:
++                self._update_form_query(request.args, cleaned_query or original_query)
++            except TypeError:
++                pass
++
++        if hasattr(search, 'search_query'):
++            search.search_query.query = cleaned_query or original_query
++
++        return True
++
++    def _normalize_domain(self, domain: str) -> str:
++        """Normalize domain by removing protocol and path parts."""
++        if not domain:
++            return ""
++        domain = re.sub(r'^https?://', '', domain).split('/')[0].split(':')[0]
++        return domain.lower().strip()
++
++    def _domain_matches(self, result_domain: str, target_domain: str) -> bool:
++        """Check if result domain matches target domain (exact or subdomain)."""
++        result_domain = self._normalize_domain(result_domain)
++        target_domain = self._normalize_domain(target_domain)
++        if not result_domain or not target_domain:
++            return False
++        return result_domain == target_domain or result_domain.endswith('.' + target_domain)
++
++    def _check_site_filters(self, result_url: str, syntax: dict) -> bool:
++        """Check if result passes site include/exclude filters."""
++        if not result_url:
++            return not syntax['site_include']
++
++        try:
++            result_domain = urlparse(result_url).hostname
++            if not result_domain:
++                return not syntax['site_include']
++
++            # Check exclude filters first
++            if syntax['site_exclude'] and any(self._domain_matches(result_domain, d) for d in syntax['site_exclude']):
++                return False
++
++            # Check include filters
++            if not syntax['site_include']:
++                return True
++            return any(self._domain_matches(result_domain, d) for d in syntax['site_include'])
++
++        except (ValueError, AttributeError):
++            return not syntax['site_include']
++
++    def _text_matches_regex(self, text: str, pattern: str) -> bool:
++        """Check if text matches regex pattern."""
++        if not text or not pattern:
++            return False
++
++        try:
++            compiled_regex = self._compile_user_regex(pattern)
++            return bool(compiled_regex.search(text))
++        except (re.error, ValueError, TypeError):
++            # If anything goes wrong, fall back to literal substring match
++            return pattern.lower() in text.lower()
++
++    def _text_matches(self, text: str, word: str, exact: bool = False) -> bool:
++        """Check if text contains word with regular word matching."""
++        if not text or not word:
++            return False
++
++        text_lower = text.lower()
++        word_lower = word.lower()
++
++        if exact:  # Exact phrase match
++            return word_lower in text_lower
++
++        # 对于包含特殊字符的词，使用更灵活的匹配
++        if re.search(r'[^\w\s]', word_lower):
++            # 如果词包含特殊字符，直接子字符串匹配
++            return word_lower in text_lower
++
++        # 普通词使用单词边界匹配
++        return bool(re.search(r'\b' + re.escape(word_lower) + r'\b', text_lower))
++
++    def _check_positional_filters(self, title: str, content: str, url: str, syntax: dict) -> bool:
++        """Check positive and negative positional filters."""
++        # Check positive intitle filters
++        for word in syntax['intitle_words']:
++            if not self._text_matches(title, word):
++                return False
++        for regex in syntax['intitle_regexes']:
++            if not self._text_matches_regex(title, regex):
++                return False
++
++        # Check negative intitle filters
++        for word in syntax['neg_intitle_words']:
++            if self._text_matches(title, word):
++                return False
++        for regex in syntax['neg_intitle_regexes']:
++            if self._text_matches_regex(title, regex):
++                return False
++
++        # Check positive inurl filters
++        for word in syntax['inurl_words']:
++            if not self._text_matches(url, word):
++                return False
++        for regex in syntax['inurl_regexes']:
++            if not self._text_matches_regex(url, regex):
++                return False
++
++        # Check negative inurl filters
++        for word in syntax['neg_inurl_words']:
++            if self._text_matches(url, word):
++                return False
++        for regex in syntax['neg_inurl_regexes']:
++            if self._text_matches_regex(url, regex):
++                return False
++
++        # Check positive intext filters
++        for word in syntax['intext_words']:
++            if not self._text_matches(content, word):
++                return False
++        for regex in syntax['intext_regexes']:
++            if not self._text_matches_regex(content, regex):
++                return False
++
++        # Check negative intext filters
++        for word in syntax['neg_intext_words']:
++            if self._text_matches(content, word):
++                return False
++        for regex in syntax['neg_intext_regexes']:
++            if self._text_matches_regex(content, regex):
++                return False
++
++        return True
++
++    def _check_exclusion_filters(self, search_text: str, syntax: dict) -> bool:
++        """Check exclusion filters (excluded regexes and words)."""
++        # Check excluded regexes
++        for regex in syntax['exclude_regexes']:
++            if self._text_matches_regex(search_text, regex):
++                return False
++
++        # Check excluded words
++        for word in syntax['exclude_words']:
++            if self._text_matches(search_text, word):
++                return False
++
++        return True
++
++    def _check_inclusion_filters(self, search_text: str, syntax: dict) -> bool:
++        """Check inclusion filters (+regexes, +words, remaining terms)."""
++        # Check +regexes
++        for regex in syntax['include_regexes']:
++            if not self._text_matches_regex(search_text, regex):
++                return False
++
++        # Check +words
++        for word in syntax['include_words']:
++            if not self._text_matches(search_text, word):
++                return False
++
++        # Check remaining terms - 只要有任何一个关键词匹配就通过
++        if syntax['remaining_terms']:
++            matched_terms = [term for term in syntax['remaining_terms'] if self._text_matches(search_text, term)]
++            if not matched_terms:
++                return False
++
++        return True
++
++    def _apply_filters(self, result: Result, syntax: dict) -> bool:
++        """Apply all filters to a result."""
++        # Get result text components
++        title = getattr(result, 'title', '') or ''
++        content = getattr(result, 'content', '') or ''
++        url = getattr(result, 'url', '') or ''
++        search_text = f"{title} {content}".strip()
++
++        # Apply filters in order: site -> positional -> exclusion -> inclusion
++        filter_checks = [
++            lambda: (
++                self._check_site_filters(url, syntax) if (syntax['site_include'] or syntax['site_exclude']) else True
++            ),
++            lambda: self._check_positional_filters(title, content, url, syntax),
++            lambda: self._check_exclusion_filters(search_text, syntax),
++            lambda: self._check_inclusion_filters(search_text, syntax),
++        ]
++
++        return all(check() for check in filter_checks)
++
++    def on_result(self, request: SXNG_Request, search: "SearchWithPlugins", result: Result) -> bool:
++        """Filter results based on advanced search syntax."""
++        if not hasattr(request, 'search_syntax'):
++            return True
++
++        syntax = request.search_syntax
++        if not syntax.get('has_advanced_syntax', False):
++            return True
++
++        return self._apply_filters(result, syntax)
++
++    def post_search(self, request: SXNG_Request, search: "SearchWithPlugins") -> None:
++        """Restore original query for UI display after search completion."""
++        if hasattr(request, 'original_query') and hasattr(request, 'form'):
++            # Restore original query for UI display
++            try:
++                self._update_form_query(request.form, request.original_query)
++            except TypeError:
++                # Form is immutable, create new one
++                request.form = self._create_new_form_with_query(request.form, request.original_query)
