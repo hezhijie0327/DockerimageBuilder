@@ -1,4 +1,4 @@
-# Current Version: 1.3.8
+# Current Version: 1.3.9
 
 ARG PYTHON_VERSION="3"
 
@@ -44,7 +44,10 @@ RUN \
     && python3 -m venv /app \
     && . /app/bin/activate \
     && pip install --no-cache -r requirements.txt \
-    && pip install --no-cache httpx[socks] tzdata \
+    && pip install --no-cache \
+        httpx[socks] tzdata \
+        bm25s tiktoken \
+        curl-cffi \
     && python3 -m compileall -q searx \
     && find searx/static \( -name '*.html' -o -name '*.css' -o -name '*.js' \
         -o -name '*.svg' -o -name '*.ttf' -o -name '*.eot' \) \
