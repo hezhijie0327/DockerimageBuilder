@@ -259,10 +259,10 @@ index fabd8be2419..37b3f0c474a 100644
          return []
 diff --git a/searx/plugins/bm25_rerank.py b/searx/plugins/bm25_rerank.py
 new file mode 100644
-index 00000000000..ac58c531c24
+index 00000000000..d0906a24758
 --- /dev/null
 +++ b/searx/plugins/bm25_rerank.py
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,172 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=missing-module-docstring, missing-class-docstring, protected-access
 +from __future__ import annotations
@@ -387,24 +387,32 @@ index 00000000000..ac58c531c24
 +            return [0.0] * len(results)
 +
 +    def _update_positions(self, results: list, bm25_scores: list[float]) -> None:
-+        """将BM25分数更新到结果的positions中"""
-+        # 确保分数数量与结果数量一致
++        """将BM25分数映射到每个 SearXNG position，而不是只插入第一个"""
++
++        # 补齐分数长度
 +        while len(bm25_scores) < len(results):
 +            bm25_scores.append(0.0)
 +
 +        for i, result in enumerate(results):
-+            # BM25分数
-+            position_score = bm25_scores[i]
++            bm25 = bm25_scores[i]
++
++            # BM25 映射为一个缩放因子，严格 > 0
++            bm25_factor = 1.0 / (1.0 + bm25)
 +
 +            try:
-+                # 获取原有positions
++                # 获取原有 positions
 +                original_positions = getattr(result, 'positions', [])
 +
-+                # 将BM25分数插入第一位
-+                result.positions = [position_score] + list(original_positions)
++                # 对每个 position 施加 BM25 的印象
++                result.positions = [pos * bm25_factor if pos > 0 else bm25_factor for pos in original_positions]
++
++                # 如果原本没有 positions，直接使用 bm25_factor
++                if not result.positions:
++                    result.positions = [bm25_factor]
++
 +            except AttributeError:
 +                try:
-+                    result.positions = [position_score]
++                    result.positions = [bm25_factor]
 +                except AttributeError:
 +                    pass
 +
