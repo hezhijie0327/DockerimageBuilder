@@ -1,5 +1,6 @@
-# Current Version: 1.3.9
+# Current Version: 1.4.0
 
+ARG NODEJS_VERSION="24"
 ARG PYTHON_VERSION="3"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
@@ -26,12 +27,26 @@ RUN \
     && sed -i "s|ultrasecretkey|$(openssl rand -hex 32)|g;s|127.0.0.1|0.0.0.0|g" "${WORKDIR}/BUILDTMP/SEARXNG/searx/settings.yml" \
     && sed -i "s|VERSION_STRING: str = \"1.0.0\"|VERSION_STRING: str = \"${SEARXNG_CUSTOM_VERSION}\"|g;s|GIT_URL = \"unknow\"|GIT_URL = \"https://github.com/searxng/searxng\"|g" "${WORKDIR}/BUILDTMP/SEARXNG/searx/version.py"
 
+FROM node:${NODEJS_VERSION}-slim AS build_searxng_frontend
+
+WORKDIR /app
+
+COPY --from=get_info /tmp/BUILDTMP/SEARXNG/client/simple /app/client/simple
+COPY --from=get_info /tmp/BUILDTMP/SEARXNG/requirements.txt /app/requirements.txt
+COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /app/searx
+
+WORKDIR /app/client/simple
+
+RUN \
+    npm install -g pnpm \
+    && pnpm i \
+    && pnpm run build
+
 FROM python:${PYTHON_VERSION}-slim AS build_searxng
 
 WORKDIR /app
 
-COPY --from=get_info /tmp/BUILDTMP/SEARXNG/requirements.txt /app/requirements.txt
-COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /app/searx
+COPY --from=build_searxng_frontend /app /app
 
 RUN \
     apt update \
