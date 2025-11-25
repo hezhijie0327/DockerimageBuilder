@@ -1,4 +1,4 @@
-# Current Version: 1.4.2
+# Current Version: 1.4.3
 
 ARG NODEJS_VERSION="24"
 ARG PYTHON_VERSION="3"
@@ -46,7 +46,8 @@ FROM python:${PYTHON_VERSION}-slim AS build_searxng
 
 WORKDIR /app
 
-COPY --from=build_searxng_frontend /app /app
+COPY --from=build_searxng_frontend /app/requirements.txt /app/requirements.txt
+COPY --from=build_searxng_frontend /app/searx /app/searx
 
 RUN \
     apt update \
