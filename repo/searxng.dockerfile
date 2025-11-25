@@ -1,4 +1,4 @@
-# Current Version: 1.4.1
+# Current Version: 1.4.2
 
 ARG NODEJS_VERSION="24"
 ARG PYTHON_VERSION="3"
@@ -61,7 +61,7 @@ RUN \
     && pip install --no-cache -r requirements.txt \
     && pip install --no-cache \
         httpx[socks] tzdata \
-        bm25s tiktoken \
+        bm25s \
         httpx_curl_cffi \
     && python3 -m compileall -q searx \
     && find searx/static \( -name '*.html' -o -name '*.css' -o -name '*.js' \
