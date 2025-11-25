@@ -1,4 +1,4 @@
-# Current Version: 1.4.0
+# Current Version: 1.4.1
 
 ARG NODEJS_VERSION="24"
 ARG PYTHON_VERSION="3"
@@ -62,7 +62,7 @@ RUN \
     && pip install --no-cache \
         httpx[socks] tzdata \
         bm25s tiktoken \
-        curl-cffi \
+        httpx_curl_cffi \
     && python3 -m compileall -q searx \
     && find searx/static \( -name '*.html' -o -name '*.css' -o -name '*.js' \
         -o -name '*.svg' -o -name '*.ttf' -o -name '*.eot' \) \
