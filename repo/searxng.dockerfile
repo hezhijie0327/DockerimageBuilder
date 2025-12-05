@@ -1,4 +1,4 @@
-# Current Version: 1.4.3
+# Current Version: 1.4.4
 
 ARG NODEJS_VERSION="24"
 ARG PYTHON_VERSION="3"
@@ -38,9 +38,8 @@ COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /app/searx
 WORKDIR /app/client/simple
 
 RUN \
-    npm install -g pnpm \
-    && pnpm i \
-    && pnpm run build
+    npm i \
+    && npm run build
 
 FROM python:${PYTHON_VERSION}-slim AS build_searxng
 
