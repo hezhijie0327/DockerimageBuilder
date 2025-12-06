@@ -16,7 +16,7 @@ RUN \
 FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
 
 ENV \
-    CLANG_VERSION="19" \
+    CLANG_VERSION="20" \
     PATH="/root/.cargo/bin:$PATH" \
     PGX_HOME="/var/lib/postgresql"
 
