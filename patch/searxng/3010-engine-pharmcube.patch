@@ -1,0 +1,390 @@
+diff --git a/searx/engines/pharmcube.py b/searx/engines/pharmcube.py
+new file mode 100644
+index 00000000000..17546ba878e
+--- /dev/null
++++ b/searx/engines/pharmcube.py
+@@ -0,0 +1,384 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""Pharmcube (医药魔方) search engine for searxng
++
++医药魔方是专业的医药健康数据平台，提供医药行业新闻、企业信息等内容。
++"""
++
++from urllib.parse import urlencode
++import re
++from datetime import datetime, timedelta
++from lxml import html
++
++from searx.utils import extract_text, searxng_useragent
++
++# Metadata
++about = {
++    "website": "https://bydrug.pharmcube.com/",
++    "wikidata_id": None,
++    "use_official_api": False,
++    "require_api_key": False,
++    "results": "HTML",
++    "language": "zh",
++}
++
++# Engine Configuration
++categories = ["news"]
++paging = True
++
++# Base URL
++base_url = "https://bydrug.pharmcube.com"
++
++def request(query, params):
++    """
++    构造搜索请求
++
++    Args:
++        query: 搜索关键词
++        params: SearXNG 请求参数
++
++    Returns:
++        修改后的 params 字典，包含 URL 和请求头
++    """
++    # 构造查询参数
++    query_params = {
++        "searchKey": query,
++        "page": params["pageno"]
++    }
++
++    params["url"] = f"{base_url}/news?{urlencode(query_params)}"
++
++    # 添加请求头模拟浏览器访问
++    params['headers'] = {
++        'User-Agent': searxng_useragent(),
++        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
++        'Accept-Language': 'zh-CN,zh;q=0.9',
++        'Connection': 'keep-alive',
++        'Referer': 'https://bydrug.pharmcube.com/',
++    }
++
++    return params
++
++def response(resp):
++    """
++    解析搜索结果页面
++
++    Args:
++        resp: HTTP 响应对象
++
++    Returns:
++        搜索结果列表，每个结果包含 title, url, content, publishedDate 等字段
++    """
++    results = []
++
++    # 检查响应状态
++    if resp.status_code != 200:
++        return results
++
++    # 检查是否遇到验证码或反爬虫机制
++    if "验证" in resp.text or "captcha" in resp.text.lower():
++        return results
++
++    # 解析 HTML
++    try:
++        tree = html.fromstring(resp.text)
++    except Exception:
++        return results
++
++    # 查找新闻条目 - 使用精确的 class 匹配
++    news_items = tree.xpath('//div[contains(@class, "item-news")]')
++
++    # 处理每个新闻条目
++    for item in news_items:
++        try:
++            news_info = extract_news_data(item)
++            if news_info and news_info.get("title") and news_info.get("url"):
++                results.append(news_info)
++        except Exception:
++            # 跳过解析失败的条目
++            continue
++
++    return results
++
++def extract_news_data(item):
++    """
++    从新闻条目元素中提取数据
++
++    Args:
++        item: lxml Element 对象，代表单个新闻条目
++
++    Returns:
++        包含新闻信息的字典，或 None（如果提取失败）
++    """
++    try:
++        # 提取标题和链接
++        title_link = item.xpath('.//a[contains(@class, "news-title")]')
++        if not title_link:
++            return None
++
++        # 提取标题文本（在 highlight-container 或直接在 a 标签内）
++        title_span = title_link[0].xpath('.//span[@class="highlight-container"]')
++        if title_span:
++            title = extract_text(title_span[0])
++        else:
++            title = extract_text(title_link[0])
++
++        # 提取链接
++        relative_link = title_link[0].get('href', '')
++        if relative_link.startswith('/'):
++            url = f"{base_url}{relative_link}"
++        elif relative_link.startswith('http'):
++            url = relative_link
++        else:
++            url = f"{base_url}/{relative_link}"
++
++        # 提取摘要内容
++        content = extract_content(item)
++
++        # 提取来源和日期
++        source, date_str = extract_source_and_date(item)
++
++        # 标准化日期格式
++        published_date = normalize_date(date_str)
++
++        # 提取相关企业
++        companies = extract_companies(item)
++
++        # 构造完整的内容描述
++        content_parts = []
++        if content:
++            content_parts.append(content)
++        if source:
++            content_parts.append(f"来源: {source}")
++        if companies:
++            content_parts.append(f"相关企业: {', '.join(companies)}")
++
++        full_content = " | ".join(content_parts) if content_parts else "暂无摘要"
++
++        return {
++            "title": title,
++            "url": url,
++            "content": full_content,
++            "publishedDate": published_date,
++        }
++
++    except Exception:
++        return None
++
++def extract_content(item):
++    """提取新闻摘要内容"""
++    content = ""
++
++    # 查找摘要容器
++    subtitle_div = item.xpath('.//div[contains(@class, "subtitle")]')
++
++    if subtitle_div:
++        # 优先提取高亮内容
++        highlight = subtitle_div[0].xpath('.//span[@class="highlight-container"]')
++        if highlight:
++            content = extract_text(highlight[0])
++        else:
++            content = extract_text(subtitle_div[0])
++
++    return content.strip() if content else ""
++
++def extract_source_and_date(item):
++    """
++    提取新闻来源和发布日期
++
++    Returns:
++        tuple: (source, date_str)
++    """
++    source = ""
++    date_str = ""
++
++    # 查找 last-line 容器
++    last_line = item.xpath('.//div[contains(@class, "last-line")]')
++
++    if last_line:
++        # 查找所有 gray-text 元素
++        gray_texts = last_line[0].xpath('.//span[@class="gray-text"]')
++
++        for gray_text in gray_texts:
++            text_content = extract_text(gray_text).strip()
++
++            # 如果包含链接，则是来源
++            if gray_text.xpath('.//a'):
++                source_link = gray_text.xpath('.//a')[0]
++                source = extract_text(source_link)
++            # 否则检查是否为日期格式
++            elif is_date_format(text_content):
++                date_str = text_content
++
++    return source, date_str
++
++def extract_companies(item):
++    """
++    提取相关企业信息
++
++    Args:
++        item: lxml Element 对象
++
++    Returns:
++        企业名称列表
++    """
++    companies = []
++
++    try:
++        # 查找企业标签容器
++        tags_container = item.xpath('.//div[contains(@class, "block-tags-container")]')
++
++        if tags_container:
++            # 查找所有企业标签
++            company_tags = tags_container[0].xpath('.//span[contains(@class, "mf-tag-company")]')
++
++            for company_tag in company_tags:
++                # 提取企业名称（在 span 内的最后一个元素）
++                company_name_span = company_tag.xpath('.//span[last()]')
++                if company_name_span:
++                    company_name = extract_text(company_name_span[0])
++                    if company_name:
++                        companies.append(company_name)
++    except Exception:
++        pass
++
++    return companies
++
++def is_date_format(text):
++    """
++    检查文本是否符合日期格式
++
++    支持的格式：
++    - 相对时间：X秒前、X分钟前、X小时前
++    - 相对日期：昨天 HH:MM、前天 HH:MM
++    - 短日期：MM-DD HH:MM
++    - 完整日期：YYYY-MM-DD HH:MM
++
++    Args:
++        text: 待检查的文本
++
++    Returns:
++        布尔值，表示是否为日期格式
++    """
++    if not text:
++        return False
++
++    # 支持的日期格式模式
++    date_patterns = [
++        r'^\d{1,2}秒前$',                           # X秒前
++        r'^\d{1,2}分钟前$',                         # X分钟前
++        r'^\d{1,2}小时前$',                         # X小时前
++        r'^昨天\s+\d{1,2}:\d{2}$',                 # 昨天 HH:MM
++        r'^前天\s+\d{1,2}:\d{2}$',                 # 前天 HH:MM
++        r'^\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}$',     # MM-DD HH:MM
++        r'^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}$',   # YYYY-MM-DD HH:MM
++        r'^\d{4}-\d{2}-\d{2}$',                    # YYYY-MM-DD
++    ]
++
++    text = text.strip()
++    for pattern in date_patterns:
++        if re.match(pattern, text):
++            return True
++
++    return False
++
++def normalize_date(date_str):
++    """
++    将各种中文日期格式转换为 datetime 对象
++
++    支持的格式:
++    - X秒前/分钟前/小时前
++    - 昨天/前天 HH:MM
++    - MM-DD HH:MM
++    - YYYY-MM-DD HH:MM
++    - YYYY-MM-DD
++
++    Args:
++        date_str: 日期字符串
++
++    Returns:
++        datetime 对象，或 None（如果无法解析）
++    """
++    if not date_str:
++        return None
++
++    date_str = date_str.strip()
++
++    try:
++        # 处理相对时间格式
++        if "秒前" in date_str:
++            match = re.search(r'(\d+)秒前', date_str)
++            if match:
++                seconds_ago = int(match.group(1))
++                return datetime.now() - timedelta(seconds=seconds_ago)
++            return datetime.now()
++
++        if "分钟前" in date_str:
++            match = re.search(r'(\d+)分钟前', date_str)
++            if match:
++                minutes_ago = int(match.group(1))
++                return datetime.now() - timedelta(minutes=minutes_ago)
++
++        if "小时前" in date_str:
++            match = re.search(r'(\d+)小时前', date_str)
++            if match:
++                hours_ago = int(match.group(1))
++                return datetime.now() - timedelta(hours=hours_ago)
++
++        # 处理相对日期格式
++        if date_str.startswith("昨天"):
++            # 提取时间部分
++            time_match = re.search(r'(\d{1,2}):(\d{2})', date_str)
++            if time_match:
++                hour = int(time_match.group(1))
++                minute = int(time_match.group(2))
++                target_date = datetime.now() - timedelta(days=1)
++                return target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
++            return datetime.now() - timedelta(days=1)
++
++        if date_str.startswith("前天"):
++            time_match = re.search(r'(\d{1,2}):(\d{2})', date_str)
++            if time_match:
++                hour = int(time_match.group(1))
++                minute = int(time_match.group(2))
++                target_date = datetime.now() - timedelta(days=2)
++                return target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
++            return datetime.now() - timedelta(days=2)
++
++        # 处理 "MM-DD HH:MM" 格式
++        match = re.match(r'^(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})$', date_str)
++        if match:
++            month = int(match.group(1))
++            day = int(match.group(2))
++            hour = int(match.group(3))
++            minute = int(match.group(4))
++
++            year = datetime.now().year
++            # 检查日期是否在未来，如果是则可能是去年的数据
++            try:
++                test_date = datetime(year, month, day, hour, minute)
++                if test_date > datetime.now():
++                    year -= 1
++                return datetime(year, month, day, hour, minute)
++            except ValueError:
++                pass
++
++        # 处理 "YYYY-MM-DD HH:MM" 格式
++        match = re.match(r'^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})$', date_str)
++        if match:
++            return datetime(
++                int(match.group(1)),  # year
++                int(match.group(2)),  # month
++                int(match.group(3)),  # day
++                int(match.group(4)),  # hour
++                int(match.group(5)),  # minute
++            )
++
++        # 处理标准日期格式 "YYYY-MM-DD"
++        match = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', date_str)
++        if match:
++            return datetime.strptime(date_str, "%Y-%m-%d")
++
++    except (ValueError, AttributeError):
++        pass
++
++    return None
