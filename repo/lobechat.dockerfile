@@ -1,4 +1,4 @@
-# Current Version: 1.7.7
+# Current Version: 1.7.8
 
 ARG NODEJS_VERSION="24"
 
@@ -58,6 +58,7 @@ ENV \
 
 WORKDIR /app
 
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/apps/desktop/src/main/package.json ./apps/desktop/src/main/package.json
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json /tmp/BUILDTMP/LOBECHAT/pnpm-workspace.yaml ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/packages ./packages
