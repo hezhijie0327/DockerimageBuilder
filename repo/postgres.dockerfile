@@ -1,4 +1,4 @@
-# Current Version: 1.3.5
+# Current Version: 1.3.6
 
 ARG POSTGRES_VERSION="18"
 
@@ -125,7 +125,6 @@ RUN \
     export WORKDIR=$(pwd) \
     && git clone -b "main" --depth 1 "https://github.com/timescale/pgvectorscale.git" "${WORKDIR}/pgvectorscale" \
     && cd pgvectorscale/pgvectorscale \
-    && echo "trusted = true" >> vectorscale.control \
     && if [ "$(uname -m)" = "x86_64" ]; then \
         export RUSTFLAGS="-C target-feature=-crt-static,+avx2,+fma"; \
     fi \
@@ -154,7 +153,6 @@ RUN \
     && cargo install --locked cargo-pgrx --version "${PGRX_VERSION}" \
     && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
     && cd pg_search \
-    && echo "trusted = true" >> pg_search.control \
     && cargo pgrx package --features icu --pg-config "/usr/local/bin/pg_config"
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS postgres_rebase
