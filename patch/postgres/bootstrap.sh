@@ -6,13 +6,19 @@ export PGUSER="$POSTGRES_USER"
 # Exit on subcommand errors
 set -Eeuo pipefail
 
+# The `pg_cron` extension can only be installed in the `postgres` database, as per
+# our configuration in our Dockerfile. Therefore, we install it separately here.
+psql -d postgres -c "CREATE EXTENSION IF NOT EXISTS pg_cron;"
+
 # Creating extensions in template1 ensures that they are available in all new databases.
 for DB in template1 "$POSTGRES_DB"; do
   echo "Loading extensions into $DB"
   psql -d "$DB" <<-'EOSQL'
+    CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+    CREATE EXTENSION IF NOT EXISTS pg_search;
+    CREATE EXTENSION IF NOT EXISTS pg_ivm;
     CREATE EXTENSION IF NOT EXISTS vector;
     CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE;
-    CREATE EXTENSION IF NOT EXISTS pg_search;
 EOSQL
 done
 
