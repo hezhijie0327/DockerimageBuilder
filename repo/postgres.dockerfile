@@ -1,4 +1,4 @@
-# Current Version: 1.3.1
+# Current Version: 1.3.2
 
 ARG POSTGRES_VERSION="18"
 
@@ -155,7 +155,7 @@ RUN \
     && cd pg_search \
     && cargo pgrx package --features icu --pg-config "/usr/local/bin/pg_config"
 
-FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
+FROM postgres:${POSTGRES_VERSION}-alpine AS postgres_rebase
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_custom_patch.sh
@@ -186,7 +186,7 @@ RUN \
 
 FROM scratch
 
-COPY --from=paradedb_rebase / /
+COPY --from=postgres_rebase / /
 
 ENV \
     PGDATA="/var/lib/postgresql/data" \
