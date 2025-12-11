@@ -1,4 +1,4 @@
-# Current Version: 1.3.2
+# Current Version: 1.3.3
 
 ARG POSTGRES_VERSION="18"
 
@@ -168,11 +168,11 @@ COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/local/share/pos
 
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.so /usr/local/lib/postgresql/
 COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/sql/*.sql /usr/local/share/postgresql/extension/
+COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.sql /usr/local/share/postgresql/extension/
 
 COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.so /usr/local/lib/postgresql/
 COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/sql/*.sql /usr/local/share/postgresql/extension/
+COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.sql /usr/local/share/postgresql/extension/
 
 COPY --from=build_pgvectorscale /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
 COPY --from=build_pgvectorscale /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
