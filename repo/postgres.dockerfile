@@ -1,4 +1,4 @@
-# Current Version: 1.2.9
+# Current Version: 1.3.0
 
 ARG POSTGRES_VERSION="18"
 
@@ -159,6 +159,8 @@ FROM postgres:${POSTGRES_VERSION}-alpine AS paradedb_rebase
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_custom_patch.sh
+
+COPY --from=build_icu /icu/ /usr/local/
 
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.so /usr/local/lib/postgresql/
 COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.control /usr/local/share/postgresql/extension/
