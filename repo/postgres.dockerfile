@@ -1,4 +1,4 @@
-# Current Version: 1.3.0
+# Current Version: 1.3.1
 
 ARG POSTGRES_VERSION="18"
 
@@ -181,7 +181,8 @@ COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
 
 RUN \
-    sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron'/" "/usr/local/share/postgresql/postgresql.conf.sample"
+    sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron'/" "/usr/local/share/postgresql/postgresql.conf.sample" \
+    && echo "cron.database_name = 'postgres'" >> "/usr/local/share/postgresql/postgresql.conf.sample"
 
 FROM scratch
 
