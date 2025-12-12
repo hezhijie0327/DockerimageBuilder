@@ -1,4 +1,4 @@
-# Current Version: 1.3.6
+# Current Version: 1.3.8
 
 ARG POSTGRES_VERSION="18"
 
@@ -110,28 +110,6 @@ RUN \
     && echo "trusted = true" >> pg_ivm.control \
     && make USE_PGXS=1 CFLAGS="-Wno-error=clobbered" -j
 
-FROM build_basic AS build_pgvectorscale
-
-ARG \
-    POSTGRES_VERSION
-
-ENV \
-    POSTGRES_VERSION="${POSTGRES_VERSION}" \
-    RUSTFLAGS="-C target-feature=-crt-static"
-
-WORKDIR /tmp/BUILDTMP
-
-RUN \
-    export WORKDIR=$(pwd) \
-    && git clone -b "main" --depth 1 "https://github.com/timescale/pgvectorscale.git" "${WORKDIR}/pgvectorscale" \
-    && cd pgvectorscale/pgvectorscale \
-    && if [ "$(uname -m)" = "x86_64" ]; then \
-        export RUSTFLAGS="-C target-feature=-crt-static,+avx2,+fma"; \
-    fi \
-    && cargo install --locked cargo-pgrx --version $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "pgrx") | .version') \
-    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
-    && cargo pgrx package --pg-config "/usr/local/bin/pg_config"
-
 FROM build_basic AS build_pg_search
 
 ARG \
@@ -174,9 +152,6 @@ COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.so /usr/local/lib/postgresql/
 COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.control /usr/local/share/postgresql/extension/
 COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.sql /usr/local/share/postgresql/extension/
 
-COPY --from=build_pgvectorscale /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
-COPY --from=build_pgvectorscale /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
-
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
 COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
 
@@ -189,7 +164,7 @@ FROM scratch
 COPY --from=postgres_rebase / /
 
 ENV \
-    PGDATA="/var/lib/postgresql/data" \
+    PGDATA="/var/lib/postgresql" \
     PGPORT="5432" POSTGRES_DB="postgres" \
     POSTGRES_USER="postgres" \
     POSTGRES_PASSWORD="postgres"
