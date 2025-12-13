@@ -1,4 +1,4 @@
-# Current Version: 1.3.8
+# Current Version: 1.3.9
 
 ARG POSTGRES_VERSION="18"
 
@@ -11,7 +11,7 @@ RUN \
     && cat "/opt/package.json" | jq -Sr ".module.icu" > "${WORKDIR}/icu.json" \
     && cat "${WORKDIR}/icu.json" | jq -Sr ".version" \
     && cat "${WORKDIR}/icu.json" | jq -Sr ".source" > "${WORKDIR}/icu.autobuild" \
-    && git clone -b main --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"
+    && git clone -b "main" --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
 
@@ -65,22 +65,7 @@ RUN \
     && make -j $(nproc) \
     && make install
 
-FROM build_basic AS build_pgvector
-
-ENV \
-    PG_CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter -Wno-sign-compare" \
-    PG_CONFIG="/usr/local/bin/pg_config"
-
-WORKDIR /tmp/BUILDTMP
-
-RUN \
-    export WORKDIR=$(pwd) \
-    && git clone -b "master" --depth 1 "https://github.com/pgvector/pgvector.git" "${WORKDIR}/pgvector" \
-    && cd "${WORKDIR}/pgvector" \
-    && echo "trusted = true" >> vector.control \
-    && make USE_PGXS=1 CFLAGS="-Wno-error=missing-field-initializers" -j
-
-FROM build_basic AS build_pg_cron
+FROM build_basic AS build_c_plugin
 
 ENV \
     PG_CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter -Wno-sign-compare" \
@@ -95,12 +80,6 @@ RUN \
     && echo "trusted = true" >> pg_cron.control \
     && make USE_PGXS=1 -j
 
-FROM build_basic AS build_pg_ivm
-
-ENV \
-    PG_CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter -Wno-sign-compare" \
-    PG_CONFIG="/usr/local/bin/pg_config"
-
 WORKDIR /tmp/BUILDTMP
 
 RUN \
@@ -110,7 +89,16 @@ RUN \
     && echo "trusted = true" >> pg_ivm.control \
     && make USE_PGXS=1 CFLAGS="-Wno-error=clobbered" -j
 
-FROM build_basic AS build_pg_search
+WORKDIR /tmp/BUILDTMP
+
+RUN \
+    export WORKDIR=$(pwd) \
+    && git clone -b "master" --depth 1 "https://github.com/pgvector/pgvector.git" "${WORKDIR}/pgvector" \
+    && cd "${WORKDIR}/pgvector" \
+    && echo "trusted = true" >> vector.control \
+    && make USE_PGXS=1 CFLAGS="-Wno-error=missing-field-initializers" -j
+
+FROM build_basic AS build_rust_plugin
 
 ARG \
     POSTGRES_VERSION
@@ -133,6 +121,19 @@ RUN \
     && cd pg_search \
     && cargo pgrx package --features icu --pg-config "/usr/local/bin/pg_config"
 
+WORKDIR /tmp/BUILDTMP
+
+RUN \
+    export WORKDIR=$(pwd) \
+    && git clone -b "main" --depth 1 "https://github.com/timescale/pgvectorscale.git" "${WORKDIR}/pgvectorscale" \
+    && cd pgvectorscale/pgvectorscale \
+    && if [ "$(uname -m)" = "x86_64" ]; then \
+        export RUSTFLAGS="-C target-feature=-crt-static,+avx2,+fma"; \
+    fi \
+    && cargo install --locked cargo-pgrx --version $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "pgrx") | .version') \
+    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
+    && cargo pgrx package --pg-config "/usr/local/bin/pg_config"
+
 FROM postgres:${POSTGRES_VERSION}-alpine AS postgres_rebase
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
@@ -140,20 +141,23 @@ COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.s
 
 COPY --from=build_icu /icu/ /usr/local/
 
-COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.so /usr/local/lib/postgresql/
-COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_pgvector /tmp/BUILDTMP/pgvector/sql/*.sql /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.so /usr/local/lib/postgresql/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.control /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.sql /usr/local/share/postgresql/extension/
 
-COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.so /usr/local/lib/postgresql/
-COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_pg_cron /tmp/BUILDTMP/pg_cron/*.sql /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.so /usr/local/lib/postgresql/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.control /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.sql /usr/local/share/postgresql/extension/
 
-COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.so /usr/local/lib/postgresql/
-COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_pg_ivm /tmp/BUILDTMP/pg_ivm/*.sql /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/*.so /usr/local/lib/postgresql/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/*.control /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/sql/*.sql /usr/local/share/postgresql/extension/
 
-COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
-COPY --from=build_pg_search /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
+COPY --from=build_rust_plugin /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
+COPY --from=build_rust_plugin /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
+
+COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
+COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
 
 RUN \
     sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron'/" "/usr/local/share/postgresql/postgresql.conf.sample" \
