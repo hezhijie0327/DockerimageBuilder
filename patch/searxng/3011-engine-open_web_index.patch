@@ -1,0 +1,112 @@
+diff --git a/searx/engines/open_web_index.py b/searx/engines/open_web_index.py
+new file mode 100644
+index 00000000000..bfbec542400
+--- /dev/null
++++ b/searx/engines/open_web_index.py
+@@ -0,0 +1,106 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""Open Web Index: A search engine for retrieving web content from Open Web Index API."""
++
++from urllib.parse import urlencode
++from datetime import datetime
++from dateutil.parser import parse as parse_date
++
++from searx.exceptions import SearxEngineAPIException
++
++about = {
++    "website": "https://dashboard.ows.eu/",
++    "wikidata_id": None,
++    "use_official_api": True,
++    "require_api_key": False,
++    "results": "JSON",
++    "language": "en",
++}
++
++paging = True
++time_range_support = True
++categories = ["general"]
++results_per_page = 10
++
++base_url = "https://dashboard.ows.eu/api/v1/content/search"
++
++
++def request(query, params):
++    query_params = {
++        "q": query,
++        "include_opengraph": "true",
++        "page": params["pageno"],
++        "per_page": results_per_page
++    }
++
++    # Handle time range
++    if params.get('time_range'):
++        from datetime import datetime, timedelta
++        now = datetime.now()
++
++        if params['time_range'] == 'day':
++            start_date = now - timedelta(days=1)
++        elif params['time_range'] == 'week':
++            start_date = now - timedelta(weeks=1)
++        elif params['time_range'] == 'month':
++            start_date = now - timedelta(days=30)
++        elif params['time_range'] == 'year':
++            start_date = now - timedelta(days=365)
++        else:
++            start_date = None
++
++        if start_date:
++            query_params["start_date"] = start_date.strftime("%Y-%m-%d")
++            query_params["end_date"] = now.strftime("%Y-%m-%d")
++
++    params["url"] = f"{base_url}?{urlencode(query_params)}"
++    return params
++
++
++def response(resp):
++    try:
++        data = resp.json()
++    except Exception as e:
++        raise SearxEngineAPIException(f"Invalid response: {e}") from e
++
++    results = []
++
++    if "results" not in data:
++        raise SearxEngineAPIException("Invalid response: missing results")
++
++    for entry in data["results"]:
++        # Extract basic information
++        url = entry.get("url", "")
++        title = entry.get("title", "").strip()
++
++        # Skip if essential fields are missing
++        if not url or not title:
++            continue
++
++        # Parse published date
++        published_date = None
++        date_str = entry.get("date")
++        if date_str:
++            try:
++                published_date = parse_date(date_str.replace("Z", "+00:00"))
++            except (ValueError, TypeError):
++                pass
++
++        # Get thumbnail image
++        thumbnail = None
++        image = entry.get("image")
++        if image:
++            thumbnail = image
++
++        result = {
++            'url': url,
++            'title': title,
++            'publishedDate': published_date,
++        }
++
++        # Add thumbnail if available
++        if thumbnail:
++            result['thumbnail'] = thumbnail
++
++        results.append(result)
++
++    return results
