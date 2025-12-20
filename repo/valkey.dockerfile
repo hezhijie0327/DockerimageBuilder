@@ -1,6 +1,6 @@
-# Current Version: 1.1.5
+# Current Version: 1.1.6
 
-ARG GCC_VERSION="14"
+ARG GCC_VERSION="15"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -36,6 +36,7 @@ COPY --from=build_openssl / /BUILDLIB/
 
 RUN \
     PREFIX="/BUILDLIB" \
+    && export CFLAGS="-DUSE_PROCESSOR_CLOCK" \
     && export CPPFLAGS="-I$PREFIX/include -static" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
@@ -46,7 +47,10 @@ RUN \
     && apt update \
     && apt install -qy \
           libjemalloc-dev \
-    && make -j $(nproc) BUILD_TLS="yes" MALLOC="jemalloc" \
+    && make -j $(nproc) \
+        BUILD_LUA="no" BUILD_RDMA="no" BUILD_TLS="yes" \
+        USE_FAST_FLOAT="yes" USE_SYSTEMD="no" \
+        MALLOC="jemalloc" \
     && make install \
     && rm -rf /usr/local/bin/valkey-check-* "/usr/local/bin/valkey-sentinel" \
     && strip -s /usr/local/bin/valkey-*
