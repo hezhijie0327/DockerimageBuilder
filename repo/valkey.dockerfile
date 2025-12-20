@@ -47,7 +47,6 @@ RUN \
     && apt update \
     && apt install -qy \
           libjemalloc-dev \
-          librdmacm-dev libibverbs-dev \
     && make -j $(nproc) \
         BUILD_LUA="no" BUILD_RDMA="no" BUILD_TLS="yes" \
         USE_FAST_FLOAT="yes" USE_SYSTEMD="no" \
