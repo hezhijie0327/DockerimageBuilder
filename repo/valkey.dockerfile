@@ -36,6 +36,7 @@ COPY --from=build_openssl / /BUILDLIB/
 
 RUN \
     PREFIX="/BUILDLIB" \
+    && export CFLAGS="-std=gnu11" \
     && export CPPFLAGS="-I$PREFIX/include -static" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
