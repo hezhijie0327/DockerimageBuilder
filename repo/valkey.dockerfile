@@ -36,6 +36,7 @@ COPY --from=build_openssl / /BUILDLIB/
 
 RUN \
     PREFIX="/BUILDLIB" \
+    && export CFLAGS="-DUSE_PROCESSOR_CLOCK" \
     && export CPPFLAGS="-I$PREFIX/include -static" \
     && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
@@ -46,7 +47,7 @@ RUN \
     && apt update \
     && apt install -qy \
           libjemalloc-dev \
-          librdmacm-dev libibverbs-dev 
+          librdmacm-dev libibverbs-dev \
     && make -j $(nproc) \
         BUILD_LUA="no" BUILD_RDMA="yes" BUILD_TLS="yes" \
         USE_FAST_FLOAT="yes" MALLOC="jemalloc" \
