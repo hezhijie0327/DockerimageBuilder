@@ -50,7 +50,8 @@ RUN \
           librdmacm-dev libibverbs-dev \
     && make -j $(nproc) \
         BUILD_LUA="no" BUILD_RDMA="yes" BUILD_TLS="yes" \
-        USE_FAST_FLOAT="yes" MALLOC="jemalloc" \
+        USE_FAST_FLOAT="yes" USE_SYSTEMD="no" \
+        MALLOC="jemalloc" \
     && make install \
     && rm -rf /usr/local/bin/valkey-check-* "/usr/local/bin/valkey-sentinel" \
     && strip -s /usr/local/bin/valkey-*
