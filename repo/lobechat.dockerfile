@@ -1,4 +1,4 @@
-# Current Version: 1.7.9
+# Current Version: 1.8.0
 
 ARG NODEJS_VERSION="24"
 
@@ -15,7 +15,7 @@ RUN \
     && cat "${WORKDIR}/lobechat.json" | jq -Sr ".patch" > "${WORKDIR}/lobechat.patch.autobuild" \
     && cat "${WORKDIR}/lobechat.json" | jq -Sr ".patch_branch" > "${WORKDIR}/lobechat.patch_branch.autobuild" \
     && cat "${WORKDIR}/lobechat.json" | jq -Sr ".version" > "${WORKDIR}/lobechat.version.autobuild" \
-    && git clone -b $(cat "${WORKDIR}/lobechat.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.source.autobuild") "${WORKDIR}/BUILDTMP/LOBECHAT" \
+    && git clone -b dev --depth=1 $(cat "${WORKDIR}/lobechat.source.autobuild") "${WORKDIR}/BUILDTMP/LOBECHAT" \
     && git clone -b $(cat "${WORKDIR}/lobechat.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"\
     && export LOBECHAT_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export LOBECHAT_VERSION=$(cat "${WORKDIR}/lobechat.version.autobuild") \
@@ -45,7 +45,7 @@ RUN \
 FROM build_baseos AS build_lobechat
 
 ENV \
-    NODE_OPTIONS="--max-old-space-size=6144" \
+    NODE_OPTIONS="--max-old-space-size=8192" \
     NEXT_PUBLIC_ENABLE_BETTER_AUTH="1" \
     NEXT_PUBLIC_ENABLE_NEXT_AUTH="0" \
     NEXT_PUBLIC_SERVICE_MODE="server" \
@@ -62,6 +62,7 @@ COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/apps/desktop/src/main/package.json .
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json /tmp/BUILDTMP/LOBECHAT/pnpm-workspace.yaml ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/packages ./packages
+COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/patches ./patches
 
 RUN \
     export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
@@ -76,7 +77,8 @@ RUN \
 
 COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/ .
 
-RUN npm run build:docker
+RUN \
+    npm run build:docker
 
 FROM busybox:latest AS rebased_lobechat
 
