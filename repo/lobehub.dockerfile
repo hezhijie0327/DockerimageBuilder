@@ -1,4 +1,4 @@
-# Current Version: 1.8.0
+# Current Version: 1.8.1
 
 ARG NODEJS_VERSION="24"
 
@@ -8,22 +8,22 @@ WORKDIR /tmp
 
 RUN \
     export WORKDIR=$(pwd) \
-    && cat "/opt/package.json" | jq -Sr ".repo.lobechat" > "${WORKDIR}/lobechat.json" \
-    && cat "${WORKDIR}/lobechat.json" | jq -Sr ".version" \
-    && cat "${WORKDIR}/lobechat.json" | jq -Sr ".source" > "${WORKDIR}/lobechat.source.autobuild" \
-    && cat "${WORKDIR}/lobechat.json" | jq -Sr ".source_branch" > "${WORKDIR}/lobechat.source_branch.autobuild" \
-    && cat "${WORKDIR}/lobechat.json" | jq -Sr ".patch" > "${WORKDIR}/lobechat.patch.autobuild" \
-    && cat "${WORKDIR}/lobechat.json" | jq -Sr ".patch_branch" > "${WORKDIR}/lobechat.patch_branch.autobuild" \
-    && cat "${WORKDIR}/lobechat.json" | jq -Sr ".version" > "${WORKDIR}/lobechat.version.autobuild" \
-    && git clone -b dev --depth=1 $(cat "${WORKDIR}/lobechat.source.autobuild") "${WORKDIR}/BUILDTMP/LOBECHAT" \
-    && git clone -b $(cat "${WORKDIR}/lobechat.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobechat.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"\
-    && export LOBECHAT_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBECHAT" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
-    && export LOBECHAT_VERSION=$(cat "${WORKDIR}/lobechat.version.autobuild") \
+    && cat "/opt/package.json" | jq -Sr ".repo.lobehub" > "${WORKDIR}/lobehub.json" \
+    && cat "${WORKDIR}/lobehub.json" | jq -Sr ".version" \
+    && cat "${WORKDIR}/lobehub.json" | jq -Sr ".source" > "${WORKDIR}/lobehub.source.autobuild" \
+    && cat "${WORKDIR}/lobehub.json" | jq -Sr ".source_branch" > "${WORKDIR}/lobehub.source_branch.autobuild" \
+    && cat "${WORKDIR}/lobehub.json" | jq -Sr ".patch" > "${WORKDIR}/lobehub.patch.autobuild" \
+    && cat "${WORKDIR}/lobehub.json" | jq -Sr ".patch_branch" > "${WORKDIR}/lobehub.patch_branch.autobuild" \
+    && cat "${WORKDIR}/lobehub.json" | jq -Sr ".version" > "${WORKDIR}/lobehub.version.autobuild" \
+    && git clone -b dev --depth=1 $(cat "${WORKDIR}/lobehub.source.autobuild") "${WORKDIR}/BUILDTMP/LOBEHUB" \
+    && git clone -b $(cat "${WORKDIR}/lobehub.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobehub.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"\
+    && export LOBEHUB_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBEHUB" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
+    && export LOBEHUB_VERSION=$(cat "${WORKDIR}/lobehub.version.autobuild") \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
-    && export LOBECHAT_CUSTOM_VERSION="${LOBECHAT_VERSION}-ZHIJIE-${LOBECHAT_SHA}${PATCH_SHA}" \
-    && cd "${WORKDIR}/BUILDTMP/LOBECHAT" \
-    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobechat/*.patch \
-    && sed -i "s/\"version\": \".*\"/\"version\": \"${LOBECHAT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBECHAT/package.json"
+    && export LOBEHUB_CUSTOM_VERSION="${LOBEHUB_VERSION}-ZHIJIE-${LOBEHUB_SHA}${PATCH_SHA}" \
+    && cd "${WORKDIR}/BUILDTMP/LOBEHUB" \
+    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/lobehub/*.patch \
+    && sed -i "s/\"version\": \".*\"/\"version\": \"${LOBEHUB_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/LOBEHUB/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_baseos
 
@@ -42,7 +42,7 @@ RUN \
     && cp /etc/proxychains4.conf /distroless/etc/proxychains4.conf \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
-FROM build_baseos AS build_lobechat
+FROM build_baseos AS build_lobehub
 
 ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
@@ -58,11 +58,11 @@ ENV \
 
 WORKDIR /app
 
-COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/apps/desktop/src/main/package.json ./apps/desktop/src/main/package.json
-COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/package.json /tmp/BUILDTMP/LOBECHAT/pnpm-workspace.yaml ./
-COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/.npmrc ./
-COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/packages ./packages
-COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/patches ./patches
+COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/apps/desktop/src/main/package.json ./apps/desktop/src/main/package.json
+COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/package.json /tmp/BUILDTMP/LOBEHUB/pnpm-workspace.yaml ./
+COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/.npmrc ./
+COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/packages ./packages
+COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/patches ./patches
 
 RUN \
     export COREPACK_NPM_REGISTRY=$(npm config get registry | sed 's/\/$//') \
@@ -75,28 +75,28 @@ RUN \
     && pnpm init \
     && pnpm add pg drizzle-orm
 
-COPY --from=get_info /tmp/BUILDTMP/LOBECHAT/ .
+COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/ .
 
 RUN \
     npm run build:docker
 
-FROM busybox:latest AS rebased_lobechat
+FROM busybox:latest AS rebased_lobehub
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build_baseos /distroless/ /
 
-COPY --from=build_lobechat /app/.next/standalone /app/
+COPY --from=build_lobehub /app/.next/standalone /app/
 
-COPY --from=build_lobechat /app/packages/database/migrations /app/migrations
-COPY --from=build_lobechat /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
-COPY --from=build_lobechat /app/scripts/migrateServerDB/errorHint.js /app/errorHint.js
+COPY --from=build_lobehub /app/packages/database/migrations /app/migrations
+COPY --from=build_lobehub /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
+COPY --from=build_lobehub /app/scripts/migrateServerDB/errorHint.js /app/errorHint.js
 
-COPY --from=build_lobechat /deps/node_modules/.pnpm /app/node_modules/.pnpm
-COPY --from=build_lobechat /deps/node_modules/pg /app/node_modules/pg
-COPY --from=build_lobechat /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
+COPY --from=build_lobehub /deps/node_modules/.pnpm /app/node_modules/.pnpm
+COPY --from=build_lobehub /deps/node_modules/pg /app/node_modules/pg
+COPY --from=build_lobehub /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
 
-COPY --from=build_lobechat /app/scripts/serverLauncher/startServer.js /app/startServer.js
+COPY --from=build_lobehub /app/scripts/serverLauncher/startServer.js /app/startServer.js
 
 FROM scratch
 
@@ -111,7 +111,7 @@ ENV \
     FEATURE_FLAGS="-check_updates,+group_chat,+pin_list,-speech_to_text,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
-COPY --from=rebased_lobechat / /
+COPY --from=rebased_lobehub / /
 
 EXPOSE 3210/tcp
 
