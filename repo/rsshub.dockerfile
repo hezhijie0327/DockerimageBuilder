@@ -1,4 +1,4 @@
-# Current Version: 1.0.1
+# Current Version: 1.0.2
 
 ARG NODEJS_VERSION="24"
 
@@ -18,7 +18,7 @@ RUN \
     && git clone -b $(cat "${WORKDIR}/rsshub.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rsshub.source.autobuild") "${WORKDIR}/BUILDTMP/RSSHUB" \
     && git clone -b $(cat "${WORKDIR}/rsshub.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rsshub.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"\
     && export RSSHUB_SHA=$(cd "${WORKDIR}/BUILDTMP/RSSHUB" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
-    && export RSSHUB_VERSION=1.1.0 \
+    && export RSSHUB_VERSION=$(cat "${WORKDIR}/rsshub.version.autobuild") \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export RSSHUB_CUSTOM_VERSION="${RSSHUB_VERSION}-ZHIJIE-${RSSHUB_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/RSSHUB" \
