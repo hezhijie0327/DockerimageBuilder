@@ -1,4 +1,4 @@
-# Current Version: 1.0.0
+# Current Version: 1.0.1
 
 ARG NODEJS_VERSION="24"
 
@@ -82,8 +82,10 @@ ENV \
     NODE_ENV="production" NODE_TLS_REJECT_UNAUTHORIZED="" \
     NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
-    HOSTNAME="0.0.0.0" PORT="1200" \
-    CACHE_TYPE="" REDIS_URL="" \
+    DEBUG_INFO="some_string" LOGGER_LEVEL="info" \
+    LISTEN_INADDR_ANY="true" PORT="1200" PROXY_URI="" \
+    ACCESS_KEY="" \
+    CACHE_TYPE="memory" REDIS_URL="" \
     PUPPETEER_WS_ENDPOINT=""
 
 COPY --from=rebased_rsshub / /
