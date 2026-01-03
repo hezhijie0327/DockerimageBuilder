@@ -1,0 +1,26 @@
+diff --git a/src/libs/next/proxy/define-config.ts b/src/libs/next/proxy/define-config.ts
+index 2bc7512..b376d08 100644
+--- a/src/libs/next/proxy/define-config.ts
++++ b/src/libs/next/proxy/define-config.ts
+@@ -330,8 +330,19 @@ export function defineConfig() {
+       // If request a protected route, redirect to sign-in page
+       if (isProtected) {
+         logBetterAuth('Request a protected route, redirecting to sign-in page');
+-        const signInUrl = new URL('/signin', req.nextUrl.origin);
+-        signInUrl.searchParams.set('callbackUrl', req.nextUrl.href);
++        // Use NEXT_PUBLIC_AUTH_URL for the base URL instead of req.nextUrl.origin
++        // This ensures callbackUrl uses the configured public URL instead of the request origin
++        const baseUrl = authEnv.NEXT_PUBLIC_AUTH_URL || req.nextUrl.origin;
++        const signInUrl = new URL('/signin', baseUrl);
++
++        // Build callbackUrl using the same base URL with the request path
++        const callbackUrl = new URL(req.nextUrl.pathname, baseUrl);
++        // Preserve query parameters (like hl) in the callbackUrl
++        req.nextUrl.searchParams.forEach((value, key) => {
++          callbackUrl.searchParams.set(key, value);
++        });
++        signInUrl.searchParams.set('callbackUrl', callbackUrl.href);
++
+         const hl = req.nextUrl.searchParams.get('hl');
+         if (hl) {
+           signInUrl.searchParams.set('hl', hl);
