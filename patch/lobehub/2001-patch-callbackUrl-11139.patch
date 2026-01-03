@@ -1,44 +1,324 @@
+diff --git a/src/libs/next/proxy/callback-url.test.ts b/src/libs/next/proxy/callback-url.test.ts
+new file mode 100644
+index 0000000000000..981858c222e4c
+--- /dev/null
++++ b/src/libs/next/proxy/callback-url.test.ts
+@@ -0,0 +1,215 @@
++import { describe, expect, it } from 'vitest';
++
++import { NextRequest } from 'next/server';
++
++import { buildCallbackUrl, getCallbackUrlOrigin } from './callback-url';
++
++describe('callback-url: reverse proxy URL generation', () => {
++  /**
++   * Helper function to create a mock NextRequest with custom headers
++   */
++  const createMockRequest = (url: string, headers: Record<string, string> = {}): NextRequest => {
++    // Create a real NextRequest with a valid URL
++    const request = new NextRequest(new URL(url, 'http://test.com'), {
++      headers: new Headers(headers),
++    });
++
++    // Manually set headers to ensure they're preserved
++    Object.entries(headers).forEach(([key, value]) => {
++      request.headers.set(key, value);
++    });
++
++    // Override the nextUrl properties to simulate the proxy scenario
++    Object.defineProperty(request, 'nextUrl', {
++      value: {
++        protocol: new URL(url).protocol || 'https:',
++        host: new URL(url).host || '0.0.0.0:3210',
++        pathname: new URL(url).pathname || '/settings',
++        search: new URL(url).search || '',
++        href: url,
++      },
++      writable: false,
++    });
++
++    return request;
++  };
++
++  describe('getCallbackUrlOrigin', () => {
++    it('should extract correct origin from x-forwarded-* headers in docker', () => {
++      const mockRequest = createMockRequest('https://test.com/settings', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'lobehub.com',
++      });
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      expect(origin).toBe('https://lobehub.com');
++    });
++
++    it('should fallback to host header when x-forwarded-host is missing', () => {
++      const mockRequest = createMockRequest('https://test.com/settings', {
++        'x-forwarded-proto': 'https',
++        host: 'direct.com',
++      });
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      expect(origin).toBe('https://direct.com');
++    });
++
++    it('should fallback to nextUrl when no proxy headers are present', () => {
++      const mockRequest = createMockRequest('https://example.com/settings');
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      expect(origin).toBe('https://example.com');
++    });
++
++    it('should prioritize x-forwarded-host over host header', () => {
++      const mockRequest = createMockRequest('https://test.com/settings', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'forwarded.com',
++        host: 'direct.com',
++      });
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      expect(origin).toBe('https://forwarded.com');
++    });
++
++    it('should handle non-standard port in forwarded host', () => {
++      const mockRequest = createMockRequest('https://test.com/settings', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'example.com:8443',
++      });
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      expect(origin).toBe('https://example.com:8443');
++    });
++
++    it('should handle http protocol in development', () => {
++      const mockRequest = createMockRequest('http://test.com/settings', {
++        'x-forwarded-proto': 'http',
++        'x-forwarded-host': 'localhost:8080',
++      });
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      expect(origin).toBe('http://localhost:8080');
++    });
++  });
++
++  describe('buildCallbackUrl', () => {
++    it('should build correct callbackUrl with x-forwarded-* headers', () => {
++      const mockRequest = createMockRequest('https://test.com/settings', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'lobehub.com',
++      });
++
++      const callbackUrl = buildCallbackUrl(mockRequest);
++      expect(callbackUrl).toBe('https://lobehub.com/settings');
++    });
++
++    it('should preserve search params in callbackUrl', () => {
++      const mockRequest = createMockRequest('https://test.com/settings?hl=zh-CN', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'lobehub.com',
++      });
++
++      const callbackUrl = buildCallbackUrl(mockRequest);
++      expect(callbackUrl).toBe('https://lobehub.com/settings?hl=zh-CN');
++    });
++
++    it('should preserve multiple search params', () => {
++      const mockRequest = createMockRequest('https://test.com/settings?hl=zh-CN&redirect=/home', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'example.com',
++      });
++
++      const callbackUrl = buildCallbackUrl(mockRequest);
++      expect(callbackUrl).toBe('https://example.com/settings?hl=zh-CN&redirect=/home');
++    });
++
++    it('should handle root path correctly', () => {
++      const mockRequest = createMockRequest('https://test.com/', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'example.com',
++      });
++
++      const callbackUrl = buildCallbackUrl(mockRequest);
++      expect(callbackUrl).toBe('https://example.com/');
++    });
++
++    it('should handle nested paths', () => {
++      const mockRequest = createMockRequest('https://test.com/oauth/consent/app', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'example.com',
++      });
++
++      const callbackUrl = buildCallbackUrl(mockRequest);
++      expect(callbackUrl).toBe('https://example.com/oauth/consent/app');
++    });
++  });
++
++  describe('real-world scenarios', () => {
++    it('should handle production nginx reverse proxy', () => {
++      const mockRequest = createMockRequest('https://test.com/settings?hl=zh-CN', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'lobehub.com',
++      });
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      const callbackUrl = buildCallbackUrl(mockRequest);
++
++      expect(origin).toBe('https://lobehub.com');
++      expect(callbackUrl).toBe('https://lobehub.com/settings?hl=zh-CN');
++    });
++
++    it('should handle docker compose development', () => {
++      const mockRequest = createMockRequest('http://test.com/settings', {
++        'x-forwarded-proto': 'http',
++        'x-forwarded-host': 'localhost',
++      });
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      const callbackUrl = buildCallbackUrl(mockRequest);
++
++      expect(origin).toBe('http://localhost');
++      expect(callbackUrl).toBe('http://localhost/settings');
++    });
++
++    it('should handle direct access without proxy', () => {
++      const mockRequest = createMockRequest('https://example.com/settings?hl=en-US');
++
++      const origin = getCallbackUrlOrigin(mockRequest);
++      const callbackUrl = buildCallbackUrl(mockRequest);
++
++      expect(origin).toBe('https://example.com');
++      expect(callbackUrl).toBe('https://example.com/settings?hl=en-US');
++    });
++  });
++
++  describe('prevent incorrect callbackUrl in docker', () => {
++    it('should not generate callbackUrl with 0.0.0.0 when proxy headers present', () => {
++      const mockRequest = createMockRequest('https://test.com/settings', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'lobehub.com',
++      });
++
++      const callbackUrl = buildCallbackUrl(mockRequest);
++
++      // Should NOT contain the incorrect docker internal address
++      expect(callbackUrl).not.toContain('0.0.0.0');
++
++      // Should contain the correct external address
++      expect(callbackUrl).toBe('https://lobehub.com/settings');
++    });
++
++    it('should preserve locale parameter with correct origin', () => {
++      const mockRequest = createMockRequest('https://test.com/settings?hl=zh-CN', {
++        'x-forwarded-proto': 'https',
++        'x-forwarded-host': 'lobehub.com',
++      });
++
++      const callbackUrl = buildCallbackUrl(mockRequest);
++
++      expect(callbackUrl).not.toContain('0.0.0.0');
++      expect(callbackUrl).toBe('https://lobehub.com/settings?hl=zh-CN');
++    });
++  });
++});
+diff --git a/src/libs/next/proxy/callback-url.ts b/src/libs/next/proxy/callback-url.ts
+new file mode 100644
+index 0000000000000..8b0a8dc85e2ed
+--- /dev/null
++++ b/src/libs/next/proxy/callback-url.ts
+@@ -0,0 +1,62 @@
++import { type NextRequest } from 'next/server';
++
++/**
++ * Get the correct origin for building callback URLs in reverse proxy scenarios.
++ *
++ * In Docker/reverse proxy environments, the request URL may be incorrect (e.g., https://0.0.0.0:3210).
++ * This function uses standard proxy headers to get the real origin:
++ * 1. x-forwarded-proto: the real protocol (https/http)
++ * 2. x-forwarded-host: the real host (e.g., lobehub.com)
++ * 3. Falls back to host header and nextUrl if proxy headers are not present
++ *
++ * @param request - The Next.js request object
++ * @returns The correct origin string (e.g., "https://lobehub.com")
++ *
++ * @example
++ * ```ts
++ * // Docker environment with reverse proxy
++ * // Request URL: https://0.0.0.0:3210/settings
++ * // Headers: x-forwarded-proto: https, x-forwarded-host: lobehub.com
++ * getCallbackUrlOrigin(req) // Returns: "https://lobehub.com"
++ *
++ * // Direct access without proxy
++ * // Request URL: https://example.com/settings
++ * getCallbackUrlOrigin(req) // Returns: "https://example.com"
++ * ```
++ */
++export const getCallbackUrlOrigin = (request: NextRequest): string => {
++  // Get the real protocol from x-forwarded-proto header, or fall back to nextUrl
++  const protocol = request.headers.get('x-forwarded-proto') || request.nextUrl.protocol.slice(0, -1);
++
++  // Get the real host from x-forwarded-host header first, then try host header,
++  // and finally fall back to nextUrl host
++  const host =
++    request.headers.get('x-forwarded-host') ||
++    request.headers.get('host') ||
++    request.nextUrl.host;
++
++  const origin = `${protocol}://${host}`;
++
++  return origin;
++};
++
++/**
++ * Build a complete callback URL with pathname and search params.
++ * Uses getCallbackUrlOrigin to handle reverse proxy scenarios correctly.
++ *
++ * @param request - The Next.js request object
++ * @returns The complete callback URL string
++ *
++ * @example
++ * ```ts
++ * // Request to: https://0.0.0.0:3210/settings?hl=zh-CN
++ * // Headers: x-forwarded-proto: https, x-forwarded-host: lobehub.com
++ * buildCallbackUrl(req) // Returns: "https://lobehub.com/settings?hl=zh-CN"
++ * ```
++ */
++export const buildCallbackUrl = (request: NextRequest): string => {
++  const origin = getCallbackUrlOrigin(request);
++  const callbackUrl = `${origin}${request.nextUrl.pathname}${request.nextUrl.search}`;
++
++  return callbackUrl;
++};
 diff --git a/src/libs/next/proxy/define-config.ts b/src/libs/next/proxy/define-config.ts
-index 2bc751248ac67..38629eafcdee1 100644
+index 2bc751248ac67..d26c9f0188e6f 100644
 --- a/src/libs/next/proxy/define-config.ts
 +++ b/src/libs/next/proxy/define-config.ts
-@@ -244,8 +244,17 @@ export function defineConfig() {
+@@ -17,6 +17,8 @@ import { type Locales } from '@/locales/resources';
+ import { parseBrowserLanguage } from '@/utils/locale';
+ import { RouteVariants } from '@/utils/server/routeVariants';
+ 
++import { buildCallbackUrl, getCallbackUrlOrigin } from './callback-url';
++
+ // Create debug logger instances
+ const logDefault = debug('middleware:default');
+ const logNextAuth = debug('middleware:next-auth');
+@@ -244,8 +246,8 @@ export function defineConfig() {
        // ref: https://authjs.dev/getting-started/session-management/protecting
        if (isProtected) {
          logNextAuth('Request a protected route, redirecting to sign-in page');
 -        const nextLoginUrl = new URL('/next-auth/signin', req.nextUrl.origin);
 -        nextLoginUrl.searchParams.set('callbackUrl', req.nextUrl.href);
-+        // Get the real origin from request headers, not from req.nextUrl.origin
-+        // This handles reverse proxy scenarios where req.nextUrl.origin may be incorrect
-+        const protocol = req.headers.get('x-forwarded-proto') || req.nextUrl.protocol.slice(0, -1);
-+        const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.host;
-+        const origin = `${protocol}://${host}`;
-+
-+        const nextLoginUrl = new URL('/next-auth/signin', origin);
-+        // Build callbackUrl with correct origin
-+        const callbackUrl = `${origin}${req.nextUrl.pathname}${req.nextUrl.search}`;
-+        nextLoginUrl.searchParams.set('callbackUrl', callbackUrl);
-+
++        const nextLoginUrl = new URL('/next-auth/signin', getCallbackUrlOrigin(req));
++        nextLoginUrl.searchParams.set('callbackUrl', buildCallbackUrl(req));
          const hl = req.nextUrl.searchParams.get('hl');
          if (hl) {
            nextLoginUrl.searchParams.set('hl', hl);
-@@ -330,8 +339,17 @@ export function defineConfig() {
+@@ -330,8 +332,8 @@ export function defineConfig() {
        // If request a protected route, redirect to sign-in page
        if (isProtected) {
          logBetterAuth('Request a protected route, redirecting to sign-in page');
 -        const signInUrl = new URL('/signin', req.nextUrl.origin);
 -        signInUrl.searchParams.set('callbackUrl', req.nextUrl.href);
-+        // Get the real origin from request headers, not from req.nextUrl.origin
-+        // This handles reverse proxy scenarios where req.nextUrl.origin may be incorrect
-+        const protocol = req.headers.get('x-forwarded-proto') || req.nextUrl.protocol.slice(0, -1);
-+        const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.host;
-+        const origin = `${protocol}://${host}`;
-+
-+        const signInUrl = new URL('/signin', origin);
-+        // Build callbackUrl with correct origin
-+        const callbackUrl = `${origin}${req.nextUrl.pathname}${req.nextUrl.search}`;
-+        signInUrl.searchParams.set('callbackUrl', callbackUrl);
-+
++        const signInUrl = new URL('/signin', getCallbackUrlOrigin(req));
++        signInUrl.searchParams.set('callbackUrl', buildCallbackUrl(req));
          const hl = req.nextUrl.searchParams.get('hl');
          if (hl) {
            signInUrl.searchParams.set('hl', hl);
