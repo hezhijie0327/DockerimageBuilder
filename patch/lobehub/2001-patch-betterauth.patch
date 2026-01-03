@@ -1,25 +1,23 @@
 diff --git a/src/libs/next/proxy/define-config.ts b/src/libs/next/proxy/define-config.ts
-index 2bc7512..b376d08 100644
+index 2bc7512..f67bb26 100644
 --- a/src/libs/next/proxy/define-config.ts
 +++ b/src/libs/next/proxy/define-config.ts
-@@ -330,8 +330,19 @@ export function defineConfig() {
+@@ -330,8 +330,17 @@ export function defineConfig() {
        // If request a protected route, redirect to sign-in page
        if (isProtected) {
          logBetterAuth('Request a protected route, redirecting to sign-in page');
 -        const signInUrl = new URL('/signin', req.nextUrl.origin);
 -        signInUrl.searchParams.set('callbackUrl', req.nextUrl.href);
-+        // Use NEXT_PUBLIC_AUTH_URL for the base URL instead of req.nextUrl.origin
-+        // This ensures callbackUrl uses the configured public URL instead of the request origin
-+        const baseUrl = authEnv.NEXT_PUBLIC_AUTH_URL || req.nextUrl.origin;
-+        const signInUrl = new URL('/signin', baseUrl);
++        // Get the real origin from request headers, not from req.nextUrl.origin
++        // This handles reverse proxy scenarios where req.nextUrl.origin may be incorrect
++        const protocol = req.headers.get('x-forwarded-proto') || 'https';
++        const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.host;
++        const origin = `${protocol}://${host}`;
 +
-+        // Build callbackUrl using the same base URL with the request path
-+        const callbackUrl = new URL(req.nextUrl.pathname, baseUrl);
-+        // Preserve query parameters (like hl) in the callbackUrl
-+        req.nextUrl.searchParams.forEach((value, key) => {
-+          callbackUrl.searchParams.set(key, value);
-+        });
-+        signInUrl.searchParams.set('callbackUrl', callbackUrl.href);
++        const signInUrl = new URL('/signin', origin);
++        // Build callbackUrl with correct origin
++        const callbackUrl = `${origin}${req.nextUrl.pathname}${req.nextUrl.search}`;
++        signInUrl.searchParams.set('callbackUrl', callbackUrl);
 +
          const hl = req.nextUrl.searchParams.get('hl');
          if (hl) {
