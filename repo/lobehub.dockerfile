@@ -1,4 +1,4 @@
-# Current Version: 1.8.4
+# Current Version: 1.8.5
 
 ARG NODEJS_VERSION="24"
 
@@ -54,7 +54,7 @@ ENV \
     DATABASE_DRIVER="node" \
     DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
     KEY_VAULTS_SECRET="use-for-build" \
-    FEATURE_FLAGS="-check_updates,+group_chat,+pin_list,-speech_to_text,-welcome_suggest"
+    FEATURE_FLAGS="-check_updates,-welcome_suggest"
 
 WORKDIR /app
 
