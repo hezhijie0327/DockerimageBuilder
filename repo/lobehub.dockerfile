@@ -1,4 +1,4 @@
-# Current Version: 1.8.3
+# Current Version: 1.8.4
 
 ARG NODEJS_VERSION="24"
 
@@ -108,7 +108,7 @@ ENV \
     MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
     NEXT_AUTH_SSO_SESSION_STRATEGY="database" \
     NEXT_PUBLIC_ENABLE_BETTER_AUTH="1" NEXT_PUBLIC_ENABLE_NEXT_AUTH="0" NEXT_PUBLIC_ENABLE_MAGIC_LINK="0" NEXT_PUBLIC_AUTH_EMAIL_VERIFICATION="0" \
-    FEATURE_FLAGS="-check_updates,+group_chat,+pin_list,-speech_to_text,-welcome_suggest" \
+    FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
 COPY --from=rebased_lobehub / /
