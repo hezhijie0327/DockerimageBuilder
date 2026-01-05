@@ -1,414 +1,3 @@
-diff --git a/packages/utils/src/server/correctCallbackUrl.test.ts b/packages/utils/src/server/correctCallbackUrl.test.ts
-new file mode 100644
-index 0000000000000..9a7da475493b8
---- /dev/null
-+++ b/packages/utils/src/server/correctCallbackUrl.test.ts
-@@ -0,0 +1,334 @@
-+import { NextRequest } from 'next/server';
-+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-+
-+import { buildCallbackUrl, getCallbackUrlOrigin } from './correctCallbackUrl';
-+
-+describe('callback-url: reverse proxy URL generation', () => {
-+  let originalAppUrl: string | undefined;
-+
-+  beforeEach(() => {
-+    vi.clearAllMocks();
-+    // Store original APP_URL and set default for tests
-+    originalAppUrl = process.env.APP_URL;
-+    // Set a default APP_URL that matches most test scenarios
-+    process.env.APP_URL = 'https://lobehub.com';
-+  });
-+
-+  afterEach(() => {
-+    // Restore original APP_URL
-+    if (originalAppUrl === undefined) {
-+      delete process.env.APP_URL;
-+    } else {
-+      process.env.APP_URL = originalAppUrl;
-+    }
-+  });
-+  /**
-+   * Helper function to create a mock NextRequest with custom headers
-+   */
-+  const createMockRequest = (url: string, headers: Record<string, string> = {}): NextRequest => {
-+    const urlObj = new URL(url, 'http://test.com');
-+
-+    // Create a real NextRequest with a valid URL
-+    const request = new NextRequest(urlObj, {
-+      headers: new Headers(headers),
-+    });
-+
-+    // Manually set headers to ensure they're preserved
-+    Object.entries(headers).forEach(([key, value]) => {
-+      request.headers.set(key, value);
-+    });
-+
-+    // Ensure host header is set from URL if not provided
-+    if (!headers.host && !headers['x-forwarded-host']) {
-+      request.headers.set('host', urlObj.host);
-+    }
-+
-+    // Override the nextUrl properties to simulate the proxy scenario
-+    Object.defineProperty(request, 'nextUrl', {
-+      value: {
-+        protocol: urlObj.protocol || 'https:',
-+        host: urlObj.host || '0.0.0.0:3210',
-+        pathname: urlObj.pathname || '/settings',
-+        search: urlObj.search || '',
-+        href: url,
-+      },
-+      writable: false,
-+    });
-+
-+    return request;
-+  };
-+
-+  describe('getCallbackUrlOrigin', () => {
-+    it('should extract correct origin from x-forwarded-* headers in docker', () => {
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'lobehub.com',
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      expect(origin).toBe('https://lobehub.com');
-+    });
-+
-+    it('should fallback to host header when x-forwarded-host is missing', () => {
-+      // Set APP_URL to allow direct.com
-+      process.env.APP_URL = 'https://direct.com';
-+
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'host': 'direct.com',
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      expect(origin).toBe('https://direct.com');
-+    });
-+
-+    it('should fallback to nextUrl when no proxy headers are present', () => {
-+      // Set APP_URL to allow example.com
-+      process.env.APP_URL = 'https://example.com';
-+
-+      const mockRequest = createMockRequest('https://example.com/settings');
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      expect(origin).toBe('https://example.com');
-+    });
-+
-+    it('should prioritize x-forwarded-host over host header', () => {
-+      // Set APP_URL to allow forwarded.com as a subdomain
-+      process.env.APP_URL = 'https://forwarded.com';
-+
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'forwarded.com',
-+        'host': 'direct.com',
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      expect(origin).toBe('https://forwarded.com');
-+    });
-+
-+    it('should handle non-standard port in forwarded host', () => {
-+      // Set APP_URL to allow example.com:8443
-+      process.env.APP_URL = 'https://example.com:8443';
-+
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'example.com:8443',
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      expect(origin).toBe('https://example.com:8443');
-+    });
-+
-+    it('should handle http protocol in development', () => {
-+      // Set APP_URL to allow localhost:8080
-+      process.env.APP_URL = 'http://localhost:8080';
-+
-+      const mockRequest = createMockRequest('http://test.com/settings', {
-+        'x-forwarded-proto': 'http',
-+        'x-forwarded-host': 'localhost:8080',
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      expect(origin).toBe('http://localhost:8080');
-+    });
-+  });
-+
-+  describe('buildCallbackUrl', () => {
-+    it('should build correct callbackUrl with x-forwarded-* headers', () => {
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'lobehub.com',
-+      });
-+
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+      expect(callbackUrl).toBe('https://lobehub.com/settings');
-+    });
-+
-+    it('should preserve search params in callbackUrl', () => {
-+      const mockRequest = createMockRequest('https://test.com/settings?hl=zh-CN', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'lobehub.com',
-+      });
-+
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+      expect(callbackUrl).toBe('https://lobehub.com/settings?hl=zh-CN');
-+    });
-+
-+    it('should preserve multiple search params', () => {
-+      // Set APP_URL to allow example.com
-+      process.env.APP_URL = 'https://example.com';
-+
-+      const mockRequest = createMockRequest('https://test.com/settings?hl=zh-CN&redirect=/home', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'example.com',
-+      });
-+
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+      expect(callbackUrl).toBe('https://example.com/settings?hl=zh-CN&redirect=/home');
-+    });
-+
-+    it('should handle root path correctly', () => {
-+      // Set APP_URL to allow example.com
-+      process.env.APP_URL = 'https://example.com';
-+
-+      const mockRequest = createMockRequest('https://test.com/', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'example.com',
-+      });
-+
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+      expect(callbackUrl).toBe('https://example.com/');
-+    });
-+
-+    it('should handle nested paths', () => {
-+      // Set APP_URL to allow example.com
-+      process.env.APP_URL = 'https://example.com';
-+
-+      const mockRequest = createMockRequest('https://test.com/oauth/consent/app', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'example.com',
-+      });
-+
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+      expect(callbackUrl).toBe('https://example.com/oauth/consent/app');
-+    });
-+  });
-+
-+  describe('real-world scenarios', () => {
-+    it('should handle production nginx reverse proxy', () => {
-+      const mockRequest = createMockRequest('https://test.com/settings?hl=zh-CN', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'lobehub.com',
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+
-+      expect(origin).toBe('https://lobehub.com');
-+      expect(callbackUrl).toBe('https://lobehub.com/settings?hl=zh-CN');
-+    });
-+
-+    it('should handle docker compose development', () => {
-+      // Set APP_URL to allow localhost
-+      process.env.APP_URL = 'http://localhost';
-+
-+      const mockRequest = createMockRequest('http://test.com/settings', {
-+        'x-forwarded-proto': 'http',
-+        'x-forwarded-host': 'localhost',
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+
-+      expect(origin).toBe('http://localhost');
-+      expect(callbackUrl).toBe('http://localhost/settings');
-+    });
-+
-+    it('should handle direct access without proxy', () => {
-+      // Set APP_URL to allow example.com
-+      process.env.APP_URL = 'https://example.com';
-+
-+      const mockRequest = createMockRequest('https://example.com/settings?hl=en-US');
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+
-+      expect(origin).toBe('https://example.com');
-+      expect(callbackUrl).toBe('https://example.com/settings?hl=en-US');
-+    });
-+  });
-+
-+  describe('prevent incorrect callbackUrl in docker', () => {
-+    it('should not generate callbackUrl with 0.0.0.0 when proxy headers present', () => {
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'lobehub.com',
-+      });
-+
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+
-+      // Should NOT contain the incorrect docker internal address
-+      expect(callbackUrl).not.toContain('0.0.0.0');
-+
-+      // Should contain the correct external address
-+      expect(callbackUrl).toBe('https://lobehub.com/settings');
-+    });
-+
-+    it('should preserve locale parameter with correct origin', () => {
-+      const mockRequest = createMockRequest('https://test.com/settings?hl=zh-CN', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'lobehub.com',
-+      });
-+
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+
-+      expect(callbackUrl).not.toContain('0.0.0.0');
-+      expect(callbackUrl).toBe('https://lobehub.com/settings?hl=zh-CN');
-+    });
-+  });
-+
-+  describe('Open Redirect Attack Prevention', () => {
-+    it('should block redirect to malicious domain via x-forwarded-host', () => {
-+      // APP_URL is set to https://lobehub.com in beforeEach
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'google.com', // Malicious domain
-+        'host': 'lobehub.com', // Trusted host
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+
-+      // Should fall back to lobehub.com, not use google.com
-+      expect(origin).not.toContain('google.com');
-+      expect(callbackUrl).not.toContain('google.com');
-+      expect(origin).toBe('https://lobehub.com');
-+    });
-+
-+    it('should block redirect to evil.com via x-forwarded-host', () => {
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'evil.com', // Malicious domain
-+        'host': 'lobehub.com', // Trusted host
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+
-+      // Should fall back to lobehub.com, not use evil.com
-+      expect(origin).not.toContain('evil.com');
-+      expect(callbackUrl).not.toContain('evil.com');
-+      expect(origin).toBe('https://lobehub.com');
-+    });
-+
-+    it('should allow subdomain of configured domain', () => {
-+      process.env.APP_URL = 'https://example.com';
-+
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'api.example.com', // Valid subdomain
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      expect(origin).toBe('https://api.example.com');
-+    });
-+
-+    it('should block domain that looks like subdomain but is not', () => {
-+      process.env.APP_URL = 'https://example.com';
-+
-+      const mockRequest = createMockRequest('https://test.com/settings', {
-+        'x-forwarded-proto': 'https',
-+        'x-forwarded-host': 'fakeexample.com', // Not a subdomain
-+        'host': 'example.com', // Trusted host
-+      });
-+
-+      const origin = getCallbackUrlOrigin(mockRequest);
-+      const callbackUrl = buildCallbackUrl(mockRequest);
-+
-+      // Should fall back to example.com, not use fakeexample.com
-+      expect(origin).not.toContain('fakeexample.com');
-+      expect(callbackUrl).not.toContain('fakeexample.com');
-+      expect(origin).toBe('https://example.com');
-+    });
-+  });
-+});
-diff --git a/packages/utils/src/server/correctCallbackUrl.ts b/packages/utils/src/server/correctCallbackUrl.ts
-new file mode 100644
-index 0000000000000..125ca0b5253ef
---- /dev/null
-+++ b/packages/utils/src/server/correctCallbackUrl.ts
-@@ -0,0 +1,65 @@
-+import { type NextRequest } from 'next/server';
-+
-+import { getSafeOrigin } from './getSafeOrigin';
-+
-+/**
-+ * Get the correct origin for building callback URLs in reverse proxy scenarios.
-+ *
-+ * In Docker/reverse proxy environments, the request URL may be incorrect (e.g., https://0.0.0.0:3210).
-+ * This function uses standard proxy headers to get the real origin:
-+ * 1. x-forwarded-proto: the real protocol (https/http)
-+ * 2. x-forwarded-host: the real host (e.g., lobehub.com)
-+ * 3. Falls back to host header and nextUrl if proxy headers are not present
-+ *
-+ * SECURITY: Uses getSafeOrigin for comprehensive security validation:
-+ * - Protocol whitelist (http, https only)
-+ * - Host validation against APP_URL
-+ * - Multiple hosts handling (RFC 7239)
-+ * - Fallback logic for invalid forwarded values
-+ *
-+ * @param request - The Next.js request object
-+ * @returns The correct origin string (e.g., "https://lobehub.com")
-+ *
-+ * @example
-+ * ```ts
-+ * // Docker environment with reverse proxy
-+ * // Request URL: https://0.0.0.0:3210/settings
-+ * // Headers: x-forwarded-proto: https, x-forwarded-host: lobehub.com
-+ * getCallbackUrlOrigin(req) // Returns: "https://lobehub.com"
-+ *
-+ * // Direct access without proxy
-+ * // Request URL: https://example.com/settings
-+ * getCallbackUrlOrigin(req) // Returns: "https://example.com"
-+ * ```
-+ */
-+export const getCallbackUrlOrigin = (request: NextRequest): string => {
-+  const safeOrigin = getSafeOrigin(request);
-+
-+  if (!safeOrigin) {
-+    // Fallback to request origin if safe origin cannot be determined
-+    return request.nextUrl.origin;
-+  }
-+
-+  return safeOrigin;
-+};
-+
-+/**
-+ * Build a complete callback URL with pathname and search params.
-+ * Uses getCallbackUrlOrigin to handle reverse proxy scenarios correctly.
-+ *
-+ * @param request - The Next.js request object
-+ * @returns The complete callback URL string
-+ *
-+ * @example
-+ * ```ts
-+ * // Request to: https://0.0.0.0:3210/settings?hl=zh-CN
-+ * // Headers: x-forwarded-proto: https, x-forwarded-host: lobehub.com
-+ * buildCallbackUrl(req) // Returns: "https://lobehub.com/settings?hl=zh-CN"
-+ * ```
-+ */
-+export const buildCallbackUrl = (request: NextRequest): string => {
-+  const origin = getCallbackUrlOrigin(request);
-+  const callbackUrl = `${origin}${request.nextUrl.pathname}${request.nextUrl.search}`;
-+
-+  return callbackUrl;
-+};
 diff --git a/packages/utils/src/server/correctOIDCUrl.test.ts b/packages/utils/src/server/correctOIDCUrl.test.ts
 index 816af1ccc09d0..7ca878bd02662 100644
 --- a/packages/utils/src/server/correctOIDCUrl.test.ts
@@ -564,54 +153,109 @@ index 816af1ccc09d0..7ca878bd02662 100644
    });
  });
 diff --git a/packages/utils/src/server/correctOIDCUrl.ts b/packages/utils/src/server/correctOIDCUrl.ts
-index c982078c106bc..d4f42ad0dd047 100644
+index c982078c106bc..6e577aecfa748 100644
 --- a/packages/utils/src/server/correctOIDCUrl.ts
 +++ b/packages/utils/src/server/correctOIDCUrl.ts
-@@ -1,7 +1,7 @@
- import debug from 'debug';
- import { NextRequest } from 'next/server';
- 
--import { validateRedirectHost } from './validateRedirectHost';
-+import { getSafeOrigin } from './getSafeOrigin';
+@@ -5,29 +5,69 @@ import { validateRedirectHost } from './validateRedirectHost';
  
  const log = debug('lobe-oidc:correctOIDCUrl');
  
-@@ -12,32 +12,24 @@ const log = debug('lobe-oidc:correctOIDCUrl');
++// Allowed protocols for security
++const ALLOWED_PROTOCOLS = ['http', 'https'] as const;
++
+ /**
+  * Fix OIDC redirect URL issues in proxy environments
++ *
++ * This function:
++ * 1. Validates protocol against whitelist (http, https only)
++ * 2. Handles X-Forwarded-Host with multiple values (RFC 7239)
++ * 3. Validates X-Forwarded-Host against APP_URL to prevent open redirect attacks
++ * 4. Provides fallback logic for invalid forwarded values
++ *
++ * Note: Only X-Forwarded-Host is validated, not the Host header. This is because:
++ * - X-Forwarded-Host can be injected by attackers
++ * - Host header comes from the reverse proxy or direct access, which is trusted
++ *
+  * @param req - Next.js request object
+  * @param url - URL object to fix
   * @returns Fixed URL object
   */
  export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
--  const requestHost = req.headers.get('host');
--  const forwardedHost = req.headers.get('x-forwarded-host');
--  const forwardedProto =
--    req.headers.get('x-forwarded-proto') || req.headers.get('x-forwarded-protocol');
--
-   log('Input URL: %s', url.toString());
--  log(
++  log('Input URL: %s', url.toString());
++
++  // Get request headers for origin determination
+   const requestHost = req.headers.get('host');
+   const forwardedHost = req.headers.get('x-forwarded-host');
+   const forwardedProto =
+     req.headers.get('x-forwarded-proto') || req.headers.get('x-forwarded-protocol');
+ 
+-  log('Input URL: %s', url.toString());
+   log(
 -    'Request headers - host: %s, x-forwarded-host: %s, x-forwarded-proto: %s',
--    requestHost,
--    forwardedHost,
--    forwardedProto,
--  );
++    'Getting safe origin - requestHost: %s, forwardedHost: %s, forwardedProto: %s',
+     requestHost,
+     forwardedHost,
+     forwardedProto,
+   );
  
 -  // Determine actual hostname and protocol with fallback values
 -  const actualHost = forwardedHost || requestHost;
 -  const actualProto = forwardedProto || (url.protocol === 'https:' ? 'https' : 'http');
-+  // Get safe origin using centralized security logic
++  // Determine actual hostname with fallback values
++  // Handle multiple hosts in X-Forwarded-Host (RFC 7239: comma-separated)
++  let actualHost = forwardedHost || requestHost;
++  if (forwardedHost && forwardedHost.includes(',')) {
++    // Take the first (leftmost) host as the original client's request
++    actualHost = forwardedHost.split(',')[0]!.trim();
++    log('Multiple hosts in X-Forwarded-Host, using first: %s', actualHost);
++  }
++
++  // Determine actual protocol with validation
 +  // Use URL's protocol as fallback to preserve original behavior
-+  const fallbackProtocol = url.protocol === 'https:' ? 'https' : 'http';
-+  const safeOrigin = getSafeOrigin(req, fallbackProtocol);
++  let actualProto: string | null | undefined = forwardedProto;
++  if (actualProto) {
++    // Validate protocol is http or https
++    const protoLower = actualProto.toLowerCase();
++    if (!ALLOWED_PROTOCOLS.includes(protoLower as any)) {
++      log('Warning: Invalid protocol %s, ignoring', actualProto);
++      actualProto = null;
++    } else {
++      actualProto = protoLower;
++    }
++  }
++
++  // Fallback protocol priority: URL protocol > request.nextUrl.protocol > 'https'
++  if (!actualProto) {
++    actualProto = url.protocol === 'https:' ? 'https' : 'http';
++  }
  
--  // If unable to determine valid hostname, return original URL
--  if (!actualHost || actualHost === 'null') {
--    log('Warning: Cannot determine valid host, returning original URL');
-+  if (!safeOrigin) {
-+    log('Warning: Unable to determine safe origin from request headers, returning original URL');
+   // If unable to determine valid hostname, return original URL
+   if (!actualHost || actualHost === 'null') {
+@@ -35,9 +75,30 @@ export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
      return url;
    }
  
 -  // Validate target host for security, prevent Open Redirect attacks
 -  if (!validateRedirectHost(actualHost)) {
 -    log('Warning: Target host %s failed validation, returning original URL', actualHost);
++  // Validate only X-Forwarded-Host for security, prevent Open Redirect attacks
++  // Host header is trusted (comes from reverse proxy or direct access)
++  if (forwardedHost && !validateRedirectHost(actualHost)) {
++    log('Warning: X-Forwarded-Host %s failed validation, falling back to request host', actualHost);
++    // Try to fall back to request host if forwarded host is invalid
++    if (requestHost) {
++      actualHost = requestHost;
++    } else {
++      // No valid host available
++      log('Error: No valid host available after validation, returning original URL');
++      return url;
++    }
++  }
++
++  // Build safe origin
++  const safeOrigin = `${actualProto}://${actualHost}`;
++  log('Safe origin: %s', safeOrigin);
++
 +  // Parse safe origin to get hostname and protocol
 +  let safeOriginUrl: URL;
 +  try {
@@ -621,7 +265,7 @@ index c982078c106bc..d4f42ad0dd047 100644
      return url;
    }
  
-@@ -46,24 +38,28 @@ export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
+@@ -46,24 +107,28 @@ export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
      url.hostname === 'localhost' ||
      url.hostname === '127.0.0.1' ||
      url.hostname === '0.0.0.0' ||
@@ -666,126 +310,11 @@ index c982078c106bc..d4f42ad0dd047 100644
 -  log('URL does not need correction, returning original: %s', url.toString());
 -  return url;
  };
-diff --git a/packages/utils/src/server/getSafeOrigin.ts b/packages/utils/src/server/getSafeOrigin.ts
-new file mode 100644
-index 0000000000000..919dad4f614d8
---- /dev/null
-+++ b/packages/utils/src/server/getSafeOrigin.ts
-@@ -0,0 +1,105 @@
-+import debug from 'debug';
-+import { NextRequest } from 'next/server';
-+
-+import { validateRedirectHost } from './validateRedirectHost';
-+
-+const log = debug('lobe-oidc:getSafeOrigin');
-+
-+// Allowed protocols for security
-+const ALLOWED_PROTOCOLS = ['http', 'https'] as const;
-+
-+/**
-+ * Get safe origin from request headers with comprehensive security validation.
-+ *
-+ * This function:
-+ * 1. Validates protocol against whitelist (http, https only)
-+ * 2. Handles X-Forwarded-Host with multiple values (RFC 7239)
-+ * 3. Validates X-Forwarded-Host against APP_URL to prevent open redirect attacks
-+ * 4. Provides fallback logic for invalid forwarded values
-+ *
-+ * Note: Only X-Forwarded-Host is validated, not the Host header. This is because:
-+ * - X-Forwarded-Host can be injected by attackers
-+ * - Host header comes from the reverse proxy or direct access, which is trusted
-+ *
-+ * @param request - Next.js request object
-+ * @param fallbackProtocol - Optional fallback protocol (defaults to request.nextUrl.protocol or 'https')
-+ * @returns Safe origin string (e.g., "https://example.com") or null if unable to determine
-+ */
-+export const getSafeOrigin = (
-+  request: NextRequest,
-+  fallbackProtocol?: 'http' | 'https',
-+): string | null => {
-+  const requestHost = request.headers.get('host');
-+  const forwardedHost = request.headers.get('x-forwarded-host');
-+  const forwardedProto =
-+    request.headers.get('x-forwarded-proto') || request.headers.get('x-forwarded-protocol');
-+
-+  log(
-+    'Getting safe origin - requestHost: %s, forwardedHost: %s, forwardedProto: %s, fallbackProtocol: %s',
-+    requestHost,
-+    forwardedHost,
-+    forwardedProto,
-+    fallbackProtocol,
-+  );
-+
-+  // Determine actual hostname with fallback values
-+  // Handle multiple hosts in X-Forwarded-Host (RFC 7239: comma-separated)
-+  let actualHost = forwardedHost || requestHost;
-+  if (forwardedHost && forwardedHost.includes(',')) {
-+    // Take the first (leftmost) host as the original client's request
-+    actualHost = forwardedHost.split(',')[0]!.trim();
-+    log('Multiple hosts in X-Forwarded-Host, using first: %s', actualHost);
-+  }
-+
-+  // Determine actual protocol with validation
-+  let actualProto: string | null | undefined = forwardedProto;
-+  if (actualProto) {
-+    // Validate protocol is http or https
-+    const protoLower = actualProto.toLowerCase();
-+    if (!ALLOWED_PROTOCOLS.includes(protoLower as any)) {
-+      log('Warning: Invalid protocol %s, ignoring', actualProto);
-+      actualProto = null;
-+    } else {
-+      actualProto = protoLower;
-+    }
-+  }
-+
-+  // Fallback protocol priority: fallbackProtocol > request.nextUrl.protocol > 'https'
-+  if (!actualProto) {
-+    if (fallbackProtocol) {
-+      actualProto = fallbackProtocol;
-+    } else {
-+      // Try nextUrl.protocol first, fall back to 'https' if not available
-+      try {
-+        actualProto = request.nextUrl?.protocol?.slice(0, -1) || 'https';
-+      } catch {
-+        actualProto = 'https';
-+      }
-+    }
-+  }
-+
-+  // If unable to determine valid hostname, return null
-+  if (!actualHost || actualHost === 'null') {
-+    log('Warning: Cannot determine valid host');
-+    return null;
-+  }
-+
-+  // Validate only X-Forwarded-Host for security, prevent Open Redirect attacks
-+  // Host header is trusted (comes from reverse proxy or direct access)
-+  if (forwardedHost && !validateRedirectHost(actualHost)) {
-+    log('Warning: X-Forwarded-Host %s failed validation, falling back to request host', actualHost);
-+    // Try to fall back to request host if forwarded host is invalid
-+    if (requestHost) {
-+      actualHost = requestHost;
-+    } else {
-+      // No valid host available
-+      log('Error: No valid host available after validation');
-+      return null;
-+    }
-+  }
-+
-+  const origin = `${actualProto}://${actualHost}`;
-+  log('Returning safe origin: %s', origin);
-+
-+  return origin;
-+};
 diff --git a/packages/utils/src/server/index.ts b/packages/utils/src/server/index.ts
-index 245ecc259d2ca..9fba3b75228d1 100644
+index 245ecc259d2ca..603433fc66890 100644
 --- a/packages/utils/src/server/index.ts
 +++ b/packages/utils/src/server/index.ts
-@@ -1,6 +1,9 @@
- export * from './auth';
-+export * from './correctCallbackUrl';
- export * from './correctOIDCUrl';
-+export * from './getSafeOrigin';
+@@ -3,4 +3,5 @@ export * from './correctOIDCUrl';
  export * from './response';
  export * from './responsive';
  export * from './sse';
@@ -863,34 +392,32 @@ index 133078d517e4f..dc7edc6465ab2 100644
      log('Error in OIDC callback: %O', error);
  
 diff --git a/src/libs/next/proxy/define-config.ts b/src/libs/next/proxy/define-config.ts
-index 989588ba0ff02..0fa6db0ee6bc6 100644
+index 989588ba0ff02..f2b5150aa49e1 100644
 --- a/src/libs/next/proxy/define-config.ts
 +++ b/src/libs/next/proxy/define-config.ts
-@@ -1,4 +1,5 @@
- import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-+import { buildCallbackUrl, getCallbackUrlOrigin } from '@lobechat/utils/server';
- import debug from 'debug';
- import { type NextRequest, NextResponse } from 'next/server';
- import { UAParser } from 'ua-parser-js';
-@@ -235,8 +236,8 @@ export function defineConfig() {
+@@ -235,8 +235,10 @@ export function defineConfig() {
        // ref: https://authjs.dev/getting-started/session-management/protecting
        if (isProtected) {
          logNextAuth('Request a protected route, redirecting to sign-in page');
 -        const nextLoginUrl = new URL('/next-auth/signin', req.nextUrl.origin);
 -        nextLoginUrl.searchParams.set('callbackUrl', req.nextUrl.href);
-+        const nextLoginUrl = new URL('/next-auth/signin', getCallbackUrlOrigin(req));
-+        nextLoginUrl.searchParams.set('callbackUrl', buildCallbackUrl(req));
++        const authUrl = authEnv.NEXT_PUBLIC_AUTH_URL;
++        const callbackUrl = `${authUrl}${req.nextUrl.pathname}${req.nextUrl.search}`;
++        const nextLoginUrl = new URL('/next-auth/signin', authUrl);
++        nextLoginUrl.searchParams.set('callbackUrl', callbackUrl);
          const hl = req.nextUrl.searchParams.get('hl');
          if (hl) {
            nextLoginUrl.searchParams.set('hl', hl);
-@@ -321,8 +322,8 @@ export function defineConfig() {
+@@ -321,8 +323,10 @@ export function defineConfig() {
        // If request a protected route, redirect to sign-in page
        if (isProtected) {
          logBetterAuth('Request a protected route, redirecting to sign-in page');
 -        const signInUrl = new URL('/signin', req.nextUrl.origin);
 -        signInUrl.searchParams.set('callbackUrl', req.nextUrl.href);
-+        const signInUrl = new URL('/signin', getCallbackUrlOrigin(req));
-+        signInUrl.searchParams.set('callbackUrl', buildCallbackUrl(req));
++        const authUrl = authEnv.NEXT_PUBLIC_AUTH_URL;
++        const callbackUrl = `${authUrl}${req.nextUrl.pathname}${req.nextUrl.search}`;
++        const signInUrl = new URL('/signin', authUrl);
++        signInUrl.searchParams.set('callbackUrl', callbackUrl);
          const hl = req.nextUrl.searchParams.get('hl');
          if (hl) {
            signInUrl.searchParams.set('hl', hl);
