@@ -1,5 +1,30 @@
+diff --git a/.github/workflows/data-update.yml b/.github/workflows/data-update.yml
+index 3cf74812025..11365b181df 100644
+--- a/.github/workflows/data-update.yml
++++ b/.github/workflows/data-update.yml
+@@ -33,6 +33,7 @@ jobs:
+           - update_engine_traits.py
+           - update_wikidata_units.py
+           - update_engine_descriptions.py
++          - update_gsa_useragents.py
+ 
+     permissions:
+       contents: write
+diff --git a/Makefile b/Makefile
+index 4d9331268cf..4719b0b53ab 100644
+--- a/Makefile
++++ b/Makefile
+@@ -70,7 +70,7 @@ format: format.python format.shell
+ # wrap ./manage script
+ 
+ MANAGE += weblate.translations.commit weblate.push.translations
+-MANAGE += data.all data.traits data.useragents data.locales data.currencies
++MANAGE += data.all data.traits data.useragents data.gsa_useragents data.locales data.currencies
+ MANAGE += docs.html docs.live docs.gh-pages docs.prebuild docs.clean
+ MANAGE += podman.build
+ MANAGE += docker.build docker.buildx
 diff --git a/searx/data/__init__.py b/searx/data/__init__.py
-index fc303168030..466437d139a 100644
+index fc303168030..e75173e5575 100644
 --- a/searx/data/__init__.py
 +++ b/searx/data/__init__.py
 @@ -6,7 +6,7 @@
@@ -7,7 +32,7 @@ index fc303168030..466437d139a 100644
  # pylint: disable=invalid-name
  
 -__all__ = ["ahmia_blacklist_loader", "data_dir", "get_cache"]
-+__all__ = ["ahmia_blacklist_loader", "gsa_useragents_loader",  "data_dir", "get_cache"]
++__all__ = ["ahmia_blacklist_loader", "gsa_useragents_loader", "data_dir", "get_cache"]
  
  import json
  import typing as t
@@ -441,7 +466,7 @@ index 00000000000..c02ef2f3638
 +Mozilla/5.0 (iPhone; CPU iPhone OS 26_3_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/399.2.845414227 Mobile/15E148 Safari/604.1
 \ No newline at end of file
 diff --git a/searx/engines/google.py b/searx/engines/google.py
-index 1660032e09e..2e6441c6607 100644
+index 1660032e09e..f4550f4c9a7 100644
 --- a/searx/engines/google.py
 +++ b/searx/engines/google.py
 @@ -29,11 +29,14 @@
@@ -513,7 +538,96 @@ index 1660032e09e..2e6441c6607 100644
 +            if raw_url is None:
                  logger.debug('ignoring item from the result_xpath list: missing url of title "%s"', title)
                  continue
-+            url = raw_url[7:].split('&sa=U')[0] # remove the google redirector
++            url = raw_url[7:].split('&sa=U')[0]  # remove the google redirector
  
              content_nodes = eval_xpath(result, './/div[contains(@data-sncf, "1")]')
              for item in content_nodes:
+diff --git a/searxng_extra/update/update_gsa_useragents.py b/searxng_extra/update/update_gsa_useragents.py
+new file mode 100644
+index 00000000000..e5e90e0469a
+--- /dev/null
++++ b/searxng_extra/update/update_gsa_useragents.py
+@@ -0,0 +1,40 @@
++#!/usr/bin/env python
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""This script fetches user agents suitable for Google.
++
++Output file: :origin:`searx/data/gsa_useragents.txt` (:origin:`CI Update data
++...  <.github/workflows/data-update.yml>`).
++
++.. Source for user agents: https://github.com/intoli/user-agents/
++
++"""
++# pylint: disable=use-dict-literal
++
++from json import loads
++from gzip import decompress
++
++from searx.data import data_dir
++from searx.utils import searxng_useragent
++from searx.network import get as http_get
++
++DATA_FILE = data_dir / 'gsa_useragents.txt'
++URL = 'https://raw.githubusercontent.com/intoli/user-agents/main/src/user-agents.json.gz'
++
++
++def fetch_gsa_useragents() -> list[str]:
++    response = http_get(URL, timeout=3.0, headers={"User-Agent": searxng_useragent()})
++    response.raise_for_status()
++
++    uas = []
++    for ua in loads(decompress(response.content)):
++        if ua["platform"] == "iPhone" and "GSA" in ua["userAgent"]:
++            uas.append(ua["userAgent"])
++
++    uas.sort()
++    return uas
++
++
++if __name__ == '__main__':
++    useragents = fetch_gsa_useragents()
++    with DATA_FILE.open("w", encoding='utf-8') as f:
++        f.write('\n'.join(useragents))
+diff --git a/utils/lib_sxng_data.sh b/utils/lib_sxng_data.sh
+index 550357fcdb3..96a109484da 100755
+--- a/utils/lib_sxng_data.sh
++++ b/utils/lib_sxng_data.sh
+@@ -4,11 +4,12 @@
+ data.help() {
+     cat <<EOF
+ data.:
+-  all       : update searx/sxng_locales.py and searx/data/*
+-  traits    : update searx/data/engine_traits.json & searx/sxng_locales.py
+-  useragents: update searx/data/useragents.json with the most recent versions of Firefox
+-  locales   : update searx/data/locales.json from babel
+-  currencies: update searx/data/currencies.json from wikidata
++  all           : update searx/sxng_locales.py and searx/data/*
++  traits        : update searx/data/engine_traits.json & searx/sxng_locales.py
++  useragents    : update searx/data/useragents.json with the most recent versions of Firefox
++  gsa_useragents: update searx/data/gsa_useragents.txt with compatible useragents
++  locales       : update searx/data/locales.json from babel
++  currencies    : update searx/data/currencies.json from wikidata
+ EOF
+ }
+ 
+@@ -19,6 +20,7 @@ data.all() {
+         pyenv.activate
+         data.traits
+         data.useragents
++        data.gsa_useragents
+         data.locales
+ 
+         build_msg DATA "update searx/data/osm_keys_tags.json"
+@@ -53,6 +55,12 @@ data.useragents() {
+     dump_return $?
+ }
+ 
++data.gsa_useragents() {
++    build_msg DATA "update searx/data/gsa_useragents.txt"
++    pyenv.cmd python searxng_extra/update/update_gsa_useragents.py
++    dump_return $?
++}
++
+ data.locales() {
+     (
+         set -e
