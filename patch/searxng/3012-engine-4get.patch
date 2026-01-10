@@ -1,0 +1,438 @@
+diff --git a/searx/engines/4get.py b/searx/engines/4get.py
+new file mode 100644
+index 00000000000..799b9eb4335
+--- /dev/null
++++ b/searx/engines/4get.py
+@@ -0,0 +1,432 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++# pylint: disable=invalid-name,too-many-return-statements
++"""4get is a metasearch engine that supports multiple search categories.
++
++Configured ``4get`` engines:
++
++.. code:: yaml
++
++  - name: 4get
++    engine: 4get
++    shortcut: 4get
++    search_type: web
++    # get available instances from https://4get.ca/instances
++    base_url:
++      - https://4get.ca
++
++  - name: 4get images
++    engine: 4get
++    shortcut: 4img
++    categories: [images, web]
++    search_type: images
++
++  - name: 4get videos
++    engine: 4get
++    shortcut: 4vid
++    categories: [videos, web]
++    search_type: videos
++
++  - name: 4get music
++    engine: 4get
++    shortcut: 4mus
++    categories: [music, web]
++    search_type: music
++
++  - name: 4get news
++    engine: 4get
++    shortcut: 4news
++    categories: news
++    search_type: news
++
++The ``network: 4get`` option makes all 4get engines share the same network
++configuration (proxies, local addresses, connection pool, etc.). Note that the
++first engine (``4get``) does not use ``network: 4get`` - it creates the network
++configuration that subsequent engines can reference.
++
++Implementation
++===============
++
++4get uses npt (next page token) for pagination. The tokens are stateful and
++expire after 15 minutes or after being used once.
++
++.. note::
++
++   Due to the stateful nature of npt tokens, users must browse pages
++   sequentially. Jumping to a later page (e.g., directly from page 1 to page 3)
++   will not work.
++
++"""
++
++import hashlib
++import json
++import random
++import typing as t
++from datetime import datetime
++from urllib.parse import urlencode
++
++from searx.enginelib import EngineCache
++from searx.result_types import EngineResults
++from searx.extended_types import SXNG_Response
++from searx.utils import searxng_useragent
++
++about = {
++    "website": "https://4get.ca",
++    "wikidata_id": None,
++    "official_api_documentation": "https://4get.ca/api.txt",
++    "use_official_api": True,
++    "require_api_key": False,
++    "results": "JSON",
++}
++
++# engine dependent config
++base_url: list[str] = ["https://4get.ca"]
++"""List of 4get instances for load balancing. If multiple URLs are provided,
++a random one will be selected for each request."""
++
++categories = []
++search_type: t.Literal["web", "images", "videos", "music", "news"] = "web"
++"""Search category type:
++
++- ``web``: General web search
++- ``images``: Image search
++- ``videos``: Video search
++- ``music``: Music/song search
++- ``news``: News search
++"""
++
++paging = True
++
++
++# NPT token cache configuration
++NPT_CACHE_EXPIRATION_SECONDS = 900  # 15 minutes (same as 4get's npt token expiry)
++
++CACHE: EngineCache
++"""Stores npt (next page token) values for pagination."""
++
++
++def setup(engine_settings: dict[str, t.Any]) -> bool:
++    """Initialization of the engine.
++
++    - Instantiate a cache for storing npt tokens (:py:obj:`CACHE`).
++    """
++    global CACHE  # pylint: disable=global-statement
++    # Replace dots with underscores to create a valid SQLite table name
++    cache_name = engine_settings["name"].replace(".", "_")
++    CACHE = EngineCache("cache" + cache_name)
++    return True
++
++
++def _get_cache_key(query: str, pageno: int, search_type_key: str) -> str:
++    """Generate a cache key for storing npt tokens.
++
++    The key is based on the search type, query hash, and page number.
++    """
++    query_hash = hashlib.md5(query.encode()).hexdigest()
++    return f"{search_type_key}:{query_hash}:{pageno}"
++
++
++def request(query: str, params: dict[str, t.Any]) -> None:
++    """Build a 4get API request."""
++    # Set user agent
++    params['headers']['User-Agent'] = searxng_useragent()
++    # Store search_type in engine_data for use in response()
++    params["engine_data"]["search_type"] = search_type
++
++    # Select a random instance from base_url list for load balancing
++    instance_url = random.choice(base_url)
++
++    # Build API endpoint based on search_type
++    endpoint = f"api/v1/{search_type}"
++
++    # Build query parameters
++    args = {}
++    pageno = params.get("pageno", 1)
++
++    if pageno == 1:
++        # First page: use the 's' parameter with the query
++        args["s"] = query
++    else:
++        # Subsequent pages: use the npt token from the previous page
++        prev_page_key = _get_cache_key(query, pageno - 1, search_type)
++        npt_token: str | None = CACHE.get(prev_page_key)
++
++        if npt_token:
++            args["npt"] = npt_token
++            logger.debug("4get using npt token from cache for page %d", pageno)
++        else:
++            # Token not found or expired, fall back to first page
++            logger.warning("4get npt token not found for page %d, falling back to page 1", pageno)
++            args["s"] = query
++            params["pageno"] = 1
++
++    params["url"] = f"{instance_url}/{endpoint}?{urlencode(args)}"
++    logger.debug("4get query URL: %s", params["url"])
++
++
++def response(resp: SXNG_Response) -> EngineResults:
++    """Parse the JSON response from 4get."""
++    results = EngineResults()
++
++    try:
++        data = json.loads(resp.text)
++    except json.JSONDecodeError as e:
++        logger.debug("Failed to parse 4get JSON response: %s", e)
++        return results
++
++    # Check if the request was successful
++    if data.get("status") != "ok":
++        logger.debug("4get API returned error status: %s", data.get("status"))
++        return results
++
++    # Get search_type from engine_data (stored in request())
++    engine_data = resp.search_params.get("engine_data", {})
++    current_search_type = engine_data.get("search_type", search_type)
++
++    # Store the npt token for the next page
++    npt_token = data.get("npt")
++    if npt_token:
++        query = resp.search_params.get("query", "")
++        pageno = resp.search_params.get("pageno", 1)
++        next_page_key = _get_cache_key(query, pageno + 1, current_search_type)
++        CACHE.set(key=next_page_key, value=npt_token, expire=NPT_CACHE_EXPIRATION_SECONDS)
++        logger.debug("4get cached npt token for page %d", pageno + 1)
++
++    # Parse results based on search_type
++    if current_search_type == "web":
++        return _parse_web(data, results)
++    if current_search_type == "images":
++        return _parse_images(data, results)
++    if current_search_type == "videos":
++        return _parse_videos(data, results)
++    if current_search_type == "music":
++        return _parse_music(data, results)
++    if current_search_type == "news":
++        return _parse_news(data, results)
++
++    return results
++
++
++def _parse_web(data: dict[str, t.Any], results: EngineResults) -> EngineResults:
++    """Parse web search results."""
++    for item in data.get("web", []):
++        url = item.get("url")
++        if not url:
++            continue
++
++        title = item.get("title", "")
++        content = item.get("description", "")
++
++        # Build the result
++        result = {
++            "url": url,
++            "title": title,
++            "content": content,
++            "template": "default.html",
++        }
++
++        # Add thumbnail if available
++        thumb = item.get("thumb", {})
++        if thumb and thumb.get("url"):
++            result["thumbnail"] = thumb["url"]
++
++        results.append(result)
++
++    return results
++
++
++def _parse_images(data: dict[str, t.Any], results: EngineResults) -> EngineResults:
++    """Parse image search results."""
++    for item in data.get("image", []):
++        url = item.get("url")
++        if not url:
++            continue
++
++        title = item.get("title", "")
++
++        # Get image sources - last one is thumbnail
++        sources = item.get("source", [])
++        if not sources:
++            continue
++
++        # Last source is the thumbnail
++        thumbnail = sources[-1].get("url") if sources else None
++        # First source is usually the full resolution image
++        img_src = sources[0].get("url") if sources else thumbnail
++
++        result = {
++            "template": "images.html",
++            "url": url,
++            "title": title,
++            "img_src": img_src or thumbnail,
++            "thumbnail_src": thumbnail,
++        }
++
++        results.append(result)
++
++    return results
++
++
++def _parse_videos(data: dict[str, t.Any], results: EngineResults) -> EngineResults:
++    """Parse video search results."""
++    for item in data.get("video", []):
++        url = item.get("url")
++        if not url:
++            continue
++
++        title = item.get("title", "")
++        description = item.get("description", "")
++        duration = item.get("duration")  # in seconds
++
++        # Get thumbnail
++        thumb = item.get("thumb", {})
++        thumbnail = thumb.get("url") if thumb else None
++
++        # Get author/channel info
++        author = item.get("author", {})
++        author_name = author.get("name", "") if author else ""
++
++        # Format duration as HH:MM:SS
++        length = None
++        if duration and duration != "_LIVE":
++            try:
++                duration_int = int(duration)
++                hours = duration_int // 3600
++                minutes = (duration_int % 3600) // 60
++                seconds = duration_int % 60
++                if hours > 0:
++                    length = f"{hours}:{minutes:02d}:{seconds:02d}"
++                else:
++                    length = f"{minutes}:{seconds:02d}"
++            except (ValueError, TypeError):
++                pass
++
++        # Build content from description
++        content = description
++        if author_name:
++            if content:
++                content = f"{author_name} - {content}"
++            else:
++                content = author_name
++
++        result = {
++            "template": "videos.html",
++            "url": url,
++            "title": title,
++            "content": content,
++        }
++
++        if thumbnail:
++            result["thumbnail"] = thumbnail
++        if length:
++            result["length"] = length
++
++        results.append(result)
++
++    return results
++
++
++def _parse_music(data: dict[str, t.Any], results: EngineResults) -> EngineResults:
++    """Parse music search results."""
++    for item in data.get("song", []):
++        url = item.get("url")
++        if not url:
++            continue
++
++        title = item.get("title", "")
++        description = item.get("description", "")
++        duration = item.get("duration")  # in seconds (float)
++
++        # Get thumbnail
++        thumb = item.get("thumb", {})
++        thumbnail = thumb.get("url") if thumb else None
++
++        # Get author/artist info
++        author = item.get("author", {})
++        author_name = author.get("name", "") if author else ""
++        author_url = author.get("url", "") if author else ""
++
++        # Format duration as MM:SS
++        length = None
++        if duration:
++            try:
++                duration_float = float(duration)
++                minutes = int(duration_float // 60)
++                seconds = int(duration_float % 60)
++                length = f"{minutes}:{seconds:02d}"
++            except (ValueError, TypeError):
++                pass
++
++        # Build content
++        content_parts = []
++        if author_name:
++            content_parts.append(author_name)
++        if description:
++            content_parts.append(description)
++        content = " - ".join(content_parts) if content_parts else ""
++
++        result = {
++            "template": "default.html",
++            "url": url,
++            "title": title,
++            "content": content,
++        }
++
++        if thumbnail:
++            result["thumbnail"] = thumbnail
++        if length:
++            result["length"] = length
++        if author_name:
++            result["author"] = author_name
++        if author_url:
++            result["author_url"] = author_url
++
++        results.append(result)
++
++    return results
++
++
++def _parse_news(data: dict[str, t.Any], results: EngineResults) -> EngineResults:
++    """Parse news search results."""
++    for item in data.get("news", []):
++        url = item.get("url")
++        if not url:
++            continue
++
++        title = item.get("title", "")
++        content = item.get("description", "")
++        author = item.get("author", "")
++
++        # Get thumbnail
++        thumb = item.get("thumb", {})
++        thumbnail = thumb.get("url") if thumb else None
++
++        # Get published date (Unix timestamp)
++        date = item.get("date")
++        publishedDate = None
++        if date:
++            try:
++                publishedDate = datetime.fromtimestamp(int(date))
++            except (ValueError, TypeError):
++                pass
++
++        result = {
++            "template": "default.html",
++            "url": url,
++            "title": title,
++            "content": content,
++        }
++
++        if thumbnail:
++            result["thumbnail"] = thumbnail
++        if publishedDate:
++            result["publishedDate"] = publishedDate
++        if author:
++            # Add author to content or as separate field
++            if content:
++                result["content"] = f"{author} - {content}"
++            else:
++                result["content"] = author
++
++        results.append(result)
++
++    return results
