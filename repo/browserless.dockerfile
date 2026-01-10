@@ -1,6 +1,7 @@
-# Current Version: 1.4.3
+# Current Version: 1.4.4
 
 ARG NODEJS_VERSION="24"
+ARG PLAYWRIGHT_CORE="chromium" # chromium, firefox, webkit, chrome, edge
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
@@ -29,9 +30,11 @@ RUN \
 
 FROM node:${NODEJS_VERSION}-slim AS build_browserless
 
+ARG PLAYWRIGHT_CORE
+
 ENV \
     DEBIAN_FRONTEND="noninteractive" \
-    PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers"
+    PLAYWRIGHT_CORE="${PLAYWRIGHT_CORE}"
 
 WORKDIR /app
 
@@ -61,39 +64,57 @@ RUN \
     rm -rf /app/src/routes/
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/chromium /app/src/routes/chromium/
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}/
 
 RUN \
     apt-get update \
     && apt-get install -qy jq \
-    && ./node_modules/playwright-core/cli.js install --with-deps chromium \
     && pnpm run build \
     && pnpm run build:function \
+    && pnpm run install:debugger \
     && pnpm prune --prod \
-    && fc-cache -f -v \
     && jq 'map(.enabled = true)' /app/extensions/ublocklite/rulesets/ruleset-details.json > /app/extensions/ublocklite/rulesets/ruleset-details.json.patched \
     && mv /app/extensions/ublocklite/rulesets/ruleset-details.json.patched /app/extensions/ublocklite/rulesets/ruleset-details.json \
     && jq '.declarative_net_request.rule_resources |= map(.enabled = false)' /app/extensions/ublocklite/manifest.json > /app/extensions/ublocklite/manifest.json.patched \
     && jq --argjson ids '["ublock-filters", "easylist", "easyprivacy", "pgl", "annoyances-cookies", "annoyances-overlays", "annoyances-social", "annoyances-widgets", "annoyances-others", "ubol-tests", "chn-0"]' '.declarative_net_request.rule_resources |= map(if .id as $id | ($ids | index($id)) then .enabled = true else . end)' /app/extensions/ublocklite/manifest.json.patched > /app/extensions/ublocklite/manifest.json \
-    && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto
+    && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto \
+    && find /app/build -type f -name "*.ts" -exec rm -f {} \;
 
 COPY --from=get_info /tmp/BUILDTMP/privacy_badger /app/extensions/privacy_badger
 
-RUN \
-    mkdir -p /distroless/bin /distroless/lib \
-    && cp -P /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
-    && cp /usr/local/bin/node /distroless/bin/node \
-    && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
+FROM node:${NODEJS_VERSION}-slim AS rebased_browserless
 
-FROM busybox:latest AS rebased_browserless
+ARG PLAYWRIGHT_CORE
+
+ENV \
+    DEBIAN_FRONTEND="noninteractive" \
+    PLAYWRIGHT_BROWSERS_PATH="/app/playwright-browsers" \
+    PLAYWRIGHT_CORE="${PLAYWRIGHT_CORE}"
+
+WORKDIR /app
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_browserless /distroless /
+COPY --from=build_browserless /app/package.json /app/package.json
+COPY --from=build_browserless /app/startServer.cjs /app/startServer.cjs
 
-COPY --from=build_browserless /app /app
+COPY --from=build_browserless /app/build /app/build
+COPY --from=build_browserless /app/extensions /app/extensions
+COPY --from=build_browserless /app/external /app/external
+COPY --from=build_browserless /app/node_modules /app/node_modules
+COPY --from=build_browserless /app/static /app/static
 
 COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truetype/
+
+RUN \
+    if [ "${PLAYWRIGHT_CORE}" = "chrome" ] || [ "${PLAYWRIGHT_CORE}" = "edge" ]; then \
+        if [ "$(uname -m)" != "x86_64" ]; then \
+            PLAYWRIGHT_CORE="chromium"; \
+        elif [ "${PLAYWRIGHT_CORE}" = "edge" ]; then \
+            PLAYWRIGHT_CORE="msedge"; \
+        fi; \
+    fi \
+    && ./node_modules/playwright-core/cli.js install --with-deps ${PLAYWRIGHT_CORE}
 
 FROM scratch
 
@@ -113,6 +134,6 @@ ENV \
 
 COPY --from=rebased_browserless / /
 
-ENTRYPOINT ["/bin/node"]
+ENTRYPOINT ["/usr/local/bin/node"]
 
 CMD ["/app/startServer.cjs"]
