@@ -24,7 +24,7 @@ index 4d9331268cf..4719b0b53ab 100644
  MANAGE += podman.build
  MANAGE += docker.build docker.buildx
 diff --git a/searx/data/__init__.py b/searx/data/__init__.py
-index fc303168030..e75173e5575 100644
+index fc303168030..ae2d2b5a8c9 100644
 --- a/searx/data/__init__.py
 +++ b/searx/data/__init__.py
 @@ -6,7 +6,7 @@
@@ -36,7 +36,15 @@ index fc303168030..e75173e5575 100644
  
  import json
  import typing as t
-@@ -105,3 +105,16 @@ def ahmia_blacklist_loader() -> list[str]:
+@@ -63,6 +63,7 @@ class LocalesType(t.TypedDict):
+     "ENGINE_TRAITS": None,
+     "LOCALES": None,
+     "TRACKER_PATTERNS": TrackerPatternsDB(),
++    "GSA_USER_AGENTS": None,
+ }
+ 
+ data_json_files = {
+@@ -105,3 +106,24 @@ def ahmia_blacklist_loader() -> list[str]:
      """
      with open(data_dir / 'ahmia_blacklist.txt', encoding='utf-8') as f:
          return f.read().split()
@@ -51,8 +59,16 @@ index fc303168030..e75173e5575 100644
 +    This function is used by :py:mod:`searx.engines.google`.
 +
 +    """
++    data = lazy_globals["GSA_USER_AGENTS"]
++    if data is not None:
++        return data
++
++    log.debug("init searx.data.%s", "GSA_USER_AGENTS")
++
 +    with open(data_dir / 'gsa_useragents.txt', encoding='utf-8') as f:
-+        return f.read().split("\n")
++        lazy_globals["GSA_USER_AGENTS"] = f.read().splitlines()
++
++    return lazy_globals["GSA_USER_AGENTS"]
 diff --git a/searx/data/gsa_useragents.txt b/searx/data/gsa_useragents.txt
 new file mode 100644
 index 00000000000..c02ef2f3638
@@ -466,25 +482,19 @@ index 00000000000..c02ef2f3638
 +Mozilla/5.0 (iPhone; CPU iPhone OS 26_3_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/399.2.845414227 Mobile/15E148 Safari/604.1
 \ No newline at end of file
 diff --git a/searx/engines/google.py b/searx/engines/google.py
-index 1660032e09e..f4550f4c9a7 100644
+index 1660032e09e..95cc733d61e 100644
 --- a/searx/engines/google.py
 +++ b/searx/engines/google.py
-@@ -29,11 +29,14 @@
+@@ -23,7 +23,7 @@
+ import babel.core
+ import babel.languages
+ 
+-from searx.utils import extract_text, eval_xpath, eval_xpath_list, eval_xpath_getindex
++from searx.utils import extract_text, eval_xpath, eval_xpath_list, eval_xpath_getindex, gen_gsa_useragent
+ from searx.locales import language_tag, region_tag, get_official_locales
+ from searx.network import get  # see https://github.com/searxng/searxng/issues/762
  from searx.exceptions import SearxEngineCaptchaException
- from searx.enginelib.traits import EngineTraits
- from searx.result_types import EngineResults
-+from searx.data import gsa_useragents_loader
- 
- if t.TYPE_CHECKING:
-     from searx.extended_types import SXNG_Response
-     from searx.search.processors import OnlineParams
- 
-+useragents = gsa_useragents_loader()
-+
- about = {
-     "website": 'https://www.google.com',
-     "wikidata_id": 'Q9366',
-@@ -64,7 +67,7 @@
+@@ -64,7 +64,7 @@
  
  # Suggestions are links placed in a *card-section*, we extract only the text
  # from the links not the links itself.
@@ -493,15 +503,15 @@ index 1660032e09e..f4550f4c9a7 100644
  
  
  _arcid_range = string.ascii_letters + string.digits + "_-"
-@@ -262,6 +265,7 @@ def get_google_info(params: "OnlineParams", eng_traits: EngineTraits) -> dict[st
+@@ -262,6 +262,7 @@ def get_google_info(params: "OnlineParams", eng_traits: EngineTraits) -> dict[st
      # HTTP headers
  
      ret_val['headers']['Accept'] = '*/*'
-+    ret_val['headers']['User-Agent'] = random.choice(useragents)
++    ret_val['headers']['User-Agent'] = gen_gsa_useragent()
  
      # Cookies
  
-@@ -355,35 +359,24 @@ def response(resp: "SXNG_Response"):
+@@ -355,35 +356,24 @@ def response(resp: "SXNG_Response"):
      # convert the text to dom
      dom = html.fromstring(resp.text)
  
@@ -542,6 +552,34 @@ index 1660032e09e..f4550f4c9a7 100644
  
              content_nodes = eval_xpath(result, './/div[contains(@data-sncf, "1")]')
              for item in content_nodes:
+diff --git a/searx/utils.py b/searx/utils.py
+index 4bbf8fb9466..7d8a07e959b 100644
+--- a/searx/utils.py
++++ b/searx/utils.py
+@@ -25,7 +25,7 @@
+ from lxml.etree import ElementBase, _Element  # pyright: ignore[reportPrivateUsage]
+ 
+ from searx import settings
+-from searx.data import USER_AGENTS, data_dir
++from searx.data import USER_AGENTS, data_dir, gsa_useragents_loader
+ from searx.version import VERSION_TAG
+ from searx.sxng_locales import sxng_locales
+ from searx.exceptions import SearxXPathSyntaxException, SearxEngineXPathException
+@@ -92,6 +92,14 @@ def gen_useragent(os_string: str | None = None) -> str:
+     )
+ 
+ 
++def gen_gsa_useragent() -> str:
++    """Return a random GSA User Agent suitable for Google
++
++    See searx/data/gsa_useragents.txt
++    """
++    return choice(gsa_useragents_loader())
++
++
+ class HTMLTextExtractor(HTMLParser):
+     """Internal class to extract text from HTML"""
+ 
 diff --git a/searxng_extra/update/update_gsa_useragents.py b/searxng_extra/update/update_gsa_useragents.py
 new file mode 100644
 index 00000000000..e5e90e0469a
