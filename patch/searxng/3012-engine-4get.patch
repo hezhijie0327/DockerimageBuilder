@@ -1,11 +1,11 @@
 diff --git a/searx/engines/4get.py b/searx/engines/4get.py
 new file mode 100644
-index 00000000000..e8c427c18ba
+index 00000000000..66a2c0e6342
 --- /dev/null
 +++ b/searx/engines/4get.py
-@@ -0,0 +1,444 @@
+@@ -0,0 +1,474 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
-+# pylint: disable=invalid-name,too-many-return-statements
++# pylint: disable=invalid-name,too-many-return-statements,line-too-long
 +"""4get is a metasearch engine that supports multiple search categories.
 +
 +Configured ``4get`` engines:
@@ -19,6 +19,7 @@ index 00000000000..e8c427c18ba
 +    # get available instances from https://4get.ca/instances
 +    base_url:
 +      - https://4get.ca
++    scraper: google
 +
 +  - name: 4get images
 +    engine: 4get
@@ -43,6 +44,20 @@ index 00000000000..e8c427c18ba
 +    shortcut: 4news
 +    categories: news
 +    search_type: news
++
++Scraper Configuration
++=====================
++
++The ``scraper`` option allows you to specify a default search engine:
++
++.. code:: yaml
++
++  scraper: google  # or 'ddg', 'brave', 'bing', etc.
++
++Defaults to empty (uses 4get's default engine).
++
++Internally maps to ``scraper_web``, ``scraper_images``, ``scraper_videos``,
++``scraper_music``, ``scraper_news`` based on the search type.
 +
 +The ``network: 4get`` option makes all 4get engines share the same network
 +configuration (proxies, local addresses, connection pool, etc.). Note that the
@@ -101,6 +116,14 @@ index 00000000000..e8c427c18ba
 +"""
 +
 +paging = True
++
++scraper: str = ""
++"""Default search engine to use for scraping. Common values: ``'google'``, ``'ddg'`` (DuckDuckGo), ``'brave'``, ``'bing'``
++
++Internally maps to ``scraper_web``, ``scraper_images``, etc. based on search type.
++
++Defaults to empty (uses 4get's default engine).
++"""
 +
 +
 +# NPT token cache configuration
@@ -170,6 +193,13 @@ index 00000000000..e8c427c18ba
 +                "4get npt token not found for page %d (key: %s), returning empty results", pageno, prev_page_key
 +            )
 +            params["engine_data"]["npt_missing"] = True
++
++    # Map scraper to scraper_web, scraper_images, etc. based on search_type
++    # and add as cookie if configured
++    if scraper:
++        scraper_key = f"scraper_{search_type}"
++        params["cookies"] = {scraper_key: scraper}
++        logger.debug("4get adding cookie: %s=%s", scraper_key, scraper)
 +
 +    params["url"] = f"{instance_url}/{endpoint}?{urlencode(args)}"
 +    logger.debug("4get query URL: %s", params["url"])
