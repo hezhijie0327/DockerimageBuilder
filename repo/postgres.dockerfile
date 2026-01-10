@@ -1,4 +1,4 @@
-# Current Version: 1.3.9
+# Current Version: 1.4.0
 
 ARG POSTGRES_VERSION="18"
 
@@ -8,9 +8,6 @@ WORKDIR /tmp
 
 RUN \
     export WORKDIR=$(pwd) \
-    && cat "/opt/package.json" | jq -Sr ".module.icu" > "${WORKDIR}/icu.json" \
-    && cat "${WORKDIR}/icu.json" | jq -Sr ".version" \
-    && cat "${WORKDIR}/icu.json" | jq -Sr ".source" > "${WORKDIR}/icu.autobuild" \
     && git clone -b "main" --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"
 
 FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
@@ -45,25 +42,6 @@ RUN \
         llvm${CLANG_VERSION}-static \
         openssl-libs-static \
     && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y
-
-FROM build_basic AS build_icu
-
-ENV \
-    ICU_VERSION_FIXED=""
-
-WORKDIR /tmp/BUILDTMP
-
-COPY --from=get_info /tmp/icu.autobuild /tmp/BUILDTMP/icu.autobuild
-
-RUN \
-    export WORKDIR=$(pwd) \
-    && mkdir -p "${WORKDIR}/icu" \
-    && cd "${WORKDIR}/icu" \
-    && curl -Ls -o - $(cat "${WORKDIR}/icu.autobuild") | tar zxvf - --strip-components=1 \
-    && cd "${WORKDIR}/icu/source" \
-    && ./runConfigureICU Linux --prefix="/icu" \
-    && make -j $(nproc) \
-    && make install
 
 FROM build_basic AS build_c_plugin
 
@@ -107,8 +85,6 @@ ENV \
     POSTGRES_VERSION="${POSTGRES_VERSION}" \
     RUSTFLAGS="-C target-feature=-crt-static"
 
-COPY --from=build_icu /icu/ /usr/local/
-
 WORKDIR /tmp/BUILDTMP
 
 RUN \
@@ -119,7 +95,7 @@ RUN \
     && cargo install --locked cargo-pgrx --version "${PGRX_VERSION}" \
     && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
     && cd pg_search \
-    && cargo pgrx package --features icu --pg-config "/usr/local/bin/pg_config"
+    && cargo pgrx package --pg-config "/usr/local/bin/pg_config"
 
 WORKDIR /tmp/BUILDTMP
 
@@ -138,8 +114,6 @@ FROM postgres:${POSTGRES_VERSION}-alpine AS postgres_rebase
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_custom_patch.sh
-
-COPY --from=build_icu /icu/ /usr/local/
 
 COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.so /usr/local/lib/postgresql/
 COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.control /usr/local/share/postgresql/extension/
