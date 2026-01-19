@@ -1,6 +1,6 @@
-# Current Version: 2.2.1
+# Current Version: 2.2.2
 
-ARG DOTNET_VERSION="9.0"
+ARG DOTNET_VERSION="10.0"
 ARG NODEJS_VERSION="22"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
