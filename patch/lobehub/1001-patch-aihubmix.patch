@@ -1,8 +1,38 @@
+diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
+index 0c5c5547df862..0b374e4bb5b23 100644
+--- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
++++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
+@@ -184,12 +184,23 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+         apiKey: options.apiKey?.trim() || DEFAULT_API_KEY,
+         baseURL: options.baseURL?.trim() || DEFAULT_BASE_URL,
+       };
+-      const { apiKey, baseURL = DEFAULT_BASE_URL, ...res } = _options;
++      const { apiKey, baseURL = DEFAULT_BASE_URL, defaultHeaders, ...res } = _options;
+       this._options = _options as ConstructorOptions<T>;
+ 
+       if (!apiKey) throw AgentRuntimeError.createError(ErrorType?.invalidAPIKey);
+ 
+-      const initOptions = { apiKey, baseURL, ...constructorOptions, ...res };
++      const initOptions = {
++        apiKey,
++        baseURL,
++        defaultHeaders: {
++          ...defaultHeaders,
++          ...(baseURL === 'https://aihubmix.com/v1' && {
++            'APP-Code': 'LobeHub',
++          }),
++        },
++        ...constructorOptions,
++        ...res,
++      };
+ 
+       // if the custom client is provided, use it as client
+       if (customClient?.createClient) {
 diff --git a/packages/model-runtime/src/providers/anthropic/index.ts b/packages/model-runtime/src/providers/anthropic/index.ts
-index de66d377db8e2..c20a01269a6c5 100644
+index 857dcadfcce4a..2f82b09920cc3 100644
 --- a/packages/model-runtime/src/providers/anthropic/index.ts
 +++ b/packages/model-runtime/src/providers/anthropic/index.ts
-@@ -57,7 +57,13 @@ export class LobeAnthropicAI implements LobeRuntimeAI {
+@@ -68,7 +68,13 @@ export class LobeAnthropicAI implements LobeRuntimeAI {
      this.client = new Anthropic({
        apiKey,
        baseURL,
@@ -10,7 +40,7 @@ index de66d377db8e2..c20a01269a6c5 100644
 +      defaultHeaders: {
 +        ...defaultHeaders,
 +        'anthropic-beta': betaHeaders,
-+        ...(process.env.ENABLE_AIHUBMIX_APP_CODE === '1' && {
++        ...(baseURL === 'https://aihubmix.com' && {
 +          'APP-Code': 'LobeHub',
 +        }),
 +      },
@@ -18,38 +48,23 @@ index de66d377db8e2..c20a01269a6c5 100644
      });
      this.baseURL = this.client.baseURL;
 diff --git a/packages/model-runtime/src/providers/google/index.ts b/packages/model-runtime/src/providers/google/index.ts
-index c5a214c81f0cc..b07af60235467 100644
+index b7811800bda2b..e0e505ee5283e 100644
 --- a/packages/model-runtime/src/providers/google/index.ts
 +++ b/packages/model-runtime/src/providers/google/index.ts
-@@ -120,7 +120,12 @@ export class LobeGoogleAI implements LobeRuntimeAI {
+@@ -126,7 +126,15 @@ export class LobeGoogleAI implements LobeRuntimeAI {
      if (!apiKey) throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidProviderAPIKey);
  
      const httpOptions = baseURL
 -      ? ({ baseUrl: baseURL, headers: defaultHeaders } as HttpOptions)
-+      ? ({ baseUrl: baseURL, headers: {
-+        ...defaultHeaders,
-+        ...(process.env.ENABLE_AIHUBMIX_APP_CODE === '1' && {
-+          'APP-Code': 'LobeHub',
-+        }),
-+      } } as HttpOptions)
++      ? ({
++          baseUrl: baseURL,
++          headers: {
++            ...defaultHeaders,
++            ...(baseURL === 'https://aihubmix.com/gemini' && {
++              'APP-Code': 'LobeHub',
++            }),
++          },
++        } as HttpOptions)
        : undefined;
  
      this.apiKey = apiKey;
-diff --git a/packages/model-runtime/src/providers/openai/index.ts b/packages/model-runtime/src/providers/openai/index.ts
-index 8db424e2d4f32..5c48b40567a88 100644
---- a/packages/model-runtime/src/providers/openai/index.ts
-+++ b/packages/model-runtime/src/providers/openai/index.ts
-@@ -63,6 +63,13 @@ export const LobeOpenAI = createOpenAICompatibleRuntime({
-       };
-     },
-   },
-+  constructorOptions: {
-+    defaultHeaders: {
-+      ...(process.env.ENABLE_AIHUBMIX_APP_CODE === '1' && {
-+        'APP-Code': 'LobeHub',
-+      }),
-+    },
-+  },
-   debug: {
-     chatCompletion: () => process.env.DEBUG_OPENAI_CHAT_COMPLETION === '1',
-     responses: () => process.env.DEBUG_OPENAI_RESPONSES === '1',
