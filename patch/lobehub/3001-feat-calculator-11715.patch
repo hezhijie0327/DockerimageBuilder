@@ -41,6 +41,88 @@ index 0000000000000..64ea6ea2f7ce7
 +    "react-i18next": "*"
 +  }
 +}
+diff --git a/packages/builtin-tool-calculator/src/base-conversion.test.ts b/packages/builtin-tool-calculator/src/base-conversion.test.ts
+new file mode 100644
+index 0000000000000..cce6f7a057c81
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/base-conversion.test.ts
+@@ -0,0 +1,76 @@
++import { describe, expect, it } from 'vitest';
++
++import { calculatorExecutor } from '../src/executor';
++
++describe('Calculator Base Conversion', () => {
++  it('should convert binary to decimal', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: '1010',
++      fromBase: 'binary',
++      toBase: 'decimal',
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('1010 (binary) = 10 (decimal)');
++    expect(result.state?.decimalValue).toBe(10);
++  });
++
++  it('should convert decimal to binary', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: '255',
++      fromBase: 'decimal',
++      toBase: 'binary',
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('255 (decimal) = 0b11111111 (binary)');
++    expect(result.state?.decimalValue).toBe(255);
++  });
++
++  it('should convert hexadecimal to octal', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: 'FF',
++      fromBase: 'hexadecimal',
++      toBase: 'octal',
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('FF (hexadecimal) = 0o377 (octal)');
++    expect(result.state?.decimalValue).toBe(255);
++  });
++
++  it('should convert octal to hexadecimal', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: '77',
++      fromBase: 'octal',
++      toBase: 'hexadecimal',
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('77 (octal) = 0x3F (hexadecimal)');
++    expect(result.state?.decimalValue).toBe(63);
++  });
++
++  it('should handle numbers with prefixes', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: '0xFF',
++      fromBase: 'hexadecimal',
++      toBase: 'decimal',
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('0xFF (hexadecimal) = 255 (decimal)');
++    expect(result.state?.decimalValue).toBe(255);
++  });
++
++  it('should handle invalid numbers', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: '2AB',
++      fromBase: 'binary',
++      toBase: 'decimal',
++    });
++
++    expect(result.success).toBe(false);
++    expect(result.error?.type).toBe('ValidationError');
++  });
++});
 diff --git a/packages/builtin-tool-calculator/src/client/index.ts b/packages/builtin-tool-calculator/src/client/index.ts
 new file mode 100644
 index 0000000000000..2861ba06d85d3
@@ -55,15 +137,20 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..8c6e47aed38fb
+index 0000000000000..30e498b9d2096
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,271 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { all, create } from 'mathjs';
 +
-+import { CalculatorIdentifier } from '../manifest';
-+import { type CalculateParams, CalculatorApiName, type EvaluateExpressionParams } from '../types';
++import {
++  type CalculateParams,
++  CalculatorApiName,
++  CalculatorIdentifier,
++  type ConvertBaseParams,
++  type EvaluateExpressionParams,
++} from '../types';
 +
 +// Create a mathjs instance with all functions
 +const math = create(all);
@@ -135,6 +222,26 @@ index 0000000000000..8c6e47aed38fb
 +      .map(([key, value]) => `${key} = ${value}`)
 +      .join(', ');
 +    return `${expression} (where ${varStr})`;
++  }
++
++  /**
++   * Convert number to target base with proper formatting
++   */
++  private convertToBase(decimalValue: number, targetBase: string): string {
++    switch (targetBase) {
++      case 'binary': {
++        return `0b${decimalValue.toString(2)}`;
++      }
++      case 'octal': {
++        return `0o${decimalValue.toString(8)}`;
++      }
++      case 'hexadecimal': {
++        return `0x${decimalValue.toString(16).toUpperCase()}`;
++      }
++      default: {
++        return decimalValue.toString(10);
++      }
++    }
 +  }
 +
 +  /**
@@ -224,6 +331,75 @@ index 0000000000000..8c6e47aed38fb
 +    }
 +  };
 +
++  /**
++   * Convert numbers between different bases
++   */
++  convertBase = async (params: ConvertBaseParams): Promise<BuiltinToolResult> => {
++    try {
++      const { number, fromBase, toBase } = params;
++
++      // Base mapping
++      const baseMap = { binary: 2, decimal: 10, hexadecimal: 16, octal: 8 };
++      const sourceBase = baseMap[fromBase];
++
++      // Clean the number (remove prefixes if present)
++      const trimmed = number.trim().toLowerCase();
++      let cleanNumber: string;
++      if (trimmed.startsWith('0b')) {
++        cleanNumber = trimmed.slice(2);
++      } else if (trimmed.startsWith('0o')) {
++        cleanNumber = trimmed.slice(2);
++      } else if (trimmed.startsWith('0x')) {
++        cleanNumber = trimmed.slice(2);
++      } else {
++        cleanNumber = trimmed;
++      }
++
++      // Convert to decimal first
++      let decimalValue: number;
++      try {
++        decimalValue = parseInt(cleanNumber, sourceBase);
++        if (isNaN(decimalValue)) {
++          throw new Error(`Invalid number "${number}" for base ${sourceBase}`);
++        }
++      } catch {
++        return {
++          content: `Invalid number format: "${number}" is not a valid ${fromBase} number`,
++          error: {
++            message: `Failed to parse "${number}" as ${fromBase}`,
++            type: 'ValidationError',
++          },
++          success: false,
++        };
++      }
++
++      // Convert to target base
++      const convertedNumber = this.convertToBase(decimalValue, toBase);
++
++      return {
++        content: `${number} (${fromBase}) = ${convertedNumber} (${toBase})`,
++        state: {
++          convertedNumber,
++          decimalValue,
++          originalBase: fromBase,
++          originalNumber: number,
++          targetBase: toBase,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Base conversion error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'ConversionError',
++        },
++        success: false,
++      };
++    }
++  };
++
 +  // Implement required interface methods
 +  getApiNames(): string[] {
 +    return Object.values(this.apiEnum) as string[];
@@ -238,32 +414,31 @@ index 0000000000000..8c6e47aed38fb
 +export const calculatorExecutor = new CalculatorExecutor();
 diff --git a/packages/builtin-tool-calculator/src/index.ts b/packages/builtin-tool-calculator/src/index.ts
 new file mode 100644
-index 0000000000000..9ebf15ce4f24b
+index 0000000000000..4779e6e4d607f
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/index.ts
-@@ -0,0 +1,10 @@
-+export { CalculatorManifest, CalculatorIdentifier } from './manifest';
+@@ -0,0 +1,11 @@
++export { CalculatorManifest } from './manifest';
 +export { systemPrompt } from './systemRole';
 +export {
-+  CalculatorApiName,
-+  type CalculatorApiNameType,
 +  type CalculateParams,
 +  type CalculateState,
++  CalculatorApiName,
++  type CalculatorApiNameType,
++  CalculatorIdentifier,
 +  type EvaluateExpressionParams,
 +  type EvaluateExpressionState,
 +} from './types';
 diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
 new file mode 100644
-index 0000000000000..ee064765b5cf6
+index 0000000000000..2ea1a3c717781
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/manifest.ts
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,94 @@
 +import type { BuiltinToolManifest } from '@lobechat/types';
 +
 +import { systemPrompt } from './systemRole';
-+import { CalculatorApiName } from './types';
-+
-+export const CalculatorIdentifier = 'lobe-calculator';
++import { CalculatorApiName, CalculatorIdentifier } from './types';
 +
 +export const CalculatorManifest: BuiltinToolManifest = {
 +  api: [
@@ -318,6 +493,33 @@ index 0000000000000..ee064765b5cf6
 +        type: 'object',
 +      },
 +    },
++    {
++      description:
++        'Convert numbers between different number bases (binary, octal, decimal, hexadecimal). Input number format should match the specified source base.',
++      name: CalculatorApiName.convertBase,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          fromBase: {
++            description: 'Source base of the input number',
++            enum: ['binary', 'octal', 'decimal', 'hexadecimal'],
++            type: 'string',
++          },
++          number: {
++            description:
++              'The number to convert (e.g., "1010" for binary, "77" for octal, "255" for decimal, "FF" for hexadecimal)',
++            type: 'string',
++          },
++          toBase: {
++            description: 'Target base for conversion',
++            enum: ['binary', 'octal', 'decimal', 'hexadecimal'],
++            type: 'string',
++          },
++        },
++        required: ['number', 'fromBase', 'toBase'],
++        type: 'object',
++      },
++    },
 +  ],
 +  identifier: CalculatorIdentifier,
 +  meta: {
@@ -329,22 +531,81 @@ index 0000000000000..ee064765b5cf6
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..70ff16f3fb35a
+index 0000000000000..67148426ef36d
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,2 @@
-+export const systemPrompt =
-+  'You are an advanced Calculator tool powered by mathjs, capable of comprehensive mathematical computations. You can handle basic arithmetic, advanced functions, matrices, complex numbers, symbolic calculations, units conversion, and algebraic manipulations. Support variable substitution and provide detailed, accurate results for complex mathematical problems.';
+@@ -0,0 +1,60 @@
++export const systemPrompt = `You have access to a Calculator tool powered by mathjs, capable of comprehensive mathematical computations and base conversions.
++
++<core_capabilities>
++1. **calculate**: Perform mathematical expressions and calculations (arithmetic, functions, matrices, complex numbers, units, etc.)
++2. **evaluateExpression**: Evaluate complex mathematical expressions with variable substitution
++3. **convertBase**: Convert numbers between different number bases (binary, octal, decimal, hexadecimal)
++</core_capabilities>
++
++<workflow>
++1. Analyze the user's mathematical or conversion needs
++2. Select the appropriate tool based on the request type
++3. Execute the calculation or conversion with proper parameters
++4. Present clear, accurate results with appropriate formatting
++</workflow>
++
++<tool_selection_guidelines>
++- **calculate**: Use for direct mathematical calculations, expressions, and unit conversions
++  - Examples: "2 + 3 * 4", "sqrt(16)", "sin(30°)", "5 cm to inch"
++  - Supports: arithmetic, functions, matrices, complex numbers, units, symbolic calculations
++  
++- **evaluateExpression**: Use for complex expressions requiring variable substitution
++  - Examples: "x^2 + 2*x + 1", "det([[a,b],[c,d]])"
++  - Provide variables object with key-value pairs for substitution
++  
++- **convertBase**: Use for number base conversions
++  - Requires explicit source and target bases: 'binary', 'octal', 'decimal', 'hexadecimal'
++  - Supports prefixes in input: 0b (binary), 0o (octal), 0x (hexadecimal)
++  - Examples: convert "1010" from binary to decimal, convert "255" from decimal to hexadecimal
++</tool_selection_guidelines>
++
++<supported_operations>
++**Basic Arithmetic**: +, -, *, /, % (modulus)
++**Mathematical Functions**: sqrt, sin, cos, tan, log, exp, abs, round, floor, ceil
++**Advanced Operations**: matrices, complex numbers, derivatives, integrals, statistics
++**Unit Conversions**: "5 cm to inch", "100 kg to lb", "25°C to °F"
++**Base Conversions**: Binary ↔ Octal ↔ Decimal ↔ Hexadecimal
++</supported_operations>
++
++<formatting_guidelines>
++- Use proper mathematical notation and clear formatting
++- For unit conversions, show both original and converted units
++- For base conversions, display with appropriate prefixes (0b, 0o, 0x)
++- Provide intermediate steps when helpful for complex calculations
++- Use precision parameter when specified for decimal places
++</formatting_guidelines>
++
++<error_handling>
++- If expressions are invalid, explain the specific error clearly
++- For undefined operations, suggest alternatives or clarify requirements
++- When variables are missing from evaluateExpression, request the missing values
++- For base conversion errors, verify the source base matches the input format
++</error_handling>
++
++<best_practices>
++- Simplify complex expressions when possible
++- Use meaningful variable names in expressions
++- For large calculations, consider breaking them into smaller steps
++- Always verify results make sense in the given context
++- Provide exact decimal values when precision is specified
++</best_practices>`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..86a396024e9b2
+index 0000000000000..292c3a2f49853
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,50 @@
 +export const CalculatorIdentifier = 'lobe-calculator';
 +
 +export const CalculatorApiName = {
 +  calculate: 'calculate',
++  convertBase: 'convertBase',
 +  evaluateExpression: 'evaluateExpression',
 +} as const;
 +
@@ -357,25 +618,39 @@ index 0000000000000..86a396024e9b2
 +}
 +
 +export interface CalculateState {
-+  result?: number | string;
 +  expression?: string;
 +  precision?: number;
++  result?: number | string;
 +}
 +
 +// Evaluate Expression API (for more complex mathematical expressions)
 +export interface EvaluateExpressionParams {
 +  expression: string;
-+  variables?: Record<string, number>;
 +  precision?: number;
++  variables?: Record<string, number>;
 +}
 +
 +export interface EvaluateExpressionState {
-+  result?: number | string;
 +  expression?: string;
-+  variables?: Record<string, number>;
 +  precision?: number;
++  result?: number | string;
++  variables?: Record<string, number>;
 +}
-\ No newline at end of file
++
++// Base Conversion API
++export interface ConvertBaseParams {
++  fromBase: 'binary' | 'octal' | 'decimal' | 'hexadecimal';
++  number: string;
++  toBase: 'binary' | 'octal' | 'decimal' | 'hexadecimal';
++}
++
++export interface ConvertBaseState {
++  convertedNumber?: string;
++  decimalValue?: number;
++  originalBase?: string;
++  originalNumber?: string;
++  targetBase?: string;
++}
 diff --git a/src/store/tool/slices/builtin/executors/index.ts b/src/store/tool/slices/builtin/executors/index.ts
 index a53a4cc55d5d3..f17dce883ae31 100644
 --- a/src/store/tool/slices/builtin/executors/index.ts
