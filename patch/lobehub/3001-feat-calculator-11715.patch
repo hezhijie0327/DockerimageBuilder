@@ -41,15 +41,62 @@ index 0000000000000..64ea6ea2f7ce7
 +    "react-i18next": "*"
 +  }
 +}
-diff --git a/packages/builtin-tool-calculator/src/base-conversion.test.ts b/packages/builtin-tool-calculator/src/base-conversion.test.ts
+diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
 new file mode 100644
-index 0000000000000..41c223acbabc9
+index 0000000000000..a3a11fb766f50
 --- /dev/null
-+++ b/packages/builtin-tool-calculator/src/base-conversion.test.ts
-@@ -0,0 +1,133 @@
++++ b/packages/builtin-tool-calculator/src/calculate.test.ts
+@@ -0,0 +1,446 @@
 +import { describe, expect, it } from 'vitest';
 +
 +import { calculatorExecutor } from '../src/executor';
++
++describe('Math Constants', () => {
++  it('should handle PI constants', async () => {
++    const pi = await calculatorExecutor.calculate({ expression: 'pi' });
++    expect(pi.success).toBe(true);
++    expect(parseFloat(pi.content || '0')).toBeCloseTo(3.14159, 5);
++  });
++
++  it('should handle uppercase PI', async () => {
++    const PI = await calculatorExecutor.calculate({ expression: 'PI' });
++    expect(PI.success).toBe(true);
++    expect(parseFloat(PI.content || '0')).toBeCloseTo(3.14159, 5);
++  });
++
++  it('should handle PI in expressions', async () => {
++    const result = await calculatorExecutor.calculate({ expression: '2 * pi' });
++    expect(result.success).toBe(true);
++    expect(parseFloat(result.content || '0')).toBeCloseTo(6.28318, 4);
++  });
++
++  it('should handle PI in trigonometric functions', async () => {
++    const result = await calculatorExecutor.calculate({ expression: 'sin(pi/2)' });
++    expect(result.success).toBe(true);
++    expect(parseFloat(result.content || '0')).toBeCloseTo(1, 5);
++  });
++
++  it('should handle PI in evaluateExpression', async () => {
++    const result = await calculatorExecutor.evaluateExpression({
++      expression: 'x * pi',
++      variables: { x: 3 },
++    });
++    expect(result.success).toBe(true);
++    expect(parseFloat(result.content || '0')).toBeCloseTo(9.42477, 4);
++  });
++
++  it('should handle other constants like E', async () => {
++    const e = await calculatorExecutor.calculate({ expression: 'e' });
++    expect(e.success).toBe(true);
++    expect(parseFloat(e.content || '0')).toBeCloseTo(2.71828, 5);
++  });
++
++  it('should handle constants in scientific notation', async () => {
++    const result = await calculatorExecutor.calculate({ expression: 'pi * 1e3' });
++    expect(result.success).toBe(true);
++    expect(parseFloat(result.content || '0')).toBeCloseTo(3141.59, 2);
++  });
++});
 +
 +describe('Calculator Base Conversion', () => {
 +  it('should convert binary to decimal', async () => {
@@ -180,66 +227,270 @@ index 0000000000000..41c223acbabc9
 +    expect(result.error?.type).toBe('ConversionError');
 +  });
 +});
-diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
-new file mode 100644
-index 0000000000000..a49d30bdcd635
---- /dev/null
-+++ b/packages/builtin-tool-calculator/src/calculate.test.ts
-@@ -0,0 +1,56 @@
-+import { describe, expect, it } from 'vitest';
-+
-+import { calculatorExecutor } from '../src/executor';
 +
 +describe('Calculator Core Functions', () => {
-+  it('should handle number input in base conversion', async () => {
-+    const result = await calculatorExecutor.convertBase({
-+      number: 255,
-+      fromBase: 10,
-+      toBase: 2,
++  describe('calculate', () => {
++    it('should handle basic arithmetic', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: '2 + 3 * 4',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('14');
++      expect(result.state?.result).toBe('14');
 +    });
 +
-+    expect(result.success).toBe(true);
-+    expect(result.content).toBe('11111111');
++    it('should handle unit conversions (cm to inch)', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: '5 cm to inch',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('1.968503937 inch');
++    });
++
++    it('should handle unit conversions (kg to lb)', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: '1 kg to lb',
++      });
++
++      expect(result.success).toBe(true);
++      expect(parseFloat(result.content || '0')).toBeCloseTo(2.20462, 5);
++    });
++
++    it('should handle scientific functions', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: 'sin(30 deg)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(parseFloat(result.content || '0')).toBeCloseTo(0.5, 5);
++    });
++
++    it('should handle matrix operations', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: 'det([[1,2],[3,4]])',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('-2');
++    });
++
++    it('should handle complex numbers', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: 'sqrt(-1)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('i');
++    });
++
++    it('should handle precision formatting', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: '10 / 3',
++        precision: 2,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('3.33');
++    });
++
++    it('should handle zero precision (default)', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: '10 / 3',
++        precision: 0,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('3');
++    });
++
++    it('should handle undefined expression', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: 'invalid_syntax_*(',
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('CalculationError');
++    });
 +  });
 +
-+  it('should return only result for calculate', async () => {
-+    const result = await calculatorExecutor.calculate({
-+      expression: '2 + 3 * 4',
++  describe('evaluateExpression', () => {
++    it('should handle variable substitution', async () => {
++      const result = await calculatorExecutor.evaluateExpression({
++        expression: 'x^2 + 2*x + 1',
++        variables: { x: 5 },
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('36');
++      expect(result.state?.result).toBe('36');
++      expect(result.state?.variables).toEqual({ x: 5 });
 +    });
 +
-+    expect(result.success).toBe(true);
-+    expect(result.content).toBe('14');
-+    expect(result.state?.result).toBe('14');
++    it('should handle multiple variables', async () => {
++      const result = await calculatorExecutor.evaluateExpression({
++        expression: 'a*x + b',
++        variables: { a: 2, x: 3, b: 1 },
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('7');
++    });
++
++    it('should handle no variables', async () => {
++      const result = await calculatorExecutor.evaluateExpression({
++        expression: '2 + 2',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('4');
++    });
++
++    it('should handle missing variables gracefully', async () => {
++      const result = await calculatorExecutor.evaluateExpression({
++        expression: 'x + y',
++        variables: { x: 1 }, // y is missing
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('CalculationError');
++    });
++
++    it('should handle complex expressions with variables', async () => {
++      const result = await calculatorExecutor.evaluateExpression({
++        expression: 'sin(x) * cos(y)',
++        variables: { x: 1.5708, y: 0 }, // Approximate pi/2
++      });
++
++      expect(result.success).toBe(true);
++      expect(parseFloat(result.content || '0')).toBeCloseTo(1, 5);
++    });
 +  });
 +
-+  it('should return only result for evaluateExpression', async () => {
-+    const result = await calculatorExecutor.evaluateExpression({
-+      expression: 'x^2 + 2*x + 1',
-+      variables: { x: 5 },
++  describe('convertBase', () => {
++    it('should handle number input in base conversion', async () => {
++      const result = await calculatorExecutor.convertBase({
++        number: 255,
++        fromBase: 10,
++        toBase: 2,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('11111111');
 +    });
 +
-+    expect(result.success).toBe(true);
-+    expect(result.content).toBe('36');
-+    expect(result.state?.result).toBe('36');
++    it('should handle string input in base conversion', async () => {
++      const result = await calculatorExecutor.convertBase({
++        number: '255',
++        fromBase: 10,
++        toBase: 2,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('11111111');
++    });
++
++    it('should handle zero in base conversion', async () => {
++      const result = await calculatorExecutor.convertBase({
++        number: '0',
++        fromBase: 10,
++        toBase: 16,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('0');
++    });
++
++    it('should handle large numbers', async () => {
++      const result = await calculatorExecutor.convertBase({
++        number: '4294967295',
++        fromBase: 10,
++        toBase: 16,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('FFFFFFFF');
++    });
++
++    it('should handle base 36 conversion', async () => {
++      const result = await calculatorExecutor.convertBase({
++        number: '123456789',
++        fromBase: 10,
++        toBase: 36,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('21I3V9');
++    });
++
++    it('should handle invalid base error', async () => {
++      const result = await calculatorExecutor.convertBase({
++        number: '123',
++        fromBase: 1, // Invalid base
++        toBase: 10,
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('ConversionError');
++      expect(result.error?.message).toContain('Base must be between 2 and 36');
++    });
++
++    it('should handle invalid digit error', async () => {
++      const result = await calculatorExecutor.convertBase({
++        number: 'G', // Invalid digit for hex
++        fromBase: 16,
++        toBase: 10,
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('ConversionError');
++      expect(result.error?.message).toContain('Invalid digit');
++    });
++
++    it('should handle decimal input with parseInt behavior', async () => {
++      const result = await calculatorExecutor.convertBase({
++        number: '15.5',
++        fromBase: 10,
++        toBase: 2,
++      });
++
++      // parseInt will only handle integer part, decimal part is ignored
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('1111');
++    });
 +  });
 +
-+  it('should handle precision in calculate', async () => {
-+    const result = await calculatorExecutor.calculate({
-+      expression: '10 / 3',
-+      precision: 2,
++  describe('error handling', () => {
++    it('should handle division by zero', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: '1 / 0',
++      });
++
++      // mathjs handles division by zero as Infinity
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('Infinity');
 +    });
 +
-+    expect(result.success).toBe(true);
-+    expect(result.content).toBe('3.33');
-+  });
++    it('should handle expression evaluation errors gracefully', async () => {
++      const result = await calculatorExecutor.evaluateExpression({
++        expression: 'x ^^^^^ y',
++        variables: { x: 1, y: 2 },
++      });
 +
-+  it('should handle complex expressions', async () => {
-+    const result = await calculatorExecutor.calculate({
-+      expression: 'sqrt(16)',
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('CalculationError');
 +    });
 +
-+    expect(result.success).toBe(true);
-+    expect(result.content).toBe('4');
++    it('should preserve state information on errors', async () => {
++      const result = await calculatorExecutor.calculate({
++        expression: 'invalid',
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.content).toContain('Calculation error');
++      expect(result.error?.message).toBeDefined();
++    });
 +  });
 +});
 diff --git a/packages/builtin-tool-calculator/src/client/index.ts b/packages/builtin-tool-calculator/src/client/index.ts
@@ -256,10 +507,10 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..3ab5ae747e54e
+index 0000000000000..6b8ee73776049
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,256 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { all, create } from 'mathjs';
 +
@@ -364,6 +615,9 @@ index 0000000000000..3ab5ae747e54e
 +    // Validate that the number contains only valid characters for the base
 +    const validChars = new Set('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, sourceBase));
 +    for (const char of trimmed.toUpperCase()) {
++      // Allow decimal points for parseInt compatibility (parseInt ignores decimal part)
++      if (char === '.') continue;
++
 +      if (!validChars.has(char)) {
 +        throw new Error(`Invalid digit '${char}' for base ${sourceBase}`);
 +      }
@@ -632,28 +886,28 @@ index 0000000000000..2ea1a3c717781
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..67148426ef36d
+index 0000000000000..5533dea81af57
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,62 @@
 +export const systemPrompt = `You have access to a Calculator tool powered by mathjs, capable of comprehensive mathematical computations and base conversions.
 +
 +<core_capabilities>
 +1. **calculate**: Perform mathematical expressions and calculations (arithmetic, functions, matrices, complex numbers, units, etc.)
 +2. **evaluateExpression**: Evaluate complex mathematical expressions with variable substitution
-+3. **convertBase**: Convert numbers between different number bases (binary, octal, decimal, hexadecimal)
++3. **convertBase**: Convert numbers between different number bases (supports bases 2-36)
 +</core_capabilities>
 +
 +<workflow>
 +1. Analyze the user's mathematical or conversion needs
 +2. Select the appropriate tool based on the request type
 +3. Execute the calculation or conversion with proper parameters
-+4. Present clear, accurate results with appropriate formatting
++4. Present clean, direct results without showing the original input
 +</workflow>
 +
 +<tool_selection_guidelines>
 +- **calculate**: Use for direct mathematical calculations, expressions, and unit conversions
-+  - Examples: "2 + 3 * 4", "sqrt(16)", "sin(30°)", "5 cm to inch"
++  - Examples: "2 + 3 * 4", "sqrt(16)", "sin(30 deg)", "5 cm to inch"
 +  - Supports: arithmetic, functions, matrices, complex numbers, units, symbolic calculations
 +  
 +- **evaluateExpression**: Use for complex expressions requiring variable substitution
@@ -661,9 +915,9 @@ index 0000000000000..67148426ef36d
 +  - Provide variables object with key-value pairs for substitution
 +  
 +- **convertBase**: Use for number base conversions
-+  - Requires explicit source and target bases: 'binary', 'octal', 'decimal', 'hexadecimal'
-+  - Supports prefixes in input: 0b (binary), 0o (octal), 0x (hexadecimal)
-+  - Examples: convert "1010" from binary to decimal, convert "255" from decimal to hexadecimal
++  - Requires numeric base values (2-36) for both fromBase and toBase parameters
++  - Supports both string and number inputs for the number parameter
++  - Examples: convert "1010" from base 2 to base 10, convert "255" from base 10 to base 16, convert "Z" from base 36 to base 10
 +</tool_selection_guidelines>
 +
 +<supported_operations>
@@ -671,13 +925,13 @@ index 0000000000000..67148426ef36d
 +**Mathematical Functions**: sqrt, sin, cos, tan, log, exp, abs, round, floor, ceil
 +**Advanced Operations**: matrices, complex numbers, derivatives, integrals, statistics
 +**Unit Conversions**: "5 cm to inch", "100 kg to lb", "25°C to °F"
-+**Base Conversions**: Binary ↔ Octal ↔ Decimal ↔ Hexadecimal
++**Base Conversions**: Support for all bases from 2 to 36 (binary, octal, decimal, hexadecimal, and custom bases)
 +</supported_operations>
 +
 +<formatting_guidelines>
-+- Use proper mathematical notation and clear formatting
-+- For unit conversions, show both original and converted units
-+- For base conversions, display with appropriate prefixes (0b, 0o, 0x)
++- Return only the result value without showing the original expression or input
++- For unit conversions, return only the converted value with units
++- For base conversions, return only the converted number in the target base
 +- Provide intermediate steps when helpful for complex calculations
 +- Use precision parameter when specified for decimal places
 +</formatting_guidelines>
@@ -685,8 +939,9 @@ index 0000000000000..67148426ef36d
 +<error_handling>
 +- If expressions are invalid, explain the specific error clearly
 +- For undefined operations, suggest alternatives or clarify requirements
-+- When variables are missing from evaluateExpression, request the missing values
-+- For base conversion errors, verify the source base matches the input format
++- When variables are missing from evaluateExpression, the operation will fail
++- For base conversion errors, verify the base values are between 2-36 and the number contains valid digits
++- Handle decimal points gracefully in base conversion inputs
 +</error_handling>
 +
 +<best_practices>
@@ -695,6 +950,7 @@ index 0000000000000..67148426ef36d
 +- For large calculations, consider breaking them into smaller steps
 +- Always verify results make sense in the given context
 +- Provide exact decimal values when precision is specified
++- For base conversions, use numeric values instead of string names (e.g., 2 instead of "binary")
 +</best_practices>`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
