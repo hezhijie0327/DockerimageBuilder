@@ -1,0 +1,497 @@
+diff --git a/package.json b/package.json
+index 428f8d89e4c00..8c2d2e51b61eb 100644
+--- a/package.json
++++ b/package.json
+@@ -166,6 +166,7 @@
+     "@lobechat/agent-runtime": "workspace:*",
+     "@lobechat/builtin-agents": "workspace:*",
+     "@lobechat/builtin-tool-agent-builder": "workspace:*",
++    "@lobechat/builtin-tool-calculator": "workspace:*",
+     "@lobechat/builtin-tool-cloud-sandbox": "workspace:*",
+     "@lobechat/builtin-tool-group-agent-builder": "workspace:*",
+     "@lobechat/builtin-tool-group-management": "workspace:*",
+diff --git a/packages/builtin-tool-calculator/package.json b/packages/builtin-tool-calculator/package.json
+new file mode 100644
+index 0000000000000..64ea6ea2f7ce7
+--- /dev/null
++++ b/packages/builtin-tool-calculator/package.json
+@@ -0,0 +1,25 @@
++{
++  "name": "@lobechat/builtin-tool-calculator",
++  "version": "1.0.0",
++  "private": true,
++  "exports": {
++    ".": "./src/index.ts",
++    "./client": "./src/client/index.ts",
++    "./executor": "./src/executor/index.ts"
++  },
++  "main": "./src/index.ts",
++  "dependencies": {
++    "@lobechat/prompts": "workspace:*",
++    "mathjs": "^12.4.3"
++  },
++  "devDependencies": {
++    "@lobechat/types": "workspace:*"
++  },
++  "peerDependencies": {
++    "@lobehub/ui": "^4",
++    "antd-style": "*",
++    "lucide-react": "*",
++    "react": "*",
++    "react-i18next": "*"
++  }
++}
+diff --git a/packages/builtin-tool-calculator/src/client/index.ts b/packages/builtin-tool-calculator/src/client/index.ts
+new file mode 100644
+index 0000000000000..2861ba06d85d3
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/client/index.ts
+@@ -0,0 +1,5 @@
++// Client-side exports for the Calculator tool
++
++export { CalculatorManifest } from '../manifest';
++export { calculatorExecutor } from '../executor';
++export * from '../types';
+\ No newline at end of file
+diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
+new file mode 100644
+index 0000000000000..8c6e47aed38fb
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/executor/index.ts
+@@ -0,0 +1,177 @@
++import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
++import { all, create } from 'mathjs';
++
++import { CalculatorIdentifier } from '../manifest';
++import { type CalculateParams, CalculatorApiName, type EvaluateExpressionParams } from '../types';
++
++// Create a mathjs instance with all functions
++const math = create(all);
++
++/**
++ * Calculator Tool Executor
++ *
++ * Handles mathematical calculations and expression evaluations using mathjs library.
++ */
++class CalculatorExecutor
++  extends BaseExecutor<typeof CalculatorApiName>
++  implements IBuiltinToolExecutor
++{
++  readonly identifier = CalculatorIdentifier;
++  protected readonly apiEnum = CalculatorApiName;
++
++  /**
++   * Safely evaluate a mathematical expression using mathjs
++   */
++  private evaluateMathExpression(expression: string, variables: Record<string, number> = {}): any {
++    try {
++      // Parse the expression with mathjs
++      const node = math.parse(expression);
++
++      // Compile and evaluate with variables
++      const compiled = node.compile();
++      const result = compiled.evaluate(variables);
++
++      return result;
++    } catch (error) {
++      throw new Error(
++        `Failed to evaluate expression: ${error instanceof Error ? error.message : 'Unknown error'}`,
++      );
++    }
++  }
++
++  /**
++   * Format result based on type and precision
++   */
++  private formatResult(result: any, precision?: number): string {
++    if (typeof result === 'number') {
++      if (precision !== undefined) {
++        return result.toFixed(precision);
++      }
++      return result.toString();
++    }
++
++    if (typeof result === 'bigint') {
++      return result.toString();
++    }
++
++    if (typeof result === 'string') {
++      return result;
++    }
++
++    // Handle complex numbers, matrices, etc.
++    return math.format(result, { precision: precision || 10 });
++  }
++
++  /**
++   * Format expression with variables for display
++   */
++  private formatExpression(expression: string, variables: Record<string, number>): string {
++    if (Object.keys(variables).length === 0) {
++      return expression;
++    }
++
++    const varStr = Object.entries(variables)
++      .map(([key, value]) => `${key} = ${value}`)
++      .join(', ');
++    return `${expression} (where ${varStr})`;
++  }
++
++  /**
++   * Calculate a mathematical expression
++   */
++  calculate = async (params: CalculateParams): Promise<BuiltinToolResult> => {
++    try {
++      const result = this.evaluateMathExpression(params.expression);
++
++      if (result === undefined) {
++        return {
++          content: `Cannot evaluate expression: "${params.expression}"`,
++          error: {
++            message: 'Expression resulted in undefined',
++            type: 'ValidationError',
++          },
++          success: false,
++        };
++      }
++
++      const formattedResult = this.formatResult(result, params.precision);
++
++      return {
++        content: `${params.expression} = ${formattedResult}`,
++        state: {
++          expression: params.expression,
++          precision: params.precision,
++          result: formattedResult,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Calculation error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'CalculationError',
++        },
++        success: false,
++      };
++    }
++  };
++
++  /**
++   * Evaluate a complex mathematical expression with variables
++   */
++  evaluateExpression = async (params: EvaluateExpressionParams): Promise<BuiltinToolResult> => {
++    try {
++      const variables = params.variables || {};
++      const result = this.evaluateMathExpression(params.expression, variables);
++
++      if (result === undefined) {
++        return {
++          content: `Cannot evaluate expression: "${params.expression}"`,
++          error: {
++            message: 'Expression resulted in undefined',
++            type: 'ValidationError',
++          },
++          success: false,
++        };
++      }
++
++      const formattedResult = this.formatResult(result, params.precision);
++      const expressionDisplay = this.formatExpression(params.expression, variables);
++
++      return {
++        content: `${expressionDisplay} = ${formattedResult}`,
++        state: {
++          expression: params.expression,
++          precision: params.precision,
++          result: formattedResult,
++          variables,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Expression evaluation error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'CalculationError',
++        },
++        success: false,
++      };
++    }
++  };
++
++  // Implement required interface methods
++  getApiNames(): string[] {
++    return Object.values(this.apiEnum) as string[];
++  }
++
++  hasApi(apiName: string): boolean {
++    return (Object.values(this.apiEnum) as string[]).includes(apiName);
++  }
++}
++
++// Export the executor instance for registration
++export const calculatorExecutor = new CalculatorExecutor();
+diff --git a/packages/builtin-tool-calculator/src/index.ts b/packages/builtin-tool-calculator/src/index.ts
+new file mode 100644
+index 0000000000000..9ebf15ce4f24b
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/index.ts
+@@ -0,0 +1,10 @@
++export { CalculatorManifest, CalculatorIdentifier } from './manifest';
++export { systemPrompt } from './systemRole';
++export {
++  CalculatorApiName,
++  type CalculatorApiNameType,
++  type CalculateParams,
++  type CalculateState,
++  type EvaluateExpressionParams,
++  type EvaluateExpressionState,
++} from './types';
+diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
+new file mode 100644
+index 0000000000000..ee064765b5cf6
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/manifest.ts
+@@ -0,0 +1,69 @@
++import type { BuiltinToolManifest } from '@lobechat/types';
++
++import { systemPrompt } from './systemRole';
++import { CalculatorApiName } from './types';
++
++export const CalculatorIdentifier = 'lobe-calculator';
++
++export const CalculatorManifest: BuiltinToolManifest = {
++  api: [
++    {
++      description:
++        'Calculate the result of a mathematical expression. Powered by mathjs library supporting comprehensive math functions, matrices, complex numbers, units, and symbolic calculations.',
++      name: CalculatorApiName.calculate,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          expression: {
++            description:
++              'Mathematical expression to calculate (e.g., "2 + 3 * 4", "sqrt(16)", "sin(30°)", "det([[1,2],[3,4]])", "5 cm to inch")',
++            type: 'string',
++          },
++          precision: {
++            description: 'Number of decimal places for the result (optional, defaults to 10)',
++            maximum: 20,
++            minimum: 0,
++            type: 'number',
++          },
++        },
++        required: ['expression'],
++        type: 'object',
++      },
++    },
++    {
++      description:
++        'Evaluate a complex mathematical expression with variable support. Powered by mathjs supporting algebraic expressions, symbolic calculations, matrices, and advanced mathematical operations.',
++      name: CalculatorApiName.evaluateExpression,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          expression: {
++            description:
++              'Mathematical expression to evaluate (e.g., "x^2 + 2*x + 1", "det([[a,b],[c,d]])", "sqrt(a^2 + b^2)")',
++            type: 'string',
++          },
++          precision: {
++            description: 'Number of decimal places for the result (optional, defaults to 10)',
++            maximum: 20,
++            minimum: 0,
++            type: 'number',
++          },
++          variables: {
++            description:
++              'Key-value pairs of variables to substitute in the expression (e.g., {"x": 5, "r": 3})',
++            type: 'object',
++          },
++        },
++        required: ['expression'],
++        type: 'object',
++      },
++    },
++  ],
++  identifier: CalculatorIdentifier,
++  meta: {
++    avatar: '🧮',
++    title: 'Calculator',
++  },
++  systemRole: systemPrompt,
++  type: 'builtin',
++};
+diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
+new file mode 100644
+index 0000000000000..70ff16f3fb35a
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/systemRole.ts
+@@ -0,0 +1,2 @@
++export const systemPrompt =
++  'You are an advanced Calculator tool powered by mathjs, capable of comprehensive mathematical computations. You can handle basic arithmetic, advanced functions, matrices, complex numbers, symbolic calculations, units conversion, and algebraic manipulations. Support variable substitution and provide detailed, accurate results for complex mathematical problems.';
+diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
+new file mode 100644
+index 0000000000000..86a396024e9b2
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/types.ts
+@@ -0,0 +1,34 @@
++export const CalculatorIdentifier = 'lobe-calculator';
++
++export const CalculatorApiName = {
++  calculate: 'calculate',
++  evaluateExpression: 'evaluateExpression',
++} as const;
++
++export type CalculatorApiNameType = (typeof CalculatorApiName)[keyof typeof CalculatorApiName];
++
++// Calculate API
++export interface CalculateParams {
++  expression: string;
++  precision?: number;
++}
++
++export interface CalculateState {
++  result?: number | string;
++  expression?: string;
++  precision?: number;
++}
++
++// Evaluate Expression API (for more complex mathematical expressions)
++export interface EvaluateExpressionParams {
++  expression: string;
++  variables?: Record<string, number>;
++  precision?: number;
++}
++
++export interface EvaluateExpressionState {
++  result?: number | string;
++  expression?: string;
++  variables?: Record<string, number>;
++  precision?: number;
++}
+\ No newline at end of file
+diff --git a/src/store/tool/slices/builtin/executors/index.ts b/src/store/tool/slices/builtin/executors/index.ts
+index a53a4cc55d5d3..f17dce883ae31 100644
+--- a/src/store/tool/slices/builtin/executors/index.ts
++++ b/src/store/tool/slices/builtin/executors/index.ts
+@@ -5,6 +5,7 @@
+  * Executors are registered as class instances by identifier.
+  */
+ import { agentBuilderExecutor } from '@lobechat/builtin-tool-agent-builder/executor';
++import { calculatorExecutor } from '@lobechat/builtin-tool-calculator/executor';
+ import { cloudSandboxExecutor } from '@lobechat/builtin-tool-cloud-sandbox/executor';
+ import { groupAgentBuilderExecutor } from '@lobechat/builtin-tool-group-agent-builder/executor';
+ import { groupManagementExecutor } from '@lobechat/builtin-tool-group-management/executor';
+@@ -121,6 +122,7 @@ const registerExecutors = (executors: IBuiltinToolExecutor[]): void => {
+ // Register all executor instances
+ registerExecutors([
+   agentBuilderExecutor,
++  calculatorExecutor,
+   cloudSandboxExecutor,
+   groupAgentBuilderExecutor,
+   groupManagementExecutor,
+diff --git a/src/tools/identifiers.ts b/src/tools/identifiers.ts
+index 5cb29434ed305..555f0d3ae84d2 100644
+--- a/src/tools/identifiers.ts
++++ b/src/tools/identifiers.ts
+@@ -1,4 +1,5 @@
+ import { AgentBuilderManifest } from '@lobechat/builtin-tool-agent-builder';
++import { CalculatorManifest } from '@lobechat/builtin-tool-calculator';
+ import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
+ import { GroupAgentBuilderManifest } from '@lobechat/builtin-tool-group-agent-builder';
+ import { GroupManagementManifest } from '@lobechat/builtin-tool-group-management';
+@@ -15,6 +16,7 @@ import { ArtifactsManifest } from './artifacts';
+ export const builtinToolIdentifiers: string[] = [
+   AgentBuilderManifest.identifier,
+   ArtifactsManifest.identifier,
++  CalculatorManifest.identifier,
+   LocalSystemManifest.identifier,
+   WebBrowsingManifest.identifier,
+   KnowledgeBaseManifest.identifier,
+diff --git a/src/tools/index.ts b/src/tools/index.ts
+index 776e35de63beb..13eebc28cd29e 100644
+--- a/src/tools/index.ts
++++ b/src/tools/index.ts
+@@ -1,4 +1,5 @@
+ import { AgentBuilderManifest } from '@lobechat/builtin-tool-agent-builder';
++import { CalculatorManifest } from '@lobechat/builtin-tool-calculator';
+ import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
+ import { GroupAgentBuilderManifest } from '@lobechat/builtin-tool-group-agent-builder';
+ import { GroupManagementManifest } from '@lobechat/builtin-tool-group-management';
+@@ -20,6 +21,11 @@ export const builtinTools: LobeBuiltinTool[] = [
+     manifest: ArtifactsManifest,
+     type: 'builtin',
+   },
++  {
++    identifier: CalculatorManifest.identifier,
++    manifest: CalculatorManifest,
++    type: 'builtin',
++  },
+   {
+     hidden: !isDesktop,
+     identifier: LocalSystemManifest.identifier,
+diff --git a/src/tools/inspectors.ts b/src/tools/inspectors.ts
+index b4947fcf6d358..97660b3c748a5 100644
+--- a/src/tools/inspectors.ts
++++ b/src/tools/inspectors.ts
+@@ -2,6 +2,7 @@ import {
+   AgentBuilderInspectors,
+   AgentBuilderManifest,
+ } from '@lobechat/builtin-tool-agent-builder/client';
++import { CalculatorManifest } from '@lobechat/builtin-tool-calculator';
+ import {
+   CloudSandboxIdentifier,
+   CloudSandboxInspectors,
+@@ -41,6 +42,7 @@ import { type BuiltinInspector } from '@lobechat/types';
+  */
+ const BuiltinToolInspectors: Record<string, Record<string, BuiltinInspector>> = {
+   [AgentBuilderManifest.identifier]: AgentBuilderInspectors as Record<string, BuiltinInspector>,
++  [CalculatorManifest.identifier]: {} as Record<string, BuiltinInspector>,
+   [CloudSandboxIdentifier]: CloudSandboxInspectors as Record<string, BuiltinInspector>,
+   [GroupAgentBuilderManifest.identifier]: GroupAgentBuilderInspectors as Record<
+     string,
+diff --git a/src/tools/renders.ts b/src/tools/renders.ts
+index 782875c94ef1a..8297406bed01f 100644
+--- a/src/tools/renders.ts
++++ b/src/tools/renders.ts
+@@ -1,5 +1,6 @@
+ import { AgentBuilderManifest } from '@lobechat/builtin-tool-agent-builder';
+ import { AgentBuilderRenders } from '@lobechat/builtin-tool-agent-builder/client';
++import { CalculatorManifest } from '@lobechat/builtin-tool-calculator';
+ import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
+ import { CloudSandboxRenders } from '@lobechat/builtin-tool-cloud-sandbox/client';
+ import { GroupAgentBuilderManifest } from '@lobechat/builtin-tool-group-agent-builder';
+@@ -29,6 +30,7 @@ import { type BuiltinRender } from '@lobechat/types';
+  */
+ const BuiltinToolsRenders: Record<string, Record<string, BuiltinRender>> = {
+   [AgentBuilderManifest.identifier]: AgentBuilderRenders as Record<string, BuiltinRender>,
++  [CalculatorManifest.identifier]: {} as Record<string, BuiltinRender>,
+   [CloudSandboxManifest.identifier]: CloudSandboxRenders as Record<string, BuiltinRender>,
+   [GroupAgentBuilderManifest.identifier]: GroupAgentBuilderRenders as Record<string, BuiltinRender>,
+   [GroupManagementManifest.identifier]: GroupManagementRenders as Record<string, BuiltinRender>,
+diff --git a/src/tools/streamings.ts b/src/tools/streamings.ts
+index 39ffc742746c7..1d0b9f54f0499 100644
+--- a/src/tools/streamings.ts
++++ b/src/tools/streamings.ts
+@@ -2,6 +2,7 @@ import {
+   AgentBuilderManifest,
+   AgentBuilderStreamings,
+ } from '@lobechat/builtin-tool-agent-builder/client';
++import { CalculatorManifest } from '@lobechat/builtin-tool-calculator';
+ import {
+   CloudSandboxManifest,
+   CloudSandboxStreamings,
+@@ -33,6 +34,7 @@ import { type BuiltinStreaming } from '@lobechat/types';
+  */
+ const BuiltinToolStreamings: Record<string, Record<string, BuiltinStreaming>> = {
+   [AgentBuilderManifest.identifier]: AgentBuilderStreamings as Record<string, BuiltinStreaming>,
++  [CalculatorManifest.identifier]: {} as Record<string, BuiltinStreaming>,
+   [CloudSandboxManifest.identifier]: CloudSandboxStreamings as Record<string, BuiltinStreaming>,
+   [GroupAgentBuilderManifest.identifier]: GroupAgentBuilderStreamings as Record<
+     string,
