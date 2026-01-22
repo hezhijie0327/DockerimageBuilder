@@ -43,10 +43,10 @@ index 0000000000000..64ea6ea2f7ce7
 +}
 diff --git a/packages/builtin-tool-calculator/src/base-conversion.test.ts b/packages/builtin-tool-calculator/src/base-conversion.test.ts
 new file mode 100644
-index 0000000000000..cce6f7a057c81
+index 0000000000000..41c223acbabc9
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/base-conversion.test.ts
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,133 @@
 +import { describe, expect, it } from 'vitest';
 +
 +import { calculatorExecutor } from '../src/executor';
@@ -55,72 +55,180 @@ index 0000000000000..cce6f7a057c81
 +  it('should convert binary to decimal', async () => {
 +    const result = await calculatorExecutor.convertBase({
 +      number: '1010',
-+      fromBase: 'binary',
-+      toBase: 'decimal',
++      fromBase: 2,
++      toBase: 10,
 +    });
 +
 +    expect(result.success).toBe(true);
-+    expect(result.content).toBe('1010 (binary) = 10 (decimal)');
++    expect(result.content).toBe('10');
 +    expect(result.state?.decimalValue).toBe(10);
 +  });
 +
 +  it('should convert decimal to binary', async () => {
 +    const result = await calculatorExecutor.convertBase({
 +      number: '255',
-+      fromBase: 'decimal',
-+      toBase: 'binary',
++      fromBase: 10,
++      toBase: 2,
 +    });
 +
 +    expect(result.success).toBe(true);
-+    expect(result.content).toBe('255 (decimal) = 0b11111111 (binary)');
++    expect(result.content).toBe('11111111');
 +    expect(result.state?.decimalValue).toBe(255);
 +  });
 +
 +  it('should convert hexadecimal to octal', async () => {
 +    const result = await calculatorExecutor.convertBase({
 +      number: 'FF',
-+      fromBase: 'hexadecimal',
-+      toBase: 'octal',
++      fromBase: 16,
++      toBase: 8,
 +    });
 +
 +    expect(result.success).toBe(true);
-+    expect(result.content).toBe('FF (hexadecimal) = 0o377 (octal)');
++    expect(result.content).toBe('377');
 +    expect(result.state?.decimalValue).toBe(255);
 +  });
 +
 +  it('should convert octal to hexadecimal', async () => {
 +    const result = await calculatorExecutor.convertBase({
 +      number: '77',
-+      fromBase: 'octal',
-+      toBase: 'hexadecimal',
++      fromBase: 8,
++      toBase: 16,
 +    });
 +
 +    expect(result.success).toBe(true);
-+    expect(result.content).toBe('77 (octal) = 0x3F (hexadecimal)');
++    expect(result.content).toBe('3F');
 +    expect(result.state?.decimalValue).toBe(63);
 +  });
 +
-+  it('should handle numbers with prefixes', async () => {
++  it('should handle hexadecimal input', async () => {
 +    const result = await calculatorExecutor.convertBase({
-+      number: '0xFF',
-+      fromBase: 'hexadecimal',
-+      toBase: 'decimal',
++      number: 'FF',
++      fromBase: 16,
++      toBase: 10,
 +    });
 +
 +    expect(result.success).toBe(true);
-+    expect(result.content).toBe('0xFF (hexadecimal) = 255 (decimal)');
++    expect(result.content).toBe('255');
 +    expect(result.state?.decimalValue).toBe(255);
 +  });
 +
 +  it('should handle invalid numbers', async () => {
 +    const result = await calculatorExecutor.convertBase({
 +      number: '2AB',
-+      fromBase: 'binary',
-+      toBase: 'decimal',
++      fromBase: 2,
++      toBase: 10,
 +    });
 +
 +    expect(result.success).toBe(false);
-+    expect(result.error?.type).toBe('ValidationError');
++    expect(result.error?.type).toBe('ConversionError');
++  });
++
++  it('should support bases 2-36 with numeric input', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: 'Z',
++      fromBase: 36,
++      toBase: 10,
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('35');
++    expect(result.state?.decimalValue).toBe(35);
++  });
++
++  it('should convert decimal to base 32', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: '1000',
++      fromBase: 10,
++      toBase: 32,
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('V8');
++    expect(result.state?.decimalValue).toBe(1000);
++  });
++
++  it('should handle invalid base numbers', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: '123',
++      fromBase: 1,
++      toBase: 10,
++    });
++
++    expect(result.success).toBe(false);
++    expect(result.error?.type).toBe('ConversionError');
++  });
++
++  it('should handle invalid base 37', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: '123',
++      fromBase: 10,
++      toBase: 37,
++    });
++
++    expect(result.success).toBe(false);
++    expect(result.error?.type).toBe('ConversionError');
++  });
++
++  it('should validate digit characters for base', async () => {
++    const result = await calculatorExecutor.convertBase({
++      number: 'G',
++      fromBase: 16,
++      toBase: 10,
++    });
++
++    expect(result.success).toBe(false);
++    expect(result.error?.type).toBe('ConversionError');
++  });
++});
+diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
+new file mode 100644
+index 0000000000000..b3ce6749ddcdb
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/calculate.test.ts
+@@ -0,0 +1,45 @@
++import { describe, expect, it } from 'vitest';
++
++import { calculatorExecutor } from '../src/executor';
++
++describe('Calculator Core Functions', () => {
++  it('should return only result for calculate', async () => {
++    const result = await calculatorExecutor.calculate({
++      expression: '2 + 3 * 4',
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('14');
++    expect(result.state?.result).toBe('14');
++  });
++
++  it('should return only result for evaluateExpression', async () => {
++    const result = await calculatorExecutor.evaluateExpression({
++      expression: 'x^2 + 2*x + 1',
++      variables: { x: 5 },
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('36');
++    expect(result.state?.result).toBe('36');
++  });
++
++  it('should handle precision in calculate', async () => {
++    const result = await calculatorExecutor.calculate({
++      expression: '10 / 3',
++      precision: 2,
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('3.33');
++  });
++
++  it('should handle complex expressions', async () => {
++    const result = await calculatorExecutor.calculate({
++      expression: 'sqrt(16)',
++    });
++
++    expect(result.success).toBe(true);
++    expect(result.content).toBe('4');
 +  });
 +});
 diff --git a/packages/builtin-tool-calculator/src/client/index.ts b/packages/builtin-tool-calculator/src/client/index.ts
@@ -137,10 +245,10 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..30e498b9d2096
+index 0000000000000..54b279e34cd12
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,271 @@
+@@ -0,0 +1,253 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { all, create } from 'mathjs';
 +
@@ -225,23 +333,32 @@ index 0000000000000..30e498b9d2096
 +  }
 +
 +  /**
-+   * Convert number to target base with proper formatting
++   * Convert number to target base with clean formatting
 +   */
-+  private convertToBase(decimalValue: number, targetBase: string): string {
-+    switch (targetBase) {
-+      case 'binary': {
-+        return `0b${decimalValue.toString(2)}`;
-+      }
-+      case 'octal': {
-+        return `0o${decimalValue.toString(8)}`;
-+      }
-+      case 'hexadecimal': {
-+        return `0x${decimalValue.toString(16).toUpperCase()}`;
-+      }
-+      default: {
-+        return decimalValue.toString(10);
++  private convertToBase(decimalValue: number, targetBase: number): string {
++    return decimalValue.toString(targetBase).toUpperCase();
++  }
++
++  /**
++   * Clean and validate input number
++   */
++  private cleanInputNumber(number: string, sourceBase: number): string {
++    const trimmed = number.trim();
++
++    // Validate base range
++    if (sourceBase < 2 || sourceBase > 36) {
++      throw new Error(`Base must be between 2 and 36, got ${sourceBase}`);
++    }
++
++    // Validate that the number contains only valid characters for the base
++    const validChars = new Set('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, sourceBase));
++    for (const char of trimmed.toUpperCase()) {
++      if (!validChars.has(char)) {
++        throw new Error(`Invalid digit '${char}' for base ${sourceBase}`);
 +      }
 +    }
++
++    return trimmed;
 +  }
 +
 +  /**
@@ -265,7 +382,7 @@ index 0000000000000..30e498b9d2096
 +      const formattedResult = this.formatResult(result, params.precision);
 +
 +      return {
-+        content: `${params.expression} = ${formattedResult}`,
++        content: formattedResult,
 +        state: {
 +          expression: params.expression,
 +          precision: params.precision,
@@ -306,10 +423,9 @@ index 0000000000000..30e498b9d2096
 +      }
 +
 +      const formattedResult = this.formatResult(result, params.precision);
-+      const expressionDisplay = this.formatExpression(params.expression, variables);
 +
 +      return {
-+        content: `${expressionDisplay} = ${formattedResult}`,
++        content: formattedResult,
 +        state: {
 +          expression: params.expression,
 +          precision: params.precision,
@@ -332,52 +448,26 @@ index 0000000000000..30e498b9d2096
 +  };
 +
 +  /**
-+   * Convert numbers between different bases
++   * Convert numbers between different bases (supports bases 2-36)
 +   */
 +  convertBase = async (params: ConvertBaseParams): Promise<BuiltinToolResult> => {
 +    try {
 +      const { number, fromBase, toBase } = params;
 +
-+      // Base mapping
-+      const baseMap = { binary: 2, decimal: 10, hexadecimal: 16, octal: 8 };
-+      const sourceBase = baseMap[fromBase];
++      // Clean and validate input number
++      const cleanNumber = this.cleanInputNumber(number, fromBase);
 +
-+      // Clean the number (remove prefixes if present)
-+      const trimmed = number.trim().toLowerCase();
-+      let cleanNumber: string;
-+      if (trimmed.startsWith('0b')) {
-+        cleanNumber = trimmed.slice(2);
-+      } else if (trimmed.startsWith('0o')) {
-+        cleanNumber = trimmed.slice(2);
-+      } else if (trimmed.startsWith('0x')) {
-+        cleanNumber = trimmed.slice(2);
-+      } else {
-+        cleanNumber = trimmed;
-+      }
-+
-+      // Convert to decimal first
-+      let decimalValue: number;
-+      try {
-+        decimalValue = parseInt(cleanNumber, sourceBase);
-+        if (isNaN(decimalValue)) {
-+          throw new Error(`Invalid number "${number}" for base ${sourceBase}`);
-+        }
-+      } catch {
-+        return {
-+          content: `Invalid number format: "${number}" is not a valid ${fromBase} number`,
-+          error: {
-+            message: `Failed to parse "${number}" as ${fromBase}`,
-+            type: 'ValidationError',
-+          },
-+          success: false,
-+        };
++      // Convert to decimal first using optimized parseInt
++      const decimalValue = parseInt(cleanNumber, fromBase);
++      if (isNaN(decimalValue)) {
++        throw new Error(`Invalid number "${number}" for base ${fromBase}`);
 +      }
 +
 +      // Convert to target base
 +      const convertedNumber = this.convertToBase(decimalValue, toBase);
 +
 +      return {
-+        content: `${number} (${fromBase}) = ${convertedNumber} (${toBase})`,
++        content: convertedNumber,
 +        state: {
 +          convertedNumber,
 +          decimalValue,
@@ -597,7 +687,7 @@ index 0000000000000..67148426ef36d
 +</best_practices>`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..292c3a2f49853
+index 0000000000000..fddb2375bbe7d
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
 @@ -0,0 +1,50 @@
@@ -639,9 +729,9 @@ index 0000000000000..292c3a2f49853
 +
 +// Base Conversion API
 +export interface ConvertBaseParams {
-+  fromBase: 'binary' | 'octal' | 'decimal' | 'hexadecimal';
++  fromBase: number;
 +  number: string;
-+  toBase: 'binary' | 'octal' | 'decimal' | 'hexadecimal';
++  toBase: number;
 +}
 +
 +export interface ConvertBaseState {
@@ -650,6 +740,30 @@ index 0000000000000..292c3a2f49853
 +  originalBase?: string;
 +  originalNumber?: string;
 +  targetBase?: string;
++}
+diff --git a/packages/builtin-tool-calculator/tsconfig.json b/packages/builtin-tool-calculator/tsconfig.json
+new file mode 100644
+index 0000000000000..cf07830f64dfc
+--- /dev/null
++++ b/packages/builtin-tool-calculator/tsconfig.json
+@@ -0,0 +1,18 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "module": "ESNext",
++    "moduleResolution": "node",
++    "declaration": true,
++    "outDir": "dist",
++    "rootDir": "src",
++    "strict": true,
++    "skipLibCheck": true,
++    "esModuleInterop": true,
++    "allowSyntheticDefaultImports": true,
++    "forceConsistentCasingInFileNames": true,
++    "resolveJsonModule": true
++  },
++  "exclude": ["node_modules"],
++  "include": ["src/**/*"]
 +}
 diff --git a/src/store/tool/slices/builtin/executors/index.ts b/src/store/tool/slices/builtin/executors/index.ts
 index a53a4cc55d5d3..f17dce883ae31 100644
