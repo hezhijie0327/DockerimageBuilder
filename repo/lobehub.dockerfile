@@ -1,4 +1,4 @@
-# Current Version: 1.8.6
+# Current Version: 1.8.7
 
 ARG NODEJS_VERSION="24"
 
@@ -97,6 +97,7 @@ COPY --from=build_lobehub /deps/node_modules/pg /app/node_modules/pg
 COPY --from=build_lobehub /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
 
 COPY --from=build_lobehub /app/scripts/serverLauncher/startServer.js /app/startServer.js
+COPY --from=build_lobehub /app/scripts/_shared /app/scripts/_shared
 
 FROM scratch
 
