@@ -1,64 +1,1207 @@
 diff --git a/packages/utils/src/server/correctOIDCUrl.test.ts b/packages/utils/src/server/correctOIDCUrl.test.ts
-index 7ca878bd02662..9339d770b1277 100644
+deleted file mode 100644
+index 7ca878bd02662..0000000000000
 --- a/packages/utils/src/server/correctOIDCUrl.test.ts
-+++ b/packages/utils/src/server/correctOIDCUrl.test.ts
-@@ -339,7 +339,7 @@ describe('correctOIDCUrl', () => {
-       const result = correctOIDCUrl(mockRequest, originalUrl);
- 
-       // Should fall back to host header because example.com:8443 doesn't match configured APP_URL
++++ /dev/null
+@@ -1,527 +0,0 @@
+-import { NextRequest } from 'next/server';
+-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-import { correctOIDCUrl } from './correctOIDCUrl';
+-
+-describe('correctOIDCUrl', () => {
+-  let mockRequest: NextRequest;
+-  let originalAppUrl: string | undefined;
+-
+-  beforeEach(() => {
+-    vi.clearAllMocks();
+-    // Store original APP_URL and set default for tests
+-    originalAppUrl = process.env.APP_URL;
+-    process.env.APP_URL = 'https://example.com';
+-
+-    // Create a mock request with a mutable headers property
+-    mockRequest = {
+-      headers: {
+-        get: vi.fn(),
+-      },
+-    } as unknown as NextRequest;
+-  });
+-
+-  afterEach(() => {
+-    // Restore original APP_URL
+-    if (originalAppUrl === undefined) {
+-      delete process.env.APP_URL;
+-    } else {
+-      process.env.APP_URL = originalAppUrl;
+-    }
+-  });
+-
+-  describe('when no forwarded headers are present', () => {
+-    it('should return original URL when host matches and protocol is correct', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('https://example.com/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('https://example.com/auth/callback');
+-      expect(result).toBe(originalUrl); // Should return the same object
+-    });
+-
+-    it('should correct localhost URLs to request host preserving port', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-      expect(result.host).toBe('example.com:3000');
+-      expect(result.hostname).toBe('example.com');
+-      expect(result.port).toBe('3000');
+-      expect(result.protocol).toBe('http:');
+-    });
+-
+-    it('should correct 127.0.0.1 URLs to request host preserving port', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://127.0.0.1:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-      expect(result.host).toBe('example.com:3000');
+-      expect(result.hostname).toBe('example.com');
+-    });
+-
+-    it('should correct 0.0.0.0 URLs to request host preserving port', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://0.0.0.0:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-      expect(result.host).toBe('example.com:3000');
+-      expect(result.hostname).toBe('example.com');
+-    });
+-
+-    it('should correct mismatched hostnames', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('https://different.com/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('https://example.com/auth/callback');
+-      expect(result.host).toBe('example.com');
+-    });
+-
+-    it('should handle request host with port when correcting localhost', () => {
+-      process.env.APP_URL = 'https://example.com:8080';
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com:8080';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('http://example.com:8080/auth/callback');
+-      expect(result.host).toBe('example.com:8080');
+-      expect(result.hostname).toBe('example.com');
+-      expect(result.port).toBe('8080');
+-    });
+-  });
+-
+-  describe('when x-forwarded-host header is present', () => {
+-    it('should use x-forwarded-host over host header', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'internal.com';
+-        if (header === 'x-forwarded-host') return 'proxy.example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('http://proxy.example.com:3000/auth/callback');
+-      expect(result.host).toBe('proxy.example.com:3000');
+-      expect(result.hostname).toBe('proxy.example.com');
+-    });
+-
+-    it('should preserve path and query parameters', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'internal.com';
+-        if (header === 'x-forwarded-host') return 'proxy.example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback?code=123&state=abc');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe(
+-        'http://proxy.example.com:3000/auth/callback?code=123&state=abc',
+-      );
+-      expect(result.pathname).toBe('/auth/callback');
+-      expect(result.search).toBe('?code=123&state=abc');
+-    });
+-  });
+-
+-  describe('when x-forwarded-proto header is present', () => {
+-    it('should use x-forwarded-proto for protocol', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-proto') return 'https';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('https://example.com:3000/auth/callback');
+-      expect(result.protocol).toBe('https:');
+-    });
+-
+-    it('should use x-forwarded-protocol as fallback', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-protocol') return 'https';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('https://example.com:3000/auth/callback');
+-      expect(result.protocol).toBe('https:');
+-    });
+-
+-    it('should prioritize x-forwarded-proto over x-forwarded-protocol', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-proto') return 'https';
+-        if (header === 'x-forwarded-protocol') return 'http';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('https://example.com:3000/auth/callback');
+-      expect(result.protocol).toBe('https:');
+-    });
+-  });
+-
+-  describe('protocol inference when no forwarded protocol', () => {
+-    it('should infer https when original URL uses https', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('https://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('https://example.com:3000/auth/callback');
+-      expect(result.protocol).toBe('https:');
+-    });
+-
+-    it('should default to http when original URL uses http', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-      expect(result.protocol).toBe('http:');
+-    });
+-  });
+-
+-  describe('edge cases', () => {
+-    it('should return original URL when host is null', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return null;
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result).toBe(originalUrl);
+-      expect(result.toString()).toBe('http://localhost:3000/auth/callback');
+-    });
+-
+-    it('should return original URL when host is "null" string', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'null';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result).toBe(originalUrl);
+-      expect(result.toString()).toBe('http://localhost:3000/auth/callback');
+-    });
+-
+-    it('should return original URL when no host header is present', () => {
+-      (mockRequest.headers.get as any).mockImplementation(() => null);
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result).toBe(originalUrl);
+-      expect(result.toString()).toBe('http://localhost:3000/auth/callback');
+-    });
+-
+-    it('should handle URL construction errors gracefully', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL(
+-        'http://localhost:3000/auth/callback?redirect=http://example.com',
+-      );
+-
+-      // Spy on URL constructor to simulate an error on correction
+-      const urlSpy = vi.spyOn(global, 'URL');
+-      urlSpy.mockImplementationOnce((url: string | URL, base?: string | URL) => new URL(url, base)); // First call succeeds (original)
+-      urlSpy.mockImplementationOnce(() => {
+-        throw new Error('Invalid URL');
+-      }); // Second call fails (correction)
+-
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should return original URL when correction fails
+-      expect(result).toBe(originalUrl);
+-      expect(result.toString()).toBe(
+-        'http://localhost:3000/auth/callback?redirect=http://example.com',
+-      );
+-
+-      urlSpy.mockRestore();
+-    });
+-  });
+-
+-  describe('complex scenarios', () => {
+-    it('should handle complete proxy scenario with all headers', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'internal-service:3000';
+-        if (header === 'x-forwarded-host') return 'api.example.com';
+-        if (header === 'x-forwarded-proto') return 'https';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:8080/api/auth/callback?code=xyz&state=def');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe(
+-        'https://api.example.com:8080/api/auth/callback?code=xyz&state=def',
+-      );
+-      expect(result.protocol).toBe('https:');
+-      expect(result.host).toBe('api.example.com:8080');
+-      expect(result.hostname).toBe('api.example.com');
+-      expect(result.pathname).toBe('/api/auth/callback');
+-      expect(result.search).toBe('?code=xyz&state=def');
+-    });
+-
+-    it('should preserve URL hash fragments', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-proto') return 'https';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback#access_token=123');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result.toString()).toBe('https://example.com:3000/auth/callback#access_token=123');
+-      expect(result.hash).toBe('#access_token=123');
+-    });
+-
+-    it('should reject forwarded host with non-standard port for security', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'internal.com:3000';
+-        if (header === 'x-forwarded-host') return 'example.com:8443';
+-        if (header === 'x-forwarded-proto') return 'https';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should fall back to host header because example.com:8443 doesn't match configured APP_URL
 -      expect(result.toString()).toBe('https://internal.com:3000/auth/callback');
-+      expect(result.toString()).toBe('https://example.com:3000/auth/callback');
-     });
- 
-     it('should not need correction when URL hostname matches actual host', () => {
+-    });
+-
+-    it('should not need correction when URL hostname matches actual host', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://example.com/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      expect(result).toBe(originalUrl); // Should return the same object
+-      expect(result.toString()).toBe('http://example.com/auth/callback');
+-    });
+-  });
+-
+-  describe('Open Redirect protection', () => {
+-    it('should prevent redirection to malicious external domains via x-forwarded-host', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-host') return 'malicious.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should fall back to host header and not redirect to malicious.com
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-    });
+-
+-    it('should allow redirection to configured domain (example.com)', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should allow correction to example.com (configured in APP_URL)
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-      expect(result.host).toBe('example.com:3000');
+-    });
+-
+-    it('should allow redirection to subdomains of configured domain', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'api.example.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should allow correction to subdomain of example.com
+-      expect(result.toString()).toBe('http://api.example.com:3000/auth/callback');
+-      expect(result.host).toBe('api.example.com:3000');
+-    });
+-
+-    it('should prevent redirection via x-forwarded-host to malicious domains', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com'; // Trusted internal host
+-        if (header === 'x-forwarded-host') return 'evil.com'; // Malicious forwarded host
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should fall back to request host (example.com) and not redirect to evil.com
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-      expect(result.hostname).not.toBe('evil.com');
+-    });
+-
+-    it('should allow localhost in development environment', () => {
+-      // Set APP_URL to localhost for development testing
+-      process.env.APP_URL = 'http://localhost:3000';
+-
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'localhost:8080';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://127.0.0.1:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should allow correction to localhost in dev environment
+-      expect(result.toString()).toBe('http://localhost:8080/auth/callback');
+-      expect(result.host).toBe('localhost:8080');
+-    });
+-
+-    it('should prevent redirection when APP_URL is not configured', () => {
+-      // Remove APP_URL to simulate missing configuration
+-      delete process.env.APP_URL;
+-
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-host') return 'any-domain.com';
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should fall back to host header when APP_URL is not configured and forwarded host is present
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-    });
+-
+-    it('should handle domains that look like subdomains but are not', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-host') return 'fakeexample.com'; // Not a subdomain of example.com
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should fall back to host header
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-    });
+-
+-    it('should reject invalid forwarded protocol', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-host') return 'example.com';
+-        if (header === 'x-forwarded-proto') return 'javascript'; // Invalid protocol
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should fall back to http protocol from URL
+-      expect(result.protocol).toBe('http:');
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-    });
+-
+-    it('should handle uppercase in forwarded protocol', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-host') return 'example.com';
+-        if (header === 'x-forwarded-proto') return 'HTTPS'; // Uppercase
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should normalize to lowercase
+-      expect(result.protocol).toBe('https:');
+-      expect(result.toString()).toBe('https://example.com:3000/auth/callback');
+-    });
+-
+-    it('should handle multiple hosts in x-forwarded-host', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'internal.com';
+-        if (header === 'x-forwarded-host') return 'example.com,attacker.com'; // Multiple hosts
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should use the first (leftmost) host
+-      expect(result.hostname).toBe('example.com');
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-    });
+-
+-    it('should fall back to request host when forwarded host is invalid', () => {
+-      (mockRequest.headers.get as any).mockImplementation((header: string) => {
+-        if (header === 'host') return 'example.com';
+-        if (header === 'x-forwarded-host') return 'evil.com'; // Invalid
+-        return null;
+-      });
+-
+-      const originalUrl = new URL('http://localhost:3000/auth/callback');
+-      const result = correctOIDCUrl(mockRequest, originalUrl);
+-
+-      // Should fall back to request host
+-      expect(result.hostname).toBe('example.com');
+-      expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+-    });
+-  });
+-});
 diff --git a/packages/utils/src/server/correctOIDCUrl.ts b/packages/utils/src/server/correctOIDCUrl.ts
-index 6e577aecfa748..53d07baf82539 100644
+deleted file mode 100644
+index 6e577aecfa748..0000000000000
 --- a/packages/utils/src/server/correctOIDCUrl.ts
-+++ b/packages/utils/src/server/correctOIDCUrl.ts
-@@ -69,6 +69,32 @@ export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
-     actualProto = url.protocol === 'https:' ? 'https' : 'http';
-   }
- 
-+  // Handle port conflicts with APP_URL before validation
-+  let hostForValidation = actualHost;
-+  if (forwardedHost) {
-+    try {
-+      const appUrl = process.env.APP_URL;
-+      if (appUrl) {
-+        const appUrlObj = new URL(appUrl);
-+        const forwardedUrlObj = new URL(`${actualProto}://${forwardedHost.split(',')[0]!.trim()}`);
-+
-+        // If forwarded host includes port but APP_URL doesn't, strip port for validation and final URL
-+        if (forwardedUrlObj.port && !appUrlObj.port) {
-+          hostForValidation = forwardedUrlObj.hostname;
-+          actualHost = hostForValidation; // Use hostname without port for final URL
-+          log(
-+            'Stripping port from forwarded host for APP_URL compatibility: %s -> %s',
-+            forwardedHost.split(',')[0]!.trim(),
-+            hostForValidation,
-+          );
-+        }
-+      }
-+    } catch (error) {
-+      log('Error processing port compatibility: %O', error);
-+      // Fall back to original host
-+    }
-+  }
-+
-   // If unable to determine valid hostname, return original URL
-   if (!actualHost || actualHost === 'null') {
-     log('Warning: Cannot determine valid host, returning original URL');
-@@ -77,8 +103,11 @@ export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
- 
-   // Validate only X-Forwarded-Host for security, prevent Open Redirect attacks
-   // Host header is trusted (comes from reverse proxy or direct access)
++++ /dev/null
+@@ -1,134 +0,0 @@
+-import debug from 'debug';
+-import { NextRequest } from 'next/server';
+-
+-import { validateRedirectHost } from './validateRedirectHost';
+-
+-const log = debug('lobe-oidc:correctOIDCUrl');
+-
+-// Allowed protocols for security
+-const ALLOWED_PROTOCOLS = ['http', 'https'] as const;
+-
+-/**
+- * Fix OIDC redirect URL issues in proxy environments
+- *
+- * This function:
+- * 1. Validates protocol against whitelist (http, https only)
+- * 2. Handles X-Forwarded-Host with multiple values (RFC 7239)
+- * 3. Validates X-Forwarded-Host against APP_URL to prevent open redirect attacks
+- * 4. Provides fallback logic for invalid forwarded values
+- *
+- * Note: Only X-Forwarded-Host is validated, not the Host header. This is because:
+- * - X-Forwarded-Host can be injected by attackers
+- * - Host header comes from the reverse proxy or direct access, which is trusted
+- *
+- * @param req - Next.js request object
+- * @param url - URL object to fix
+- * @returns Fixed URL object
+- */
+-export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
+-  log('Input URL: %s', url.toString());
+-
+-  // Get request headers for origin determination
+-  const requestHost = req.headers.get('host');
+-  const forwardedHost = req.headers.get('x-forwarded-host');
+-  const forwardedProto =
+-    req.headers.get('x-forwarded-proto') || req.headers.get('x-forwarded-protocol');
+-
+-  log(
+-    'Getting safe origin - requestHost: %s, forwardedHost: %s, forwardedProto: %s',
+-    requestHost,
+-    forwardedHost,
+-    forwardedProto,
+-  );
+-
+-  // Determine actual hostname with fallback values
+-  // Handle multiple hosts in X-Forwarded-Host (RFC 7239: comma-separated)
+-  let actualHost = forwardedHost || requestHost;
+-  if (forwardedHost && forwardedHost.includes(',')) {
+-    // Take the first (leftmost) host as the original client's request
+-    actualHost = forwardedHost.split(',')[0]!.trim();
+-    log('Multiple hosts in X-Forwarded-Host, using first: %s', actualHost);
+-  }
+-
+-  // Determine actual protocol with validation
+-  // Use URL's protocol as fallback to preserve original behavior
+-  let actualProto: string | null | undefined = forwardedProto;
+-  if (actualProto) {
+-    // Validate protocol is http or https
+-    const protoLower = actualProto.toLowerCase();
+-    if (!ALLOWED_PROTOCOLS.includes(protoLower as any)) {
+-      log('Warning: Invalid protocol %s, ignoring', actualProto);
+-      actualProto = null;
+-    } else {
+-      actualProto = protoLower;
+-    }
+-  }
+-
+-  // Fallback protocol priority: URL protocol > request.nextUrl.protocol > 'https'
+-  if (!actualProto) {
+-    actualProto = url.protocol === 'https:' ? 'https' : 'http';
+-  }
+-
+-  // If unable to determine valid hostname, return original URL
+-  if (!actualHost || actualHost === 'null') {
+-    log('Warning: Cannot determine valid host, returning original URL');
+-    return url;
+-  }
+-
+-  // Validate only X-Forwarded-Host for security, prevent Open Redirect attacks
+-  // Host header is trusted (comes from reverse proxy or direct access)
 -  if (forwardedHost && !validateRedirectHost(actualHost)) {
 -    log('Warning: X-Forwarded-Host %s failed validation, falling back to request host', actualHost);
-+  if (forwardedHost && hostForValidation && !validateRedirectHost(hostForValidation)) {
-+    log(
-+      'Warning: X-Forwarded-Host %s failed validation, falling back to request host',
-+      hostForValidation,
-+    );
-     // Try to fall back to request host if forwarded host is invalid
-     if (requestHost) {
-       actualHost = requestHost;
+-    // Try to fall back to request host if forwarded host is invalid
+-    if (requestHost) {
+-      actualHost = requestHost;
+-    } else {
+-      // No valid host available
+-      log('Error: No valid host available after validation, returning original URL');
+-      return url;
+-    }
+-  }
+-
+-  // Build safe origin
+-  const safeOrigin = `${actualProto}://${actualHost}`;
+-  log('Safe origin: %s', safeOrigin);
+-
+-  // Parse safe origin to get hostname and protocol
+-  let safeOriginUrl: URL;
+-  try {
+-    safeOriginUrl = new URL(safeOrigin);
+-  } catch (error) {
+-    log('Error parsing safe origin: %O', error);
+-    return url;
+-  }
+-
+-  // Correct URL if it points to localhost or hostname doesn't match actual request host
+-  const needsCorrection =
+-    url.hostname === 'localhost' ||
+-    url.hostname === '127.0.0.1' ||
+-    url.hostname === '0.0.0.0' ||
+-    url.hostname !== safeOriginUrl.hostname;
+-
+-  if (!needsCorrection) {
+-    log('URL does not need correction, returning original: %s', url.toString());
+-    return url;
+-  }
+-
+-  log(
+-    'URL needs correction. Original hostname: %s, correcting to: %s',
+-    url.hostname,
+-    safeOriginUrl.hostname,
+-  );
+-
+-  try {
+-    const correctedUrl = new URL(url.toString());
+-    correctedUrl.protocol = safeOriginUrl.protocol;
+-    correctedUrl.host = safeOriginUrl.host;
+-
+-    log('Corrected URL: %s', correctedUrl.toString());
+-    return correctedUrl;
+-  } catch (error) {
+-    log('Error creating corrected URL, returning original: %O', error);
+-    return url;
+-  }
+-};
+diff --git a/packages/utils/src/server/index.ts b/packages/utils/src/server/index.ts
+index 603433fc66890..daf1e7a650ede 100644
+--- a/packages/utils/src/server/index.ts
++++ b/packages/utils/src/server/index.ts
+@@ -1,7 +1,5 @@
+ export * from './auth';
+-export * from './correctOIDCUrl';
+ export * from './response';
+ export * from './responsive';
+ export * from './sse';
+-export * from './validateRedirectHost';
+ export * from './xor';
+diff --git a/packages/utils/src/server/validateRedirectHost.test.ts b/packages/utils/src/server/validateRedirectHost.test.ts
+deleted file mode 100644
+index 10aababf7ff00..0000000000000
+--- a/packages/utils/src/server/validateRedirectHost.test.ts
++++ /dev/null
+@@ -1,352 +0,0 @@
+-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-import { validateRedirectHost } from './validateRedirectHost';
+-
+-describe('validateRedirectHost', () => {
+-  let originalAppUrl: string | undefined;
+-
+-  beforeEach(() => {
+-    vi.clearAllMocks();
+-    // Store original APP_URL and set default for tests
+-    originalAppUrl = process.env.APP_URL;
+-    process.env.APP_URL = 'https://example.com';
+-  });
+-
+-  afterEach(() => {
+-    // Restore original APP_URL
+-    if (originalAppUrl === undefined) {
+-      delete process.env.APP_URL;
+-    } else {
+-      process.env.APP_URL = originalAppUrl;
+-    }
+-  });
+-
+-  describe('invalid inputs', () => {
+-    it('should return false when targetHost is empty string', () => {
+-      const result = validateRedirectHost('');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should return false when targetHost is "null" string', () => {
+-      const result = validateRedirectHost('null');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should return false when APP_URL is not configured', () => {
+-      delete process.env.APP_URL;
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should return false when APP_URL is malformed', () => {
+-      process.env.APP_URL = 'not-a-valid-url';
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(false);
+-    });
+-  });
+-
+-  describe('exact host match', () => {
+-    it('should return true when targetHost exactly matches APP_URL host', () => {
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should return true when targetHost matches APP_URL host with port', () => {
+-      process.env.APP_URL = 'https://example.com:8080';
+-      const result = validateRedirectHost('example.com:8080');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should return true when targetHost matches APP_URL with different protocols', () => {
+-      process.env.APP_URL = 'http://example.com';
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should return false when targetHost port differs from APP_URL', () => {
+-      process.env.APP_URL = 'https://example.com:8080';
+-      const result = validateRedirectHost('example.com:9090');
+-      expect(result).toBe(false);
+-    });
+-  });
+-
+-  describe('localhost validation', () => {
+-    it('should allow localhost when APP_URL is localhost', () => {
+-      process.env.APP_URL = 'http://localhost:3000';
+-      const result = validateRedirectHost('localhost');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow localhost with port when APP_URL is localhost', () => {
+-      process.env.APP_URL = 'http://localhost:3000';
+-      const result = validateRedirectHost('localhost:8080');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow 127.0.0.1 when APP_URL is localhost', () => {
+-      process.env.APP_URL = 'http://localhost:3000';
+-      const result = validateRedirectHost('127.0.0.1');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow 127.0.0.1 with port when APP_URL is localhost', () => {
+-      process.env.APP_URL = 'http://localhost:3000';
+-      const result = validateRedirectHost('127.0.0.1:8080');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow 0.0.0.0 when APP_URL is localhost', () => {
+-      process.env.APP_URL = 'http://localhost:3000';
+-      const result = validateRedirectHost('0.0.0.0');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow 0.0.0.0 with port when APP_URL is localhost', () => {
+-      process.env.APP_URL = 'http://localhost:3000';
+-      const result = validateRedirectHost('0.0.0.0:8080');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow localhost when APP_URL is 127.0.0.1', () => {
+-      process.env.APP_URL = 'http://127.0.0.1:3000';
+-      const result = validateRedirectHost('localhost');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow localhost when APP_URL is 0.0.0.0', () => {
+-      process.env.APP_URL = 'http://0.0.0.0:3000';
+-      const result = validateRedirectHost('localhost');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should reject localhost when APP_URL is not a local address', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('localhost');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should reject 127.0.0.1 when APP_URL is not a local address', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('127.0.0.1');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should reject 0.0.0.0 when APP_URL is not a local address', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('0.0.0.0');
+-      expect(result).toBe(false);
+-    });
+-  });
+-
+-  describe('subdomain validation', () => {
+-    it('should allow valid subdomain of APP_URL domain', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('api.example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow multi-level subdomain', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('api.v1.example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow subdomain with port', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('api.example.com:8080');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should reject domain that is not a subdomain', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('fakeexample.com');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should reject domain that contains but is not subdomain', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('notexample.com');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should reject completely different domain', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('evil.com');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should handle APP_URL with port when validating subdomains', () => {
+-      process.env.APP_URL = 'https://example.com:8080';
+-      const result = validateRedirectHost('api.example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should handle APP_URL with subdomain when validating further subdomains', () => {
+-      process.env.APP_URL = 'https://api.example.com';
+-      const result = validateRedirectHost('v1.api.example.com');
+-      expect(result).toBe(true);
+-    });
+-  });
+-
+-  describe('open redirect attack prevention', () => {
+-    it('should block redirection to malicious external domain', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('malicious.com');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should block redirection to similar-looking domain', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('example.com.evil.com');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should block redirection to domain with extra TLD', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('example.com.br');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should block redirection using homograph attack attempt', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      // Using similar-looking characters
+-      const result = validateRedirectHost('examp1e.com');
+-      expect(result).toBe(false);
+-    });
+-  });
+-
+-  describe('port handling', () => {
+-    it('should handle standard HTTPS port (443) - normalized by URL API', () => {
+-      // Note: URL API normalizes standard ports, so :443 is removed from https URLs
+-      process.env.APP_URL = 'https://example.com:443';
+-      // APP_URL becomes https://example.com (443 is default for https)
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should handle standard HTTP port (80) - normalized by URL API', () => {
+-      // Note: URL API normalizes standard ports, so :80 is removed from http URLs
+-      process.env.APP_URL = 'http://example.com:80';
+-      // APP_URL becomes http://example.com (80 is default for http)
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should handle custom ports', () => {
+-      process.env.APP_URL = 'https://example.com:3000';
+-      const result = validateRedirectHost('example.com:3000');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should reject different ports on same domain', () => {
+-      process.env.APP_URL = 'https://example.com:3000';
+-      const result = validateRedirectHost('example.com:4000');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should allow subdomain with different port than APP_URL', () => {
+-      process.env.APP_URL = 'https://example.com:3000';
+-      const result = validateRedirectHost('api.example.com:8080');
+-      expect(result).toBe(true);
+-    });
+-  });
+-
+-  describe('edge cases', () => {
+-    it('should handle APP_URL with trailing slash', () => {
+-      process.env.APP_URL = 'https://example.com/';
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should handle APP_URL with path', () => {
+-      process.env.APP_URL = 'https://example.com/app';
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should handle uppercase in targetHost', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('EXAMPLE.COM');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should handle mixed case domains - URL API lowercases hostnames', () => {
+-      // Note: URL API automatically lowercases hostnames
+-      process.env.APP_URL = 'https://Example.Com';
+-      // URL API converts it to example.com
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should handle IPv4 addresses in APP_URL', () => {
+-      process.env.APP_URL = 'http://192.168.1.1:3000';
+-      const result = validateRedirectHost('192.168.1.1:3000');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should reject different IPv4 addresses', () => {
+-      process.env.APP_URL = 'http://192.168.1.1:3000';
+-      const result = validateRedirectHost('192.168.1.2:3000');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should handle empty APP_URL gracefully', () => {
+-      process.env.APP_URL = '';
+-      const result = validateRedirectHost('example.com');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should handle whitespace in targetHost', () => {
+-      const result = validateRedirectHost('  example.com  ');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should handle single dot in targetHost', () => {
+-      const result = validateRedirectHost('.');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should handle double dots in targetHost', () => {
+-      const result = validateRedirectHost('example..com');
+-      expect(result).toBe(false);
+-    });
+-  });
+-
+-  describe('real-world scenarios', () => {
+-    it('should validate production domain correctly', () => {
+-      process.env.APP_URL = 'https://chat.lobehub.com';
+-      const result = validateRedirectHost('chat.lobehub.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow API subdomain in production', () => {
+-      process.env.APP_URL = 'https://chat.lobehub.com';
+-      const result = validateRedirectHost('api.chat.lobehub.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should block redirect to competitor domain', () => {
+-      process.env.APP_URL = 'https://chat.lobehub.com';
+-      const result = validateRedirectHost('competitor.com');
+-      expect(result).toBe(false);
+-    });
+-
+-    it('should support development environment with port', () => {
+-      process.env.APP_URL = 'http://localhost:3010';
+-      const result = validateRedirectHost('localhost:3010');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should support staging environment', () => {
+-      process.env.APP_URL = 'https://staging.example.com';
+-      const result = validateRedirectHost('staging.example.com');
+-      expect(result).toBe(true);
+-    });
+-
+-    it('should allow preview deployment subdomain', () => {
+-      process.env.APP_URL = 'https://example.com';
+-      const result = validateRedirectHost('pr-123.example.com');
+-      expect(result).toBe(true);
+-    });
+-  });
+-});
+diff --git a/packages/utils/src/server/validateRedirectHost.ts b/packages/utils/src/server/validateRedirectHost.ts
+deleted file mode 100644
+index c2847ac2ee7de..0000000000000
+--- a/packages/utils/src/server/validateRedirectHost.ts
++++ /dev/null
+@@ -1,68 +0,0 @@
+-import debug from 'debug';
+-
+-const log = debug('lobe-oidc:validateRedirectHost');
+-
+-/**
+- * Validate if redirect host is in the allowed whitelist
+- * Prevent Open Redirect attacks
+- */
+-export const validateRedirectHost = (targetHost: string): boolean => {
+-  if (!targetHost || targetHost === 'null') {
+-    log('Invalid target host: %s', targetHost);
+-    return false;
+-  }
+-
+-  // Get configured APP_URL as base domain
+-  const appUrl = process.env.APP_URL;
+-  if (!appUrl) {
+-    log('Warning: APP_URL not configured, rejecting redirect to: %s', targetHost);
+-    return false;
+-  }
+-
+-  try {
+-    const appUrlObj = new URL(appUrl);
+-    const appHost = appUrlObj.host;
+-
+-    log('Validating target host: %s against app host: %s', targetHost, appHost);
+-
+-    // Exact match
+-    if (targetHost === appHost) {
+-      log('Host validation passed: exact match');
+-      return true;
+-    }
+-
+-    // Allow localhost and local addresses (development environment)
+-    const isLocalhost =
+-      targetHost === 'localhost' ||
+-      targetHost.startsWith('localhost:') ||
+-      targetHost === '127.0.0.1' ||
+-      targetHost.startsWith('127.0.0.1:') ||
+-      targetHost === '0.0.0.0' ||
+-      targetHost.startsWith('0.0.0.0:');
+-
+-    if (
+-      isLocalhost &&
+-      (appHost.includes('localhost') ||
+-        appHost.includes('127.0.0.1') ||
+-        appHost.includes('0.0.0.0'))
+-    ) {
+-      log('Host validation passed: localhost environment');
+-      return true;
+-    }
+-
+-    // Check if it's a subdomain of the configured domain
+-    const appDomain = appHost.split(':')[0]; // Remove port number
+-    const targetDomain = targetHost.split(':')[0]; // Remove port number
+-
+-    if (targetDomain.endsWith('.' + appDomain)) {
+-      log('Host validation passed: subdomain of %s', appDomain);
+-      return true;
+-    }
+-
+-    console.error('Host validation failed: %s is not allowed', targetHost);
+-    return false;
+-  } catch (error) {
+-    console.error('Error parsing APP_URL %s: %O', appUrl, error);
+-    return false;
+-  }
+-};
+diff --git a/src/app/(backend)/oidc/callback/desktop/route.ts b/src/app/(backend)/oidc/callback/desktop/route.ts
+index dc7edc6465ab2..ca42cf8331eae 100644
+--- a/src/app/(backend)/oidc/callback/desktop/route.ts
++++ b/src/app/(backend)/oidc/callback/desktop/route.ts
+@@ -3,22 +3,33 @@ import { type NextRequest, NextResponse, after } from 'next/server';
+ 
+ import { OAuthHandoffModel } from '@/database/models/oauthHandoff';
+ import { serverDB } from '@/database/server';
+-import { correctOIDCUrl } from '@/utils/server/correctOIDCUrl';
++import { appEnv } from '@/envs/app';
+ 
+ const log = debug('lobe-oidc:callback:desktop');
+ 
+ const errorPathname = '/oauth/callback/error';
+ 
+ /**
+- * 安全地构建重定向URL，使用经过验证的 correctOIDCUrl 防止开放重定向攻击
++ * 安全地构建重定向URL - 直接使用 APP_URL 作为目标
+  */
+ const buildRedirectUrl = (req: NextRequest, pathname: string): URL => {
+-  // 使用 req.nextUrl 作为基础URL，然后通过 correctOIDCUrl 进行验证和修正
+-  const baseUrl = req.nextUrl.clone();
+-  baseUrl.pathname = pathname;
++  // 使用统一的环境变量管理
++  if (appEnv.APP_URL) {
++    try {
++      const baseUrl = new URL(appEnv.APP_URL);
++      baseUrl.pathname = pathname;
++      log('Using APP_URL for redirect: %s', baseUrl.toString());
++      return baseUrl;
++    } catch (error) {
++      log('Error parsing APP_URL, using fallback: %O', error);
++    }
++  }
+ 
+-  // correctOIDCUrl 会验证 X-Forwarded-* 头部并防止开放重定向攻击
+-  return correctOIDCUrl(req, baseUrl);
++  // 后备方案：使用 req.nextUrl
++  log('Warning: APP_URL not configured, using req.nextUrl as fallback');
++  const fallbackUrl = req.nextUrl.clone();
++  fallbackUrl.pathname = pathname;
++  return fallbackUrl;
+ };
+ 
+ export const GET = async (req: NextRequest) => {
+diff --git a/src/app/(backend)/oidc/consent/route.ts b/src/app/(backend)/oidc/consent/route.ts
+index 123eb32970edf..04449dec313d0 100644
+--- a/src/app/(backend)/oidc/consent/route.ts
++++ b/src/app/(backend)/oidc/consent/route.ts
+@@ -1,7 +1,8 @@
+-import { correctOIDCUrl, getUserAuth } from '@lobechat/utils/server';
++import { getUserAuth } from '@lobechat/utils/server';
+ import debug from 'debug';
+ import { type NextRequest, NextResponse } from 'next/server';
+ 
++import { appEnv } from '@/envs/app';
+ import { OIDCService } from '@/server/services/oidc';
+ 
+ const log = debug('lobe-oidc:consent');
+@@ -113,15 +114,23 @@ export async function POST(request: NextRequest) {
+     const internalRedirectUrlString = await oidcService.getInteractionResult(uid, result);
+     log('OIDC Provider internal redirect URL string: %s', internalRedirectUrlString);
+ 
+-    let finalRedirectUrl;
+-    try {
+-      finalRedirectUrl = correctOIDCUrl(request, new URL(internalRedirectUrlString));
+-    } catch {
+-      finalRedirectUrl = new URL(internalRedirectUrlString);
+-      log('Warning: Could not parse redirect URL, using as-is: %s', internalRedirectUrlString);
++    // 直接使用 APP_URL 作为基础
++    if (appEnv.APP_URL) {
++      const baseUrl = new URL(appEnv.APP_URL);
++      const internalUrl = new URL(internalRedirectUrlString);
++      baseUrl.pathname = internalUrl.pathname;
++      baseUrl.search = internalUrl.search;
++      baseUrl.hash = internalUrl.hash;
++      const finalRedirectUrl = baseUrl;
++      log('Using APP_URL as base for redirect: %s', finalRedirectUrl.toString());
++      return NextResponse.redirect(finalRedirectUrl, {
++        status: 303,
++      });
+     }
+ 
+-    return NextResponse.redirect(finalRedirectUrl, {
++    // 后备方案：使用原始内部URL
++    log('Using internal redirect URL directly: %s', internalRedirectUrlString);
++    return NextResponse.redirect(new URL(internalRedirectUrlString), {
+       status: 303,
+     });
+   } catch (error) {
