@@ -1,6 +1,6 @@
-# Current Version: 1.2.8
+# Current Version: 1.2.9
 
-ARG NODEJS_VERSION="22"
+ARG NODEJS_VERSION="24"
 ARG RUST_VERSION="1"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
