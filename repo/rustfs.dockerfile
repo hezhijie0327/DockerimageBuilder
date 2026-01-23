@@ -1,6 +1,6 @@
-# Current Version: 1.0.4
+# Current Version: 1.0.5
 
-ARG NODEJS_VERSION="22"
+ARG NODEJS_VERSION="24"
 ARG RUST_VERSION="1"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
@@ -44,7 +44,7 @@ COPY --from=get_info /tmp/BUILDTMP/RUSTFS_WEB /rustfs
 RUN \
     npm i -g corepack@latest \
     && corepack enable \
-    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
+    && corepack use pnpm \
     && pnpm i \
     && pnpm run generate
 
