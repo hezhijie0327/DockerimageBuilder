@@ -1,4 +1,4 @@
-# Current Version: 1.8.9
+# Current Version: 1.9.0
 
 ARG NODEJS_VERSION="24"
 
@@ -105,7 +105,6 @@ ENV \
     NODE_OPTIONS="--dns-result-order=ipv4first --use-openssl-ca" NODE_EXTRA_CA_CERTS="" \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
-    NEXT_AUTH_SSO_SESSION_STRATEGY="database" \
     ENABLE_MAGIC_LINK="1" AUTH_EMAIL_VERIFICATION="0" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
