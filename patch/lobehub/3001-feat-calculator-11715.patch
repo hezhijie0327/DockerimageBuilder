@@ -44,10 +44,10 @@ index 0000000000000..3564a9dbb9419
 +}
 diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
 new file mode 100644
-index 0000000000000..0efc8822a393e
+index 0000000000000..599ded8a56d6a
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/calculate.test.ts
-@@ -0,0 +1,901 @@
+@@ -0,0 +1,1140 @@
 +import { describe, expect, it } from 'vitest';
 +
 +import { calculatorExecutor } from '../src/executor';
@@ -98,13 +98,262 @@ index 0000000000000..0efc8822a393e
 +    // This might fail due to Unicode degree symbol
 +    console.log('Unicode result:', result.content, result.success);
 +  });
-+});
++  describe('Calculator Calculus', () => {
++    describe('differentiate', () => {
++      it('should differentiate polynomial expressions', async () => {
++        const result = await calculatorExecutor.differentiate({
++          expression: 'x^3',
++          variable: 'x',
++        });
 +
-+describe('Math Constants', () => {
-+  it('should handle PI constants', async () => {
-+    const pi = await calculatorExecutor.calculate({ expression: 'pi' });
-+    expect(pi.success).toBe(true);
-+    expect(parseFloat(pi.content || '0')).toBeCloseTo(3.14159, 5);
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('3*x');
++      });
++
++      it('should differentiate quadratic expressions', async () => {
++        const result = await calculatorExecutor.differentiate({
++          expression: 'x^2',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('2*x');
++      });
++
++      it('should differentiate trigonometric functions', async () => {
++        const result = await calculatorExecutor.differentiate({
++          expression: 'sin(x)',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('cos(x)');
++      });
++
++      it('should differentiate exponential functions', async () => {
++        const result = await calculatorExecutor.differentiate({
++          expression: 'exp(x)',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('e^x');
++      });
++
++      it('should handle chain rule', async () => {
++        const result = await calculatorExecutor.differentiate({
++          expression: 'sin(x^2)',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('cos');
++        expect(result.content).toContain('x');
++      });
++
++      it('should differentiate with respect to custom variable', async () => {
++        const result = await calculatorExecutor.differentiate({
++          expression: 'y^2 + 2*y',
++          variable: 'y',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('2*y');
++      });
++
++      it('should handle invalid expressions gracefully', async () => {
++        const result = await calculatorExecutor.differentiate({
++          expression: 'invalid',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('0');
++      });
++
++      it('should preserve state information', async () => {
++        const result = await calculatorExecutor.differentiate({
++          expression: 'x^2 + 3*x + 2',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.state?.expression).toBe('x^2 + 3*x + 2');
++        expect(result.state?.variable).toBe('x');
++        expect(result.state?.result).toBeDefined();
++      });
++    });
++
++    describe('integrate', () => {
++      it('should integrate polynomial expressions', async () => {
++        const result = await calculatorExecutor.integrate({
++          expression: 'x^2',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('(1/3)');
++        expect(result.content).toContain('x^3');
++      });
++
++      it('should integrate cubic expressions', async () => {
++        const result = await calculatorExecutor.integrate({
++          expression: 'x^3',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('(1/4)');
++        expect(result.content).toContain('x^4');
++      });
++
++      it('should integrate trigonometric functions', async () => {
++        const result = await calculatorExecutor.integrate({
++          expression: 'sin(x)',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('-cos');
++      });
++
++      it('should integrate exponential functions', async () => {
++        const result = await calculatorExecutor.integrate({
++          expression: 'exp(x)',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('e^x');
++      });
++
++      it('should integrate linear expressions', async () => {
++        const result = await calculatorExecutor.integrate({
++          expression: '3*x',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('(3/2)');
++        expect(result.content).toContain('x^2');
++      });
++
++      it('should integrate with respect to custom variable', async () => {
++        const result = await calculatorExecutor.integrate({
++          expression: 'y^2',
++          variable: 'y',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('y^3');
++      });
++
++      it('should handle invalid expressions gracefully', async () => {
++        const result = await calculatorExecutor.integrate({
++          expression: 'invalid',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('invalid*x');
++      });
++
++      it('should preserve state information', async () => {
++        const result = await calculatorExecutor.integrate({
++          expression: 'x^2 + 2*x',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.state?.expression).toBe('x^2 + 2*x');
++        expect(result.state?.variable).toBe('x');
++        expect(result.state?.result).toBeDefined();
++      });
++    });
++
++    describe('limit', () => {
++      it('should compute finite limit at a point', async () => {
++        const result = await calculatorExecutor.limit({
++          expression: 'sin(x)/x',
++          variable: 'x',
++          point: 0,
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('1');
++        expect(result.state?.point).toBe(0);
++      });
++
++      it('should compute limit at infinity', async () => {
++        const result = await calculatorExecutor.limit({
++          expression: '1/x',
++          variable: 'x',
++          point: 'infinity',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('0');
++        expect(result.state?.point).toBe('infinity');
++      });
++
++      it('should compute limit without specifying point', async () => {
++        const result = await calculatorExecutor.limit({
++          expression: '(x^2-1)/(x-1)',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('2');
++        expect(result.state?.point).toBe(undefined);
++      });
++
++      it('should compute limit approaching from left', async () => {
++        const result = await calculatorExecutor.limit({
++          expression: '(1+1/x)^x',
++          variable: 'x',
++          point: 'infinity',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toContain('infinity');
++      });
++
++      it('should compute limit with trigonometric function', async () => {
++        const result = await calculatorExecutor.limit({
++          expression: '(1-cos(x))/x',
++          variable: 'x',
++          point: 0,
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('0');
++      });
++
++      it('should handle invalid expressions gracefully', async () => {
++        const result = await calculatorExecutor.limit({
++          expression: 'invalid',
++          variable: 'x',
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.content).toBe('0');
++        expect(result.error?.type).toBe('LimitError');
++      });
++
++      it('should preserve state information', async () => {
++        const result = await calculatorExecutor.limit({
++          expression: 'sin(x)/x',
++          variable: 'x',
++          point: 0,
++        });
++
++        expect(result.success).toBe(true);
++        expect(result.state?.expression).toBe('sin(x)/x');
++        expect(result.state?.variable).toBe('x');
++        expect(result.state?.point).toBe(0);
++        expect(result.state?.result).toBeDefined();
++      });
++    });
 +  });
 +
 +  it('should handle uppercase PI', async () => {
@@ -937,16 +1186,6 @@ index 0000000000000..0efc8822a393e
 +      expect(result.success).toBe(true);
 +      expect(result.content).toBeDefined();
 +    });
-+
-+    it('should solve equation with complex solutions', async () => {
-+      const result = await calculatorExecutor.solve({
-+        equation: ['x^2 + 1 = 0'],
-+        variable: ['x'],
-+      });
-+
-+      expect(result.success).toBe(true);
-+      expect(result.content).toContain('i');
-+    });
 +  });
 +});
 diff --git a/packages/builtin-tool-calculator/src/client/index.ts b/packages/builtin-tool-calculator/src/client/index.ts
@@ -963,10 +1202,10 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..e178097b9e7da
+index 0000000000000..c74c187d0d7e9
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,413 @@
+@@ -0,0 +1,518 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { all, create } from 'mathjs';
 +// @ts-ignore - nerdamer doesn't have TypeScript definitions
@@ -977,7 +1216,10 @@ index 0000000000000..e178097b9e7da
 +  CalculatorApiName,
 +  CalculatorIdentifier,
 +  type ConvertBaseParams,
++  type DifferentiateParams,
 +  type EvaluateExpressionParams,
++  type IntegrateParams,
++  type LimitParams,
 +  type SolveParams,
 +  type SortParams,
 +} from '../types';
@@ -1368,6 +1610,108 @@ index 0000000000000..e178097b9e7da
 +    }
 +  };
 +
++  /**
++   * Differentiate an expression using nerdamer
++   */
++  differentiate = async (params: DifferentiateParams): Promise<BuiltinToolResult> => {
++    try {
++      const { expression, variable } = params;
++      const result = nerdamer(`diff(${expression}, ${variable})`);
++      const resultText = result.toString();
++
++      return {
++        content: resultText,
++        state: {
++          expression,
++          result: resultText,
++          variable,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Differentiation error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'DifferentiationError',
++        },
++        success: false,
++      };
++    }
++  };
++
++  /**
++   * Integrate an expression using nerdamer
++   */
++  integrate = async (params: IntegrateParams): Promise<BuiltinToolResult> => {
++    try {
++      const { expression, variable } = params;
++      const result = nerdamer(`integrate(${expression}, ${variable})`);
++      const resultText = result.toString();
++
++      return {
++        content: resultText,
++        state: {
++          expression,
++          result: resultText,
++          variable,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Integration error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'IntegrationError',
++        },
++        success: false,
++      };
++    }
++  };
++
++  /**
++   * Compute the limit of a mathematical expression using nerdamer
++   */
++  limit = async (params: LimitParams): Promise<BuiltinToolResult> => {
++    try {
++      const { expression, variable, point } = params;
++      let limitExpr: string;
++
++      if (point !== undefined) {
++        limitExpr = `limit(${expression}, ${variable}, ${point})`;
++      } else {
++        limitExpr = `limit(${expression}, ${variable})`;
++      }
++
++      const result = nerdamer(limitExpr);
++      const resultText = result.toString();
++
++      return {
++        content: resultText,
++        state: {
++          expression,
++          point,
++          result: resultText,
++          variable,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Limit computation error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'LimitError',
++        },
++        success: false,
++      };
++    }
++  };
++
 +  // Implement required interface methods
 +  getApiNames(): string[] {
 +    return Object.values(this.apiEnum) as string[];
@@ -1399,10 +1743,10 @@ index 0000000000000..4779e6e4d607f
 +} from './types';
 diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
 new file mode 100644
-index 0000000000000..dc527c680b968
+index 0000000000000..d8465c4944717
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/manifest.ts
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,224 @@
 +import type { BuiltinToolManifest } from '@lobechat/types';
 +
 +import { systemPrompt } from './systemRole';
@@ -1527,6 +1871,71 @@ index 0000000000000..dc527c680b968
 +      },
 +    },
 +    {
++      description: 'Differentiate a mathematical expression with respect to a variable.',
++      name: CalculatorApiName.differentiate,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          expression: {
++            description:
++              'Mathematical expression to differentiate (e.g., "x^2", "sin(x)", "x^3 + 2*x + 1")',
++            type: 'string',
++          },
++          variable: {
++            description: 'Variable to differentiate with respect to (e.g., "x", "y", "t")',
++            type: 'string',
++          },
++        },
++        required: ['expression', 'variable'],
++        type: 'object',
++      },
++    },
++    {
++      description:
++        'Integrate a mathematical expression with respect to a variable (indefinite integral).',
++      name: CalculatorApiName.integrate,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          expression: {
++            description: 'Mathematical expression to integrate (e.g., "x^2", "sin(x)", "exp(x)")',
++            type: 'string',
++          },
++          variable: {
++            description: 'Variable to integrate with respect to (e.g., "x", "y", "t")',
++            type: 'string',
++          },
++        },
++        required: ['expression', 'variable'],
++        type: 'object',
++      },
++    },
++    {
++      description: 'Compute the limit of a mathematical expression.',
++      name: CalculatorApiName.limit,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          expression: {
++            description:
++              'Mathematical expression to compute limit for (e.g., "sin(x)/x", "x^2", "exp(-x)")',
++            type: 'string',
++          },
++          point: {
++            description:
++              'Point at which to evaluate the limit (optional). If not specified, computes the limit as variable approaches the expression. Can be a specific value or "infinity" (e.g., "0", "1", "infinity")',
++            oneOf: [{ type: 'string' }, { type: 'number' }],
++          },
++          variable: {
++            description: 'Variable to compute limit with respect to (e.g., "x", "y", "t")',
++            type: 'string',
++          },
++        },
++        required: ['expression', 'variable'],
++        type: 'object',
++      },
++    },
++    {
 +      description: 'Solve algebraic equations or systems of equations symbolically.',
 +      name: CalculatorApiName.solve,
 +      parameters: {
@@ -1564,18 +1973,21 @@ index 0000000000000..dc527c680b968
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..70f1c6ba62895
+index 0000000000000..fcfdd82699e86
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,167 @@
 +export const systemPrompt = `You have access to a Calculator tool powered by mathjs and nerdamer, capable of comprehensive mathematical computations, base conversions, and symbolic equation solving.
 +
 +<core_capabilities>
 +1. **calculate**: Perform mathematical expressions and calculations using mathjs syntax
 +2. **evaluateExpression**: Evaluate complex mathematical expressions with variable substitution
 +3. **sort**: Sort multiple numbers to get sorted array, largest value, or smallest value
-+4. **convertBase**: Convert numbers between different number bases (supports bases 2-36)
++4. **convertBase**: Convert numbers between different number bases (supports bases2-36)
 +5. **solve**: Solve algebraic equations or systems of equations symbolically using nerdamer
++6. **differentiate**: Compute the derivative of a mathematical expression with respect to a variable
++7. **integrate**: Compute the indefinite integral of a mathematical expression with respect to a variable
++8. **limit**: Compute the limit of a mathematical expression as a variable approaches a point
 +</core_capabilities>
 +
 +<workflow>
@@ -1624,6 +2036,40 @@ index 0000000000000..70f1c6ba62895
 +      - Two-equation system: {"equation": ["2*x+y=5", "x-y=1"], "variable": ["x", "y"]} → {"x": "2", "y": "1"}
 +      - Three-equation system: {"equation": ["x+y+z=6", "2*x-y+z=3", "x+2*y-z=2"], "variable": ["x", "y", "z"]} → {"x": "1", "y": "2", "z": "3"}
 +      - Auto variables: {"equation": ["3*x+2*y=7", "x-y=1"]} (variable omitted) → automatically detects x and y
++
++- **differentiate**: Use for computing derivatives of mathematical expressions
++    - Requires expression and variable parameters
++    - Supports: polynomial differentiation, trigonometric differentiation, exponential/logarithmic differentiation
++    - Examples:
++      - Polynomial: {"expression": "x^3 + 2*x + 1", "variable": "x"} → "3*x^2 + 2"
++      - Trigonometric: {"expression": "sin(x)", "variable": "x"} → "cos(x)"
++      - Chain rule: {"expression": "sin(x^2)", "variable": "x"} → "2*x*cos(x^2)"
++      - Power rule: {"expression": "x^5", "variable": "x"} → "5*x^4"
++    - Returns: The derivative expression in simplified form
++
++- **integrate**: Use for computing indefinite integrals of mathematical expressions
++    - Requires expression and variable parameters
++    - Supports: polynomial integration, trigonometric integration, exponential/logarithmic integration
++    - Examples:
++      - Polynomial: {"expression": "x^3", "variable": "x"} → "(1/4)*x^4"
++      - Trigonometric: {"expression": "sin(x)", "variable": "x"} → "-cos(x)"
++      - Exponential: {"expression": "exp(x)", "variable": "x"} → "exp(x)"
++      - Combined: {"expression": "x^2 + sin(x)", "variable": "x"} → "(1/3)*x^3 - cos(x)"
++    - Returns: The indefinite integral expression (constant of integration is implicit)
++
++- **limit**: Use for computing limits of mathematical expressions
++    - Requires expression and variable parameters
++    - Optional point parameter: can specify the point at which to evaluate the limit (a specific value or "infinity")
++    - Supports: finite limits, infinite limits, and one-sided limits
++    - Examples:
++      - Finite limit: {"expression": "sin(x)/x", "variable": "x", "point": "0"} → "1"
++      - Limit at infinity: {"expression": "1/x", "variable": "x", "point": "infinity"} → "0"
++      - Left-hand limit: {"expression": "exp(-x)", "variable": "x", "point": "infinity"} → "0"
++      - Right-hand limit: {"expression": "exp(x)", "variable": "x", "point": "infinity"} → "infinity"
++      - Polynomial limit: {"expression": "x^2/(x+1)", "variable": "x", "point": "1"} → "1/2"
++      - Trigonometric limit: {"expression": "sin(x)/x", "variable": "x"} → "1"
++      - Without point parameter: {"expression": "(x^2-1)/(x-1)", "variable": "x"} → "2"
++    - Returns: The limit value (or expression if the limit involves infinity)
 +</tool_selection_guidelines>
 +
 +<mathjs_syntax_guide>
@@ -1653,8 +2099,9 @@ index 0000000000000..70f1c6ba62895
 +<supported_operations>
 +**Basic Arithmetic**: +, -, *, /, % (modulus)
 +**Mathematical Functions**: sqrt, sin, cos, tan, log, exp, abs, round, floor, ceil
-+**Advanced Operations**: matrices, complex numbers, derivatives, integrals, statistics
++**Calculus**: Derivatives, indefinite integrals, limits, symbolic differentiation, integration, and limit computation
 +**Equation Solving**: Linear, quadratic, cubic, polynomial equations; systems of equations
++**Advanced Operations**: matrices, complex numbers, statistics
 +**Number Sorting**: Sort multiple numbers to identify order and extract largest/smallest values
 +**Unit Conversions**: Temperature, length, weight, speed, volume using mathjs syntax
 +**Base Conversions**: Support for all bases from 2 to 36 (binary, octal, decimal, hexadecimal, and custom bases)
@@ -1666,6 +2113,7 @@ index 0000000000000..70f1c6ba62895
 +- For unit conversions, return only the converted value with units
 +- For base conversions, return only the converted number in the target base
 +- For equation solving, return solutions in clear format (array for single equations, object for systems)
++- For differentiation and integration, return the resulting symbolic expression
 +- Provide intermediate steps when helpful for complex calculations
 +- Use the precision parameter when specified for decimal places
 +</formatting_guidelines>
@@ -1676,8 +2124,9 @@ index 0000000000000..70f1c6ba62895
 +- When variables are missing from evaluateExpression, the operation will fail
 +- For base conversion errors, verify that base values are between 2-36 and the number contains valid digits
 +- Handle decimal points gracefully in base conversion inputs
-+- For unit conversion errors, verify that correct mathjs unit syntax is being used
-+- For equation solving errors: system may have no solution, infinite solutions, or requires more equations than variables
++- For unit conversion errors, verify that the correct mathjs unit syntax is being used
++- For equation solving errors: the system may have no solution, infinite solutions, or requires more equations than variables
++- For differentiation/integration/limit errors: the expression may be too complex or contain unsupported functions
 +</error_handling>
 +
 +<best_practices>
@@ -1692,20 +2141,24 @@ index 0000000000000..70f1c6ba62895
 +- Provide exact decimal values when precision is specified
 +- For base conversions, use numeric values instead of string names (e.g., 2 instead of "binary")
 +- For equation solving, if multiple solutions exist, present all solutions clearly
-+- For systems of equations, ensure the number of equations matches the number of variables when possible
++- For limit calculations, ensure point parameter is used when computing finite limits at specific values
++- For systems of equations, ensure that number of equations matches the number of variables when possible
 +</best_practices>`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..4acc769df5e45
+index 0000000000000..1f9b060acd455
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,124 @@
 +export const CalculatorIdentifier = 'lobe-calculator';
 +
 +export const CalculatorApiName = {
 +  calculate: 'calculate',
 +  convertBase: 'convertBase',
++  differentiate: 'differentiate',
 +  evaluateExpression: 'evaluateExpression',
++  integrate: 'integrate',
++  limit: 'limit',
 +  solve: 'solve',
 +  sort: 'sort',
 +} as const;
@@ -1782,6 +2235,44 @@ index 0000000000000..4acc769df5e45
 +  equation?: string[];
 +  result?: string | string[];
 +  variable?: string[];
++}
++
++// Nerdamer Differentiate API
++export interface DifferentiateParams {
++  expression: string;
++  variable: string;
++}
++
++export interface DifferentiateState {
++  expression?: string;
++  result?: string;
++  variable?: string;
++}
++
++// Nerdamer Integrate API
++export interface IntegrateParams {
++  expression: string;
++  variable: string;
++}
++
++export interface IntegrateState {
++  expression?: string;
++  result?: string;
++  variable?: string;
++}
++
++// Nerdamer Limit API
++export interface LimitParams {
++  expression: string;
++  point?: string | number;
++  variable: string;
++}
++
++export interface LimitState {
++  expression?: string;
++  point?: string | number;
++  result?: string;
++  variable?: string;
 +}
 diff --git a/packages/builtin-tool-calculator/tsconfig.json b/packages/builtin-tool-calculator/tsconfig.json
 new file mode 100644
