@@ -43,10 +43,10 @@ index 0000000000000..64ea6ea2f7ce7
 +}
 diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
 new file mode 100644
-index 0000000000000..19f195f7de9df
+index 0000000000000..9e0496f9186a9
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/calculate.test.ts
-@@ -0,0 +1,494 @@
+@@ -0,0 +1,669 @@
 +import { describe, expect, it } from 'vitest';
 +
 +import { calculatorExecutor } from '../src/executor';
@@ -541,6 +541,181 @@ index 0000000000000..19f195f7de9df
 +    });
 +  });
 +});
++
++describe('Calculator Comparison', () => {
++  describe('compare', () => {
++    it('should default to sorted mode', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [3.14, 2.718],
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(Array.isArray(parsed)).toBe(true);
++      expect(parsed).toEqual(['2.718', '3.14']);
++    });
++
++    it('should return sorted array in sorted mode', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [3.14, 2.718, 1.618, 4.669],
++        mode: 'sorted',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(Array.isArray(parsed)).toBe(true);
++      expect(parsed).toEqual(['1.618', '2.718', '3.14', '4.669']);
++    });
++
++    it('should return largest value only in largest mode', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [3.14, 2.718, 1.618, 4.669],
++        mode: 'largest',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('4.669');
++    });
++
++    it('should return smallest value only in smallest mode', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [3.14, 2.718, 1.618, 4.669],
++        mode: 'smallest',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('1.618');
++    });
++
++    it('should compare string numbers', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: ['3.14', '2.718', '1.618'],
++        mode: 'sorted',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toEqual(['1.618', '2.718', '3.14']);
++    });
++
++    it('should compare mixed string and number inputs', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: ['3.14', 2.718, '1.618'],
++        mode: 'largest',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('3.14');
++    });
++
++    it('should handle precision formatting', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [3.1415926535, 2.7182818284, 1.6180339887],
++        mode: 'sorted',
++        precision: 3,
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toEqual(['1.618', '2.718', '3.142']);
++    });
++
++    it('should handle zero precision', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [3.14, 2.718, 1.618],
++        mode: 'largest',
++        precision: 0,
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('3');
++    });
++
++    it('should handle duplicate values', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [5, 3, 5, 2],
++        mode: 'sorted',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toEqual(['2', '3', '5', '5']);
++    });
++
++    it('should require at least 2 numbers', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [3.14],
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('ValidationError');
++      expect(result.content).toContain('At least 2 numbers are required');
++    });
++
++    it('should handle invalid number strings', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: ['3.14', 'invalid', '2.718'],
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('ComparisonError');
++      expect(result.content).toContain('Invalid number: invalid');
++    });
++
++    it('should handle negative numbers', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [-3.14, -2.718, -1.618],
++        mode: 'smallest',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('-3.14');
++    });
++
++    it('should handle zero values', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [0, -1, 1],
++        mode: 'largest',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('1');
++    });
++
++    it('should handle very large numbers', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [1e10, 1e9, 1e11],
++        mode: 'smallest',
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('1000000000');
++    });
++
++    it('should preserve state information', async () => {
++      const result = await calculatorExecutor.compare({
++        numbers: [3.14, 2.718],
++        mode: 'largest',
++        precision: 2,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.state?.originalNumbers).toEqual([3.14, 2.718]);
++      expect(result.state?.mode).toBe('largest');
++      expect(result.state?.precision).toBe(2);
++      expect(result.state?.largest).toBe('3.14');
++      expect(result.state?.smallest).toBe('2.72');
++      expect(result.state?.sorted).toEqual(['2.72', '3.14']);
++    });
++  });
++});
 diff --git a/packages/builtin-tool-calculator/src/client/index.ts b/packages/builtin-tool-calculator/src/client/index.ts
 new file mode 100644
 index 0000000000000..2861ba06d85d3
@@ -555,10 +730,10 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..6b8ee73776049
+index 0000000000000..edb1381787336
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,331 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { all, create } from 'mathjs';
 +
@@ -566,6 +741,7 @@ index 0000000000000..6b8ee73776049
 +  type CalculateParams,
 +  CalculatorApiName,
 +  CalculatorIdentifier,
++  type CompareParams,
 +  type ConvertBaseParams,
 +  type EvaluateExpressionParams,
 +} from '../types';
@@ -626,20 +802,6 @@ index 0000000000000..6b8ee73776049
 +
 +    // Handle complex numbers, matrices, etc.
 +    return math.format(result, { precision: precision || 10 });
-+  }
-+
-+  /**
-+   * Format expression with variables for display
-+   */
-+  private formatExpression(expression: string, variables: Record<string, number>): string {
-+    if (Object.keys(variables).length === 0) {
-+      return expression;
-+    }
-+
-+    const varStr = Object.entries(variables)
-+      .map(([key, value]) => `${key} = ${value}`)
-+      .join(', ');
-+    return `${expression} (where ${varStr})`;
 +  }
 +
 +  /**
@@ -761,6 +923,94 @@ index 0000000000000..6b8ee73776049
 +  };
 +
 +  /**
++   * Compare multiple numbers with flexible output options
++   */
++  compare = async (params: CompareParams): Promise<BuiltinToolResult> => {
++    try {
++      const { numbers, mode = 'sorted', precision } = params;
++
++      if (numbers.length < 2) {
++        return {
++          content: 'At least 2 numbers are required for comparison',
++          error: {
++            message: 'Insufficient numbers for comparison',
++            type: 'ValidationError',
++          },
++          success: false,
++        };
++      }
++
++      // Convert all numbers to actual numbers for comparison
++      const parsedNumbers = numbers.map((num) => {
++        const parsed = typeof num === 'string' ? parseFloat(num) : num;
++        if (isNaN(parsed)) {
++          throw new Error(`Invalid number: ${num}`);
++        }
++        return parsed;
++      });
++
++      // Sort numbers in ascending order
++      const sortedParsed = [...parsedNumbers].sort((a, b) => a - b);
++
++      // Format numbers for output
++      const formatNumber = (num: number): string => {
++        if (precision !== undefined) {
++          return num.toFixed(precision);
++        }
++        return num.toString();
++      };
++
++      const sorted = sortedParsed.map(formatNumber);
++      const largest = formatNumber(sortedParsed.at(-1));
++      const smallest = formatNumber(sortedParsed[0]);
++
++      let result: any;
++
++      switch (mode) {
++        case 'sorted': {
++          result = sorted;
++          break;
++        }
++        case 'largest': {
++          result = largest;
++          break;
++        }
++        case 'smallest': {
++          result = smallest;
++          break;
++        }
++        default: {
++          result = { largest, smallest, sorted };
++        }
++      }
++
++      return {
++        content: JSON.stringify(result),
++        state: {
++          largest,
++          mode,
++          originalNumbers: numbers,
++          precision,
++          result,
++          smallest,
++          sorted,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Comparison error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'ComparisonError',
++        },
++        success: false,
++      };
++    }
++  };
++
++  /**
 +   * Convert numbers between different bases (supports bases 2-36)
 +   */
 +  convertBase = async (params: ConvertBaseParams): Promise<BuiltinToolResult> => {
@@ -834,10 +1084,10 @@ index 0000000000000..4779e6e4d607f
 +} from './types';
 diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
 new file mode 100644
-index 0000000000000..f4e3aac76ee3c
+index 0000000000000..758c050bd21d2
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/manifest.ts
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,127 @@
 +import type { BuiltinToolManifest } from '@lobechat/types';
 +
 +import { systemPrompt } from './systemRole';
@@ -895,6 +1145,40 @@ index 0000000000000..f4e3aac76ee3c
 +      },
 +    },
 +    {
++      description:
++        'Compare multiple numbers with flexible output options (sorted array, largest value, or smallest value).',
++      name: CalculatorApiName.compare,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          mode: {
++            description:
++              'Output mode: "sorted" returns only sorted array; "largest" returns only largest value; "smallest" returns only smallest value',
++            enum: ['sorted', 'largest', 'smallest'],
++            type: 'string',
++          },
++          numbers: {
++            description:
++              'Array of numbers to compare (e.g., ["3.14", "2.718", "1.618"] or [3.14, 2.718, 1.618])',
++            items: {
++              type: ['string', 'number'],
++            },
++            minItems: 2,
++            type: 'array',
++          },
++          precision: {
++            description:
++              'Number of decimal places for comparison results (optional, defaults to 10)',
++            maximum: 20,
++            minimum: 0,
++            type: 'number',
++          },
++        },
++        required: ['numbers'],
++        type: 'object',
++      },
++    },
++    {
 +      description: 'Convert numbers between different number bases.',
 +      name: CalculatorApiName.convertBase,
 +      parameters: {
@@ -933,16 +1217,17 @@ index 0000000000000..f4e3aac76ee3c
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..1105fa45434a2
+index 0000000000000..78f75d778cd96
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,97 @@
 +export const systemPrompt = `You have access to a Calculator tool powered by mathjs, capable of comprehensive mathematical computations and base conversions.
 +
 +<core_capabilities>
 +1. **calculate**: Perform mathematical expressions and calculations using mathjs syntax
 +2. **evaluateExpression**: Evaluate complex mathematical expressions with variable substitution
-+3. **convertBase**: Convert numbers between different number bases (supports bases 2-36)
++3. **compare**: Compare multiple numbers to find the largest and smallest values
++4. **convertBase**: Convert numbers between different number bases (supports bases 2-36)
 +</core_capabilities>
 +
 +<workflow>
@@ -966,6 +1251,15 @@ index 0000000000000..1105fa45434a2
 +  - Requires numeric base values (2-36) for both fromBase and toBase parameters
 +  - Supports both string and number inputs for the number parameter
 +  - Examples: convert "1010" from base 2 to base 10, convert "255" from base 10 to base 16, convert "Z" from base 36 to base 10
++  
++- **compare**: Use for comparing multiple numbers with flexible output modes
++  - Requires an array of at least 2 numbers (strings or numbers)
++  - Mode options: "sorted" returns only sorted array; "largest" returns only largest value; "smallest" returns only smallest value
++  - Examples: compare({"numbers": [3.14, 2.718, 1.618], "mode": "sorted"}), compare({"numbers": [5, 3, 8], "mode": "largest"})
++  - Response formats: 
++    - sorted mode: ["1.618", "2.718", "3.14"]
++    - largest mode: "3.14"
++    - smallest mode: "1.618"
 +</tool_selection_guidelines>
 +
 +<mathjs_syntax_guide>
@@ -990,6 +1284,7 @@ index 0000000000000..1105fa45434a2
 +**Basic Arithmetic**: +, -, *, /, % (modulus)
 +**Mathematical Functions**: sqrt, sin, cos, tan, log, exp, abs, round, floor, ceil
 +**Advanced Operations**: matrices, complex numbers, derivatives, integrals, statistics
++**Number Comparison**: Compare multiple numbers to identify largest and smallest values
 +**Unit Conversions**: Temperature, length, weight, speed, volume using mathjs syntax
 +**Base Conversions**: Support for all bases from 2 to 36 (binary, octal, decimal, hexadecimal, and custom bases)
 +**Constants**: pi, e, tau, phi, i (case insensitive)
@@ -1025,14 +1320,15 @@ index 0000000000000..1105fa45434a2
 +</best_practices>`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..c0da40c787d7d
+index 0000000000000..9313ad17377af
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,69 @@
 +export const CalculatorIdentifier = 'lobe-calculator';
 +
 +export const CalculatorApiName = {
 +  calculate: 'calculate',
++  compare: 'compare',
 +  convertBase: 'convertBase',
 +  evaluateExpression: 'evaluateExpression',
 +} as const;
@@ -1078,6 +1374,24 @@ index 0000000000000..c0da40c787d7d
 +  originalBase?: string;
 +  originalNumber?: string;
 +  targetBase?: string;
++}
++
++// Compare API
++export interface CompareParams {
++  mode?: 'sorted' | 'largest' | 'smallest';
++  numbers: (string | number)[];
++  precision?: number;
++}
++
++export interface CompareState {
++  // Can be array, string, or object based on mode
++  largest?: number | string; 
++  mode?: string;
++  originalNumbers?: (string | number)[];
++  precision?: number;
++  result?: any;
++  smallest?: number | string;
++  sorted?: (string | number)[];
 +}
 diff --git a/packages/builtin-tool-calculator/tsconfig.json b/packages/builtin-tool-calculator/tsconfig.json
 new file mode 100644
