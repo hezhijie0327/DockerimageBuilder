@@ -12,10 +12,10 @@ index 428f8d89e4c00..8c2d2e51b61eb 100644
      "@lobechat/builtin-tool-group-management": "workspace:*",
 diff --git a/packages/builtin-tool-calculator/package.json b/packages/builtin-tool-calculator/package.json
 new file mode 100644
-index 0000000000000..64ea6ea2f7ce7
+index 0000000000000..3564a9dbb9419
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/package.json
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,26 @@
 +{
 +  "name": "@lobechat/builtin-tool-calculator",
 +  "version": "1.0.0",
@@ -28,7 +28,8 @@ index 0000000000000..64ea6ea2f7ce7
 +  "main": "./src/index.ts",
 +  "dependencies": {
 +    "@lobechat/prompts": "workspace:*",
-+    "mathjs": "^12.4.3"
++    "mathjs": "^15.1.0",
++    "nerdamer": "1.1.13"
 +  },
 +  "devDependencies": {
 +    "@lobechat/types": "workspace:*"
@@ -43,10 +44,10 @@ index 0000000000000..64ea6ea2f7ce7
 +}
 diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
 new file mode 100644
-index 0000000000000..c5fa903386f9d
+index 0000000000000..0efc8822a393e
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/calculate.test.ts
-@@ -0,0 +1,739 @@
+@@ -0,0 +1,901 @@
 +import { describe, expect, it } from 'vitest';
 +
 +import { calculatorExecutor } from '../src/executor';
@@ -786,6 +787,168 @@ index 0000000000000..c5fa903386f9d
 +    });
 +  });
 +});
++
++describe('Calculator Equation Solver', () => {
++  describe('solve', () => {
++    it('should solve linear equations', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['3*x + 5 = 20'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('5');
++      expect(result.state?.equation).toEqual(['3*x + 5 = 20']);
++    });
++
++    it('should solve quadratic equations', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x^2 - 5*x + 6 = 0'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('2');
++      expect(result.content).toContain('3');
++      expect(result.state?.equation).toEqual(['x^2 - 5*x + 6 = 0']);
++    });
++
++    it('should solve perfect square equations', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x^2 + 2*x + 1 = 0'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('-1');
++      expect(result.state?.equation).toEqual(['x^2 + 2*x + 1 = 0']);
++    });
++
++    it('should solve equations with custom variable', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['y^2 - 9 = 0'],
++        variable: ['y'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('3');
++      expect(result.content).toContain('-3');
++      expect(result.state?.variable).toEqual(['y']);
++    });
++
++    it('should solve simple equations', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x - 5 = 0'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('5');
++    });
++
++    it('should handle equations with fractions', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['2*x = 10'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('5');
++    });
++
++    it('should handle cubic equations', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x^3 - 8 = 0'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('2');
++    });
++
++    it('should handle invalid equations gracefully', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['invalid equation'],
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('SolveError');
++    });
++
++    it('should preserve state information', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x^2 - 4 = 0'],
++        variable: ['x'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.state?.equation).toEqual(['x^2 - 4 = 0']);
++      expect(result.state?.variable).toEqual(['x']);
++      expect(result.state?.result).toBeDefined();
++    });
++
++    it('should solve system of two equations', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['2*x+y=5', 'x-y=1'],
++        variable: ['x', 'y'],
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed.x).toBe('2');
++      expect(parsed.y).toBe('1');
++    });
++
++    it('should solve system of two equations with default variables', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['3*x+2*y=7', 'x-y=1'],
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parseFloat(parsed.x)).toBeCloseTo(1.8, 1);
++      expect(parseFloat(parsed.y)).toBeCloseTo(0.8, 1);
++    });
++
++    it('should solve system of three equations', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x+y+z=6', '2*x-y+z=3', 'x+2*y-z=2'],
++        variable: ['x', 'y', 'z'],
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed.x).toBe('1');
++      expect(parsed.y).toBe('2');
++      expect(parsed.z).toBe('3');
++    });
++
++    it('should handle system with no solution', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x+y=5', 'x+y=7'],
++        variable: ['x', 'y'],
++      });
++
++      expect(result.success).toBe(false);
++      expect(result.error?.type).toBe('SolveError');
++      expect(result.content).toContain('distinct solution');
++    });
++
++    it('should handle single equation with extra variables in array', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x+y=5'],
++        variable: ['x', 'y'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBeDefined();
++    });
++
++    it('should solve equation with complex solutions', async () => {
++      const result = await calculatorExecutor.solve({
++        equation: ['x^2 + 1 = 0'],
++        variable: ['x'],
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('i');
++    });
++  });
++});
 diff --git a/packages/builtin-tool-calculator/src/client/index.ts b/packages/builtin-tool-calculator/src/client/index.ts
 new file mode 100644
 index 0000000000000..2861ba06d85d3
@@ -800,12 +963,14 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..4e4bcf6fd106f
+index 0000000000000..e178097b9e7da
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,413 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { all, create } from 'mathjs';
++// @ts-ignore - nerdamer doesn't have TypeScript definitions
++import nerdamer from 'nerdamer/all';
 +
 +import {
 +  type CalculateParams,
@@ -813,6 +978,7 @@ index 0000000000000..4e4bcf6fd106f
 +  CalculatorIdentifier,
 +  type ConvertBaseParams,
 +  type EvaluateExpressionParams,
++  type SolveParams,
 +  type SortParams,
 +} from '../types';
 +
@@ -1120,6 +1286,88 @@ index 0000000000000..4e4bcf6fd106f
 +    }
 +  };
 +
++  /**
++   * Solve equation or system of equations using nerdamer
++   */
++  solve = async (params: SolveParams): Promise<BuiltinToolResult> => {
++    try {
++      const { equation, variable } = params;
++
++      let resultText: string;
++
++      if (equation.length === 1) {
++        const solveVariable = variable && variable.length > 0 ? variable[0] : 'x';
++        const result = nerdamer.solve(equation[0], solveVariable);
++        const rawResult = result.toString();
++
++        if (rawResult === '[]') {
++          return {
++            content: 'No solution found for the given equation',
++            error: {
++              message: 'No solution found',
++              type: 'SolveError',
++            },
++            success: false,
++          };
++        }
++        resultText = rawResult;
++      } else {
++        let solveVariables: string[];
++
++        if (variable && variable.length > 0) {
++          solveVariables = variable;
++        } else {
++          const allVars = new Set<string>();
++          for (const eq of equation) {
++            const nerdamerEq = nerdamer(eq);
++            const vars = nerdamerEq.variables() as string[];
++            for (const v of vars) {
++              if (v !== '') {
++                allVars.add(v);
++              }
++            }
++          }
++          solveVariables = Array.from(allVars);
++          if (solveVariables.length === 0) {
++            solveVariables = ['x'];
++          }
++        }
++
++        const result = nerdamer.solveEquations(equation, solveVariables);
++        const rawResult = result.toString();
++
++        const pairs = rawResult.split(',');
++        const solution: Record<string, string> = {};
++        for (let i = 0; i < pairs.length; i += 2) {
++          if (i + 1 < pairs.length) {
++            solution[pairs[i]] = pairs[i + 1];
++          }
++        }
++        resultText = JSON.stringify(solution, null, 2);
++      }
++
++      return {
++        content: resultText,
++        state: {
++          equation,
++          result: resultText,
++          variable,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Equation solver error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'SolveError',
++        },
++        success: false,
++      };
++    }
++  };
++
 +  // Implement required interface methods
 +  getApiNames(): string[] {
 +    return Object.values(this.apiEnum) as string[];
@@ -1151,10 +1399,10 @@ index 0000000000000..4779e6e4d607f
 +} from './types';
 diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
 new file mode 100644
-index 0000000000000..2b205fdd161b8
+index 0000000000000..dc527c680b968
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/manifest.ts
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,159 @@
 +import type { BuiltinToolManifest } from '@lobechat/types';
 +
 +import { systemPrompt } from './systemRole';
@@ -1163,7 +1411,7 @@ index 0000000000000..2b205fdd161b8
 +export const CalculatorManifest: BuiltinToolManifest = {
 +  api: [
 +    {
-+      description: 'Calculate the result of a mathematical expression.',
++      description: 'Calculate result of a mathematical expression.',
 +      name: CalculatorApiName.calculate,
 +      parameters: {
 +        additionalProperties: false,
@@ -1174,7 +1422,7 @@ index 0000000000000..2b205fdd161b8
 +            type: 'string',
 +          },
 +          precision: {
-+            description: 'Number of decimal places for the result (optional, defaults to 10)',
++            description: 'Number of decimal places for result (optional, defaults to 10)',
 +            maximum: 20,
 +            minimum: 0,
 +            type: 'number',
@@ -1196,14 +1444,14 @@ index 0000000000000..2b205fdd161b8
 +            type: 'string',
 +          },
 +          precision: {
-+            description: 'Number of decimal places for the result (optional, defaults to 10)',
++            description: 'Number of decimal places for result (optional, defaults to 10)',
 +            maximum: 20,
 +            minimum: 0,
 +            type: 'number',
 +          },
 +          variables: {
 +            description:
-+              'Key-value pairs of variables to substitute in the expression (e.g., {"x": 5, "r": 3})',
++              'Key-value pairs of variables to substitute in expression (e.g., {"x": 5, "r": 3})',
 +            type: 'object',
 +          },
 +        },
@@ -1278,6 +1526,33 @@ index 0000000000000..2b205fdd161b8
 +        type: 'object',
 +      },
 +    },
++    {
++      description: 'Solve algebraic equations or systems of equations symbolically.',
++      name: CalculatorApiName.solve,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          equation: {
++            description:
++              'The equation(s) to solve. Single equation (e.g., ["x^2 + 2*x + 1 = 0"]) or system of equations (e.g., ["2*x+y=5", "x-y=1"])',
++            items: {
++              type: 'string',
++            },
++            type: 'array',
++          },
++          variable: {
++            description:
++              'Variable(s) to solve for. For single equation: array with one variable (optional, defaults to ["x"], e.g., ["x"]). For system of equations: array of variables (e.g., ["x", "y"])',
++            items: {
++              type: 'string',
++            },
++            type: 'array',
++          },
++        },
++        required: ['equation'],
++        type: 'object',
++      },
++    },
 +  ],
 +  identifier: CalculatorIdentifier,
 +  meta: {
@@ -1289,17 +1564,18 @@ index 0000000000000..2b205fdd161b8
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..9d6b197c426e6
+index 0000000000000..70f1c6ba62895
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,98 @@
-+export const systemPrompt = `You have access to a Calculator tool powered by mathjs, capable of comprehensive mathematical computations and base conversions.
+@@ -0,0 +1,126 @@
++export const systemPrompt = `You have access to a Calculator tool powered by mathjs and nerdamer, capable of comprehensive mathematical computations, base conversions, and symbolic equation solving.
 +
 +<core_capabilities>
 +1. **calculate**: Perform mathematical expressions and calculations using mathjs syntax
 +2. **evaluateExpression**: Evaluate complex mathematical expressions with variable substitution
 +3. **sort**: Sort multiple numbers to get sorted array, largest value, or smallest value
 +4. **convertBase**: Convert numbers between different number bases (supports bases 2-36)
++5. **solve**: Solve algebraic equations or systems of equations symbolically using nerdamer
 +</core_capabilities>
 +
 +<workflow>
@@ -1311,28 +1587,43 @@ index 0000000000000..9d6b197c426e6
 +
 +<tool_selection_guidelines>
 +- **calculate**: Use for direct mathematical calculations, expressions, and unit conversions
-+  - Examples: "2 + 3 * 4", "sqrt(16)", "sin(30 deg)", "5 cm to inch", "25 degC to degF"
-+  - Supports: arithmetic, functions, matrices, complex numbers, units, symbolic calculations
-+  - Uses mathjs syntax for all operations
-+  
++   - Examples: "2 + 3 * 4", "sqrt(16)", "sin(30 deg)", "5 cm to inch", "25 degC to degF"
++   - Supports: arithmetic, functions, matrices, complex numbers, units, symbolic calculations
++   - Uses mathjs syntax for all operations
++
 +- **evaluateExpression**: Use for complex expressions requiring variable substitution
-+  - Examples: "x^2 + 2*x + 1", "det([[a,b],[c,d]])"
-+  - Provide variables object with key-value pairs for substitution
-+  
++   - Examples: "x^2 + 2*x + 1", "det([[a,b],[c,d]])"
++   - Provide variables object with key-value pairs for substitution
++
 +- **convertBase**: Use for number base conversions
-+  - Requires numeric base values (2-36) for both fromBase and toBase parameters
-+  - Supports both string and number inputs for the number parameter
-+  - Examples: convert "1010" from base 2 to base 10, convert "255" from base 10 to base 16, convert "Z" from base 36 to base 10
-+  
++   - Requires numeric base values (2-36) for both fromBase and toBase parameters
++   - Supports both string and number inputs for the number parameter
++   - Examples: convert "1010" from base 2 to base 10, convert "255" from base 10 to base 16, convert "Z" from base 36 to base 10
++
 +- **sort**: Use for sorting multiple numbers with flexible output modes
-+   - Requires an array of at least 2 numbers (strings or numbers)
-+   - Optional mode: "largest" returns only largest value; "smallest" returns only smallest value; if not specified, returns sorted array
-+   - Optional reverse: false (default) sorts ascending (smallest to largest); true sorts descending (largest to smallest)
-+   - Examples: sort({"numbers": [3.14, 2.718, 1.618]}), sort({"numbers": [5, 3, 8], "mode": "largest"}), sort({"numbers": [5, 3, 8], "reverse": true})
-+   - Response formats: 
-+     - default (no mode): ["1.618", "2.718", "3.14"] (ascending) or ["3.14", "2.718", "1.618"] (descending with reverse: true)
-+     - largest mode: "3.14"
-+     - smallest mode: "1.618"
++    - Requires an array of at least 2 numbers (strings or numbers)
++    - Optional mode: "largest" returns only largest value; "smallest" returns only smallest value; if not specified, returns sorted array
++    - Optional reverse: false (default) sorts ascending (smallest to largest); true sorts descending (largest to smallest)
++    - Examples: sort({"numbers": [3.14, 2.718, 1.618]}), sort({"numbers": [5, 3, 8], "mode": "largest"}), sort({"numbers": [5, 3, 8], "reverse": true})
++    - Response formats:
++      - default (no mode): ["1.618", "2.718", "3.14"] (ascending) or ["3.14", "2.718", "1.618"] (descending with reverse: true)
++      - largest mode: "3.14"
++      - smallest mode: "1.618"
++
++- **solve**: Use for solving algebraic equations or systems of equations
++    - Requires equation parameter as an array of strings (always an array, even for single equations)
++    - Optional variable parameter: array of variable names to solve for
++    - Single equation format: {"equation": ["x^2 - 5*x + 6 = 0"], "variable": ["x"]}
++    - System of equations format: {"equation": ["2*x+y=5", "x-y=1"], "variable": ["x", "y"]}
++    - If variable is not specified, automatically extracts variables from equations
++    - Supports: linear, quadratic, cubic, and polynomial equations; systems of equations
++    - Returns: array of solutions for single equations, or object mapping variables to values for systems
++    - Examples:
++      - Single linear: {"equation": ["3*x + 5 = 20"], "variable": ["x"]} → [5]
++      - Single quadratic: {"equation": ["x^2 - 5*x + 6 = 0"], "variable": ["x"]} → [2, 3]
++      - Two-equation system: {"equation": ["2*x+y=5", "x-y=1"], "variable": ["x", "y"]} → {"x": "2", "y": "1"}
++      - Three-equation system: {"equation": ["x+y+z=6", "2*x-y+z=3", "x+2*y-z=2"], "variable": ["x", "y", "z"]} → {"x": "1", "y": "2", "z": "3"}
++      - Auto variables: {"equation": ["3*x+2*y=7", "x-y=1"]} (variable omitted) → automatically detects x and y
 +</tool_selection_guidelines>
 +
 +<mathjs_syntax_guide>
@@ -1351,12 +1642,19 @@ index 0000000000000..9d6b197c426e6
 +
 +**Complex Numbers**: Use "i" for imaginary unit
 +- Examples: "sqrt(-1)", "3 + 4i", "complex(3,4)"
++
++**Equation Syntax**: Use standard mathematical notation for equations
++- Power: x^2, x^3, y^2
++- Multiplication: 2*x, 3*x*y (explicit * required)
++- Addition/Subtraction: x + 5, x - 3*y
++- Equality: x^2 - 5*x + 6 = 0
 +</mathjs_syntax_guide>
 +
 +<supported_operations>
 +**Basic Arithmetic**: +, -, *, /, % (modulus)
 +**Mathematical Functions**: sqrt, sin, cos, tan, log, exp, abs, round, floor, ceil
 +**Advanced Operations**: matrices, complex numbers, derivatives, integrals, statistics
++**Equation Solving**: Linear, quadratic, cubic, polynomial equations; systems of equations
 +**Number Sorting**: Sort multiple numbers to identify order and extract largest/smallest values
 +**Unit Conversions**: Temperature, length, weight, speed, volume using mathjs syntax
 +**Base Conversions**: Support for all bases from 2 to 36 (binary, octal, decimal, hexadecimal, and custom bases)
@@ -1367,6 +1665,7 @@ index 0000000000000..9d6b197c426e6
 +- Return only the result value without showing the original expression or input
 +- For unit conversions, return only the converted value with units
 +- For base conversions, return only the converted number in the target base
++- For equation solving, return solutions in clear format (array for single equations, object for systems)
 +- Provide intermediate steps when helpful for complex calculations
 +- Use the precision parameter when specified for decimal places
 +</formatting_guidelines>
@@ -1377,11 +1676,13 @@ index 0000000000000..9d6b197c426e6
 +- When variables are missing from evaluateExpression, the operation will fail
 +- For base conversion errors, verify that base values are between 2-36 and the number contains valid digits
 +- Handle decimal points gracefully in base conversion inputs
-+- For unit conversion errors, verify correct mathjs unit syntax is being used
++- For unit conversion errors, verify that correct mathjs unit syntax is being used
++- For equation solving errors: system may have no solution, infinite solutions, or requires more equations than variables
 +</error_handling>
 +
 +<best_practices>
 +- **IMPORTANT**: Use mathjs syntax for all calculations and unit conversions
++- **IMPORTANT**: For solve tool, always use array format for equation parameter (even for single equations)
 +- Use "degC" and "degF" instead of Unicode degree symbols for temperature
 +- Use "deg" suffix for degree angles in trigonometric functions
 +- Simplify complex expressions when possible
@@ -1390,19 +1691,22 @@ index 0000000000000..9d6b197c426e6
 +- Always verify that results make sense in the given context
 +- Provide exact decimal values when precision is specified
 +- For base conversions, use numeric values instead of string names (e.g., 2 instead of "binary")
++- For equation solving, if multiple solutions exist, present all solutions clearly
++- For systems of equations, ensure the number of equations matches the number of variables when possible
 +</best_practices>`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..9331cdfa132ee
+index 0000000000000..4acc769df5e45
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,83 @@
 +export const CalculatorIdentifier = 'lobe-calculator';
 +
 +export const CalculatorApiName = {
 +  calculate: 'calculate',
 +  convertBase: 'convertBase',
 +  evaluateExpression: 'evaluateExpression',
++  solve: 'solve',
 +  sort: 'sort',
 +} as const;
 +
@@ -1466,6 +1770,18 @@ index 0000000000000..9331cdfa132ee
 +  result?: any;
 +  smallest?: number | string;
 +  sorted?: (string | number)[];
++}
++
++// Nerdamer Equation Solver API
++export interface SolveParams {
++  equation: string[];
++  variable?: string[];
++}
++
++export interface SolveState {
++  equation?: string[];
++  result?: string | string[];
++  variable?: string[];
 +}
 diff --git a/packages/builtin-tool-calculator/tsconfig.json b/packages/builtin-tool-calculator/tsconfig.json
 new file mode 100644
