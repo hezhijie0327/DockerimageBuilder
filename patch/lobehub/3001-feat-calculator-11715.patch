@@ -43,10 +43,10 @@ index 0000000000000..64ea6ea2f7ce7
 +}
 diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
 new file mode 100644
-index 0000000000000..54bc33077b68b
+index 0000000000000..c5fa903386f9d
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/calculate.test.ts
-@@ -0,0 +1,668 @@
+@@ -0,0 +1,739 @@
 +import { describe, expect, it } from 'vitest';
 +
 +import { calculatorExecutor } from '../src/executor';
@@ -713,6 +713,77 @@ index 0000000000000..54bc33077b68b
 +      expect(result.state?.smallest).toBe('2.72');
 +      expect(result.state?.sorted).toEqual(['2.72', '3.14']);
 +    });
++
++    it('should sort in descending order when reverse is true', async () => {
++      const result = await calculatorExecutor.sort({
++        numbers: [3.14, 2.718, 1.618, 4.669],
++        reverse: true,
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(Array.isArray(parsed)).toBe(true);
++      expect(parsed).toEqual(['4.669', '3.14', '2.718', '1.618']);
++    });
++
++    it('should sort in ascending order when reverse is false', async () => {
++      const result = await calculatorExecutor.sort({
++        numbers: [3.14, 2.718, 1.618, 4.669],
++        reverse: false,
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(Array.isArray(parsed)).toBe(true);
++      expect(parsed).toEqual(['1.618', '2.718', '3.14', '4.669']);
++    });
++
++    it('should default to ascending order when reverse is not specified', async () => {
++      const result = await calculatorExecutor.sort({
++        numbers: [3.14, 2.718, 1.618, 4.669],
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(Array.isArray(parsed)).toBe(true);
++      expect(parsed).toEqual(['1.618', '2.718', '3.14', '4.669']);
++    });
++
++    it('should work with reverse parameter in largest mode', async () => {
++      const result = await calculatorExecutor.sort({
++        numbers: [3.14, 2.718, 1.618, 4.669],
++        mode: 'largest',
++        reverse: true,
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('4.669');
++    });
++
++    it('should work with reverse parameter in smallest mode', async () => {
++      const result = await calculatorExecutor.sort({
++        numbers: [3.14, 2.718, 1.618, 4.669],
++        mode: 'smallest',
++        reverse: true,
++      });
++
++      expect(result.success).toBe(true);
++      const parsed = JSON.parse(result.content || '{}');
++      expect(parsed).toBe('1.618');
++    });
++
++    it('should preserve reverse parameter in state', async () => {
++      const result = await calculatorExecutor.sort({
++        numbers: [3.14, 2.718],
++        reverse: true,
++        precision: 2,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.state?.reverse).toBe(true);
++      expect(result.state?.sorted).toEqual(['3.14', '2.72']);
++    });
 +  });
 +});
 diff --git a/packages/builtin-tool-calculator/src/client/index.ts b/packages/builtin-tool-calculator/src/client/index.ts
@@ -729,10 +800,10 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..129e6eea087e1
+index 0000000000000..4e4bcf6fd106f
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,328 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { all, create } from 'mathjs';
 +
@@ -926,7 +997,7 @@ index 0000000000000..129e6eea087e1
 +   */
 +  sort = async (params: SortParams): Promise<BuiltinToolResult> => {
 +    try {
-+      const { numbers, mode, precision } = params;
++      const { numbers, mode, precision, reverse } = params;
 +
 +      if (numbers.length < 2) {
 +        return {
@@ -948,8 +1019,8 @@ index 0000000000000..129e6eea087e1
 +        return parsed;
 +      });
 +
-+      // Sort numbers in ascending order
-+      const sortedParsed = [...parsedNumbers].sort((a, b) => a - b);
++      // Sort numbers (ascending by default, reverse if specified)
++      const sortedParsed = [...parsedNumbers].sort((a, b) => (reverse ? b - a : a - b));
 +
 +      // Format numbers for output
 +      const formatNumber = (num: number): string => {
@@ -960,33 +1031,36 @@ index 0000000000000..129e6eea087e1
 +      };
 +
 +      const sorted = sortedParsed.map(formatNumber);
-+      // prettier-ignore
-+      const largest = formatNumber(sortedParsed[sortedParsed.length - 1]);
-+      const smallest = formatNumber(sortedParsed[0]);
++      const largest = formatNumber(Math.max(...parsedNumbers));
++      const smallest = formatNumber(Math.min(...parsedNumbers));
 +
 +      let result: any;
 +
 +      switch (mode) {
-+        case 'largest':
++        case 'largest': {
 +          result = largest;
 +          break;
-+        case 'smallest':
++        }
++        case 'smallest': {
 +          result = smallest;
 +          break;
-+        default:
++        }
++        default: {
 +          result = sorted;
++        }
 +      }
 +
 +      return {
 +        content: JSON.stringify(result),
 +        state: {
-+          result,
 +          largest,
++          mode,
++          originalNumbers: numbers,
++          precision,
++          result,
++          reverse,
 +          smallest,
 +          sorted,
-+          originalNumbers: numbers,
-+          mode,
-+          precision,
 +        },
 +        success: true,
 +      };
@@ -1077,10 +1151,10 @@ index 0000000000000..4779e6e4d607f
 +} from './types';
 diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
 new file mode 100644
-index 0000000000000..c21559b93a103
+index 0000000000000..2b205fdd161b8
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/manifest.ts
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,132 @@
 +import type { BuiltinToolManifest } from '@lobechat/types';
 +
 +import { systemPrompt } from './systemRole';
@@ -1166,6 +1240,11 @@ index 0000000000000..c21559b93a103
 +            minimum: 0,
 +            type: 'number',
 +          },
++          reverse: {
++            description:
++              'Sort order: false (default) sorts ascending (smallest to largest); true sorts descending (largest to smallest)',
++            type: 'boolean',
++          },
 +        },
 +        required: ['numbers'],
 +        type: 'object',
@@ -1210,10 +1289,10 @@ index 0000000000000..c21559b93a103
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..da54e0a20c8f3
+index 0000000000000..9d6b197c426e6
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,98 @@
 +export const systemPrompt = `You have access to a Calculator tool powered by mathjs, capable of comprehensive mathematical computations and base conversions.
 +
 +<core_capabilities>
@@ -1246,13 +1325,14 @@ index 0000000000000..da54e0a20c8f3
 +  - Examples: convert "1010" from base 2 to base 10, convert "255" from base 10 to base 16, convert "Z" from base 36 to base 10
 +  
 +- **sort**: Use for sorting multiple numbers with flexible output modes
-+  - Requires an array of at least 2 numbers (strings or numbers)
-+  - Optional mode: "largest" returns only largest value; "smallest" returns only smallest value; if not specified, returns sorted array
-+  - Examples: sort({"numbers": [3.14, 2.718, 1.618]}), sort({"numbers": [5, 3, 8], "mode": "largest"})
-+  - Response formats: 
-+    - default (no mode): ["1.618", "2.718", "3.14"]
-+    - largest mode: "3.14"
-+    - smallest mode: "1.618"
++   - Requires an array of at least 2 numbers (strings or numbers)
++   - Optional mode: "largest" returns only largest value; "smallest" returns only smallest value; if not specified, returns sorted array
++   - Optional reverse: false (default) sorts ascending (smallest to largest); true sorts descending (largest to smallest)
++   - Examples: sort({"numbers": [3.14, 2.718, 1.618]}), sort({"numbers": [5, 3, 8], "mode": "largest"}), sort({"numbers": [5, 3, 8], "reverse": true})
++   - Response formats: 
++     - default (no mode): ["1.618", "2.718", "3.14"] (ascending) or ["3.14", "2.718", "1.618"] (descending with reverse: true)
++     - largest mode: "3.14"
++     - smallest mode: "1.618"
 +</tool_selection_guidelines>
 +
 +<mathjs_syntax_guide>
@@ -1313,10 +1393,10 @@ index 0000000000000..da54e0a20c8f3
 +</best_practices>`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..551a8f66fa8bc
+index 0000000000000..9331cdfa132ee
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,70 @@
 +export const CalculatorIdentifier = 'lobe-calculator';
 +
 +export const CalculatorApiName = {
@@ -1374,6 +1454,7 @@ index 0000000000000..551a8f66fa8bc
 +  mode?: 'largest' | 'smallest';
 +  numbers: (string | number)[];
 +  precision?: number;
++  reverse?: boolean;
 +}
 +
 +export interface SortState {
