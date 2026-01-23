@@ -1,4 +1,4 @@
-# Current Version: 1.8.8
+# Current Version: 1.8.9
 
 ARG NODEJS_VERSION="24"
 
@@ -48,6 +48,7 @@ ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
     PNPM_HOME="/pnpm" \
     APP_URL="http://app.com" \
+    AUTH_SECRET="use-for-build" \
     DATABASE_DRIVER="node" \
     DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
     KEY_VAULTS_SECRET="use-for-build" \
