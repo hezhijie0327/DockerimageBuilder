@@ -1,4 +1,4 @@
-# Current Version: 1.0.5
+# Current Version: 1.0.6
 
 ARG NODEJS_VERSION="24"
 ARG RUST_VERSION="1"
@@ -44,9 +44,9 @@ COPY --from=get_info /tmp/BUILDTMP/RUSTFS_WEB /rustfs
 RUN \
     npm i -g corepack@latest \
     && corepack enable \
-    && corepack use pnpm \
+    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
     && pnpm i \
-    && pnpm run generate
+    && pnpm generate
 
 FROM rust:${RUST_VERSION}-alpine AS build_rustfs
 
