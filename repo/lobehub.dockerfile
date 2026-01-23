@@ -1,4 +1,4 @@
-# Current Version: 1.8.7
+# Current Version: 1.8.8
 
 ARG NODEJS_VERSION="24"
 
@@ -46,9 +46,6 @@ FROM build_baseos AS build_lobehub
 
 ENV \
     NODE_OPTIONS="--max-old-space-size=8192" \
-    NEXT_PUBLIC_ENABLE_BETTER_AUTH="1" \
-    NEXT_PUBLIC_ENABLE_NEXT_AUTH="0" \
-    NEXT_PUBLIC_SERVICE_MODE="server" \
     PNPM_HOME="/pnpm" \
     APP_URL="http://app.com" \
     DATABASE_DRIVER="node" \
@@ -108,7 +105,7 @@ ENV \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
     NEXT_AUTH_SSO_SESSION_STRATEGY="database" \
-    NEXT_PUBLIC_ENABLE_BETTER_AUTH="1" NEXT_PUBLIC_ENABLE_NEXT_AUTH="0" ENABLE_MAGIC_LINK="1" AUTH_EMAIL_VERIFICATION="0" \
+    ENABLE_MAGIC_LINK="1" AUTH_EMAIL_VERIFICATION="0" \
     FEATURE_FLAGS="-check_updates,-welcome_suggest" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
