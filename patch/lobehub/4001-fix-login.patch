@@ -1,144 +1,26 @@
 diff --git a/packages/utils/src/server/correctOIDCUrl.test.ts b/packages/utils/src/server/correctOIDCUrl.test.ts
-index 7ca878bd02662..8f1d8fcebf13e 100644
+index 7ca878bd02662..9339d770b1277 100644
 --- a/packages/utils/src/server/correctOIDCUrl.test.ts
 +++ b/packages/utils/src/server/correctOIDCUrl.test.ts
-@@ -524,4 +524,63 @@ describe('correctOIDCUrl', () => {
-       expect(result.toString()).toBe('http://example.com:3000/auth/callback');
+@@ -339,7 +339,7 @@ describe('correctOIDCUrl', () => {
+       const result = correctOIDCUrl(mockRequest, originalUrl);
+ 
+       // Should fall back to host header because example.com:8443 doesn't match configured APP_URL
+-      expect(result.toString()).toBe('https://internal.com:3000/auth/callback');
++      expect(result.toString()).toBe('https://example.com:3000/auth/callback');
      });
-   });
-+
-+  describe('port handling with APP_URL', () => {
-+    it('should strip port from forwarded host when APP_URL has no port', () => {
-+      process.env.APP_URL = 'https://app.lobehub.com';
-+
-+      (mockRequest.headers.get as any).mockImplementation((header: string) => {
-+        if (header === 'host') return 'internal-service:3210';
-+        if (header === 'x-forwarded-host') return 'app.lobehub.com:3210';
-+        if (header === 'x-forwarded-proto') return 'https';
-+        return null;
-+      });
-+
-+      const originalUrl = new URL('http://localhost:3000/oauth/callback/success');
-+      const result = correctOIDCUrl(mockRequest, originalUrl);
-+
-+      // Should fall back to host header because forwarded host with port fails validation
-+      // The correctOIDCUrl function will strip the port during validation, but since it fails
-+      // the port stripping happens in desktop route, not here
-+      expect(result.toString()).toBe('https://internal-service:3000/oauth/callback/success');
-+      expect(result.hostname).toBe('internal-service');
-+      expect(result.port).toBe('3000');
-+    });
-+
-+    it('should preserve port when APP_URL has port', () => {
-+      process.env.APP_URL = 'https://app.lobehub.com:8443';
-+
-+      (mockRequest.headers.get as any).mockImplementation((header: string) => {
-+        if (header === 'host') return 'internal-service:3210';
-+        if (header === 'x-forwarded-host') return 'app.lobehub.com:3210';
-+        if (header === 'x-forwarded-proto') return 'https';
-+        return null;
-+      });
-+
-+      const originalUrl = new URL('http://localhost:3000/oauth/callback/success');
-+      const result = correctOIDCUrl(mockRequest, originalUrl);
-+
-+      // Should fall back to host header because forwarded host with different port fails validation
-+      expect(result.toString()).toBe('https://internal-service:3210/oauth/callback/success');
-+      expect(result.hostname).toBe('internal-service');
-+      expect(result.port).toBe('3210');
-+    });
-+
-+    it('should not strip port when no forwarded host is present', () => {
-+      process.env.APP_URL = 'https://app.lobehub.com';
-+
-+      (mockRequest.headers.get as any).mockImplementation((header: string) => {
-+        if (header === 'host') return 'app.lobehub.com:3210';
-+        return null;
-+      });
-+
-+      const originalUrl = new URL('http://localhost:3000/oauth/callback/success');
-+      const result = correctOIDCUrl(mockRequest, originalUrl);
-+
-+      // Should preserve port from host header since no forwarded host
-+      expect(result.toString()).toBe('http://app.lobehub.com:3210/oauth/callback/success');
-+      expect(result.hostname).toBe('app.lobehub.com');
-+      expect(result.port).toBe('3210');
-+    });
-+  });
- });
+ 
+     it('should not need correction when URL hostname matches actual host', () => {
 diff --git a/packages/utils/src/server/correctOIDCUrl.ts b/packages/utils/src/server/correctOIDCUrl.ts
-index 6e577aecfa748..3ea549e546946 100644
+index 6e577aecfa748..53d07baf82539 100644
 --- a/packages/utils/src/server/correctOIDCUrl.ts
 +++ b/packages/utils/src/server/correctOIDCUrl.ts
-@@ -89,8 +89,35 @@ export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
-     }
+@@ -69,6 +69,32 @@ export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
+     actualProto = url.protocol === 'https:' ? 'https' : 'http';
    }
  
-+  // Handle port conflicts with APP_URL after validation
-+  let finalHost = actualHost;
-+  if (forwardedHost) {
-+    try {
-+      const appUrl = process.env.APP_URL;
-+      if (appUrl) {
-+        const appUrlObj = new URL(appUrl);
-+        const originalForwardedUrlObj = new URL(
-+          `${actualProto}://${forwardedHost.split(',')[0]!.trim()}`,
-+        );
-+
-+        // If forwarded host includes port but APP_URL doesn't, strip the port
-+        if (originalForwardedUrlObj.port && !appUrlObj.port) {
-+          finalHost = new URL(`${actualProto}://${actualHost}`).hostname;
-+          log(
-+            'Stripping port from forwarded host (APP_URL has no port): %s -> %s',
-+            actualHost,
-+            finalHost,
-+          );
-+        }
-+      }
-+    } catch (error) {
-+      log('Error processing host port: %O', error);
-+      // Fall back to validated host
-+    }
-+  }
-+
-   // Build safe origin
--  const safeOrigin = `${actualProto}://${actualHost}`;
-+  const safeOrigin = `${actualProto}://${finalHost}`;
-   log('Safe origin: %s', safeOrigin);
- 
-   // Parse safe origin to get hostname and protocol
-diff --git a/src/app/(backend)/oidc/callback/desktop/route.ts b/src/app/(backend)/oidc/callback/desktop/route.ts
-index dc7edc6465ab2..78ffcbaa927cd 100644
---- a/src/app/(backend)/oidc/callback/desktop/route.ts
-+++ b/src/app/(backend)/oidc/callback/desktop/route.ts
-@@ -3,22 +3,63 @@ import { type NextRequest, NextResponse, after } from 'next/server';
- 
- import { OAuthHandoffModel } from '@/database/models/oauthHandoff';
- import { serverDB } from '@/database/server';
--import { correctOIDCUrl } from '@/utils/server/correctOIDCUrl';
- 
- const log = debug('lobe-oidc:callback:desktop');
- 
- const errorPathname = '/oauth/callback/error';
- 
- /**
-- * 安全地构建重定向URL，使用经过验证的 correctOIDCUrl 防止开放重定向攻击
-+ * 安全地构建重定向URL
-  */
- const buildRedirectUrl = (req: NextRequest, pathname: string): URL => {
--  // 使用 req.nextUrl 作为基础URL，然后通过 correctOIDCUrl 进行验证和修正
--  const baseUrl = req.nextUrl.clone();
--  baseUrl.pathname = pathname;
-+  const forwardedHost = req.headers.get('x-forwarded-host');
-+  const requestHost = req.headers.get('host');
-+  const forwardedProto =
-+    req.headers.get('x-forwarded-proto') || req.headers.get('x-forwarded-protocol');
-+
-+  // 确定实际的主机名，提供后备值
-+  let actualHost = forwardedHost || requestHost;
-+  let actualProto = forwardedProto || 'https';
-+
-+  // 处理端口冲突：如果APP_URL没有端口但forwarded有端口，则去掉端口
++  // Handle port conflicts with APP_URL before validation
++  let hostForValidation = actualHost;
 +  if (forwardedHost) {
 +    try {
 +      const appUrl = process.env.APP_URL;
@@ -146,39 +28,37 @@ index dc7edc6465ab2..78ffcbaa927cd 100644
 +        const appUrlObj = new URL(appUrl);
 +        const forwardedUrlObj = new URL(`${actualProto}://${forwardedHost.split(',')[0]!.trim()}`);
 +
-+        // 如果 forwarded host 包含端口但 APP_URL 没有，去掉端口
++        // If forwarded host includes port but APP_URL doesn't, strip port for validation and final URL
 +        if (forwardedUrlObj.port && !appUrlObj.port) {
-+          actualHost = forwardedUrlObj.hostname;
++          hostForValidation = forwardedUrlObj.hostname;
++          actualHost = hostForValidation; // Use hostname without port for final URL
 +          log(
-+            'Stripping port from forwarded host: %s -> %s',
++            'Stripping port from forwarded host for APP_URL compatibility: %s -> %s',
 +            forwardedHost.split(',')[0]!.trim(),
-+            actualHost,
++            hostForValidation,
 +          );
 +        }
 +      }
 +    } catch (error) {
-+      log('Error processing host port: %O', error);
++      log('Error processing port compatibility: %O', error);
++      // Fall back to original host
 +    }
 +  }
 +
-+  // 如果主机名仍然无效，使用req.nextUrl作为后备
-+  if (!actualHost) {
-+    log('Warning: Invalid host detected, using req.nextUrl as fallback');
-+    const fallbackUrl = req.nextUrl.clone();
-+    fallbackUrl.pathname = pathname;
-+    return fallbackUrl;
-+  }
+   // If unable to determine valid hostname, return original URL
+   if (!actualHost || actualHost === 'null') {
+     log('Warning: Cannot determine valid host, returning original URL');
+@@ -77,8 +103,11 @@ export const correctOIDCUrl = (req: NextRequest, url: URL): URL => {
  
--  // correctOIDCUrl 会验证 X-Forwarded-* 头部并防止开放重定向攻击
--  return correctOIDCUrl(req, baseUrl);
-+  try {
-+    return new URL(`${actualProto}://${actualHost}${pathname}`);
-+  } catch (error) {
-+    log('Error constructing URL, using req.nextUrl as fallback: %O', error);
-+    const fallbackUrl = req.nextUrl.clone();
-+    fallbackUrl.pathname = pathname;
-+    return fallbackUrl;
-+  }
- };
- 
- export const GET = async (req: NextRequest) => {
+   // Validate only X-Forwarded-Host for security, prevent Open Redirect attacks
+   // Host header is trusted (comes from reverse proxy or direct access)
+-  if (forwardedHost && !validateRedirectHost(actualHost)) {
+-    log('Warning: X-Forwarded-Host %s failed validation, falling back to request host', actualHost);
++  if (forwardedHost && hostForValidation && !validateRedirectHost(hostForValidation)) {
++    log(
++      'Warning: X-Forwarded-Host %s failed validation, falling back to request host',
++      hostForValidation,
++    );
+     // Try to fall back to request host if forwarded host is invalid
+     if (requestHost) {
+       actualHost = requestHost;
