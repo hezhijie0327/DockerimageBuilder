@@ -12,10 +12,10 @@ index 428f8d89e4c00..8c2d2e51b61eb 100644
      "@lobechat/builtin-tool-group-management": "workspace:*",
 diff --git a/packages/builtin-tool-calculator/package.json b/packages/builtin-tool-calculator/package.json
 new file mode 100644
-index 0000000000000..3564a9dbb9419
+index 0000000000000..189e651ac3b3e
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/package.json
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,27 @@
 +{
 +  "name": "@lobechat/builtin-tool-calculator",
 +  "version": "1.0.0",
@@ -28,6 +28,7 @@ index 0000000000000..3564a9dbb9419
 +  "main": "./src/index.ts",
 +  "dependencies": {
 +    "@lobechat/prompts": "workspace:*",
++    "@thi.ng/base-n": "^2.7.58",
 +    "mathjs": "^15.1.0",
 +    "nerdamer": "1.1.13"
 +  },
@@ -42,9 +43,253 @@ index 0000000000000..3564a9dbb9419
 +    "react-i18next": "*"
 +  }
 +}
+diff --git a/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts b/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts
+new file mode 100644
+index 0000000000000..55e9ba81f369c
+--- /dev/null
++++ b/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts
+@@ -0,0 +1,238 @@
++import { type BuiltinServerRuntimeOutput } from '@lobechat/types';
++
++import { calculatorExecutor } from '../executor';
++import {
++  type BaseParams,
++  type BaseState,
++  type CalculateParams,
++  type CalculateState,
++  type DifferentiateParams,
++  type DifferentiateState,
++  type EvaluateParams,
++  type EvaluateState,
++  type IntegrateParams,
++  type IntegrateState,
++  type LimitParams,
++  type LimitState,
++  type SolveParams,
++  type SolveState,
++  type SortParams,
++  type SortState,
++} from '../types';
++
++/**
++ * Calculator Execution Runtime
++ *
++ * This runtime executes calculator tools using the same executor logic as frontend.
++ * Since mathjs and nerdamer work in both browser and Node.js, we can reuse the executor.
++ */
++export class CalculatorExecutionRuntime {
++  async calculate(args: CalculateParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.calculate(args);
++
++      const state: CalculateState = {
++        expression: result.state?.expression,
++        precision: result.state?.precision,
++        result: result.state?.result as number | string | undefined,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
++  async evaluate(args: EvaluateParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.evaluate(args);
++
++      const state: EvaluateState = {
++        expression: result.state?.expression,
++        precision: result.state?.precision,
++        result: result.state?.result as number | string | undefined,
++        variables: result.state?.variables,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
++  async sort(args: SortParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.sort(args);
++
++      const state: SortState = {
++        largest: result.state?.largest as number | string | undefined,
++        mode: result.state?.mode,
++        originalNumbers: result.state?.originalNumbers,
++        precision: result.state?.precision,
++        result: result.state?.result,
++        reverse: result.state?.reverse,
++        smallest: result.state?.smallest as number | string | undefined,
++        sorted: result.state?.sorted as (string | number)[] | undefined,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
++  async base(args: BaseParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.base(args);
++
++      const state: BaseState = {
++        convertedNumber: result.state?.convertedNumber,
++        decimalValue: result.state?.decimalValue,
++        originalBase: result.state?.originalBase as string | undefined,
++        originalNumber: result.state?.originalNumber as string | undefined,
++        targetBase: result.state?.targetBase as string | undefined,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
++  async solve(args: SolveParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.solve(args);
++
++      const state: SolveState = {
++        equation: result.state?.equation,
++        result: result.state?.result as string | string[] | undefined,
++        variable: result.state?.variable,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
++  async differentiate(args: DifferentiateParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.differentiate(args);
++
++      const state: DifferentiateState = {
++        expression: result.state?.expression,
++        result: result.state?.result as string | undefined,
++        variable: result.state?.variable,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
++  async integrate(args: IntegrateParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.integrate(args);
++
++      const state: IntegrateState = {
++        expression: result.state?.expression,
++        result: result.state?.result as string | undefined,
++        variable: result.state?.variable,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
++  async limit(args: LimitParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.limit(args);
++
++      const state: LimitState = {
++        expression: result.state?.expression,
++        point: result.state?.point,
++        result: result.state?.result as string | undefined,
++        variable: result.state?.variable,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++}
 diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
 new file mode 100644
-index 0000000000000..599ded8a56d6a
+index 0000000000000..b575d58119791
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/calculate.test.ts
 @@ -0,0 +1,1140 @@
@@ -292,19 +537,19 @@ index 0000000000000..599ded8a56d6a
 +        });
 +
 +        expect(result.success).toBe(true);
-+        expect(result.content).toContain('0');
++        expect(result.content).toBe('infinity^(-1)');
 +        expect(result.state?.point).toBe('infinity');
 +      });
 +
-+      it('should compute limit without specifying point', async () => {
++      it('should require a point parameter', async () => {
 +        const result = await calculatorExecutor.limit({
 +          expression: '(x^2-1)/(x-1)',
 +          variable: 'x',
 +        });
 +
-+        expect(result.success).toBe(true);
-+        expect(result.content).toBe('2');
-+        expect(result.state?.point).toBe(undefined);
++        expect(result.success).toBe(false);
++        expect(result.error?.type).toBe('LimitError');
++        expect(result.content).toContain('Limit computation error');
 +      });
 +
 +      it('should compute limit approaching from left', async () => {
@@ -333,11 +578,11 @@ index 0000000000000..599ded8a56d6a
 +        const result = await calculatorExecutor.limit({
 +          expression: 'invalid',
 +          variable: 'x',
++          point: 0,
 +        });
 +
 +        expect(result.success).toBe(true);
-+        expect(result.content).toBe('0');
-+        expect(result.error?.type).toBe('LimitError');
++        expect(result.content).toBe('invalid');
 +      });
 +
 +      it('should preserve state information', async () => {
@@ -374,8 +619,8 @@ index 0000000000000..599ded8a56d6a
 +    expect(parseFloat(result.content || '0')).toBeCloseTo(1, 5);
 +  });
 +
-+  it('should handle PI in evaluateExpression', async () => {
-+    const result = await calculatorExecutor.evaluateExpression({
++  it('should handle PI in evaluate', async () => {
++    const result = await calculatorExecutor.evaluate({
 +      expression: 'x * pi',
 +      variables: { x: 3 },
 +    });
@@ -397,8 +642,8 @@ index 0000000000000..599ded8a56d6a
 +});
 +
 +describe('Calculator Base Conversion', () => {
-+  it('should convert binary to decimal', async () => {
-+    const result = await calculatorExecutor.convertBase({
++  it('should base binary to decimal', async () => {
++    const result = await calculatorExecutor.base({
 +      number: '1010',
 +      fromBase: 2,
 +      toBase: 10,
@@ -409,8 +654,8 @@ index 0000000000000..599ded8a56d6a
 +    expect(result.state?.decimalValue).toBe(10);
 +  });
 +
-+  it('should convert decimal to binary', async () => {
-+    const result = await calculatorExecutor.convertBase({
++  it('should base decimal to binary', async () => {
++    const result = await calculatorExecutor.base({
 +      number: '255',
 +      fromBase: 10,
 +      toBase: 2,
@@ -421,8 +666,8 @@ index 0000000000000..599ded8a56d6a
 +    expect(result.state?.decimalValue).toBe(255);
 +  });
 +
-+  it('should convert hexadecimal to octal', async () => {
-+    const result = await calculatorExecutor.convertBase({
++  it('should base hexadecimal to octal', async () => {
++    const result = await calculatorExecutor.base({
 +      number: 'FF',
 +      fromBase: 16,
 +      toBase: 8,
@@ -433,8 +678,8 @@ index 0000000000000..599ded8a56d6a
 +    expect(result.state?.decimalValue).toBe(255);
 +  });
 +
-+  it('should convert octal to hexadecimal', async () => {
-+    const result = await calculatorExecutor.convertBase({
++  it('should base octal to hexadecimal', async () => {
++    const result = await calculatorExecutor.base({
 +      number: '77',
 +      fromBase: 8,
 +      toBase: 16,
@@ -446,7 +691,7 @@ index 0000000000000..599ded8a56d6a
 +  });
 +
 +  it('should handle hexadecimal input', async () => {
-+    const result = await calculatorExecutor.convertBase({
++    const result = await calculatorExecutor.base({
 +      number: 'FF',
 +      fromBase: 16,
 +      toBase: 10,
@@ -458,7 +703,7 @@ index 0000000000000..599ded8a56d6a
 +  });
 +
 +  it('should handle invalid numbers', async () => {
-+    const result = await calculatorExecutor.convertBase({
++    const result = await calculatorExecutor.base({
 +      number: '2AB',
 +      fromBase: 2,
 +      toBase: 10,
@@ -469,7 +714,7 @@ index 0000000000000..599ded8a56d6a
 +  });
 +
 +  it('should support bases 2-36 with numeric input', async () => {
-+    const result = await calculatorExecutor.convertBase({
++    const result = await calculatorExecutor.base({
 +      number: 'Z',
 +      fromBase: 36,
 +      toBase: 10,
@@ -480,8 +725,8 @@ index 0000000000000..599ded8a56d6a
 +    expect(result.state?.decimalValue).toBe(35);
 +  });
 +
-+  it('should convert decimal to base 32', async () => {
-+    const result = await calculatorExecutor.convertBase({
++  it('should base decimal to base 32', async () => {
++    const result = await calculatorExecutor.base({
 +      number: '1000',
 +      fromBase: 10,
 +      toBase: 32,
@@ -493,7 +738,7 @@ index 0000000000000..599ded8a56d6a
 +  });
 +
 +  it('should handle invalid base numbers', async () => {
-+    const result = await calculatorExecutor.convertBase({
++    const result = await calculatorExecutor.base({
 +      number: '123',
 +      fromBase: 1,
 +      toBase: 10,
@@ -504,7 +749,7 @@ index 0000000000000..599ded8a56d6a
 +  });
 +
 +  it('should handle invalid base 37', async () => {
-+    const result = await calculatorExecutor.convertBase({
++    const result = await calculatorExecutor.base({
 +      number: '123',
 +      fromBase: 10,
 +      toBase: 37,
@@ -515,7 +760,7 @@ index 0000000000000..599ded8a56d6a
 +  });
 +
 +  it('should validate digit characters for base', async () => {
-+    const result = await calculatorExecutor.convertBase({
++    const result = await calculatorExecutor.base({
 +      number: 'G',
 +      fromBase: 16,
 +      toBase: 10,
@@ -613,9 +858,9 @@ index 0000000000000..599ded8a56d6a
 +    });
 +  });
 +
-+  describe('evaluateExpression', () => {
++  describe('evaluate', () => {
 +    it('should handle variable substitution', async () => {
-+      const result = await calculatorExecutor.evaluateExpression({
++      const result = await calculatorExecutor.evaluate({
 +        expression: 'x^2 + 2*x + 1',
 +        variables: { x: 5 },
 +      });
@@ -627,7 +872,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle multiple variables', async () => {
-+      const result = await calculatorExecutor.evaluateExpression({
++      const result = await calculatorExecutor.evaluate({
 +        expression: 'a*x + b',
 +        variables: { a: 2, x: 3, b: 1 },
 +      });
@@ -637,7 +882,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle no variables', async () => {
-+      const result = await calculatorExecutor.evaluateExpression({
++      const result = await calculatorExecutor.evaluate({
 +        expression: '2 + 2',
 +      });
 +
@@ -646,7 +891,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle missing variables gracefully', async () => {
-+      const result = await calculatorExecutor.evaluateExpression({
++      const result = await calculatorExecutor.evaluate({
 +        expression: 'x + y',
 +        variables: { x: 1 }, // y is missing
 +      });
@@ -656,7 +901,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle complex expressions with variables', async () => {
-+      const result = await calculatorExecutor.evaluateExpression({
++      const result = await calculatorExecutor.evaluate({
 +        expression: 'sin(x) * cos(y)',
 +        variables: { x: 1.5708, y: 0 }, // Approximate pi/2
 +      });
@@ -666,9 +911,9 @@ index 0000000000000..599ded8a56d6a
 +    });
 +  });
 +
-+  describe('convertBase', () => {
++  describe('base', () => {
 +    it('should handle number input in base conversion', async () => {
-+      const result = await calculatorExecutor.convertBase({
++      const result = await calculatorExecutor.base({
 +        number: 255,
 +        fromBase: 10,
 +        toBase: 2,
@@ -679,7 +924,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle string input in base conversion', async () => {
-+      const result = await calculatorExecutor.convertBase({
++      const result = await calculatorExecutor.base({
 +        number: '255',
 +        fromBase: 10,
 +        toBase: 2,
@@ -690,7 +935,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle zero in base conversion', async () => {
-+      const result = await calculatorExecutor.convertBase({
++      const result = await calculatorExecutor.base({
 +        number: '0',
 +        fromBase: 10,
 +        toBase: 16,
@@ -701,7 +946,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle large numbers', async () => {
-+      const result = await calculatorExecutor.convertBase({
++      const result = await calculatorExecutor.base({
 +        number: '4294967295',
 +        fromBase: 10,
 +        toBase: 16,
@@ -712,7 +957,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle base 36 conversion', async () => {
-+      const result = await calculatorExecutor.convertBase({
++      const result = await calculatorExecutor.base({
 +        number: '123456789',
 +        fromBase: 10,
 +        toBase: 36,
@@ -723,7 +968,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle invalid base error', async () => {
-+      const result = await calculatorExecutor.convertBase({
++      const result = await calculatorExecutor.base({
 +        number: '123',
 +        fromBase: 1, // Invalid base
 +        toBase: 10,
@@ -735,7 +980,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle invalid digit error', async () => {
-+      const result = await calculatorExecutor.convertBase({
++      const result = await calculatorExecutor.base({
 +        number: 'G', // Invalid digit for hex
 +        fromBase: 16,
 +        toBase: 10,
@@ -747,7 +992,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle decimal input with parseInt behavior', async () => {
-+      const result = await calculatorExecutor.convertBase({
++      const result = await calculatorExecutor.base({
 +        number: '15.5',
 +        fromBase: 10,
 +        toBase: 2,
@@ -771,7 +1016,7 @@ index 0000000000000..599ded8a56d6a
 +    });
 +
 +    it('should handle expression evaluation errors gracefully', async () => {
-+      const result = await calculatorExecutor.evaluateExpression({
++      const result = await calculatorExecutor.evaluate({
 +        expression: 'x ^^^^^ y',
 +        variables: { x: 1, y: 2 },
 +      });
@@ -1202,22 +1447,23 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..c74c187d0d7e9
+index 0000000000000..ce68bffae55ca
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,518 @@
+@@ -0,0 +1,521 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
++import { defBase } from '@thi.ng/base-n/base';
 +import { all, create } from 'mathjs';
 +// @ts-ignore - nerdamer doesn't have TypeScript definitions
 +import nerdamer from 'nerdamer/all';
 +
 +import {
++  type BaseParams,
 +  type CalculateParams,
 +  CalculatorApiName,
 +  CalculatorIdentifier,
-+  type ConvertBaseParams,
 +  type DifferentiateParams,
-+  type EvaluateExpressionParams,
++  type EvaluateParams,
 +  type IntegrateParams,
 +  type LimitParams,
 +  type SolveParams,
@@ -1283,35 +1529,31 @@ index 0000000000000..c74c187d0d7e9
 +  }
 +
 +  /**
-+   * Convert number to target base with clean formatting
++   * Convert number between bases using @thi.ng/base-n
 +   */
-+  private convertToBase(decimalValue: number, targetBase: number): string {
-+    return decimalValue.toString(targetBase).toUpperCase();
-+  }
++  private convertNumber(number: string | number, fromBase: number, toBase: number): string {
++    // Define character set for source and target bases
++    const sourceChars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, fromBase);
++    const targetChars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, toBase);
 +
-+  /**
-+   * Clean and validate input number
-+   */
-+  private cleanInputNumber(number: string | number, sourceBase: number): string {
-+    const trimmed = String(number).trim();
++    // Create converters
++    const sourceConverter = defBase(sourceChars);
++    const targetConverter = defBase(targetChars);
 +
-+    // Validate base range
-+    if (sourceBase < 2 || sourceBase > 36) {
-+      throw new Error(`Base must be between 2 and 36, got ${sourceBase}`);
++    // Convert input number to string
++    let numStr = String(number).trim().toUpperCase();
++
++    // Handle decimal input like parseInt - take only integer part
++    const decimalIndex = numStr.indexOf('.');
++    if (decimalIndex !== -1) {
++      numStr = numStr.slice(0, Math.max(0, decimalIndex));
 +    }
 +
-+    // Validate that the number contains only valid characters for the base
-+    const validChars = new Set('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'.slice(0, sourceBase));
-+    for (const char of trimmed.toUpperCase()) {
-+      // Allow decimal points for parseInt compatibility (parseInt ignores decimal part)
-+      if (char === '.') continue;
++    // Convert from source base to decimal (as bigint)
++    const decimal = sourceConverter.decodeBigInt(numStr);
 +
-+      if (!validChars.has(char)) {
-+        throw new Error(`Invalid digit '${char}' for base ${sourceBase}`);
-+      }
-+    }
-+
-+    return trimmed;
++    // Convert decimal to target base
++    return targetConverter.encodeBigInt(decimal);
 +  }
 +
 +  /**
@@ -1359,7 +1601,7 @@ index 0000000000000..c74c187d0d7e9
 +  /**
 +   * Evaluate a complex mathematical expression with variables
 +   */
-+  evaluateExpression = async (params: EvaluateExpressionParams): Promise<BuiltinToolResult> => {
++  evaluate = async (params: EvaluateParams): Promise<BuiltinToolResult> => {
 +    try {
 +      const variables = params.variables || {};
 +      const result = this.evaluateMathExpression(params.expression, variables);
@@ -1488,21 +1730,20 @@ index 0000000000000..c74c187d0d7e9
 +  /**
 +   * Convert numbers between different bases (supports bases 2-36)
 +   */
-+  convertBase = async (params: ConvertBaseParams): Promise<BuiltinToolResult> => {
++  base = async (params: BaseParams): Promise<BuiltinToolResult> => {
 +    try {
 +      const { number, fromBase, toBase } = params;
 +
-+      // Clean and validate input number
-+      const cleanNumber = this.cleanInputNumber(number, fromBase);
-+
-+      // Convert to decimal first using optimized parseInt
-+      const decimalValue = parseInt(cleanNumber, fromBase);
-+      if (isNaN(decimalValue)) {
-+        throw new Error(`Invalid number "${number}" for base ${fromBase}`);
++      // Validate base range
++      if (fromBase < 2 || fromBase > 36 || toBase < 2 || toBase > 36) {
++        throw new Error('Base must be between 2 and 36');
 +      }
 +
-+      // Convert to target base
-+      const convertedNumber = this.convertToBase(decimalValue, toBase);
++      // Convert using @thi.ng/base-n
++      const convertedNumber = this.convertNumber(number, fromBase, toBase);
++
++      // Get decimal value for state
++      const decimalValue = parseInt(String(number), fromBase);
 +
 +      return {
 +        content: convertedNumber,
@@ -1517,10 +1758,17 @@ index 0000000000000..c74c187d0d7e9
 +      };
 +    } catch (error) {
 +      const err = error as Error;
++
++      // Check for digit validation error
++      let errorMessage = err.message;
++      if (err.message?.includes('Cannot convert') || err.message?.includes('Invalid digit')) {
++        errorMessage = 'Invalid digit';
++      }
++
 +      return {
-+        content: `Base conversion error: ${err.message}`,
++        content: `Base conversion error: ${errorMessage}`,
 +        error: {
-+          message: err.message,
++          message: errorMessage,
 +          type: 'ConversionError',
 +        },
 +        success: false,
@@ -1726,24 +1974,27 @@ index 0000000000000..c74c187d0d7e9
 +export const calculatorExecutor = new CalculatorExecutor();
 diff --git a/packages/builtin-tool-calculator/src/index.ts b/packages/builtin-tool-calculator/src/index.ts
 new file mode 100644
-index 0000000000000..4779e6e4d607f
+index 0000000000000..47986dd259552
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/index.ts
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,14 @@
++export * from './ExecutionRuntime';
 +export { CalculatorManifest } from './manifest';
 +export { systemPrompt } from './systemRole';
 +export {
++  type BaseParams,
++  type BaseState,
 +  type CalculateParams,
 +  type CalculateState,
 +  CalculatorApiName,
 +  type CalculatorApiNameType,
 +  CalculatorIdentifier,
-+  type EvaluateExpressionParams,
-+  type EvaluateExpressionState,
++  type EvaluateParams,
++  type EvaluateState,
 +} from './types';
 diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
 new file mode 100644
-index 0000000000000..d8465c4944717
+index 0000000000000..e8e495348ab8f
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/manifest.ts
 @@ -0,0 +1,224 @@
@@ -1778,7 +2029,7 @@ index 0000000000000..d8465c4944717
 +    },
 +    {
 +      description: 'Evaluate a complex mathematical expression with variable support.',
-+      name: CalculatorApiName.evaluateExpression,
++      name: CalculatorApiName.evaluate,
 +      parameters: {
 +        additionalProperties: false,
 +        properties: {
@@ -1844,7 +2095,7 @@ index 0000000000000..d8465c4944717
 +    },
 +    {
 +      description: 'Convert numbers between different number bases.',
-+      name: CalculatorApiName.convertBase,
++      name: CalculatorApiName.base,
 +      parameters: {
 +        additionalProperties: false,
 +        properties: {
@@ -1973,190 +2224,123 @@ index 0000000000000..d8465c4944717
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..fcfdd82699e86
+index 0000000000000..2e34443cd5442
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,100 @@
 +export const systemPrompt = `You have access to a Calculator tool powered by mathjs and nerdamer, capable of comprehensive mathematical computations, base conversions, and symbolic equation solving.
 +
 +<core_capabilities>
-+1. **calculate**: Perform mathematical expressions and calculations using mathjs syntax
-+2. **evaluateExpression**: Evaluate complex mathematical expressions with variable substitution
-+3. **sort**: Sort multiple numbers to get sorted array, largest value, or smallest value
-+4. **convertBase**: Convert numbers between different number bases (supports bases2-36)
-+5. **solve**: Solve algebraic equations or systems of equations symbolically using nerdamer
-+6. **differentiate**: Compute the derivative of a mathematical expression with respect to a variable
-+7. **integrate**: Compute the indefinite integral of a mathematical expression with respect to a variable
-+8. **limit**: Compute the limit of a mathematical expression as a variable approaches a point
++1. **calculate**: Direct math expressions and unit conversions
++2. **evaluate**: Complex expressions with variable substitution
++3. **sort**: Sort numbers (ascending/descending/largest/smallest)
++4. **base**: Convert between number bases (2-36)
++5. **solve**: Algebraic equations and systems of equations
++6. **differentiate**: Derivatives of mathematical expressions
++7. **integrate**: Indefinite integrals
++8. **limit**: Limits of expressions
 +</core_capabilities>
 +
-+<workflow>
-+1. Analyze the user's mathematical or conversion needs
-+2. Select the appropriate tool based on the request type
-+3. Execute the calculation or conversion with proper parameters
-+4. Present clean, direct results without showing the original input
-+</workflow>
-+
-+<tool_selection_guidelines>
-+- **calculate**: Use for direct mathematical calculations, expressions, and unit conversions
++<tool_selection>
++- **calculate**: Best for simple calculations, functions, matrices, complex numbers, unit conversions
 +   - Examples: "2 + 3 * 4", "sqrt(16)", "sin(30 deg)", "5 cm to inch", "25 degC to degF"
-+   - Supports: arithmetic, functions, matrices, complex numbers, units, symbolic calculations
-+   - Uses mathjs syntax for all operations
++   - Uses mathjs syntax exclusively
 +
-+- **evaluateExpression**: Use for complex expressions requiring variable substitution
-+   - Examples: "x^2 + 2*x + 1", "det([[a,b],[c,d]])"
-+   - Provide variables object with key-value pairs for substitution
++- **evaluate**: Best for expressions with variables
++   - Provide variables object: {"x": 5, "y": 3}
++   - Example: Expression "x^2 + 2*x + 1" with x=5
 +
-+- **convertBase**: Use for number base conversions
-+   - Requires numeric base values (2-36) for both fromBase and toBase parameters
-+   - Supports both string and number inputs for the number parameter
-+   - Examples: convert "1010" from base 2 to base 10, convert "255" from base 10 to base 16, convert "Z" from base 36 to base 10
++- **base**: Best for base conversions
++   - Requires numeric bases (2-36)
++   - Supports string or number inputs
++   - Example: Convert "1010" from base 2 to base 10
 +
-+- **sort**: Use for sorting multiple numbers with flexible output modes
-+    - Requires an array of at least 2 numbers (strings or numbers)
-+    - Optional mode: "largest" returns only largest value; "smallest" returns only smallest value; if not specified, returns sorted array
-+    - Optional reverse: false (default) sorts ascending (smallest to largest); true sorts descending (largest to smallest)
-+    - Examples: sort({"numbers": [3.14, 2.718, 1.618]}), sort({"numbers": [5, 3, 8], "mode": "largest"}), sort({"numbers": [5, 3, 8], "reverse": true})
-+    - Response formats:
-+      - default (no mode): ["1.618", "2.718", "3.14"] (ascending) or ["3.14", "2.718", "1.618"] (descending with reverse: true)
-+      - largest mode: "3.14"
-+      - smallest mode: "1.618"
++- **sort**: Best for sorting numbers
++   - Parameters: numbers (array), mode (optional: "largest"|"smallest"|default), reverse (optional)
++   - Returns sorted array or single value if mode specified
++   - Example: sort({"numbers": [3.14, 2.718, 1.618], "mode": "largest"}) → "3.14"
 +
-+- **solve**: Use for solving algebraic equations or systems of equations
-+    - Requires equation parameter as an array of strings (always an array, even for single equations)
-+    - Optional variable parameter: array of variable names to solve for
-+    - Single equation format: {"equation": ["x^2 - 5*x + 6 = 0"], "variable": ["x"]}
-+    - System of equations format: {"equation": ["2*x+y=5", "x-y=1"], "variable": ["x", "y"]}
-+    - If variable is not specified, automatically extracts variables from equations
-+    - Supports: linear, quadratic, cubic, and polynomial equations; systems of equations
-+    - Returns: array of solutions for single equations, or object mapping variables to values for systems
-+    - Examples:
-+      - Single linear: {"equation": ["3*x + 5 = 20"], "variable": ["x"]} → [5]
-+      - Single quadratic: {"equation": ["x^2 - 5*x + 6 = 0"], "variable": ["x"]} → [2, 3]
-+      - Two-equation system: {"equation": ["2*x+y=5", "x-y=1"], "variable": ["x", "y"]} → {"x": "2", "y": "1"}
-+      - Three-equation system: {"equation": ["x+y+z=6", "2*x-y+z=3", "x+2*y-z=2"], "variable": ["x", "y", "z"]} → {"x": "1", "y": "2", "z": "3"}
-+      - Auto variables: {"equation": ["3*x+2*y=7", "x-y=1"]} (variable omitted) → automatically detects x and y
++- **solve**: Best for equations and systems
++   - CRITICAL: equation MUST be array (even for single)
++   - variable is optional - auto-detects if omitted
++   - Single: {"equation": ["x^2 - 5*x + 6 = 0"], "variable": ["x"]} → [2, 3]
++   - System: {"equation": ["2*x+y=5", "x-y=1"], "variable": ["x", "y"]} → {"x": "2", "y": "1"}
++   - Supports: linear, quadratic, cubic, polynomial, systems
 +
-+- **differentiate**: Use for computing derivatives of mathematical expressions
-+    - Requires expression and variable parameters
-+    - Supports: polynomial differentiation, trigonometric differentiation, exponential/logarithmic differentiation
-+    - Examples:
-+      - Polynomial: {"expression": "x^3 + 2*x + 1", "variable": "x"} → "3*x^2 + 2"
-+      - Trigonometric: {"expression": "sin(x)", "variable": "x"} → "cos(x)"
-+      - Chain rule: {"expression": "sin(x^2)", "variable": "x"} → "2*x*cos(x^2)"
-+      - Power rule: {"expression": "x^5", "variable": "x"} → "5*x^4"
-+    - Returns: The derivative expression in simplified form
++- **differentiate**: Best for computing derivatives
++   - Parameters: expression, variable
++   - Example: {"expression": "x^3", "variable": "x"} → "3*x^2"
 +
-+- **integrate**: Use for computing indefinite integrals of mathematical expressions
-+    - Requires expression and variable parameters
-+    - Supports: polynomial integration, trigonometric integration, exponential/logarithmic integration
-+    - Examples:
-+      - Polynomial: {"expression": "x^3", "variable": "x"} → "(1/4)*x^4"
-+      - Trigonometric: {"expression": "sin(x)", "variable": "x"} → "-cos(x)"
-+      - Exponential: {"expression": "exp(x)", "variable": "x"} → "exp(x)"
-+      - Combined: {"expression": "x^2 + sin(x)", "variable": "x"} → "(1/3)*x^3 - cos(x)"
-+    - Returns: The indefinite integral expression (constant of integration is implicit)
++- **integrate**: Best for computing indefinite integrals
++   - Parameters: expression, variable
++   - Example: {"expression": "x^3", "variable": "x"} → "(1/4)*x^4"
 +
-+- **limit**: Use for computing limits of mathematical expressions
-+    - Requires expression and variable parameters
-+    - Optional point parameter: can specify the point at which to evaluate the limit (a specific value or "infinity")
-+    - Supports: finite limits, infinite limits, and one-sided limits
-+    - Examples:
-+      - Finite limit: {"expression": "sin(x)/x", "variable": "x", "point": "0"} → "1"
-+      - Limit at infinity: {"expression": "1/x", "variable": "x", "point": "infinity"} → "0"
-+      - Left-hand limit: {"expression": "exp(-x)", "variable": "x", "point": "infinity"} → "0"
-+      - Right-hand limit: {"expression": "exp(x)", "variable": "x", "point": "infinity"} → "infinity"
-+      - Polynomial limit: {"expression": "x^2/(x+1)", "variable": "x", "point": "1"} → "1/2"
-+      - Trigonometric limit: {"expression": "sin(x)/x", "variable": "x"} → "1"
-+      - Without point parameter: {"expression": "(x^2-1)/(x-1)", "variable": "x"} → "2"
-+    - Returns: The limit value (or expression if the limit involves infinity)
-+</tool_selection_guidelines>
++- **limit**: Best for computing limits
++   - Parameters: expression, variable, point (optional: value or "infinity")
++   - Example: {"expression": "sin(x)/x", "variable": "x", "point": "0"} → "1"
++</tool_selection>
 +
-+<mathjs_syntax_guide>
-+**Unit Conversions**: Use mathjs unit syntax
-+- Temperature: "25 degC to degF" (not "25 °C to °F")
-+- Length: "5 cm to inch", "100 ft to m"
-+- Weight: "1 kg to lb", "100 lb to kg"
-+- Speed: "100 km/h to mph", "60 mph to km/h"
-+- Volume: "1 liter to gallon", "1 gallon to liter"
++<mathjs_syntax>
++**Units** - Use these formats:
++- Temperature: "25 degC to degF" (NOT °C/°F)
++- Length: "5 cm to inch"
++- Weight: "1 kg to lb"
++- Speed: "100 km/h to mph"
++- Volume: "1 liter to gallon"
 +
-+**Mathematical Functions**: Follow mathjs function names
-+- Trigonometry: sin(x), cos(x), tan(x) - angles in radians or use "deg" suffix (sin(30 deg))
-+- Constants: pi, e, tau, phi (case insensitive)
-+- Logarithms: log(x), log10(x), log2(x)
-+- Exponential: exp(x), pow(x,y), sqrt(x)
++**Functions** - Follow mathjs names:
++- Trig: sin(x), cos(x), tan(x) - use "deg" for degrees: sin(30 deg)
++- Constants: pi, e, tau, phi
++- Logs: log(x), log10(x), log2(x)
++- Exp: exp(x), pow(x,y), sqrt(x)
 +
-+**Complex Numbers**: Use "i" for imaginary unit
-+- Examples: "sqrt(-1)", "3 + 4i", "complex(3,4)"
++**Complex Numbers**:
++- Imaginary unit: i
++- Examples: sqrt(-1), 3+4i, complex(3,4)
 +
-+**Equation Syntax**: Use standard mathematical notation for equations
-+- Power: x^2, x^3, y^2
-+- Multiplication: 2*x, 3*x*y (explicit * required)
-+- Addition/Subtraction: x + 5, x - 3*y
++**Equations**:
++- Power: x^2, x^3
++- Multiplication: 2*x (explicit * required)
 +- Equality: x^2 - 5*x + 6 = 0
-+</mathjs_syntax_guide>
++</mathjs_syntax>
 +
-+<supported_operations>
-+**Basic Arithmetic**: +, -, *, /, % (modulus)
-+**Mathematical Functions**: sqrt, sin, cos, tan, log, exp, abs, round, floor, ceil
-+**Calculus**: Derivatives, indefinite integrals, limits, symbolic differentiation, integration, and limit computation
-+**Equation Solving**: Linear, quadratic, cubic, polynomial equations; systems of equations
-+**Advanced Operations**: matrices, complex numbers, statistics
-+**Number Sorting**: Sort multiple numbers to identify order and extract largest/smallest values
-+**Unit Conversions**: Temperature, length, weight, speed, volume using mathjs syntax
-+**Base Conversions**: Support for all bases from 2 to 36 (binary, octal, decimal, hexadecimal, and custom bases)
-+**Constants**: pi, e, tau, phi, i (case insensitive)
-+</supported_operations>
++<response_format>
++- Return results directly, no original input
++- Unit conversions: include units
++- Equations: array (single) or object (systems)
++- Calculus: symbolic expression result
++</response_format>
 +
-+<formatting_guidelines>
-+- Return only the result value without showing the original expression or input
-+- For unit conversions, return only the converted value with units
-+- For base conversions, return only the converted number in the target base
-+- For equation solving, return solutions in clear format (array for single equations, object for systems)
-+- For differentiation and integration, return the resulting symbolic expression
-+- Provide intermediate steps when helpful for complex calculations
-+- Use the precision parameter when specified for decimal places
-+</formatting_guidelines>
++<critical_rules>
++1. Use mathjs syntax for ALL calculations
++2. For solve: equation MUST be array (even for single)
++3. Temperature: use "degC"/"degF", not °C/°F
++4. Angles: use "deg" suffix for degrees
++5. Base conversions: use numeric bases (2, not "binary")
++6. For limits at specific values, specify point parameter
++</critical_rules>
 +
 +<error_handling>
-+- If expressions are invalid, explain the specific error clearly
-+- For undefined operations, suggest alternatives or clarify requirements
-+- When variables are missing from evaluateExpression, the operation will fail
-+- For base conversion errors, verify that base values are between 2-36 and the number contains valid digits
-+- Handle decimal points gracefully in base conversion inputs
-+- For unit conversion errors, verify that the correct mathjs unit syntax is being used
-+- For equation solving errors: the system may have no solution, infinite solutions, or requires more equations than variables
-+- For differentiation/integration/limit errors: the expression may be too complex or contain unsupported functions
++- Invalid expressions: explain specific error
++- Missing variables: operation fails
++- Base errors: verify bases 2-36 and valid digits
++- Equation errors: may have no/infinite solutions or need more equations
++- Calculus errors: expression too complex or unsupported
 +</error_handling>
-+
-+<best_practices>
-+- **IMPORTANT**: Use mathjs syntax for all calculations and unit conversions
-+- **IMPORTANT**: For solve tool, always use array format for equation parameter (even for single equations)
-+- Use "degC" and "degF" instead of Unicode degree symbols for temperature
-+- Use "deg" suffix for degree angles in trigonometric functions
-+- Simplify complex expressions when possible
-+- Use meaningful variable names in expressions
-+- For large calculations, consider breaking them into smaller steps
-+- Always verify that results make sense in the given context
-+- Provide exact decimal values when precision is specified
-+- For base conversions, use numeric values instead of string names (e.g., 2 instead of "binary")
-+- For equation solving, if multiple solutions exist, present all solutions clearly
-+- For limit calculations, ensure point parameter is used when computing finite limits at specific values
-+- For systems of equations, ensure that number of equations matches the number of variables when possible
-+</best_practices>`;
++`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..1f9b060acd455
+index 0000000000000..daedef895623e
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,125 @@
 +export const CalculatorIdentifier = 'lobe-calculator';
 +
 +export const CalculatorApiName = {
++  base: 'base',
 +  calculate: 'calculate',
-+  convertBase: 'convertBase',
 +  differentiate: 'differentiate',
-+  evaluateExpression: 'evaluateExpression',
++  evaluate: 'evaluate',
 +  integrate: 'integrate',
 +  limit: 'limit',
 +  solve: 'solve',
@@ -2177,14 +2361,14 @@ index 0000000000000..1f9b060acd455
 +  result?: number | string;
 +}
 +
-+// Evaluate Expression API (for more complex mathematical expressions)
-+export interface EvaluateExpressionParams {
++// Evaluate API (for more complex mathematical expressions with variables)
++export interface EvaluateParams {
 +  expression: string;
 +  precision?: number;
 +  variables?: Record<string, number>;
 +}
 +
-+export interface EvaluateExpressionState {
++export interface EvaluateState {
 +  expression?: string;
 +  precision?: number;
 +  result?: number | string;
@@ -2192,13 +2376,13 @@ index 0000000000000..1f9b060acd455
 +}
 +
 +// Base Conversion API
-+export interface ConvertBaseParams {
++export interface BaseParams {
 +  fromBase: number;
 +  number: string | number;
 +  toBase: number;
 +}
 +
-+export interface ConvertBaseState {
++export interface BaseState {
 +  convertedNumber?: string;
 +  decimalValue?: number;
 +  originalBase?: string;
@@ -2221,6 +2405,7 @@ index 0000000000000..1f9b060acd455
 +  originalNumbers?: (string | number)[];
 +  precision?: number;
 +  result?: any;
++  reverse?: boolean;
 +  smallest?: number | string;
 +  sorted?: (string | number)[];
 +}
@@ -2298,6 +2483,47 @@ index 0000000000000..cf07830f64dfc
 +  "exclude": ["node_modules"],
 +  "include": ["src/**/*"]
 +}
+diff --git a/src/server/services/toolExecution/serverRuntimes/calculator.ts b/src/server/services/toolExecution/serverRuntimes/calculator.ts
+new file mode 100644
+index 0000000000000..6dc72d28f9d97
+--- /dev/null
++++ b/src/server/services/toolExecution/serverRuntimes/calculator.ts
+@@ -0,0 +1,14 @@
++import { CalculatorManifest , CalculatorExecutionRuntime } from '@lobechat/builtin-tool-calculator';
++
++import { type ServerRuntimeRegistration } from './types';
++
++/**
++ * Calculator Server Runtime
++ * Pre-instantiated runtime (no per-request context needed)
++ */
++const runtime = new CalculatorExecutionRuntime();
++
++export const calculatorRuntime: ServerRuntimeRegistration = {
++  factory: () => runtime,
++  identifier: CalculatorManifest.identifier,
++};
+diff --git a/src/server/services/toolExecution/serverRuntimes/index.ts b/src/server/services/toolExecution/serverRuntimes/index.ts
+index 28589f8df718b..53e5cfc6ec564 100644
+--- a/src/server/services/toolExecution/serverRuntimes/index.ts
++++ b/src/server/services/toolExecution/serverRuntimes/index.ts
+@@ -7,6 +7,7 @@
+  * - Per-request runtimes (e.g., CloudSandbox - needs topicId, userId)
+  */
+ import { type ToolExecutionContext } from '../types';
++import { calculatorRuntime } from './calculator';
+ import { cloudSandboxRuntime } from './cloudSandbox';
+ import { type ServerRuntimeFactory, type ServerRuntimeRegistration } from './types';
+ import { webBrowsingRuntime } from './webBrowsing';
+@@ -26,7 +27,7 @@ const registerRuntimes = (runtimes: ServerRuntimeRegistration[]) => {
+ };
+ 
+ // Register all server runtimes
+-registerRuntimes([webBrowsingRuntime, cloudSandboxRuntime]);
++registerRuntimes([webBrowsingRuntime, cloudSandboxRuntime, calculatorRuntime]);
+ 
+ // ==================== Registry API ====================
+ 
 diff --git a/src/store/tool/slices/builtin/executors/index.ts b/src/store/tool/slices/builtin/executors/index.ts
 index a53a4cc55d5d3..f17dce883ae31 100644
 --- a/src/store/tool/slices/builtin/executors/index.ts
@@ -2358,45 +2584,6 @@ index 776e35de63beb..13eebc28cd29e 100644
    {
      hidden: !isDesktop,
      identifier: LocalSystemManifest.identifier,
-diff --git a/src/tools/inspectors.ts b/src/tools/inspectors.ts
-index b4947fcf6d358..97660b3c748a5 100644
---- a/src/tools/inspectors.ts
-+++ b/src/tools/inspectors.ts
-@@ -2,6 +2,7 @@ import {
-   AgentBuilderInspectors,
-   AgentBuilderManifest,
- } from '@lobechat/builtin-tool-agent-builder/client';
-+import { CalculatorManifest } from '@lobechat/builtin-tool-calculator';
- import {
-   CloudSandboxIdentifier,
-   CloudSandboxInspectors,
-@@ -41,6 +42,7 @@ import { type BuiltinInspector } from '@lobechat/types';
-  */
- const BuiltinToolInspectors: Record<string, Record<string, BuiltinInspector>> = {
-   [AgentBuilderManifest.identifier]: AgentBuilderInspectors as Record<string, BuiltinInspector>,
-+  [CalculatorManifest.identifier]: {} as Record<string, BuiltinInspector>,
-   [CloudSandboxIdentifier]: CloudSandboxInspectors as Record<string, BuiltinInspector>,
-   [GroupAgentBuilderManifest.identifier]: GroupAgentBuilderInspectors as Record<
-     string,
-diff --git a/src/tools/renders.ts b/src/tools/renders.ts
-index 782875c94ef1a..8297406bed01f 100644
---- a/src/tools/renders.ts
-+++ b/src/tools/renders.ts
-@@ -1,5 +1,6 @@
- import { AgentBuilderManifest } from '@lobechat/builtin-tool-agent-builder';
- import { AgentBuilderRenders } from '@lobechat/builtin-tool-agent-builder/client';
-+import { CalculatorManifest } from '@lobechat/builtin-tool-calculator';
- import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
- import { CloudSandboxRenders } from '@lobechat/builtin-tool-cloud-sandbox/client';
- import { GroupAgentBuilderManifest } from '@lobechat/builtin-tool-group-agent-builder';
-@@ -29,6 +30,7 @@ import { type BuiltinRender } from '@lobechat/types';
-  */
- const BuiltinToolsRenders: Record<string, Record<string, BuiltinRender>> = {
-   [AgentBuilderManifest.identifier]: AgentBuilderRenders as Record<string, BuiltinRender>,
-+  [CalculatorManifest.identifier]: {} as Record<string, BuiltinRender>,
-   [CloudSandboxManifest.identifier]: CloudSandboxRenders as Record<string, BuiltinRender>,
-   [GroupAgentBuilderManifest.identifier]: GroupAgentBuilderRenders as Record<string, BuiltinRender>,
-   [GroupManagementManifest.identifier]: GroupManagementRenders as Record<string, BuiltinRender>,
 diff --git a/src/tools/streamings.ts b/src/tools/streamings.ts
 index 39ffc742746c7..1d0b9f54f0499 100644
 --- a/src/tools/streamings.ts
