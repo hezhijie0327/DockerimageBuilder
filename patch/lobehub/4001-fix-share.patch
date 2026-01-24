@@ -1,15 +1,27 @@
 diff --git a/src/features/Conversation/components/ShareMessageModal/ShareImage/Preview.tsx b/src/features/Conversation/components/ShareMessageModal/ShareImage/Preview.tsx
-index 73ea631a0589a..54c470aecc02f 100644
+index 73ea631a0589a..f83695cc779a5 100644
 --- a/src/features/Conversation/components/ShareMessageModal/ShareImage/Preview.tsx
 +++ b/src/features/Conversation/components/ShareMessageModal/ShareImage/Preview.tsx
-@@ -36,6 +36,18 @@ const Preview = memo<PreviewProps>(
+@@ -36,6 +36,30 @@ const Preview = memo<PreviewProps>(
  
      const { t } = useTranslation('chat');
  
++    // Handle assistantGroup messages - content might be in children
++    let content = message.content;
++    if (message.role === 'assistantGroup' && message.children && message.children.length > 0) {
++      // For assistantGroup, use the last child's content
++      const lastChild = message.children.at(-1);
++      content = lastChild?.content || message.content;
++    }
++
 +    // Debug: Log to see what we're working with
 +    console.log('ShareMessage Preview Details:', {
 +      agentMeta,
++      childrenCount: message.children?.length,
 +      displayTitle: agentMeta.title || title,
++      extractedContent: content,
++      extractedContentLength: content?.length,
++      hasChildren: !!message.children,
 +      messageAgentId: message.agentId,
 +      messageContent: message.content,
 +      messageContentLength: message.content?.length,
@@ -21,12 +33,12 @@ index 73ea631a0589a..54c470aecc02f 100644
      const displayTitle = agentMeta.title || title;
      const displayDesc = isBuiltinAgent ? t('inbox.desc') : agentMeta.description;
  
-@@ -78,7 +90,11 @@ const Preview = memo<PreviewProps>(
+@@ -78,7 +102,11 @@ const Preview = memo<PreviewProps>(
                    backgroundColor: agentMeta.backgroundColor,
                    title: displayTitle,
                  }}
 -                id={message.id}
-+                message={message.content}
++                message={content}
 +                placement={message.role === 'user' ? 'right' : 'left'}
 +                showAvatar={true}
 +                showTitle={false}
@@ -34,6 +46,30 @@ index 73ea631a0589a..54c470aecc02f 100644
                />
              </Flexbox>
              {withFooter ? (
+diff --git a/src/features/Conversation/components/ShareMessageModal/ShareText/index.tsx b/src/features/Conversation/components/ShareMessageModal/ShareText/index.tsx
+index f180106ddef5d..02d8ecb827eda 100644
+--- a/src/features/Conversation/components/ShareMessageModal/ShareText/index.tsx
++++ b/src/features/Conversation/components/ShareMessageModal/ShareText/index.tsx
+@@ -23,7 +23,18 @@ const ShareText = memo<ShareTextProps>(({ item }) => {
+   const { t } = useTranslation(['chat', 'common']);
+   const { message } = App.useApp();
+ 
+-  const messages = [item];
++  // Handle assistantGroup messages - content might be in children
++  let contentItem = item;
++  if (item.role === 'assistantGroup' && item.children && item.children.length > 0) {
++    // For assistantGroup, use the last child's content
++    const lastChild = item.children.at(-1);
++    contentItem = {
++      ...item,
++      content: lastChild?.content || item.content,
++    };
++  }
++
++  const messages = [contentItem];
+   const topic = useChatStore(topicSelectors.currentActiveTopic, isEqual);
+ 
+   const title = topic?.title || t('shareModal.exportTitle');
 diff --git a/src/features/Conversation/hooks/useChatItemContextMenu.tsx b/src/features/Conversation/hooks/useChatItemContextMenu.tsx
 index df37a9e313cd1..2fe8911c6b4d6 100644
 --- a/src/features/Conversation/hooks/useChatItemContextMenu.tsx
