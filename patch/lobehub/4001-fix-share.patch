@@ -1,0 +1,306 @@
+diff --git a/src/features/Conversation/components/ShareMessageModal/ShareImage/Preview.tsx b/src/features/Conversation/components/ShareMessageModal/ShareImage/Preview.tsx
+index 73ea631a0589a..db201ccc1e371 100644
+--- a/src/features/Conversation/components/ShareMessageModal/ShareImage/Preview.tsx
++++ b/src/features/Conversation/components/ShareMessageModal/ShareImage/Preview.tsx
+@@ -8,7 +8,7 @@ import { memo } from 'react';
+ import { useTranslation } from 'react-i18next';
+ 
+ import { ProductLogo } from '@/components/Branding';
+-import { ChatItem } from '@/features/Conversation/ChatItem';
++import { ConversationProvider, MessageItem } from '@/features/Conversation';
+ import PluginTag from '@/features/PluginTag';
+ import { useAgentStore } from '@/store/agent';
+ import { agentSelectors } from '@/store/agent/selectors';
+@@ -36,6 +36,30 @@ const Preview = memo<PreviewProps>(
+ 
+     const { t } = useTranslation('chat');
+ 
++    // Handle assistantGroup messages - content might be in children
++    let content = message.content;
++    if (message.role === 'assistantGroup' && message.children && message.children.length > 0) {
++      // For assistantGroup, use the last child's content
++      const lastChild = message.children.at(-1);
++      content = lastChild?.content || message.content;
++    }
++
++    // Debug: Log to see what we're working with
++    console.log('ShareMessage Preview Details:', {
++      agentMeta,
++      childrenCount: message.children?.length,
++      displayTitle: agentMeta.title || title,
++      extractedContent: content,
++      extractedContentLength: content?.length,
++      hasChildren: !!message.children,
++      messageAgentId: message.agentId,
++      messageContent: message.content,
++      messageContentLength: message.content?.length,
++      messageId: message.id,
++      messageRole: message.role,
++      placement: message.role === 'user' ? 'right' : 'left',
++    });
++
+     const displayTitle = agentMeta.title || title;
+     const displayDesc = isBuiltinAgent ? t('inbox.desc') : agentMeta.description;
+ 
+@@ -72,14 +96,20 @@ const Preview = memo<PreviewProps>(
+               style={{ paddingTop: 24, position: 'relative' }}
+               width={'100%'}
+             >
+-              <ChatItem
+-                avatar={{
+-                  avatar: agentMeta.avatar,
+-                  backgroundColor: agentMeta.backgroundColor,
+-                  title: displayTitle,
+-                }}
+-                id={message.id}
+-              />
++              <ConversationProvider
++                context={{ agentId: message.agentId || '', topicId: message.topicId }}
++                hasInitMessages={true}
++                messages={[message]}
++                skipFetch={true}
++              >
++                <Flexbox
++                  height={'100%'}
++                  style={{ padding: 24, pointerEvents: 'none', position: 'relative' }}
++                  width={'100%'}
++                >
++                  <MessageItem id={message.id} index={0} />
++                </Flexbox>
++              </ConversationProvider>
+             </Flexbox>
+             {withFooter ? (
+               <Flexbox align={'center'} className={styles.footer} gap={4}>
+diff --git a/src/features/Conversation/components/ShareMessageModal/ShareText/index.tsx b/src/features/Conversation/components/ShareMessageModal/ShareText/index.tsx
+index f180106ddef5d..210dbb87287f0 100644
+--- a/src/features/Conversation/components/ShareMessageModal/ShareText/index.tsx
++++ b/src/features/Conversation/components/ShareMessageModal/ShareText/index.tsx
+@@ -23,12 +23,29 @@ const ShareText = memo<ShareTextProps>(({ item }) => {
+   const { t } = useTranslation(['chat', 'common']);
+   const { message } = App.useApp();
+ 
+-  const messages = [item];
++  // Handle assistantGroup messages - content might be in children
++  let contentItem = item;
++  if (item.role === 'assistantGroup' && item.children && item.children.length > 0) {
++    // For assistantGroup, use the last child's content
++    const lastChild = item.children.at(-1);
++    contentItem = {
++      ...item,
++      content: lastChild?.content || item.content,
++    };
++  }
++
++  const messages = [contentItem];
+   const topic = useChatStore(topicSelectors.currentActiveTopic, isEqual);
+ 
+   const title = topic?.title || t('shareModal.exportTitle');
+   const content = generateMarkdown({
++    includeTool: true,
++    includeUser: true,
+     messages,
++    systemRole: '',
++    title,
++    withRole: true,
++    withSystemRole: false,
+   }).replaceAll('\n\n\n', '\n');
+ 
+   const isMobile = useIsMobile();
+diff --git a/src/features/Conversation/components/ShareMessageModal/ShareText/template.ts b/src/features/Conversation/components/ShareMessageModal/ShareText/template.ts
+index d7da1c7fca34e..5447d4328c066 100644
+--- a/src/features/Conversation/components/ShareMessageModal/ShareText/template.ts
++++ b/src/features/Conversation/components/ShareMessageModal/ShareText/template.ts
+@@ -2,25 +2,78 @@ import { type UIChatMessage } from '@lobechat/types';
+ import { template } from 'es-toolkit/compat';
+ 
+ import { LOADING_FLAT } from '@/const/message';
++import { type FieldType } from '@/features/ShareModal/ShareText/type';
+ 
+ const markdownTemplate = template(
+-  `<% messages.forEach(function(chat) { %>
++  `# {{title}}
+ 
++<% if (systemRole) { %>
++\`\`\`\`md
++{{systemRole}}
++\`\`\`\`
++<% } %>
++
++<% messages.forEach(function(chat) { %>
++
++<% if (withRole) { %>
++
++<% if (chat.role === 'user') { %>
++##### User:
++<% } else if (chat.role === 'assistant') { %>
++##### Assistant:
++<% } else if (chat.role === 'tool') { %>
++##### Tools Calling:
++<% } %>
++
++<% } %>
++
++<% if (chat.role === 'tool') { %>
++\`\`\`json
+ {{chat.content}}
++\`\`\`
++<% } else { %>
++
++{{chat.content}}
++
++<% if (includeTool && chat.tools) { %>
++
++\`\`\`json
++{{JSON.stringify(chat.tools, null, 2)}}
++\`\`\`
++
++<% } %>
++<% } %>
+ 
+ <% }); %>
+-`,
++  `,
+   {
+     evaluate: /<%([\S\s]+?)%>/g,
+     interpolate: /{{([\S\s]+?)}}/g,
+   },
+ );
+ 
+-interface MarkdownParams {
++interface MarkdownParams extends FieldType {
+   messages: UIChatMessage[];
++  systemRole: string;
++  title: string;
+ }
+ 
+-export const generateMarkdown = ({ messages }: MarkdownParams) =>
++export const generateMarkdown = ({
++  messages,
++  title,
++  includeTool,
++  includeUser,
++  withSystemRole,
++  withRole,
++  systemRole,
++}: MarkdownParams) =>
+   markdownTemplate({
+-    messages: messages.filter((m) => m.content !== LOADING_FLAT),
++    includeTool,
++    messages: messages
++      .filter((m) => m.content !== LOADING_FLAT)
++      .filter((m) => (!includeUser ? m.role !== 'user' : true))
++      .filter((m) => (!includeTool ? m.role !== 'tool' : true)),
++    systemRole: withSystemRole ? systemRole : undefined,
++    title,
++    withRole,
+   });
+diff --git a/src/features/Conversation/hooks/useChatItemContextMenu.tsx b/src/features/Conversation/hooks/useChatItemContextMenu.tsx
+index df37a9e313cd1..2fe8911c6b4d6 100644
+--- a/src/features/Conversation/hooks/useChatItemContextMenu.tsx
++++ b/src/features/Conversation/hooks/useChatItemContextMenu.tsx
+@@ -194,9 +194,12 @@ export const useChatItemContextMenu = ({
+           createStore={() => {
+             const state = storeApi.getState();
+             return createStore({
+-              context: state.context,
++              context: {
++                ...state.context,
++                agentId: item.agentId || state.context.agentId,
++              },
+               hooks: state.hooks,
+-              skipFetch: state.skipFetch,
++              skipFetch: true,
+             });
+           }}
+         >
+diff --git a/src/features/ShareModal/ShareImage/ChatList/index.tsx b/src/features/ShareModal/ShareImage/ChatList/index.tsx
+index 4bfe4bc64ba68..08dfc5d0578a8 100644
+--- a/src/features/ShareModal/ShareImage/ChatList/index.tsx
++++ b/src/features/ShareModal/ShareImage/ChatList/index.tsx
+@@ -1,13 +1,14 @@
+ import { Flexbox } from '@lobehub/ui';
++import isEqual from 'fast-deep-equal';
+ import { memo } from 'react';
+ 
+ import { ConversationProvider, MessageItem } from '@/features/Conversation';
+ import { useChatStore } from '@/store/chat';
+-import { chatSelectors } from '@/store/chat/selectors';
++import { dbMessageSelectors } from '@/store/chat/selectors';
+ 
+ const ChatList = memo(() => {
+-  const ids = useChatStore(chatSelectors.mainDisplayChatIDs);
+-  const messages = useChatStore(chatSelectors.activeBaseChats);
++  const messages = useChatStore(dbMessageSelectors.activeDbMessages, isEqual);
++  const ids = messages.map((m) => m.id);
+   const agentId = useChatStore((s) => s.activeAgentId);
+   const topicId = useChatStore((s) => s.activeTopicId);
+ 
+diff --git a/src/features/ShareModal/SharePdf/index.tsx b/src/features/ShareModal/SharePdf/index.tsx
+index 5516beb6609ac..1856d1eaf0e3d 100644
+--- a/src/features/ShareModal/SharePdf/index.tsx
++++ b/src/features/ShareModal/SharePdf/index.tsx
+@@ -3,7 +3,6 @@ import { Button, Form, type FormItemProps } from '@lobehub/ui';
+ import { Flexbox } from '@lobehub/ui';
+ import { App, Switch } from 'antd';
+ import { cx } from 'antd-style';
+-import isEqual from 'fast-deep-equal';
+ import { DownloadIcon, FileText } from 'lucide-react';
+ import { memo, useState } from 'react';
+ import { useTranslation } from 'react-i18next';
+@@ -13,7 +12,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
+ import { useAgentStore } from '@/store/agent';
+ import { agentSelectors } from '@/store/agent/selectors';
+ import { useChatStore } from '@/store/chat';
+-import { chatSelectors, topicSelectors } from '@/store/chat/selectors';
++import { dbMessageSelectors, topicSelectors } from '@/store/chat/selectors';
+ 
+ import { generateMarkdown } from '../ShareText/template';
+ import { type FieldType } from '../ShareText/type';
+@@ -73,13 +72,18 @@ const SharePdf = memo((props: { message?: UIChatMessage }) => {
+ 
+   // Use the same data gathering logic as ShareText
+   const [systemRole] = useAgentStore((s) => [agentSelectors.currentAgentSystemRole(s)]);
+-  const messages = useChatStore(chatSelectors.activeBaseChats, isEqual);
+-  const topic = useChatStore(topicSelectors.currentActiveTopic, isEqual);
+-  const activeId = useChatStore((s) => s.activeAgentId);
+-  const topicId = useChatStore((s) => s.activeTopicId);
++  const [topic, activeId, topicId, allMessages] = useChatStore((s) => [
++    topicSelectors.currentActiveTopic(s),
++    s.activeAgentId,
++    s.activeTopicId,
++    dbMessageSelectors.activeDbMessages(s),
++  ]);
+ 
+   const title = topic?.title || t('shareModal.exportTitle');
+ 
++  // For single message sharing, use the provided message
++  const messages = outerMessage ? [outerMessage] : allMessages;
++
+   const { generatePdf, downloadPdf, pdfData, loading, error } = usePdfGeneration();
+ 
+   const handleGeneratePdf = async () => {
+diff --git a/src/features/ShareModal/ShareText/index.tsx b/src/features/ShareModal/ShareText/index.tsx
+index c964ca4186f00..4741ad1eadab0 100644
+--- a/src/features/ShareModal/ShareText/index.tsx
++++ b/src/features/ShareModal/ShareText/index.tsx
+@@ -12,7 +12,10 @@ import { useIsMobile } from '@/hooks/useIsMobile';
+ import { useAgentStore } from '@/store/agent';
+ import { agentSelectors } from '@/store/agent/selectors';
+ import { useChatStore } from '@/store/chat';
+-import { displayMessageSelectors, topicSelectors } from '@/store/chat/selectors';
++import {
++  dbMessageSelectors,
++  topicSelectors,
++} from '@/store/chat/selectors';
+ 
+ import { styles } from '../style';
+ import Preview from './Preview';
+@@ -66,7 +69,7 @@ const ShareText = memo(() => {
+   ];
+ 
+   const [systemRole] = useAgentStore((s) => [agentSelectors.currentAgentSystemRole(s)]);
+-  const messages = useChatStore(displayMessageSelectors.activeDisplayMessages, isEqual);
++  const messages = useChatStore(dbMessageSelectors.activeDbMessages, isEqual);
+   const topic = useChatStore(topicSelectors.currentActiveTopic, isEqual);
+ 
+   const title = topic?.title || t('shareModal.exportTitle');
