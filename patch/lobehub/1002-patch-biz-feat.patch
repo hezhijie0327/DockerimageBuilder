@@ -1,0 +1,84 @@
+diff --git a/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/hooks/useAgentCronJobs.ts b/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/hooks/useAgentCronJobs.ts
+index 8594a3db05e8b..c4a27d0dda36e 100644
+--- a/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/hooks/useAgentCronJobs.ts
++++ b/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/hooks/useAgentCronJobs.ts
+@@ -20,8 +20,10 @@ export const useAgentCronJobs = (agentId?: string) => {
+     isLoading: loading,
+     mutate,
+   } = useSWR(
+-    ENABLE_BUSINESS_FEATURES && agentId ? `/api/agent-cron-jobs/${agentId}` : null,
+-    ENABLE_BUSINESS_FEATURES && agentId ? () => agentCronJobService.getByAgentId(agentId) : null,
++    (ENABLE_BUSINESS_FEATURES || true) && agentId ? `/api/agent-cron-jobs/${agentId}` : null,
++    (ENABLE_BUSINESS_FEATURES || true) && agentId
++      ? () => agentCronJobService.getByAgentId(agentId)
++      : null,
+     {
+       onError: (error) => {
+         console.error('Failed to fetch cron jobs:', error);
+diff --git a/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/index.tsx b/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/index.tsx
+index c0d885441b49a..e2d8475af4bbd 100644
+--- a/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/index.tsx
++++ b/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/index.tsx
+@@ -40,7 +40,8 @@ const AgentCronJobs = memo(() => {
+     [deleteCronJob],
+   );
+ 
+-  if (!ENABLE_BUSINESS_FEATURES) return null;
++  // eslint-disable-next-line no-constant-condition
++  if (!ENABLE_BUSINESS_FEATURES || true) return null;
+ 
+   if (!agentId) {
+     return null;
+diff --git a/src/app/[variants]/(main)/agent/profile/features/ProfileEditor/index.tsx b/src/app/[variants]/(main)/agent/profile/features/ProfileEditor/index.tsx
+index 67f4f35da0fcc..fe675110bf88f 100644
+--- a/src/app/[variants]/(main)/agent/profile/features/ProfileEditor/index.tsx
++++ b/src/app/[variants]/(main)/agent/profile/features/ProfileEditor/index.tsx
+@@ -93,7 +93,8 @@ const ProfileEditor = memo(() => {
+             {t('startConversation')}
+           </Button>
+           <AgentPublishButton />
+-          {ENABLE_BUSINESS_FEATURES && (
++          {/* eslint-disable-next-line no-constant-condition */}
++          {(ENABLE_BUSINESS_FEATURES || true) && (
+             <Button icon={Clock} onClick={handleCreateCronJob}>
+               {t('agentCronJobs.addJob')}
+             </Button>
+@@ -104,7 +105,8 @@ const ProfileEditor = memo(() => {
+       {/* Main Content: Prompt Editor */}
+       <EditorCanvas />
+       {/* Agent Cron Jobs Display (only show if jobs exist) */}
+-      {ENABLE_BUSINESS_FEATURES && <AgentCronJobs />}
++      {/* eslint-disable-next-line no-constant-condition */}
++      {(ENABLE_BUSINESS_FEATURES || true) && <AgentCronJobs />}
+       {/* Advanced Settings Modal */}
+       <AgentSettings />
+     </>
+diff --git a/src/app/[variants]/(main)/settings/storage/features/Advanced.tsx b/src/app/[variants]/(main)/settings/storage/features/Advanced.tsx
+index 2fab39c9ba51d..10322d60d05d9 100644
+--- a/src/app/[variants]/(main)/settings/storage/features/Advanced.tsx
++++ b/src/app/[variants]/(main)/settings/storage/features/Advanced.tsx
+@@ -115,7 +115,8 @@ const AdvancedActions = () => {
+         layout: 'horizontal',
+         minWidth: undefined,
+       },
+-      ...(ENABLE_BUSINESS_FEATURES ? [renderExportButtonFormItem()] : []),
++      // eslint-disable-next-line no-constant-condition
++      ...(ENABLE_BUSINESS_FEATURES || true ? [renderExportButtonFormItem()] : []),
+       {
+         children: (
+           <Button danger onClick={handleClear} type={'primary'}>
+diff --git a/src/store/agent/slices/cron/action.ts b/src/store/agent/slices/cron/action.ts
+index 78720dc356b5f..4033e53314292 100644
+--- a/src/store/agent/slices/cron/action.ts
++++ b/src/store/agent/slices/cron/action.ts
+@@ -71,7 +71,9 @@ export const createCronSlice: StateCreator<
+ 
+   useFetchCronTopicsWithJobInfo: (agentId) =>
+     useClientDataSWR<CronTopicGroupWithJobInfo[]>(
+-      ENABLE_BUSINESS_FEATURES && agentId ? [FETCH_CRON_TOPICS_WITH_JOB_INFO_KEY, agentId] : null,
++      (ENABLE_BUSINESS_FEATURES || true) && agentId
++        ? [FETCH_CRON_TOPICS_WITH_JOB_INFO_KEY, agentId]
++        : null,
+       async ([, id]: [string, string]) => {
+         const [cronJobsResult, cronTopicsGroups] = await Promise.all([
+           lambdaClient.agentCronJob.findByAgent.query({ agentId: id }),
