@@ -8,7 +8,7 @@ index bafd6f087998d..255ba3a04f52a 100644
  export const ENABLE_BUSINESS_FEATURES = false;
 +export const APPLY_OSS_FEATURES_PATCH = true;
 diff --git a/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/hooks/useAgentCronJobs.ts b/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/hooks/useAgentCronJobs.ts
-index 8594a3db05e8b..1505da488aef3 100644
+index 8594a3db05e8b..f679106bef342 100644
 --- a/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/hooks/useAgentCronJobs.ts
 +++ b/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/hooks/useAgentCronJobs.ts
 @@ -1,4 +1,4 @@
@@ -23,17 +23,17 @@ index 8594a3db05e8b..1505da488aef3 100644
    } = useSWR(
 -    ENABLE_BUSINESS_FEATURES && agentId ? `/api/agent-cron-jobs/${agentId}` : null,
 -    ENABLE_BUSINESS_FEATURES && agentId ? () => agentCronJobService.getByAgentId(agentId) : null,
-+    (ENABLE_BUSINESS_FEATURES || APPLY_OSS_FEATURES_PATCH) && agentId
++    (APPLY_OSS_FEATURES_PATCH || ENABLE_BUSINESS_FEATURES) && agentId
 +      ? `/api/agent-cron-jobs/${agentId}`
 +      : null,
-+    (ENABLE_BUSINESS_FEATURES || APPLY_OSS_FEATURES_PATCH) && agentId
++    (APPLY_OSS_FEATURES_PATCH || ENABLE_BUSINESS_FEATURES) && agentId
 +      ? () => agentCronJobService.getByAgentId(agentId)
 +      : null,
      {
        onError: (error) => {
          console.error('Failed to fetch cron jobs:', error);
 diff --git a/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/index.tsx b/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/index.tsx
-index c0d885441b49a..66ed6b9cf2596 100644
+index c0d885441b49a..b8ff0a148dea5 100644
 --- a/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/index.tsx
 +++ b/src/app/[variants]/(main)/agent/profile/features/AgentCronJobs/index.tsx
 @@ -1,6 +1,6 @@
@@ -49,12 +49,12 @@ index c0d885441b49a..66ed6b9cf2596 100644
    );
  
 -  if (!ENABLE_BUSINESS_FEATURES) return null;
-+  if (!ENABLE_BUSINESS_FEATURES || !APPLY_OSS_FEATURES_PATCH) return null;
++  if (!APPLY_OSS_FEATURES_PATCH || !ENABLE_BUSINESS_FEATURES) return null;
  
    if (!agentId) {
      return null;
 diff --git a/src/app/[variants]/(main)/agent/profile/features/ProfileEditor/index.tsx b/src/app/[variants]/(main)/agent/profile/features/ProfileEditor/index.tsx
-index 67f4f35da0fcc..9614a937411ee 100644
+index 67f4f35da0fcc..910904f5eee75 100644
 --- a/src/app/[variants]/(main)/agent/profile/features/ProfileEditor/index.tsx
 +++ b/src/app/[variants]/(main)/agent/profile/features/ProfileEditor/index.tsx
 @@ -1,6 +1,6 @@
@@ -70,7 +70,7 @@ index 67f4f35da0fcc..9614a937411ee 100644
            </Button>
            <AgentPublishButton />
 -          {ENABLE_BUSINESS_FEATURES && (
-+          {(ENABLE_BUSINESS_FEATURES || APPLY_OSS_FEATURES_PATCH) && (
++          {(APPLY_OSS_FEATURES_PATCH || ENABLE_BUSINESS_FEATURES) && (
              <Button icon={Clock} onClick={handleCreateCronJob}>
                {t('agentCronJobs.addJob')}
              </Button>
@@ -79,12 +79,12 @@ index 67f4f35da0fcc..9614a937411ee 100644
        <EditorCanvas />
        {/* Agent Cron Jobs Display (only show if jobs exist) */}
 -      {ENABLE_BUSINESS_FEATURES && <AgentCronJobs />}
-+      {(ENABLE_BUSINESS_FEATURES || APPLY_OSS_FEATURES_PATCH) && <AgentCronJobs />}
++      {(APPLY_OSS_FEATURES_PATCH || ENABLE_BUSINESS_FEATURES) && <AgentCronJobs />}
        {/* Advanced Settings Modal */}
        <AgentSettings />
      </>
 diff --git a/src/app/[variants]/(main)/settings/storage/features/Advanced.tsx b/src/app/[variants]/(main)/settings/storage/features/Advanced.tsx
-index 2fab39c9ba51d..4f3531f4a0233 100644
+index 2fab39c9ba51d..ffcbe783157ff 100644
 --- a/src/app/[variants]/(main)/settings/storage/features/Advanced.tsx
 +++ b/src/app/[variants]/(main)/settings/storage/features/Advanced.tsx
 @@ -1,6 +1,10 @@
@@ -104,14 +104,14 @@ index 2fab39c9ba51d..4f3531f4a0233 100644
          minWidth: undefined,
        },
 -      ...(ENABLE_BUSINESS_FEATURES ? [renderExportButtonFormItem()] : []),
-+      ...(ENABLE_BUSINESS_FEATURES || APPLY_OSS_FEATURES_PATCH
++      ...(APPLY_OSS_FEATURES_PATCH || ENABLE_BUSINESS_FEATURES
 +        ? [renderExportButtonFormItem()]
 +        : []),
        {
          children: (
            <Button danger onClick={handleClear} type={'primary'}>
 diff --git a/src/store/agent/slices/cron/action.ts b/src/store/agent/slices/cron/action.ts
-index 78720dc356b5f..cba22f1851a64 100644
+index 78720dc356b5f..3c20fe9d0d6d7 100644
 --- a/src/store/agent/slices/cron/action.ts
 +++ b/src/store/agent/slices/cron/action.ts
 @@ -1,4 +1,4 @@
@@ -125,7 +125,7 @@ index 78720dc356b5f..cba22f1851a64 100644
    useFetchCronTopicsWithJobInfo: (agentId) =>
      useClientDataSWR<CronTopicGroupWithJobInfo[]>(
 -      ENABLE_BUSINESS_FEATURES && agentId ? [FETCH_CRON_TOPICS_WITH_JOB_INFO_KEY, agentId] : null,
-+      (ENABLE_BUSINESS_FEATURES || APPLY_OSS_FEATURES_PATCH) && agentId
++      (APPLY_OSS_FEATURES_PATCH || ENABLE_BUSINESS_FEATURES) && agentId
 +        ? [FETCH_CRON_TOPICS_WITH_JOB_INFO_KEY, agentId]
 +        : null,
        async ([, id]: [string, string]) => {
