@@ -45,10 +45,10 @@ index 0000000000000..189e651ac3b3e
 +}
 diff --git a/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts b/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts
 new file mode 100644
-index 0000000000000..5c56bc749aaed
+index 0000000000000..3e8847dd61791
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts
-@@ -0,0 +1,267 @@
+@@ -0,0 +1,293 @@
 +import { type BuiltinServerRuntimeOutput } from '@lobechat/types';
 +
 +import { calculatorExecutor } from '../executor';
@@ -63,6 +63,8 @@ index 0000000000000..5c56bc749aaed
 +  type DifferentiateState,
 +  type EvaluateParams,
 +  type EvaluateState,
++  type ExecuteParams,
++  type ExecuteState,
 +  type IntegrateParams,
 +  type IntegrateState,
 +  type LimitParams,
@@ -238,6 +240,30 @@ index 0000000000000..5c56bc749aaed
 +    }
 +  }
 +
++  async execute(args: ExecuteParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.execute(args);
++
++      const state: ExecuteState = {
++        expression: result.state?.expression,
++        result: result.state?.result as string | undefined,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
 +  async defintegrate(args: DefintegrateParams): Promise<BuiltinServerRuntimeOutput> {
 +    try {
 +      const result = await calculatorExecutor.defintegrate(args);
@@ -318,10 +344,10 @@ index 0000000000000..5c56bc749aaed
 +}
 diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
 new file mode 100644
-index 0000000000000..d398ede3e0d9e
+index 0000000000000..9596857dfc700
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/calculate.test.ts
-@@ -0,0 +1,1283 @@
+@@ -0,0 +1,1371 @@
 +import { describe, expect, it } from 'vitest';
 +
 +import { calculatorExecutor } from '../src/executor';
@@ -809,6 +835,94 @@ index 0000000000000..d398ede3e0d9e
 +
 +      expect(result.success).toBe(true);
 +      expect(result.content).toBe('0');
++    });
++  });
++});
++
++describe('Calculator Nerdamer Execute', () => {
++  describe('execute', () => {
++    it('should execute expand expression', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'expand((x+1)^2)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('1+2*x+x^2');
++      expect(result.state?.expression).toBe('expand((x+1)^2)');
++      expect(result.state?.result).toBeDefined();
++    });
++
++    it('should execute factor expression', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'factor(x^2-1)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('(-1+x)*(1+x)');
++    });
++
++    it('should execute partfrac expression', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'partfrac(1/(x^2-1))',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('1/2');
++    });
++
++    it('should execute simplify expression', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'simplify(x^2+2*x-x)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('(1+x)*x');
++    });
++
++    it('should execute toTeX expression', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'toTeX(x^2+2*x+1)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('(1+2*x+x^2)*toTeX');
++    });
++
++    it('should execute coefficients expression', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'coeffs(x^3+2*x^2+3*x+4)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('x^3');
++    });
++
++    it('should execute roots expression', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'roots(x^2-4)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('[2,-2]');
++    });
++
++    it('should handle invalid expressions gracefully', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'invalid_function(x)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('invalid_function');
++    });
++
++    it('should preserve state information', async () => {
++      const result = await calculatorExecutor.execute({
++        expression: 'expand(x*y)',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.state?.expression).toBe('expand(x*y)');
++      expect(result.state?.result).toBeDefined();
 +    });
 +  });
 +});
@@ -1619,10 +1733,10 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..b94bfb770007f
+index 0000000000000..97b945ac30232
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,564 @@
+@@ -0,0 +1,595 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { defBase } from '@thi.ng/base-n/base';
 +import { all, create } from 'mathjs';
@@ -1637,6 +1751,7 @@ index 0000000000000..b94bfb770007f
 +  type DefintegrateParams,
 +  type DifferentiateParams,
 +  type EvaluateParams,
++  type ExecuteParams,
 +  type IntegrateParams,
 +  type LimitParams,
 +  type SolveParams,
@@ -2136,6 +2251,36 @@ index 0000000000000..b94bfb770007f
 +  };
 +
 +  /**
++   * Execute a generic nerdamer expression
++   */
++  execute = async (params: ExecuteParams): Promise<BuiltinToolResult> => {
++    try {
++      const { expression } = params;
++      const result = nerdamer(expression);
++      const resultText = result.toString();
++
++      return {
++        content: resultText,
++        state: {
++          expression,
++          result: resultText,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Nerdamer execution error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'NerdamerError',
++        },
++        success: false,
++      };
++    }
++  };
++
++  /**
 +   * Compute the limit of a mathematical expression using nerdamer
 +   */
 +  limit = async (params: LimitParams): Promise<BuiltinToolResult> => {
@@ -2209,10 +2354,10 @@ index 0000000000000..47986dd259552
 +} from './types';
 diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
 new file mode 100644
-index 0000000000000..e39ffa2657d03
+index 0000000000000..5ff68a1ee5f5a
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/manifest.ts
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,268 @@
 +import type { BuiltinToolManifest } from '@lobechat/types';
 +
 +import { systemPrompt } from './systemRole';
@@ -2405,6 +2550,22 @@ index 0000000000000..e39ffa2657d03
 +      },
 +    },
 +    {
++      description: 'Execute a generic nerdamer expression for symbolic math computations.',
++      name: CalculatorApiName.execute,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          expression: {
++            description:
++              'Nerdamer expression to execute (e.g., "expand((x+1)^2)", "factor(x^2-1)", "partfrac(1/(x^2-1))")',
++            type: 'string',
++          },
++        },
++        required: ['expression'],
++        type: 'object',
++      },
++    },
++    {
 +      description: 'Compute the limit of a mathematical expression.',
 +      name: CalculatorApiName.limit,
 +      parameters: {
@@ -2467,10 +2628,10 @@ index 0000000000000..e39ffa2657d03
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..6c7ebee34041b
+index 0000000000000..31b61ea5624a7
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,115 @@
 +export const systemPrompt = `You have access to a Calculator tool powered by mathjs and nerdamer, capable of comprehensive mathematical computations, base conversions, and symbolic equation solving.
 +
 +<core_capabilities>
@@ -2482,7 +2643,8 @@ index 0000000000000..6c7ebee34041b
 +6. **differentiate**: Derivatives of mathematical expressions
 +7. **integrate**: Indefinite integrals
 +8. **defintegrate**: Definite integrals over specified intervals
-+9. **limit**: Limits of expressions
++9. **execute**: Generic nerdamer expressions for symbolic math
++10. **limit**: Limits of expressions
 +</core_capabilities>
 +
 +<tool_selection>
@@ -2523,6 +2685,14 @@ index 0000000000000..6c7ebee34041b
 +   - Parameters: expression, variable, lowerBound, upperBound
 +   - Example: {"expression": "x^2", "variable": "x", "lowerBound": 0, "upperBound": 1} → "1/3"
 +   - Supports numeric bounds and special values like "infinity", "-infinity", "pi"
++
++- **execute**: Best for generic nerdamer symbolic math expressions
++   - Parameters: expression (any valid nerdamer expression)
++   - Examples: {"expression": "expand((x+1)^2)"} → "x^2+2*x+1"
++             {"expression": "factor(x^2-1)"} → "(x-1)*(x+1)"
++             {"expression": "partfrac(1/(x^2-1))"} → "1/2/(x-1)-1/2/(x+1)"
++             {"expression": "toTeX(x^2+2*x+1)"} → "x^{2}+2x+1"
++             {"expression": "simplify(x^2+2*x-x)"} → "x^2+x"
 +
 +- **limit**: Best for computing limits
 +   - Parameters: expression, variable, point (optional: value or "infinity")
@@ -2579,10 +2749,10 @@ index 0000000000000..6c7ebee34041b
 +`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..b2ee999e62d61
+index 0000000000000..f02cd61fc094a
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,153 @@
 +export const CalculatorIdentifier = 'lobe-calculator';
 +
 +export const CalculatorApiName = {
@@ -2591,6 +2761,7 @@ index 0000000000000..b2ee999e62d61
 +  defintegrate: 'defintegrate',
 +  differentiate: 'differentiate',
 +  evaluate: 'evaluate',
++  execute: 'execute',
 +  integrate: 'integrate',
 +  limit: 'limit',
 +  solve: 'solve',
@@ -2724,6 +2895,16 @@ index 0000000000000..b2ee999e62d61
 +  point?: string | number;
 +  result?: string;
 +  variable?: string;
++}
++
++// Generic Nerdamer Execute API
++export interface ExecuteParams {
++  expression: string;
++}
++
++export interface ExecuteState {
++  expression?: string;
++  result?: string;
 +}
 diff --git a/packages/builtin-tool-calculator/tsconfig.json b/packages/builtin-tool-calculator/tsconfig.json
 new file mode 100644
