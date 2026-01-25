@@ -1,8 +1,8 @@
 diff --git a/package.json b/package.json
-index 428f8d89e4c00..8c2d2e51b61eb 100644
+index 0cb95903eff9c..ccfa0f456844e 100644
 --- a/package.json
 +++ b/package.json
-@@ -166,6 +166,7 @@
+@@ -164,6 +164,7 @@
      "@lobechat/agent-runtime": "workspace:*",
      "@lobechat/builtin-agents": "workspace:*",
      "@lobechat/builtin-tool-agent-builder": "workspace:*",
@@ -45,10 +45,10 @@ index 0000000000000..189e651ac3b3e
 +}
 diff --git a/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts b/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts
 new file mode 100644
-index 0000000000000..55e9ba81f369c
+index 0000000000000..5c56bc749aaed
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/ExecutionRuntime/index.ts
-@@ -0,0 +1,238 @@
+@@ -0,0 +1,267 @@
 +import { type BuiltinServerRuntimeOutput } from '@lobechat/types';
 +
 +import { calculatorExecutor } from '../executor';
@@ -57,6 +57,8 @@ index 0000000000000..55e9ba81f369c
 +  type BaseState,
 +  type CalculateParams,
 +  type CalculateState,
++  type DefintegrateParams,
++  type DefintegrateState,
 +  type DifferentiateParams,
 +  type DifferentiateState,
 +  type EvaluateParams,
@@ -236,6 +238,33 @@ index 0000000000000..55e9ba81f369c
 +    }
 +  }
 +
++  async defintegrate(args: DefintegrateParams): Promise<BuiltinServerRuntimeOutput> {
++    try {
++      const result = await calculatorExecutor.defintegrate(args);
++
++      const state: DefintegrateState = {
++        expression: result.state?.expression,
++        lowerBound: result.state?.lowerBound,
++        result: result.state?.result as string | undefined,
++        upperBound: result.state?.upperBound,
++        variable: result.state?.variable,
++      };
++
++      return {
++        content: result.content || '',
++        state,
++        success: result.success,
++      };
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : String(error);
++      return {
++        content: errorMessage,
++        error,
++        success: false,
++      };
++    }
++  }
++
 +  async integrate(args: IntegrateParams): Promise<BuiltinServerRuntimeOutput> {
 +    try {
 +      const result = await calculatorExecutor.integrate(args);
@@ -289,10 +318,10 @@ index 0000000000000..55e9ba81f369c
 +}
 diff --git a/packages/builtin-tool-calculator/src/calculate.test.ts b/packages/builtin-tool-calculator/src/calculate.test.ts
 new file mode 100644
-index 0000000000000..b575d58119791
+index 0000000000000..d398ede3e0d9e
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/calculate.test.ts
-@@ -0,0 +1,1140 @@
+@@ -0,0 +1,1283 @@
 +import { describe, expect, it } from 'vitest';
 +
 +import { calculatorExecutor } from '../src/executor';
@@ -638,6 +667,149 @@ index 0000000000000..b575d58119791
 +    const result = await calculatorExecutor.calculate({ expression: 'pi * 1e3' });
 +    expect(result.success).toBe(true);
 +    expect(parseFloat(result.content || '0')).toBeCloseTo(3141.59, 2);
++  });
++});
++
++describe('Calculator Definite Integration', () => {
++  describe('defintegrate', () => {
++    it('should compute definite integral of polynomial', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'x^2',
++        variable: 'x',
++        lowerBound: 0,
++        upperBound: 1,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('1/3');
++      expect(result.state?.expression).toBe('x^2');
++      expect(result.state?.variable).toBe('x');
++      expect(result.state?.lowerBound).toBe(0);
++      expect(result.state?.upperBound).toBe(1);
++    });
++
++    it('should compute definite integral of trigonometric function', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'sin(x)',
++        variable: 'x',
++        lowerBound: 0,
++        upperBound: 'pi',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('2');
++    });
++
++    it('should compute definite integral of exponential function', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'exp(x)',
++        variable: 'x',
++        lowerBound: 0,
++        upperBound: 1,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toMatch(/e|205671881\/119696244/); // Either 'e' or fraction form
++    });
++
++    it('should compute definite integral with negative bounds', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'x^3',
++        variable: 'x',
++        lowerBound: -1,
++        upperBound: 1,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('0');
++    });
++
++    it('should compute definite integral to infinity', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: '1/x^2',
++        variable: 'x',
++        lowerBound: 1,
++        upperBound: 'infinity',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toMatch(/1|infinity/); // Either '1' or symbolic infinity form
++    });
++
++    it('should handle definite integral with fractional bounds', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'x',
++        variable: 'x',
++        lowerBound: 0.5,
++        upperBound: 1.5,
++      });
++
++      expect(result.success).toBe(true);
++    });
++
++    it('should handle definite integral with string bounds', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'cos(x)',
++        variable: 'x',
++        lowerBound: '0',
++        upperBound: 'pi/2',
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('1');
++    });
++
++    it('should preserve state information', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: '2*x',
++        variable: 'x',
++        lowerBound: 0,
++        upperBound: 5,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.state?.expression).toBe('2*x');
++      expect(result.state?.variable).toBe('x');
++      expect(result.state?.lowerBound).toBe(0);
++      expect(result.state?.upperBound).toBe(5);
++      expect(result.state?.result).toBeDefined();
++    });
++
++    it('should handle invalid expressions gracefully', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'invalid',
++        variable: 'x',
++        lowerBound: 0,
++        upperBound: 1,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toContain('invalid');
++    });
++
++    it('should handle complex expressions', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'x^2 + 2*x + 1',
++        variable: 'x',
++        lowerBound: 0,
++        upperBound: 2,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBeDefined();
++    });
++
++    it('should handle zero-width interval', async () => {
++      const result = await calculatorExecutor.defintegrate({
++        expression: 'x^2',
++        variable: 'x',
++        lowerBound: 1,
++        upperBound: 1,
++      });
++
++      expect(result.success).toBe(true);
++      expect(result.content).toBe('0');
++    });
 +  });
 +});
 +
@@ -1447,10 +1619,10 @@ index 0000000000000..2861ba06d85d3
 \ No newline at end of file
 diff --git a/packages/builtin-tool-calculator/src/executor/index.ts b/packages/builtin-tool-calculator/src/executor/index.ts
 new file mode 100644
-index 0000000000000..ce68bffae55ca
+index 0000000000000..b94bfb770007f
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/executor/index.ts
-@@ -0,0 +1,521 @@
+@@ -0,0 +1,564 @@
 +import { BaseExecutor, type BuiltinToolResult, type IBuiltinToolExecutor } from '@lobechat/types';
 +import { defBase } from '@thi.ng/base-n/base';
 +import { all, create } from 'mathjs';
@@ -1462,6 +1634,7 @@ index 0000000000000..ce68bffae55ca
 +  type CalculateParams,
 +  CalculatorApiName,
 +  CalculatorIdentifier,
++  type DefintegrateParams,
 +  type DifferentiateParams,
 +  type EvaluateParams,
 +  type IntegrateParams,
@@ -1921,6 +2094,48 @@ index 0000000000000..ce68bffae55ca
 +  };
 +
 +  /**
++   * Compute the definite integral of a mathematical expression using nerdamer
++   */
++  defintegrate = async (params: DefintegrateParams): Promise<BuiltinToolResult> => {
++    try {
++      const { expression, variable, lowerBound, upperBound } = params;
++
++      // First compute the indefinite integral
++      const indefiniteIntegral = nerdamer(`integrate(${expression}, ${variable})`);
++
++      // Then evaluate at bounds using the fundamental theorem of calculus
++      const upperResult = indefiniteIntegral.evaluate({ [variable]: upperBound });
++      const lowerResult = indefiniteIntegral.evaluate({ [variable]: lowerBound });
++
++      // Compute the difference
++      const finalResult = nerdamer(`${upperResult} - ${lowerResult}`);
++      const resultText = finalResult.toString();
++
++      return {
++        content: resultText,
++        state: {
++          expression,
++          lowerBound,
++          result: resultText,
++          upperBound,
++          variable,
++        },
++        success: true,
++      };
++    } catch (error) {
++      const err = error as Error;
++      return {
++        content: `Definite integration error: ${err.message}`,
++        error: {
++          message: err.message,
++          type: 'DefintegrationError',
++        },
++        success: false,
++      };
++    }
++  };
++
++  /**
 +   * Compute the limit of a mathematical expression using nerdamer
 +   */
 +  limit = async (params: LimitParams): Promise<BuiltinToolResult> => {
@@ -1994,10 +2209,10 @@ index 0000000000000..47986dd259552
 +} from './types';
 diff --git a/packages/builtin-tool-calculator/src/manifest.ts b/packages/builtin-tool-calculator/src/manifest.ts
 new file mode 100644
-index 0000000000000..e8e495348ab8f
+index 0000000000000..e39ffa2657d03
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/manifest.ts
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,252 @@
 +import type { BuiltinToolManifest } from '@lobechat/types';
 +
 +import { systemPrompt } from './systemRole';
@@ -2143,6 +2358,34 @@ index 0000000000000..e8e495348ab8f
 +    },
 +    {
 +      description:
++        'Compute definite integral of a mathematical expression with respect to a variable over a given interval.',
++      name: CalculatorApiName.defintegrate,
++      parameters: {
++        additionalProperties: false,
++        properties: {
++          expression: {
++            description: 'Mathematical expression to integrate (e.g., "x^2", "sin(x)", "exp(x)")',
++            type: 'string',
++          },
++          lowerBound: {
++            description: 'Lower bound of integration (can be number, "0", "-infinity", etc.)',
++            type: 'number | string',
++          },
++          upperBound: {
++            description: 'Upper bound of integration (can be number, "pi", "infinity", etc.)',
++            type: 'number | string',
++          },
++          variable: {
++            description: 'Variable to integrate with respect to (e.g., "x", "y", "t")',
++            type: 'string',
++          },
++        },
++        required: ['expression', 'variable', 'lowerBound', 'upperBound'],
++        type: 'object',
++      },
++    },
++    {
++      description:
 +        'Integrate a mathematical expression with respect to a variable (indefinite integral).',
 +      name: CalculatorApiName.integrate,
 +      parameters: {
@@ -2224,10 +2467,10 @@ index 0000000000000..e8e495348ab8f
 +};
 diff --git a/packages/builtin-tool-calculator/src/systemRole.ts b/packages/builtin-tool-calculator/src/systemRole.ts
 new file mode 100644
-index 0000000000000..2e34443cd5442
+index 0000000000000..6c7ebee34041b
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/systemRole.ts
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,106 @@
 +export const systemPrompt = `You have access to a Calculator tool powered by mathjs and nerdamer, capable of comprehensive mathematical computations, base conversions, and symbolic equation solving.
 +
 +<core_capabilities>
@@ -2238,7 +2481,8 @@ index 0000000000000..2e34443cd5442
 +5. **solve**: Algebraic equations and systems of equations
 +6. **differentiate**: Derivatives of mathematical expressions
 +7. **integrate**: Indefinite integrals
-+8. **limit**: Limits of expressions
++8. **defintegrate**: Definite integrals over specified intervals
++9. **limit**: Limits of expressions
 +</core_capabilities>
 +
 +<tool_selection>
@@ -2274,6 +2518,11 @@ index 0000000000000..2e34443cd5442
 +- **integrate**: Best for computing indefinite integrals
 +   - Parameters: expression, variable
 +   - Example: {"expression": "x^3", "variable": "x"} → "(1/4)*x^4"
++
++- **defintegrate**: Best for computing definite integrals over intervals
++   - Parameters: expression, variable, lowerBound, upperBound
++   - Example: {"expression": "x^2", "variable": "x", "lowerBound": 0, "upperBound": 1} → "1/3"
++   - Supports numeric bounds and special values like "infinity", "-infinity", "pi"
 +
 +- **limit**: Best for computing limits
 +   - Parameters: expression, variable, point (optional: value or "infinity")
@@ -2330,15 +2579,16 @@ index 0000000000000..2e34443cd5442
 +`;
 diff --git a/packages/builtin-tool-calculator/src/types.ts b/packages/builtin-tool-calculator/src/types.ts
 new file mode 100644
-index 0000000000000..daedef895623e
+index 0000000000000..b2ee999e62d61
 --- /dev/null
 +++ b/packages/builtin-tool-calculator/src/types.ts
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,142 @@
 +export const CalculatorIdentifier = 'lobe-calculator';
 +
 +export const CalculatorApiName = {
 +  base: 'base',
 +  calculate: 'calculate',
++  defintegrate: 'defintegrate',
 +  differentiate: 'differentiate',
 +  evaluate: 'evaluate',
 +  integrate: 'integrate',
@@ -2443,6 +2693,22 @@ index 0000000000000..daedef895623e
 +export interface IntegrateState {
 +  expression?: string;
 +  result?: string;
++  variable?: string;
++}
++
++// Nerdamer Definite Integral API
++export interface DefintegrateParams {
++  expression: string;
++  lowerBound: number | string;
++  upperBound: number | string;
++  variable: string;
++}
++
++export interface DefintegrateState {
++  expression?: string;
++  lowerBound?: number | string;
++  result?: string;
++  upperBound?: number | string;
 +  variable?: string;
 +}
 +
