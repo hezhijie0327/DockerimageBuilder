@@ -1,39 +1,27 @@
 diff --git a/packages/model-bank/src/aiModels/zhipu.ts b/packages/model-bank/src/aiModels/zhipu.ts
-index 2cc32a6ff5d85..3dfe925323491 100644
+index 8de6d72364b74..cff0590162d00 100644
 --- a/packages/model-bank/src/aiModels/zhipu.ts
 +++ b/packages/model-bank/src/aiModels/zhipu.ts
-@@ -61,6 +61,186 @@ const zhipuChatModels: AIChatModelCard[] = [
+@@ -61,6 +61,7 @@ const zhipuChatModels: AIChatModelCard[] = [
          },
        ],
      },
 +    releasedAt: '2025-12-22',
-+    settings: {
-+      extendParams: ['enableReasoning'],
-+      searchImpl: 'params',
-+    },
-+    type: 'chat',
-+  },
-+  {
-+    abilities: {
-+      functionCall: true,
-+      reasoning: true,
-+      search: true,
-+    },
-+    contextWindowTokens: 200_000,
-+    description:
-+      "GLM-4.7-Flash, as a 30B-scale state-of-the-art model, offers a new option that balances performance and efficiency. It strengthens capabilities for agentic coding scenarios, including coding proficiency, long-horizon task planning, and tool collaboration, and achieves leading results among open-source models of the same size on current leaderboards across multiple public benchmarks. In executing complex agent tasks, it demonstrates stronger instruction adherence during tool invocation, while further improving frontend aesthetics for artifacts and the efficiency of long-horizon task completion in agentic coding.",
-+    displayName: 'GLM-4.7-Flash',
-+    enabled: true,
-+    id: 'glm-4.7-flash',
-+    maxOutput: 131_072,
-+    pricing: {
-+      currency: 'CNY',
-+      units: [
-+        { name: 'textInput_cacheRead', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
-+        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
-+        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
-+      ],
-+    },
+     settings: {
+       extendParams: ['enableReasoning'],
+       searchImpl: 'params',
+@@ -88,6 +89,7 @@ const zhipuChatModels: AIChatModelCard[] = [
+         { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
++    releasedAt: '2026-01-19',
+     settings: {
+       extendParams: ['enableReasoning'],
+       searchImpl: 'params',
+@@ -115,6 +117,158 @@ const zhipuChatModels: AIChatModelCard[] = [
+         { name: 'textOutput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
 +    releasedAt: '2026-01-19',
 +    settings: {
 +      extendParams: ['enableReasoning'],
@@ -189,7 +177,7 @@ index 2cc32a6ff5d85..3dfe925323491 100644
      settings: {
        extendParams: ['enableReasoning'],
        searchImpl: 'params',
-@@ -123,6 +303,7 @@ const zhipuChatModels: AIChatModelCard[] = [
+@@ -177,6 +331,7 @@ const zhipuChatModels: AIChatModelCard[] = [
          },
        ],
      },
@@ -197,7 +185,7 @@ index 2cc32a6ff5d85..3dfe925323491 100644
      settings: {
        extendParams: ['enableReasoning'],
        searchImpl: 'params',
-@@ -140,7 +321,6 @@ const zhipuChatModels: AIChatModelCard[] = [
+@@ -194,7 +349,6 @@ const zhipuChatModels: AIChatModelCard[] = [
      description:
        'Zhipu’s next-generation MoE vision reasoning model has 106B total parameters with 12B active, achieving SOTA among similarly sized open-source multimodal models across image, video, document understanding, and GUI tasks.',
      displayName: 'GLM-4.5V',
@@ -205,15 +193,7 @@ index 2cc32a6ff5d85..3dfe925323491 100644
      id: 'glm-4.5v',
      maxOutput: 16_384,
      pricing: {
-@@ -442,7 +622,6 @@ const zhipuChatModels: AIChatModelCard[] = [
-     contextWindowTokens: 131_072,
-     description: 'Free GLM-4.5 tier with strong performance in reasoning, coding, and agent tasks.',
-     displayName: 'GLM-4.5-Flash',
--    enabled: true,
-     id: 'glm-4.5-flash',
-     maxOutput: 98_304,
-     pricing: {
-@@ -870,12 +1049,32 @@ const zhipuChatModels: AIChatModelCard[] = [
+@@ -900,12 +1054,32 @@ const zhipuChatModels: AIChatModelCard[] = [
  ];
  
  const zhipuImageModels: AIImageModelCard[] = [
@@ -248,6 +228,50 @@ index 2cc32a6ff5d85..3dfe925323491 100644
      id: 'cogview-4',
      parameters: {
        prompt: {
+diff --git a/packages/model-runtime/src/providers/zhipu/index.test.ts b/packages/model-runtime/src/providers/zhipu/index.test.ts
+index 5fa1e89226673..49c9ac7dfecb2 100644
+--- a/packages/model-runtime/src/providers/zhipu/index.test.ts
++++ b/packages/model-runtime/src/providers/zhipu/index.test.ts
+@@ -384,39 +384,6 @@ describe('LobeZhipuAI - custom features', () => {
+       });
+     });
+ 
+-    describe('Stream parameter', () => {
+-      it('should always set stream to true', async () => {
+-        await instance.chat({
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'glm-4',
+-          temperature: 0.5,
+-        });
+-
+-        expect(instance['client'].chat.completions.create).toHaveBeenCalledWith(
+-          expect.objectContaining({
+-            stream: true,
+-          }),
+-          expect.anything(),
+-        );
+-      });
+-
+-      it('should override stream parameter to true', async () => {
+-        await instance.chat({
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'glm-4',
+-          stream: false,
+-          temperature: 0.5,
+-        });
+-
+-        expect(instance['client'].chat.completions.create).toHaveBeenCalledWith(
+-          expect.objectContaining({
+-            stream: true,
+-          }),
+-          expect.anything(),
+-        );
+-      });
+-    });
+-
+     describe('Preserve other payload properties', () => {
+       it('should preserve all other properties', async () => {
+         await instance.chat({
 diff --git a/packages/model-runtime/src/providers/zhipu/index.ts b/packages/model-runtime/src/providers/zhipu/index.ts
 index 2f0b074f5c364..db5cd60162d33 100644
 --- a/packages/model-runtime/src/providers/zhipu/index.ts
