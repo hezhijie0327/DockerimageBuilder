@@ -1,4 +1,4 @@
-# Current Version: 1.0.7
+# Current Version: 1.0.8
 
 ARG NODEJS_VERSION="24"
 ARG RUST_VERSION="1"
@@ -23,7 +23,7 @@ RUN \
     && cat "${WORKDIR}/rustfs_web.json" | jq -Sr ".patch" > "${WORKDIR}/rustfs_web.patch.autobuild" \
     && cat "${WORKDIR}/rustfs_web.json" | jq -Sr ".patch_branch" > "${WORKDIR}/rustfs_web.patch_branch.autobuild" \
     && cat "${WORKDIR}/rustfs_web.json" | jq -Sr ".version" > "${WORKDIR}/rustfs_web.version.autobuild" \
-    && git clone -b $(cat "${WORKDIR}/rustfs.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rustfs.source.autobuild") "${WORKDIR}/BUILDTMP/RUSTFS" \
+    && git clone -b backup/main --depth=1 $(cat "${WORKDIR}/rustfs.source.autobuild") "${WORKDIR}/BUILDTMP/RUSTFS" \
     && git clone -b $(cat "${WORKDIR}/rustfs.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rustfs.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
     && git clone -b $(cat "${WORKDIR}/rustfs_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rustfs_web.source.autobuild") "${WORKDIR}/BUILDTMP/RUSTFS_WEB" \
     && export RUSTFS_SHA=$(cd "${WORKDIR}/BUILDTMP/RUSTFS" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
