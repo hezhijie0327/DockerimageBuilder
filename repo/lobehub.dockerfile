@@ -1,4 +1,4 @@
-# Current Version: 1.9.1
+# Current Version: 1.9.2
 
 ARG NODEJS_VERSION="24"
 
@@ -35,6 +35,7 @@ RUN \
     && mkdir -p /distroless/bin /distroless/etc /distroless/lib \
     && cp /usr/lib/$(arch)-linux-gnu/libstdc++.so.6 /distroless/lib/libstdc++.so.6 \
     && cp /usr/lib/$(arch)-linux-gnu/libgcc_s.so.1 /distroless/lib/libgcc_s.so.1 \
+    && cp /usr/lib/$(arch)-linux-gnu/librt.so.1 /distroless/lib/librt.so.1 \
     && cp /usr/local/bin/node /distroless/bin/node \
     && cp /usr/lib/$(arch)-linux-gnu/libproxychains.so.4 /distroless/lib/libproxychains.so.4 \
     && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
