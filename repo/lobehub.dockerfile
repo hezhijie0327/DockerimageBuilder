@@ -1,4 +1,4 @@
-# Current Version: 1.9.2
+# Current Version: 1.9.3
 
 ARG NODEJS_VERSION="24"
 
@@ -53,7 +53,7 @@ ENV \
     DATABASE_DRIVER="node" \
     DATABASE_URL="postgres://postgres:password@localhost:5432/postgres" \
     KEY_VAULTS_SECRET="use-for-build" \
-    FEATURE_FLAGS="-check_updates,-welcome_suggest"
+    FEATURE_FLAGS="-changelog,-check_updates,-welcome_suggest,+rag_eval"
 
 WORKDIR /app
 
@@ -107,7 +107,7 @@ ENV \
     SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt" \
     MIDDLEWARE_REWRITE_THROUGH_LOCAL="1" \
     AUTH_ENABLE_MAGIC_LINK="1" AUTH_EMAIL_VERIFICATION="0" \
-    FEATURE_FLAGS="-check_updates,-welcome_suggest" \
+    FEATURE_FLAGS="-changelog,-check_updates,-welcome_suggest,+rag_eval" \
     HOSTNAME="0.0.0.0" PORT="3210"
 
 COPY --from=rebased_lobehub / /
