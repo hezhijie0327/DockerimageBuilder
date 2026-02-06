@@ -1,5 +1,3 @@
-# Current Version: 1.2.5
-
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="24"
 

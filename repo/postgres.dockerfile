@@ -1,5 +1,3 @@
-# Current Version: 1.4.0
-
 ARG POSTGRES_VERSION="18"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info

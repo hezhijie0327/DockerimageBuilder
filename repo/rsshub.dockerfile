@@ -1,5 +1,3 @@
-# Current Version: 1.0.3
-
 ARG NODEJS_VERSION="24"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info

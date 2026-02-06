@@ -1,5 +1,3 @@
-# Current Version: 2.2.3
-
 ARG DOTNET_VERSION="10.0"
 ARG NODEJS_VERSION="24"
 

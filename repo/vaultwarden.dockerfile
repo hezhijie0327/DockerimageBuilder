@@ -1,5 +1,3 @@
-# Current Version: 1.2.9
-
 ARG NODEJS_VERSION="24"
 ARG RUST_VERSION="1"
 

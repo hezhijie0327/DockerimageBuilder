@@ -1,5 +1,3 @@
-# Current Version: 1.1.6
-
 ARG GCC_VERSION="15"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info

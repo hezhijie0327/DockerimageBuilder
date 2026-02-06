@@ -1,5 +1,3 @@
-# Current Version: 1.2.4
-
 FROM alpine:latest AS rebased_alpine
 
 WORKDIR /tmp

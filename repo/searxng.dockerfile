@@ -1,5 +1,3 @@
-# Current Version: 1.4.4
-
 ARG NODEJS_VERSION="24"
 ARG PYTHON_VERSION="3"
 

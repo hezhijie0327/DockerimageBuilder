@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Current Version: 2.4.6
-
 ## How to get and use?
 # git clone "https://github.com/hezhijie0327/DockerimageBuilder.git" && bash ./DockerimageBuilder/patch/release.sh
 
