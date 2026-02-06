@@ -1,5 +1,3 @@
-# Current Version: 1.4.3
-
 ARG NODEJS_VERSION="24"
 
 FROM ghcr.io/hezhijie0327/module:alpine AS get_info
@@ -42,7 +40,6 @@ RUN \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
-    && cp -f "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/vuetorrent/locales/zh-Hans.json" "${WORKDIR}/BUILDTMP/VUETORRENT/src/locales/zh-Hans.json" \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${VUETORRENT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/VUETORRENT/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_vuetorrent
