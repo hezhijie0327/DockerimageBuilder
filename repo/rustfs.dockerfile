@@ -1,4 +1,4 @@
-# Current Version: 1.0.9
+# Current Version: 1.1.0
 
 ARG NODEJS_VERSION="24"
 ARG RUST_VERSION="1"
@@ -25,15 +25,13 @@ RUN \
     && cat "${WORKDIR}/rustfs_web.json" | jq -Sr ".version" > "${WORKDIR}/rustfs_web.version.autobuild" \
     && git clone -b $(cat "${WORKDIR}/rustfs.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rustfs.source.autobuild") "${WORKDIR}/BUILDTMP/RUSTFS" \
     && git clone -b $(cat "${WORKDIR}/rustfs.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rustfs.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
-    && git clone -b backup/main --depth=1 $(cat "${WORKDIR}/rustfs_web.source.autobuild") "${WORKDIR}/BUILDTMP/RUSTFS_WEB" \
+    && git clone -b $(cat "${WORKDIR}/rustfs_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/rustfs_web.source.autobuild") "${WORKDIR}/BUILDTMP/RUSTFS_WEB" \
     && export RUSTFS_SHA=$(cd "${WORKDIR}/BUILDTMP/RUSTFS" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export RUSTFS_VERSION=$(cat "${WORKDIR}/rustfs.version.autobuild") \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export RUSTFS_CUSTOM_VERSION="${RUSTFS_VERSION}-ZHIJIE-${RUSTFS_SHA}${PATCH_SHA}" \
     && echo "${RUSTFS_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/RUSTFS/RUSTFS_CUSTOM_VERSION" \
     && echo "${RUSTFS_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/RUSTFS_WEB/RUSTFS_CUSTOM_VERSION" \
-    && cd "${WORKDIR}/BUILDTMP/RUSTFS_WEB" \
-    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/rustfs_web/*.patch \
     && cd "${WORKDIR}/BUILDTMP/RUSTFS" \
     && git tag ${RUSTFS_CUSTOM_VERSION}
 
@@ -48,7 +46,7 @@ RUN \
     && corepack enable \
     && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
     && pnpm i \
-    && pnpm generate
+    && pnpm build
 
 FROM rust:${RUST_VERSION}-alpine AS build_rustfs
 
@@ -63,7 +61,7 @@ WORKDIR /rustfs
 
 COPY --from=get_info /tmp/BUILDTMP/RUSTFS /rustfs
 
-COPY --from=build_rustfs_web /rustfs/.output/public /rustfs/rustfs/static
+COPY --from=build_rustfs_web /rustfs/.next /rustfs/rustfs/static
 
 RUN \
     apk add --no-cache \
