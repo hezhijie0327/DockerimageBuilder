@@ -1,33 +1,28 @@
 diff --git a/packages/model-runtime/src/core/anthropicCompatibleFactory/index.ts b/packages/model-runtime/src/core/anthropicCompatibleFactory/index.ts
-index 80252b46e1bb7..23f1b4d8b97c7 100644
+index 1d1373c0e2f12..cf634484f34d2 100644
 --- a/packages/model-runtime/src/core/anthropicCompatibleFactory/index.ts
 +++ b/packages/model-runtime/src/core/anthropicCompatibleFactory/index.ts
-@@ -368,12 +368,23 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
-         apiKey: options.apiKey?.trim() || DEFAULT_API_KEY,
-         baseURL: options.baseURL?.trim() || DEFAULT_BASE_URL,
-       };
--      const { apiKey, baseURL = DEFAULT_BASE_URL, ...rest } = resolvedOptions;
-+      const { apiKey, baseURL = DEFAULT_BASE_URL, defaultHeaders, ...rest } = resolvedOptions;
+@@ -391,6 +391,7 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
+       const {
+         apiKey: finalApiKey,
+         baseURL: finalBaseURL = DEFAULT_BASE_URL,
++        defaultHeaders,
+         ...rest
+       } = resolvedOptions;
        this._options = resolvedOptions as ConstructorOptions<T>;
- 
-       if (!apiKey) throw AgentRuntimeError.createError(ErrorType.invalidAPIKey);
- 
--      const initOptions = { apiKey, baseURL, ...constructorOptions, ...rest };
-+      const initOptions = {
-+        apiKey,
-+        baseURL,
+@@ -400,6 +401,12 @@ export const createAnthropicCompatibleRuntime = <T extends Record<string, any> =
+       const initOptions = {
+         apiKey: finalApiKey,
+         baseURL: finalBaseURL,
 +        defaultHeaders: {
 +          ...defaultHeaders,
 +          ...(baseURL === 'https://aihubmix.com' && {
 +            'APP-Code': 'LobeHub',
 +          }),
 +        },
-+        ...constructorOptions,
-+        ...rest,
-+      };
- 
-       if (customClient?.createClient) {
-         this.client = customClient.createClient(initOptions as ConstructorOptions<T>);
+         ...constructorOptions,
+         ...rest,
+       };
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 index d5fbc5dd3948a..ff1a7b0db95c5 100644
 --- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
