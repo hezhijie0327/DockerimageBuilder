@@ -423,7 +423,7 @@ index a4d3086baa2..6d1ae37fb2a 100644
        };
  
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.ts b/packages/model-runtime/src/providers/qwen/createImage.ts
-index 3c279008d72..a279acd1eb2 100644
+index 3c279008d72..9b0d389a64b 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.ts
 @@ -7,6 +7,25 @@ import { AgentRuntimeError } from '../../utils/createError';
@@ -440,7 +440,7 @@ index 3c279008d72..a279acd1eb2 100644
 +
 +const image2ImageModels = [/^wan2\.(2|5)-i2i-$/];
 +
-+const imageRequiredModels = [/^qwen-image-edit/, /^wan2\.(2|5)-i2i-$/];
++const imageRequiredModels = [/^qwen-image-edit/, /^wan2\.(2|5)-i2i-$/, /^wan2\.6-image/];
 +
 +// Helper function to check if model matches any pattern in the array
 +function matchesModel(model: string, patterns: Array<string | RegExp>): boolean {
@@ -567,23 +567,22 @@ index 3c279008d72..a279acd1eb2 100644
    const endpoint = `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`;
 -  log('Creating image edit with model: %s, endpoint: %s', model, endpoint);
 +  log('Creating image with model: %s, endpoint: %s', model, endpoint);
++
++  // Check if this model requires an image
++  const requiresImage = matchesModel(model, imageRequiredModels);
  
 -  // Handle imageUrls to imageUrl conversion
 -  let imageUrl = params.imageUrl;
 -  if (!imageUrl && params.imageUrls && params.imageUrls.length > 0) {
 -    imageUrl = params.imageUrls[0];
 -    log('Converting imageUrls to imageUrl: using first image %s', imageUrl);
--  }
-+  // Check if this model requires an image
-+  const requiresImage = matchesModel(model, imageRequiredModels);
-+
 +  if (requiresImage && !params.imageUrl && (!params.imageUrls || params.imageUrls.length === 0)) {
-+      throw AgentRuntimeError.createImage({
-+        error: new Error(`imageUrl or imageUrls is required for model ${model}`),
-+        errorType: 'ProviderBizError',
-+        provider: 'qwen',
-+      });
-+    }
++    throw AgentRuntimeError.createImage({
++      error: new Error(`imageUrl or imageUrls is required for model ${model}`),
++      errorType: 'ProviderBizError',
++      provider: 'qwen',
++    });
+   }
  
 -  if (!imageUrl) {
 -    throw new Error('imageUrl or imageUrls is required for qwen-image-edit model');
