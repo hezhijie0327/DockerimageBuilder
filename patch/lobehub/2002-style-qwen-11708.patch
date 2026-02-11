@@ -1,5 +1,5 @@
 diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
-index d2d8ccd509f..b03910233e7 100644
+index d2d8ccd509..b03910233e 100644
 --- a/packages/model-bank/src/aiModels/qwen.ts
 +++ b/packages/model-bank/src/aiModels/qwen.ts
 @@ -1130,8 +1130,8 @@ const qwenChatModels: AIChatModelCard[] = [
@@ -259,7 +259,7 @@ index d2d8ccd509f..b03910233e7 100644
      enabled: true,
      id: 'wan2.2-t2i-plus',
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.test.ts b/packages/model-runtime/src/providers/qwen/createImage.test.ts
-index a4d3086baa2..6d1ae37fb2a 100644
+index a4d3086baa..6d1ae37fb2 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.test.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.test.ts
 @@ -701,157 +701,12 @@ describe('createQwenImage', () => {
@@ -423,7 +423,7 @@ index a4d3086baa2..6d1ae37fb2a 100644
        };
  
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.ts b/packages/model-runtime/src/providers/qwen/createImage.ts
-index 3c279008d72..9b0d389a64b 100644
+index 3c279008d7..ed65c6ee6b 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.ts
 @@ -7,6 +7,25 @@ import { AgentRuntimeError } from '../../utils/createError';
@@ -549,7 +549,7 @@ index 3c279008d72..9b0d389a64b 100644
      );
    }
  
-@@ -87,26 +131,35 @@ async function createImageTask(payload: CreateImagePayload, apiKey: string): Pro
+@@ -87,26 +131,38 @@ async function createImageTask(payload: CreateImagePayload, apiKey: string): Pro
  }
  
  /**
@@ -586,16 +586,19 @@ index 3c279008d72..9b0d389a64b 100644
  
 -  if (!imageUrl) {
 -    throw new Error('imageUrl or imageUrls is required for qwen-image-edit model');
-+  const content: Array<{ image: string | string[] } | { text: string }> = [{ text: params.prompt }];
++  const content: Array<{ image: string } | { text: string }> = [{ text: params.prompt }];
 +
 +  if (params.imageUrl) {
 +    content.unshift({ image: params.imageUrl });
 +  } else if (params.imageUrls && params.imageUrls.length > 0) {
-+    content.unshift({ image: params.imageUrls });
++    // Add each image as a separate object in the content array
++    for (const imageUrl of params.imageUrls.reverse()) {
++      content.unshift({ image: imageUrl });
++    }
    }
  
    const response = await fetch(endpoint, {
-@@ -114,7 +167,7 @@ async function createImageEdit(
+@@ -114,7 +170,7 @@ async function createImageEdit(
        input: {
          messages: [
            {
@@ -604,7 +607,7 @@ index 3c279008d72..9b0d389a64b 100644
              role: 'user',
            },
          ],
-@@ -139,24 +192,24 @@ async function createImageEdit(
+@@ -139,24 +195,24 @@ async function createImageEdit(
        // Failed to parse JSON error response
      }
      throw new Error(
@@ -634,7 +637,7 @@ index 3c279008d72..9b0d389a64b 100644
    }
  
    const resultImageUrl = imageContent.image;
-@@ -187,7 +240,7 @@ async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImag
+@@ -187,7 +243,7 @@ async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImag
        // Failed to parse JSON error response
      }
      throw new Error(
@@ -643,7 +646,7 @@ index 3c279008d72..9b0d389a64b 100644
      );
    }
  
-@@ -196,7 +249,10 @@ async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImag
+@@ -196,7 +252,10 @@ async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImag
  
  /**
   * Create image using Qwen API
@@ -655,7 +658,7 @@ index 3c279008d72..9b0d389a64b 100644
   */
  export async function createQwenImage(
    payload: CreateImagePayload,
-@@ -206,59 +262,59 @@ export async function createQwenImage(
+@@ -206,59 +265,59 @@ export async function createQwenImage(
    const { model } = payload;
  
    try {
