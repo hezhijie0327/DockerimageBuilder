@@ -333,6 +333,37 @@ index b539723ab74..3fb03674514 100644
  ];
  
  export const allModels = [...zhipuChatModels, ...zhipuImageModels];
+diff --git a/packages/model-runtime/src/providers/minimax/index.ts b/packages/model-runtime/src/providers/minimax/index.ts
+index 288aedf5740..9dd3df7a427 100644
+--- a/packages/model-runtime/src/providers/minimax/index.ts
++++ b/packages/model-runtime/src/providers/minimax/index.ts
+@@ -2,13 +2,9 @@ import { minimax as minimaxChatModels, ModelProvider } from 'model-bank';
+ 
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+ import { resolveParameters } from '../../core/parameterResolver';
++import { getModelMaxOutputs } from '../../utils/getModelMaxOutputs';
+ import { createMiniMaxImage } from './createImage';
+ 
+-export const getMinimaxMaxOutputs = (modelId: string): number | undefined => {
+-  const model = minimaxChatModels.find((model) => model.id === modelId);
+-  return model ? model.maxOutput : undefined;
+-};
+-
+ export const LobeMinimaxAI = createOpenAICompatibleRuntime({
+   baseURL: 'https://api.minimaxi.com/v1',
+   chatCompletion: {
+@@ -46,7 +42,10 @@ export const LobeMinimaxAI = createOpenAICompatibleRuntime({
+       // Resolve parameters with constraints
+       const resolvedParams = resolveParameters(
+         {
+-          max_tokens: max_tokens !== undefined ? max_tokens : getMinimaxMaxOutputs(payload.model),
++          max_tokens:
++            max_tokens !== undefined
++              ? max_tokens
++              : getModelMaxOutputs(payload.model, minimaxChatModels),
+           temperature,
+           top_p,
+         },
 diff --git a/packages/model-runtime/src/providers/zhipu/index.test.ts b/packages/model-runtime/src/providers/zhipu/index.test.ts
 index 0efdb5e8bff..7ef068cbfc4 100644
 --- a/packages/model-runtime/src/providers/zhipu/index.test.ts
@@ -387,11 +418,12 @@ index 0efdb5e8bff..7ef068cbfc4 100644
        it('should preserve all other properties', async () => {
          await instance.chat({
 diff --git a/packages/model-runtime/src/providers/zhipu/index.ts b/packages/model-runtime/src/providers/zhipu/index.ts
-index 5561139e27e..348254d928f 100644
+index 5561139e27e..191cf8e876c 100644
 --- a/packages/model-runtime/src/providers/zhipu/index.ts
 +++ b/packages/model-runtime/src/providers/zhipu/index.ts
-@@ -1,7 +1,9 @@
- import { ModelProvider } from 'model-bank';
+@@ -1,10 +1,13 @@
+-import { ModelProvider } from 'model-bank';
++import { ModelProvider,zhipu as zhipuChatModels } from 'model-bank';
  
 -import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
 -import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
@@ -402,7 +434,11 @@ index 5561139e27e..348254d928f 100644
  import { resolveParameters } from '../../core/parameterResolver';
  import { OpenAIStream } from '../../core/streams/openai';
  import { convertIterableToStream } from '../../core/streams/protocol';
-@@ -17,8 +19,17 @@ export const params = {
++import { getModelMaxOutputs } from '../../utils/getModelMaxOutputs';
+ import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
+ 
+ export interface ZhipuModelCard {
+@@ -17,8 +20,17 @@ export const params = {
    baseURL: 'https://open.bigmodel.cn/api/paas/v4',
    chatCompletion: {
      handlePayload: (payload) => {
@@ -422,7 +458,23 @@ index 5561139e27e..348254d928f 100644
  
        const zhipuTools = enabledSearch
          ? [
-@@ -58,8 +69,9 @@ export const params = {
+@@ -37,7 +49,14 @@ export const params = {
+ 
+       // Resolve parameters based on model-specific constraints
+       const resolvedParams = resolveParameters(
+-        { max_tokens, temperature, top_p },
++        {
++          max_tokens:
++            max_tokens !== undefined
++              ? max_tokens
++              : getModelMaxOutputs(payload.model, zhipuChatModels),
++          temperature,
++          top_p,
++        },
+         {
+           // max_tokens constraints
+           maxTokensRange: model.includes('glm-4v')
+@@ -58,8 +77,9 @@ export const params = {
          ...rest,
          ...resolvedParams,
          model,
@@ -433,3 +485,74 @@ index 5561139e27e..348254d928f 100644
          tools: zhipuTools,
        } as any;
      },
+diff --git a/packages/model-runtime/src/utils/getModelMaxOutputs.test.ts b/packages/model-runtime/src/utils/getModelMaxOutputs.test.ts
+new file mode 100644
+index 00000000000..7c4bf581c77
+--- /dev/null
++++ b/packages/model-runtime/src/utils/getModelMaxOutputs.test.ts
+@@ -0,0 +1,44 @@
++import  { type AiFullModelCard } from 'model-bank';
++import { describe, expect, it } from 'vitest';
++
++import { getModelMaxOutputs } from './getModelMaxOutputs';
++
++describe('getModelMaxOutputs', () => {
++  const mockModels: AiFullModelCard[] = [
++    {
++      id: 'model-1',
++      providerId: 'provider-1',
++      type: 'chat',
++      maxOutput: 1000,
++    } as AiFullModelCard,
++    {
++      id: 'model-2',
++      providerId: 'provider-1',
++      type: 'chat',
++      maxOutput: 2000,
++    } as AiFullModelCard,
++    {
++      id: 'model-3',
++      providerId: 'provider-2',
++      type: 'chat',
++      maxOutput: undefined,
++    } as AiFullModelCard,
++  ] as AiFullModelCard[];
++
++  it('should return maxOutput for existing model', () => {
++    expect(getModelMaxOutputs('model-1', mockModels)).toBe(1000);
++    expect(getModelMaxOutputs('model-2', mockModels)).toBe(2000);
++  });
++
++  it('should return undefined for model with undefined maxOutput', () => {
++    expect(getModelMaxOutputs('model-3', mockModels)).toBeUndefined();
++  });
++
++  it('should return undefined for non-existing model', () => {
++    expect(getModelMaxOutputs('non-existing', mockModels)).toBeUndefined();
++  });
++
++  it('should return undefined for empty models array', () => {
++    expect(getModelMaxOutputs('model-1', [])).toBeUndefined();
++  });
++});
+diff --git a/packages/model-runtime/src/utils/getModelMaxOutputs.ts b/packages/model-runtime/src/utils/getModelMaxOutputs.ts
+new file mode 100644
+index 00000000000..a7c04029f5b
+--- /dev/null
++++ b/packages/model-runtime/src/utils/getModelMaxOutputs.ts
+@@ -0,0 +1,15 @@
++import  { type AiFullModelCard } from 'model-bank';
++
++/**
++ * Get the max outputs for a specific model from the provider's model list
++ * @param modelId The ID of the model
++ * @param models The provider's model list to search in
++ * @returns The max output value or undefined
++ */
++export const getModelMaxOutputs = (
++  modelId: string,
++  models: AiFullModelCard[],
++): number | undefined => {
++  const model = models.find((model) => model.id === modelId);
++  return model ? model.maxOutput : undefined;
++};
