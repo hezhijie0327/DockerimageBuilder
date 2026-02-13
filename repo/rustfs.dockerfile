@@ -59,7 +59,7 @@ WORKDIR /rustfs
 
 COPY --from=get_info /tmp/BUILDTMP/RUSTFS /rustfs
 
-COPY --from=build_rustfs_web /rustfs/.next /rustfs/rustfs/static
+COPY --from=build_rustfs_web /rustfs/out/rustfs/console /rustfs/rustfs/static
 
 RUN \
     apk add --no-cache \
