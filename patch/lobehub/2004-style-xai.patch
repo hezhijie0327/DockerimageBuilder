@@ -1,0 +1,734 @@
+diff --git a/packages/model-bank/src/aiModels/xai.ts b/packages/model-bank/src/aiModels/xai.ts
+index 18bb38af812..4a7df9d2172 100644
+--- a/packages/model-bank/src/aiModels/xai.ts
++++ b/packages/model-bank/src/aiModels/xai.ts
+@@ -291,6 +291,92 @@ const xaiChatModels: AIChatModelCard[] = [
+ ];
+ 
+ const xaiImageModels: AIImageModelCard[] = [
++  {
++    description:
++      'Generate images from text prompts, edit existing images with natural language, or iteratively refine images through multi-turn conversations.',
++    displayName: 'Grok Imagine Image Pro',
++    enabled: true,
++    id: 'grok-imagine-image-pro',
++    parameters: {
++      aspectRatio: {
++        default: 'auto',
++        enum: [
++          'auto',
++          '1:1',
++          '3:4',
++          '4:3',
++          '9:16',
++          '16:9',
++          '2:3',
++          '3:2',
++          '9:19.5',
++          '19.5:9',
++          '9:20',
++          '20:9',
++          '1:2',
++          '2:1',
++        ],
++      },
++      imageUrl: {
++        default: '',
++      },
++      prompt: {
++        default: '',
++      },
++      resolution: {
++        default: '1k',
++        enum: ['1k', '2k'],
++      },
++    },
++    pricing: {
++      units: [{ name: 'imageGeneration', rate: 0.07, strategy: 'fixed', unit: 'image' }],
++    },
++    releasedAt: '2026-01-28',
++    type: 'image',
++  },
++  {
++    description:
++      'Generate images from text prompts, edit existing images with natural language, or iteratively refine images through multi-turn conversations.',
++    displayName: 'Grok Imagine Image',
++    enabled: true,
++    id: 'grok-imagine-image',
++    parameters: {
++      aspectRatio: {
++        default: 'auto',
++        enum: [
++          'auto',
++          '1:1',
++          '3:4',
++          '4:3',
++          '9:16',
++          '16:9',
++          '2:3',
++          '3:2',
++          '9:19.5',
++          '19.5:9',
++          '9:20',
++          '20:9',
++          '1:2',
++          '2:1',
++        ],
++      },
++      imageUrl: {
++        default: '',
++      },
++      prompt: {
++        default: '',
++      },
++      resolution: {
++        default: '1k',
++        enum: ['1k', '2k'],
++      },
++    },
++    pricing: {
++      units: [{ name: 'imageGeneration', rate: 0.02, strategy: 'fixed', unit: 'image' }],
++    },
++    releasedAt: '2026-01-28',
++    type: 'image',
++  },
+   {
+     description:
+       'Our latest image generation model creates vivid, realistic images from prompts and excels in marketing, social media, and entertainment use cases.',
+@@ -302,6 +388,9 @@ const xaiImageModels: AIImageModelCard[] = [
+         default: '',
+       },
+     },
++    pricing: {
++      units: [{ name: 'imageGeneration', rate: 0.07, strategy: 'fixed', unit: 'image' }],
++    },
+     releasedAt: '2024-12-12',
+     type: 'image',
+   },
+diff --git a/packages/model-runtime/src/providers/xai/createImage.test.ts b/packages/model-runtime/src/providers/xai/createImage.test.ts
+new file mode 100644
+index 00000000000..9b6c934ba5d
+--- /dev/null
++++ b/packages/model-runtime/src/providers/xai/createImage.test.ts
+@@ -0,0 +1,496 @@
++// @vitest-environment node
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateImagePayload } from '../../types/image';
++import { createXAIImage } from './createImage';
++
++// Mock the console.error to avoid polluting test output
++vi.spyOn(console, 'error').mockImplementation(() => {});
++
++const mockOptions: CreateImageOptions = {
++  apiKey: 'test-api-key',
++  baseURL: 'https://api.x.ai/v1',
++  provider: 'xai',
++};
++
++beforeEach(() => {
++  // Reset all mocks before each test
++  vi.clearAllMocks();
++});
++
++afterEach(() => {
++  vi.clearAllMocks();
++});
++
++describe('createXAIImage', () => {
++  describe('Success scenarios', () => {
++    it('should successfully generate image with basic prompt', async () => {
++      const mockImageUrl = 'https://xai-cdn.com/images/generated/test-image.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrl,
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'A beautiful sunset over the mountains',
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith('https://api.x.ai/v1/images/generations', {
++        method: 'POST',
++        headers: {
++          'Authorization': 'Bearer test-api-key',
++          'Content-Type': 'application/json',
++        },
++        body: JSON.stringify({
++          model: 'grok-imagine-image',
++          prompt: 'A beautiful sunset over the mountains',
++        }),
++      });
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrl,
++      });
++    });
++
++    it('should handle custom aspect ratio', async () => {
++      const mockImageUrl = 'https://xai-cdn.com/images/generated/custom-ratio.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrl,
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Abstract digital art',
++          aspectRatio: '16:9',
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith(
++        'https://api.x.ai/v1/images/generations',
++        expect.objectContaining({
++          body: JSON.stringify({
++            model: 'grok-imagine-image',
++            prompt: 'Abstract digital art',
++            aspect_ratio: '16:9',
++          }),
++        }),
++      );
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrl,
++      });
++    });
++
++    it('should not include aspect_ratio when value is auto', async () => {
++      const mockImageUrl = 'https://xai-cdn.com/images/generated/auto-ratio.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrl,
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Abstract digital art',
++          aspectRatio: 'auto',
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith(
++        'https://api.x.ai/v1/images/generations',
++        expect.objectContaining({
++          body: JSON.stringify({
++            model: 'grok-imagine-image',
++            prompt: 'Abstract digital art',
++          }),
++        }),
++      );
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrl,
++      });
++    });
++
++    it('should handle resolution parameter', async () => {
++      const mockImageUrl = 'https://xai-cdn.com/images/generated/2k-image.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrl,
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'An astronaut performing EVA in LEO',
++          resolution: '2k',
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith(
++        'https://api.x.ai/v1/images/generations',
++        expect.objectContaining({
++          body: JSON.stringify({
++            model: 'grok-imagine-image',
++            prompt: 'An astronaut performing EVA in LEO',
++            resolution: '2k',
++          }),
++        }),
++      );
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrl,
++      });
++    });
++
++    it('should not include resolution when value is 1k', async () => {
++      const mockImageUrl = 'https://xai-cdn.com/images/generated/1k-res.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrl,
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Test image',
++          resolution: '1k',
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith(
++        'https://api.x.ai/v1/images/generations',
++        expect.objectContaining({
++          body: JSON.stringify({
++            model: 'grok-imagine-image',
++            prompt: 'Test image',
++          }),
++        }),
++      );
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrl,
++      });
++    });
++
++    it('should handle image editing mode with imageUrl', async () => {
++      const mockImageUrl = 'https://xai-cdn.com/images/generated/edited-image.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrl,
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Change the landmarks to be New York City landmarks',
++          imageUrl: 'https://example.com/landmarks.jpg',
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith(
++        'https://api.x.ai/v1/images/edits',
++        expect.objectContaining({
++          body: JSON.stringify({
++            model: 'grok-imagine-image',
++            prompt: 'Change the landmarks to be New York City landmarks',
++            image: {
++              type: 'image_url',
++              url: 'https://example.com/landmarks.jpg',
++            },
++          }),
++        }),
++      );
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrl,
++      });
++    });
++
++    it('should handle multiple generated images and return the first one', async () => {
++      const mockImageUrls = [
++        'https://xai-cdn.com/images/generated/image-1.jpg',
++        'https://xai-cdn.com/images/generated/image-2.jpg',
++      ];
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrls[0],
++            },
++            {
++              url: mockImageUrls[1],
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Multiple images test',
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrls[0], // Should return the first image
++      });
++    });
++  });
++
++  describe('Error scenarios', () => {
++    it('should handle HTTP error responses', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: false,
++        status: 400,
++        statusText: 'Bad Request',
++        json: async () => ({
++          error: {
++            message: 'Invalid prompt format',
++          },
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Invalid prompt',
++        },
++      };
++
++      await expect(createXAIImage(payload, mockOptions)).rejects.toEqual(
++        expect.objectContaining({
++          errorType: 'ProviderBizError',
++          provider: 'xai',
++        }),
++      );
++    });
++
++    it('should handle non-JSON error responses', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: false,
++        status: 500,
++        statusText: 'Internal Server Error',
++        json: async () => {
++          throw new Error('Failed to parse JSON');
++        },
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Test prompt',
++        },
++      };
++
++      await expect(createXAIImage(payload, mockOptions)).rejects.toEqual(
++        expect.objectContaining({
++          errorType: 'ProviderBizError',
++          provider: 'xai',
++        }),
++      );
++    });
++
++    it('should handle empty data array', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Empty result test',
++        },
++      };
++
++      await expect(createXAIImage(payload, mockOptions)).rejects.toEqual(
++        expect.objectContaining({
++          errorType: 'ProviderBizError',
++          provider: 'xai',
++        }),
++      );
++    });
++
++    it('should handle missing data field', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({}),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Missing data test',
++        },
++      };
++
++      await expect(createXAIImage(payload, mockOptions)).rejects.toEqual(
++        expect.objectContaining({
++          errorType: 'ProviderBizError',
++          provider: 'xai',
++        }),
++      );
++    });
++
++    it('should handle null/empty image URL', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: '',
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Empty URL test',
++        },
++      };
++
++      await expect(createXAIImage(payload, mockOptions)).rejects.toEqual(
++        expect.objectContaining({
++          errorType: 'ProviderBizError',
++          provider: 'xai',
++        }),
++      );
++    });
++
++    it('should handle network errors', async () => {
++      global.fetch = vi.fn().mockRejectedValueOnce(new Error('Network connection failed'));
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Network error test',
++        },
++      };
++
++      await expect(createXAIImage(payload, mockOptions)).rejects.toEqual(
++        expect.objectContaining({
++          errorType: 'ProviderBizError',
++          provider: 'xai',
++        }),
++      );
++    });
++
++    it('should handle unauthorized access', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: false,
++        status: 401,
++        statusText: 'Unauthorized',
++        json: async () => ({
++          error: {
++            message: 'Invalid API key',
++          },
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Unauthorized test',
++        },
++      };
++
++      await expect(createXAIImage(payload, mockOptions)).rejects.toEqual(
++        expect.objectContaining({
++          errorType: 'ProviderBizError',
++          provider: 'xai',
++        }),
++      );
++    });
++
++    it('should handle malformed JSON response', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => {
++          throw new Error('Unexpected token in JSON');
++        },
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'JSON error test',
++        },
++      };
++
++      await expect(createXAIImage(payload, mockOptions)).rejects.toEqual(
++        expect.objectContaining({
++          errorType: 'ProviderBizError',
++          provider: 'xai',
++        }),
++      );
++    });
++  });
++});
+diff --git a/packages/model-runtime/src/providers/xai/createImage.ts b/packages/model-runtime/src/providers/xai/createImage.ts
+new file mode 100644
+index 00000000000..2f3ccc3431e
+--- /dev/null
++++ b/packages/model-runtime/src/providers/xai/createImage.ts
+@@ -0,0 +1,99 @@
++import createDebug from 'debug';
++
++import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateImagePayload, CreateImageResponse } from '../../types/image';
++import { AgentRuntimeError } from '../../utils/createError';
++
++const log = createDebug('lobe-image:xai');
++
++interface XAIImageResponse {
++  data: Array<{
++    url: string;
++  }>;
++}
++
++/**
++ * Create image using XAI (Grok) API
++ */
++export async function createXAIImage(
++  payload: CreateImagePayload,
++  options: CreateImageOptions,
++): Promise<CreateImageResponse> {
++  const { apiKey, baseURL, provider } = options;
++  const { model, params } = payload;
++
++  try {
++    const isImageEdit = params.imageUrl && params.imageUrl !== '';
++    const endpoint = isImageEdit ? `${baseURL}/images/edits` : `${baseURL}/images/generations`;
++
++    const requestBody: any = {
++      model,
++      prompt: params.prompt,
++    };
++
++    if (params.aspectRatio && params.aspectRatio !== 'auto') {
++      requestBody.aspect_ratio = params.aspectRatio;
++    }
++
++    if (params.resolution && params.resolution !== '1k') {
++      requestBody.resolution = params.resolution;
++    }
++
++    if (isImageEdit) {
++      requestBody.image = {
++        type: 'image_url',
++        url: params.imageUrl,
++      };
++    }
++
++    log('Calling XAI image API: %s with body: %O', endpoint, requestBody);
++
++    const response = await fetch(endpoint, {
++      body: JSON.stringify(requestBody),
++      headers: {
++        'Authorization': `Bearer ${apiKey}`,
++        'Content-Type': 'application/json',
++      },
++      method: 'POST',
++    });
++
++    if (!response.ok) {
++      let errorData;
++      try {
++        errorData = await response.json();
++      } catch {
++        // Failed to parse JSON error response
++      }
++
++      throw new Error(
++        `XAI API error (${response.status}): ${errorData?.error?.message || response.statusText}`,
++      );
++    }
++
++    const data: XAIImageResponse = await response.json();
++
++    log('Image generation response: %O', data);
++
++    if (!data.data || data.data.length === 0) {
++      throw new Error('No images generated in response');
++    }
++
++    const imageUrl = data.data[0].url;
++
++    if (!imageUrl) {
++      throw new Error('No valid image URL in response');
++    }
++
++    log('Image generated successfully: %s', imageUrl);
++
++    return { imageUrl };
++  } catch (error) {
++    log('Error in createXAIImage: %O', error);
++
++    throw AgentRuntimeError.createImage({
++      error: error as any,
++      errorType: 'ProviderBizError',
++      provider,
++    });
++  }
++}
+diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
+index 5aaf7dc3c02..da6ffc843b3 100644
+--- a/packages/model-runtime/src/providers/xai/index.ts
++++ b/packages/model-runtime/src/providers/xai/index.ts
+@@ -2,6 +2,7 @@ import { ModelProvider } from 'model-bank';
+ 
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+ import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
++import { createXAIImage } from './createImage';
+ 
+ export interface XAIModelCard {
+   id: string;
+@@ -14,6 +15,7 @@ export const isGrokReasoningModel = (model: string) =>
+ 
+ export const LobeXAI = createOpenAICompatibleRuntime({
+   baseURL: 'https://api.x.ai/v1',
++  createImage: createXAIImage,
+   chatCompletion: {
+     handlePayload: (payload) => {
+       const { enabledSearch, frequency_penalty, model, presence_penalty, ...rest } = payload;
