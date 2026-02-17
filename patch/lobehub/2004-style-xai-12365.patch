@@ -107,10 +107,10 @@ index 18bb38af812..4a7df9d2172 100644
    },
 diff --git a/packages/model-runtime/src/providers/xai/createImage.test.ts b/packages/model-runtime/src/providers/xai/createImage.test.ts
 new file mode 100644
-index 00000000000..9b6c934ba5d
+index 00000000000..a7c7baea031
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/xai/createImage.test.ts
-@@ -0,0 +1,496 @@
+@@ -0,0 +1,540 @@
 +// @vitest-environment node
 +import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 +
@@ -379,6 +379,50 @@ index 00000000000..9b6c934ba5d
 +      });
 +    });
 +
++    it('should not include aspectRatio in image editing mode', async () => {
++      const mockImageUrl = 'https://xai-cdn.com/images/generated/edited-no-aspect.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrl,
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Change the landmarks to be New York City landmarks',
++          imageUrl: 'https://example.com/landmarks.jpg',
++          aspectRatio: '16:9',
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith(
++        'https://api.x.ai/v1/images/edits',
++        expect.objectContaining({
++          body: JSON.stringify({
++            model: 'grok-imagine-image',
++            prompt: 'Change the landmarks to be New York City landmarks',
++            image: {
++              type: 'image_url',
++              url: 'https://example.com/landmarks.jpg',
++            },
++          }),
++        }),
++      );
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrl,
++      });
++    });
++
 +    it('should handle multiple generated images and return the first one', async () => {
 +      const mockImageUrls = [
 +        'https://xai-cdn.com/images/generated/image-1.jpg',
@@ -609,7 +653,7 @@ index 00000000000..9b6c934ba5d
 +});
 diff --git a/packages/model-runtime/src/providers/xai/createImage.ts b/packages/model-runtime/src/providers/xai/createImage.ts
 new file mode 100644
-index 00000000000..2f3ccc3431e
+index 00000000000..1cbfc07926f
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/xai/createImage.ts
 @@ -0,0 +1,99 @@
@@ -646,11 +690,11 @@ index 00000000000..2f3ccc3431e
 +      prompt: params.prompt,
 +    };
 +
-+    if (params.aspectRatio && params.aspectRatio !== 'auto') {
++    if (!isImageEdit && params.aspectRatio) {
 +      requestBody.aspect_ratio = params.aspectRatio;
 +    }
 +
-+    if (params.resolution && params.resolution !== '1k') {
++    if (params.resolution) {
 +      requestBody.resolution = params.resolution;
 +    }
 +
