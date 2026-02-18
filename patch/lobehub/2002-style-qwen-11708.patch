@@ -1,5 +1,5 @@
 diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
-index 6a3bc90f0fa..5fceb6ed9ab 100644
+index 759919b094a..cf0838f502d 100644
 --- a/packages/model-bank/src/aiModels/qwen.ts
 +++ b/packages/model-bank/src/aiModels/qwen.ts
 @@ -1130,8 +1130,8 @@ const qwenChatModels: AIChatModelCard[] = [
@@ -258,37 +258,8 @@ index 6a3bc90f0fa..5fceb6ed9ab 100644
      displayName: 'Wanxiang2.2 T2I Plus',
      enabled: true,
      id: 'wan2.2-t2i-plus',
-@@ -2414,6 +2623,28 @@ const qwenImageModels: AIImageModelCard[] = [
-     releasedAt: '2025-01-08',
-     type: 'image',
-   },
-+  {
-+    description:
-+      'The Wanxiang general-purpose image editing model supports text-based instructions to perform a wide range of image editing tasks, including outpainting, watermark removal, style transfer, instruction-based editing, partial inpainting, and image restoration.',
-+    displayName: 'Wanxiang2.1 ImageEdit',
-+    id: 'wanx2.1-imageedit',
-+    organization: 'Qwen',
-+    parameters: {
-+      imageUrl: {
-+        default: '',
-+      },
-+      prompt: {
-+        default: '',
-+      },
-+      seed: { default: null },
-+    },
-+    pricing: {
-+      currency: 'CNY',
-+      units: [{ name: 'imageGeneration', rate: 0.14, strategy: 'fixed', unit: 'image' }],
-+    },
-+    releasedAt: '2025-01-08',
-+    type: 'image',
-+  },
-   {
-     description:
-       'Excels at textured portraits with moderate speed and lower cost. Corresponds to Tongyi Wanxiang 2.0 Speed.',
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.test.ts b/packages/model-runtime/src/providers/qwen/createImage.test.ts
-index f636d874952..2cfe7a067a0 100644
+index f636d874952..9b8f011f2b0 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.test.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.test.ts
 @@ -1,8 +1,8 @@
@@ -412,124 +383,7 @@ index f636d874952..2cfe7a067a0 100644
    describe('Success scenarios', () => {
      it('should successfully generate image with immediate success', async () => {
        const mockTaskId = 'task-123456';
-@@ -62,24 +165,14 @@ describe('createQwenImage', () => {
-       // Verify task creation request
-       expect(fetch).toHaveBeenCalledWith(
-         'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis',
--        {
-+        expect.objectContaining({
-           method: 'POST',
-           headers: {
-             'Authorization': 'Bearer test-api-key',
-             'Content-Type': 'application/json',
-             'X-DashScope-Async': 'enable',
-           },
--          body: JSON.stringify({
--            input: {
--              prompt: 'A beautiful sunset over the mountains',
--            },
--            model: 'wanx2.1-t2i-turbo',
--            parameters: {
--              n: 1,
--              size: '1024*1024',
--            },
--          }),
--        },
-+        }),
-       );
- 
-       // Verify status query request
-@@ -189,16 +282,12 @@ describe('createQwenImage', () => {
-       expect(fetch).toHaveBeenCalledWith(
-         'https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis',
-         expect.objectContaining({
--          body: JSON.stringify({
--            input: {
--              prompt: 'Custom size image',
--            },
--            model: 'wanx2.1-t2i-turbo',
--            parameters: {
--              n: 1,
--              size: '512*768',
--            },
--          }),
-+          method: 'POST',
-+          headers: {
-+            'Authorization': 'Bearer test-api-key',
-+            'Content-Type': 'application/json',
-+            'X-DashScope-Async': 'enable',
-+          },
-         }),
-       );
-     });
-@@ -592,6 +681,66 @@ describe('createQwenImage', () => {
-     });
-   });
- 
-+  describe('wanx2.1-imageedit model', () => {
-+    it('should successfully generate image with wanx2.1-imageedit model', async () => {
-+      const mockTaskId = 'task-wanx-imageedit';
-+      const mockImageUrl = 'https://dashscope.oss-cn-beijing.aliyuncs.com/aigc/edited-image.jpg';
-+
-+      global.fetch = vi
-+        .fn()
-+        .mockResolvedValueOnce({
-+          ok: true,
-+          json: async () => ({
-+            output: { task_id: mockTaskId },
-+            request_id: 'req-wanx-1',
-+          }),
-+        })
-+        .mockResolvedValueOnce({
-+          ok: true,
-+          json: async () => ({
-+            output: {
-+              task_id: mockTaskId,
-+              task_status: 'SUCCEEDED',
-+              results: [{ url: mockImageUrl }],
-+            },
-+            request_id: 'req-wanx-2',
-+          }),
-+        });
-+
-+      const payload: CreateImagePayload = {
-+        model: 'wanx2.1-imageedit',
-+        params: {
-+          prompt: '陶瓷兔子拿着陶瓷小花。',
-+          imageUrl: 'http://wanx.alicdn.com/material/20250318/description_edit_with_mask_3.jpeg',
-+        },
-+      };
-+
-+      const result = await createQwenImage(payload, mockOptions);
-+
-+      expect(result).toEqual({
-+        imageUrl: mockImageUrl,
-+      });
-+
-+      expect(fetch).toHaveBeenCalledWith(
-+        'https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis',
-+        expect.objectContaining({
-+          body: JSON.stringify({
-+            input: {
-+              prompt: '陶瓷兔子拿着陶瓷小花。',
-+              base_image_url:
-+                'http://wanx.alicdn.com/material/20250318/description_edit_with_mask_3.jpeg',
-+              function: 'description_edit',
-+            },
-+            model: 'wanx2.1-imageedit',
-+            parameters: {
-+              n: 1,
-+            },
-+          }),
-+        }),
-+      );
-+    });
-+  });
-+
-   describe('qwen-image-edit model', () => {
-     it('should successfully generate image with qwen-image-edit model', async () => {
-       const mockImageUrl =
-@@ -701,157 +850,12 @@ describe('createQwenImage', () => {
+@@ -701,157 +804,12 @@ describe('createQwenImage', () => {
        );
      });
  
@@ -690,7 +544,7 @@ index f636d874952..2cfe7a067a0 100644
        };
  
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.ts b/packages/model-runtime/src/providers/qwen/createImage.ts
-index 4213ac7126f..c5e11857773 100644
+index 4213ac7126f..13135d4484e 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.ts
 @@ -1,13 +1,32 @@
@@ -715,7 +569,7 @@ index 4213ac7126f..c5e11857773 100644
 +  /^flux-/,
 +];
 +
-+const image2ImageModels = [/^wan2\.(2|5)-i2i-$/, /^wanx2\.1-imageedit$/];
++const image2ImageModels = [/^wan2\.(2|5)-i2i-$/];
 +
 +const imageRequiredModels = [/^qwen-image-edit/, /^wan2\.(2|5)-i2i-$/, /^wan2\.6-image/];
 +
@@ -740,7 +594,7 @@ index 4213ac7126f..c5e11857773 100644
    output: {
      choices: Array<{
        message: {
-@@ -35,31 +54,63 @@ interface QwenImageEditResponse {
+@@ -35,31 +54,57 @@ interface QwenImageEditResponse {
  }
  
  /**
@@ -793,13 +647,7 @@ index 4213ac7126f..c5e11857773 100644
 +      });
 +    }
 +
-+    if (model === 'wanx2.1-imageedit') {
-+      input.base_image_url = images[0];
-+      input.function = 'description_edit';
-+      delete parameters.size;
-+    } else {
-+      input.images = images;
-+    }
++    input.images = images;
 +  }
 +
 +  const response = await fetch(url, {
@@ -824,7 +672,7 @@ index 4213ac7126f..c5e11857773 100644
      }),
      headers: {
        'Authorization': `Bearer ${apiKey}`,
-@@ -77,7 +128,7 @@ async function createImageTask(payload: CreateImagePayload, apiKey: string): Pro
+@@ -77,7 +122,7 @@ async function createImageTask(payload: CreateImagePayload, apiKey: string): Pro
        // Failed to parse JSON error response
      }
      throw new Error(
@@ -833,7 +681,7 @@ index 4213ac7126f..c5e11857773 100644
      );
    }
  
-@@ -88,26 +139,39 @@ async function createImageTask(payload: CreateImagePayload, apiKey: string): Pro
+@@ -88,26 +133,39 @@ async function createImageTask(payload: CreateImagePayload, apiKey: string): Pro
  }
  
  /**
@@ -885,7 +733,7 @@ index 4213ac7126f..c5e11857773 100644
    }
  
    const response = await fetch(endpoint, {
-@@ -115,7 +179,7 @@ async function createImageEdit(
+@@ -115,7 +173,7 @@ async function createImageEdit(
        input: {
          messages: [
            {
@@ -894,7 +742,7 @@ index 4213ac7126f..c5e11857773 100644
              role: 'user',
            },
          ],
-@@ -140,24 +204,24 @@ async function createImageEdit(
+@@ -140,24 +198,24 @@ async function createImageEdit(
        // Failed to parse JSON error response
      }
      throw new Error(
@@ -924,7 +772,7 @@ index 4213ac7126f..c5e11857773 100644
    }
  
    const resultImageUrl = imageContent.image;
-@@ -169,8 +233,12 @@ async function createImageEdit(
+@@ -169,8 +227,12 @@ async function createImageEdit(
  /**
   * Query the status of an image generation task
   */
@@ -939,7 +787,7 @@ index 4213ac7126f..c5e11857773 100644
  
    log('Querying task status for: %s', taskId);
  
-@@ -188,7 +256,7 @@ async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImag
+@@ -188,7 +250,7 @@ async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImag
        // Failed to parse JSON error response
      }
      throw new Error(
@@ -948,7 +796,7 @@ index 4213ac7126f..c5e11857773 100644
      );
    }
  
-@@ -197,69 +265,78 @@ async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImag
+@@ -197,69 +259,78 @@ async function queryTaskStatus(taskId: string, apiKey: string): Promise<QwenImag
  
  /**
   * Create image using Qwen API
