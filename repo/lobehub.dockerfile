@@ -13,7 +13,6 @@ RUN \
     && cat "${WORKDIR}/lobehub.json" | jq -Sr ".patch" > "${WORKDIR}/lobehub.patch.autobuild" \
     && cat "${WORKDIR}/lobehub.json" | jq -Sr ".patch_branch" > "${WORKDIR}/lobehub.patch_branch.autobuild" \
     && cat "${WORKDIR}/lobehub.json" | jq -Sr ".version" > "${WORKDIR}/lobehub.version.autobuild" \
-    && echo "main" > "${WORKDIR}/lobehub.source_branch.autobuild" \
     && git clone -b $(cat "${WORKDIR}/lobehub.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobehub.source.autobuild") "${WORKDIR}/BUILDTMP/LOBEHUB" \
     && git clone -b $(cat "${WORKDIR}/lobehub.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/lobehub.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"\
     && export LOBEHUB_SHA=$(cd "${WORKDIR}/BUILDTMP/LOBEHUB" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
