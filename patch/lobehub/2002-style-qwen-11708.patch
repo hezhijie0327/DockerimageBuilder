@@ -1,5 +1,5 @@
 diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
-index 759919b094a..cf0838f502d 100644
+index 6a3bc90f0fa..ded7f62c3cf 100644
 --- a/packages/model-bank/src/aiModels/qwen.ts
 +++ b/packages/model-bank/src/aiModels/qwen.ts
 @@ -1130,8 +1130,8 @@ const qwenChatModels: AIChatModelCard[] = [
@@ -544,20 +544,10 @@ index f636d874952..9b8f011f2b0 100644
        };
  
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.ts b/packages/model-runtime/src/providers/qwen/createImage.ts
-index 4213ac7126f..13135d4484e 100644
+index 4213ac7126f..d7b724096d5 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.ts
-@@ -1,13 +1,32 @@
- import createDebug from 'debug';
- 
--import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
--import type { CreateImagePayload, CreateImageResponse } from '../../types/image';
--import type { TaskResult } from '../../utils/asyncifyPolling';
-+import { type CreateImageOptions } from '../../core/openaiCompatibleFactory';
-+import { type CreateImagePayload, type CreateImageResponse } from '../../types/image';
-+import { type TaskResult } from '../../utils/asyncifyPolling';
- import { asyncifyPolling } from '../../utils/asyncifyPolling';
- import { AgentRuntimeError } from '../../utils/createError';
+@@ -8,6 +8,25 @@ import { AgentRuntimeError } from '../../utils/createError';
  
  const log = createDebug('lobe-image:qwen');
  
@@ -569,9 +559,9 @@ index 4213ac7126f..13135d4484e 100644
 +  /^flux-/,
 +];
 +
-+const image2ImageModels = [/^wan2\.(2|5)-i2i-$/];
++const image2ImageModels = [/^wan2\.(2|5)-i2i-/];
 +
-+const imageRequiredModels = [/^qwen-image-edit/, /^wan2\.(2|5)-i2i-$/, /^wan2\.6-image/];
++const imageRequiredModels = [/^qwen-image-edit/, /^wan2\.(2|5)-i2i-/, /^wan2\.6-image/];
 +
 +// Helper function to check if model matches any pattern in the array
 +function matchesModel(model: string, patterns: Array<string | RegExp>): boolean {
@@ -727,7 +717,7 @@ index 4213ac7126f..13135d4484e 100644
 +    content.unshift({ image: params.imageUrl });
 +  } else if (params.imageUrls && params.imageUrls.length > 0) {
 +    // Add each image as a separate object in the content array
-+    for (const imageUrl of params.imageUrls.reverse()) {
++    for (const imageUrl of params.imageUrls) {
 +      content.unshift({ image: imageUrl });
 +    }
    }
@@ -817,7 +807,7 @@ index 4213ac7126f..13135d4484e 100644
 +  // Check if URL has /compatible-mode/v1 suffix and remove it
 +  const suffixIndex = baseURL ? baseURL.indexOf('/compatible-mode/v1') : -1;
 +  const dashscopeURL: string =
-+    suffixIndex > -1 ? baseURL!.slice(0, suffixIndex) : 'https://dashscope.aliyuncs.com';
++    suffixIndex > -1 ? baseURL!.slice(0, suffixIndex) : baseURL || 'https://dashscope.aliyuncs.com';
 +  log('Using dashscopeURL: %s', dashscopeURL);
 +
    try {
@@ -828,27 +818,25 @@ index 4213ac7126f..13135d4484e 100644
 -    }
 +    const isText2Image = matchesModel(model, text2ImageModels);
 +    const isImage2Image = matchesModel(model, image2ImageModels);
- 
--    // Default to text-to-image workflow for other qwen models
--    log('Using text2image API for model: %s', model);
++
 +    if (isText2Image || isImage2Image) {
 +      const endpoint = isImage2Image ? 'image2image' : 'text2image';
 +      log('Using %s API for model: %s', endpoint, model);
  
+-    // Default to text-to-image workflow for other qwen models
+-    log('Using text2image API for model: %s', model);
++      const taskId = await createQwenImageTask(payload, apiKey, endpoint, provider, dashscopeURL);
+ 
 -    // 1. Create image generation task
 -    const taskId = await createImageTask(payload, apiKey);
-+      const taskId = await createQwenImageTask(payload, apiKey, endpoint, provider, dashscopeURL);
++      const result = await asyncifyPolling<QwenImageTaskResponse, CreateImageResponse>({
++        checkStatus: (taskStatus: QwenImageTaskResponse): TaskResult<CreateImageResponse> => {
++          log('Task %s status: %s', taskId, taskStatus.output.task_status);
  
 -    // 2. Poll task status until completion using asyncifyPolling
 -    const result = await asyncifyPolling<QwenImageTaskResponse, CreateImageResponse>({
 -      checkStatus: (taskStatus: QwenImageTaskResponse): TaskResult<CreateImageResponse> => {
 -        log('Task %s status: %s', taskId, taskStatus.output.task_status);
-+      const result = await asyncifyPolling<QwenImageTaskResponse, CreateImageResponse>({
-+        checkStatus: (taskStatus: QwenImageTaskResponse): TaskResult<CreateImageResponse> => {
-+          log('Task %s status: %s', taskId, taskStatus.output.task_status);
- 
--        if (taskStatus.output.task_status === 'SUCCEEDED') {
--          if (!taskStatus.output.results || taskStatus.output.results.length === 0) {
 +          if (taskStatus.output.task_status === 'SUCCEEDED') {
 +            if (!taskStatus.output.results || taskStatus.output.results.length === 0) {
 +              return {
@@ -856,7 +844,9 @@ index 4213ac7126f..13135d4484e 100644
 +                status: 'failed',
 +              };
 +            }
-+
+ 
+-        if (taskStatus.output.task_status === 'SUCCEEDED') {
+-          if (!taskStatus.output.results || taskStatus.output.results.length === 0) {
 +            const generatedImageUrl = taskStatus.output.results[0].url;
 +            log('Image generated successfully: %s', generatedImageUrl);
 +
