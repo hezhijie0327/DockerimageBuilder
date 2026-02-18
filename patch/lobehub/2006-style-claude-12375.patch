@@ -1,0 +1,145 @@
+diff --git a/packages/model-bank/src/aiModels/anthropic.ts b/packages/model-bank/src/aiModels/anthropic.ts
+index 92b16a67dc0..aa0af5b86c4 100644
+--- a/packages/model-bank/src/aiModels/anthropic.ts
++++ b/packages/model-bank/src/aiModels/anthropic.ts
+@@ -1,4 +1,4 @@
+-import type { AIChatModelCard } from '../types/aiModel';
++import { type AIChatModelCard } from '../types/aiModel';
+ 
+ const anthropicChatModels: AIChatModelCard[] = [
+   {
+@@ -36,6 +36,46 @@ const anthropicChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      structuredOutput: true,
++      vision: true,
++    },
++    contextWindowTokens: 200_000,
++    description: 'Claude Sonnet 4.6 is Anthropic’s best combination of speed and intelligence.',
++    displayName: 'Claude Sonnet 4.6',
++    enabled: true,
++    id: 'claude-sonnet-4-6',
++    maxOutput: 64_000,
++    pricing: {
++      units: [
++        { name: 'textInput_cacheRead', rate: 0.3, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 3, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 15, strategy: 'fixed', unit: 'millionTokens' },
++        {
++          lookup: { prices: { '1h': 6, '5m': 3.75 }, pricingParams: ['ttl'] },
++          name: 'textInput_cacheWrite',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2026-02-17',
++    settings: {
++      extendParams: [
++        'disableContextCaching',
++        'enableAdaptiveThinking',
++        'enableReasoning',
++        'reasoningBudgetToken',
++        'effort',
++      ],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -81,7 +121,6 @@ const anthropicChatModels: AIChatModelCard[] = [
+     contextWindowTokens: 200_000,
+     description: 'Claude Sonnet 4.5 is Anthropic’s most intelligent model to date.',
+     displayName: 'Claude Sonnet 4.5',
+-    enabled: true,
+     id: 'claude-sonnet-4-5-20250929',
+     maxOutput: 64_000,
+     pricing: {
+diff --git a/packages/model-runtime/src/core/anthropicCompatibleFactory/index.ts b/packages/model-runtime/src/core/anthropicCompatibleFactory/index.ts
+index 4e634932cf2..8f59985093a 100644
+--- a/packages/model-runtime/src/core/anthropicCompatibleFactory/index.ts
++++ b/packages/model-runtime/src/core/anthropicCompatibleFactory/index.ts
+@@ -28,7 +28,7 @@ import {
+ } from '../contextBuilders/anthropic';
+ import { resolveParameters } from '../parameterResolver';
+ import { AnthropicStream } from '../streams';
+-import type { ComputeChatCostOptions } from '../usageConverters/utils/computeChatCost';
++import { type ComputeChatCostOptions } from '../usageConverters/utils/computeChatCost';
+ import { createAnthropicGenerateObject } from './generateObject';
+ import { handleAnthropicError } from './handleAnthropicError';
+ import { resolveCacheTTL } from './resolveCacheTTL';
+@@ -176,8 +176,8 @@ export const buildDefaultAnthropicPayload = async (
+       max_tokens: resolvedMaxTokens,
+       messages: postMessages,
+       model,
++      ...(effort ? { output_config: { effort } } : {}),
+       system: systemPrompts,
+-      ...(thinking.type === 'adaptive' && effort ? { output_config: { effort } } : {}),
+       thinking: resolvedThinking,
+       tools: postTools as Anthropic.MessageCreateParams['tools'],
+     } as Anthropic.MessageCreateParams;
+@@ -189,7 +189,8 @@ export const buildDefaultAnthropicPayload = async (
+     { hasConflict, normalizeTemperature: true, preferTemperature: true },
+   );
+ 
+-  return {
++  // Support effort parameter even without thinking (per Claude 4.6 guidance)
++  const basePayload: Anthropic.MessageCreateParams = {
+     max_tokens: resolvedMaxTokens,
+     messages: postMessages,
+     model,
+@@ -197,7 +198,17 @@ export const buildDefaultAnthropicPayload = async (
+     temperature: resolvedParams.temperature,
+     tools: postTools as Anthropic.MessageCreateParams['tools'],
+     top_p: resolvedParams.top_p,
+-  } satisfies Anthropic.MessageCreateParams;
++  };
++
++  // If effort is specified without thinking mode, add output_config
++  if (effort) {
++    return {
++      ...basePayload,
++      output_config: { effort },
++    } as Anthropic.MessageCreateParams;
++  }
++
++  return basePayload;
+ };
+ 
+ /**
+diff --git a/src/services/chat/mecha/modelParamsResolver.ts b/src/services/chat/mecha/modelParamsResolver.ts
+index acf1091e4e6..6740f7c91cb 100644
+--- a/src/services/chat/mecha/modelParamsResolver.ts
++++ b/src/services/chat/mecha/modelParamsResolver.ts
+@@ -78,11 +78,19 @@ export const resolveModelExtendParams = (ctx: ModelParamsContext): ModelExtendPa
+     };
+   }
+ 
+-  // Adaptive thinking (Claude Opus 4.6)
++  // Adaptive thinking (Claude Opus/Sonnet 4.6)
+   if (modelExtendParams.includes('enableAdaptiveThinking')) {
+-    extendParams.thinking = {
+-      type: chatConfig.enableAdaptiveThinking ? 'adaptive' : 'disabled',
+-    };
++    if (chatConfig.enableAdaptiveThinking) {
++      extendParams.thinking = {
++        type: 'adaptive',
++      };
++    } else if (!modelExtendParams.includes('enableReasoning')) {
++      // Only disable when the model has no enableReasoning fallback
++      extendParams.thinking = {
++        type: 'disabled',
++      };
++    }
++    // When adaptive is off and model also has enableReasoning, let enableReasoning result stand
+   }
+ 
+   // Context caching
