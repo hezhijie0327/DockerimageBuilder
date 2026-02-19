@@ -1,0 +1,262 @@
+diff --git a/packages/model-bank/src/aiModels/google.ts b/packages/model-bank/src/aiModels/google.ts
+index c2598e6f0fd..a7db3a8d8b4 100644
+--- a/packages/model-bank/src/aiModels/google.ts
++++ b/packages/model-bank/src/aiModels/google.ts
+@@ -113,6 +113,125 @@ const googleChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      video: true,
++      vision: true,
++    },
++    contextWindowTokens: 1_048_576 + 65_536,
++    description:
++      'Built to refine the performance and reliability of the Gemini 3 Pro series, Gemini 3.1 Pro Preview provides better thinking, improved token efficiency, and a more grounded, factually consistent experience. It’s optimized for software engineering behavior and usability, as well as agentic workflows requiring precise tool usage and reliable multi-step execution across real-world domains.',
++    displayName: 'Gemini 3.1 Pro Preview',
++    enabled: true,
++    id: 'gemini-3.1-pro-preview',
++    maxOutput: 65_536,
++    pricing: {
++      units: [
++        {
++          name: 'textInput_cacheRead',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 0.2, upTo: 200_000 },
++            { rate: 0.4, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++        {
++          name: 'textInput',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 2, upTo: 200_000 },
++            { rate: 4, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++        {
++          name: 'textOutput',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 12, upTo: 200_000 },
++            { rate: 18, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++        {
++          lookup: { prices: { '1h': 4.5 }, pricingParams: ['ttl'] },
++          name: 'textInput_cacheWrite',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2026-02-19',
++    settings: {
++      extendParams: ['thinkingLevel3', 'urlContext'],
++      searchImpl: 'params',
++      searchProvider: 'google',
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      video: true,
++      vision: true,
++    },
++    contextWindowTokens: 1_048_576 + 65_536,
++    description:
++      'Built to refine the performance and reliability of the Gemini 3 Pro series, Gemini 3.1 Pro Preview provides better thinking, improved token efficiency, and a more grounded, factually consistent experience. It’s optimized for software engineering behavior and usability, as well as agentic workflows requiring precise tool usage and reliable multi-step execution across real-world domains. This endpoint is better at prioritizing your custom tools (for example view_file or search_code).',
++    displayName: 'Gemini 3.1 Pro Preview CustomTools',
++    id: 'gemini-3.1-pro-preview-customtools',
++    maxOutput: 65_536,
++    pricing: {
++      units: [
++        {
++          name: 'textInput_cacheRead',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 0.2, upTo: 200_000 },
++            { rate: 0.4, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++        {
++          name: 'textInput',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 2, upTo: 200_000 },
++            { rate: 4, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++        {
++          name: 'textOutput',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 12, upTo: 200_000 },
++            { rate: 18, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++        {
++          lookup: { prices: { '1h': 4.5 }, pricingParams: ['ttl'] },
++          name: 'textInput_cacheWrite',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2026-02-19',
++    settings: {
++      extendParams: ['thinkingLevel3', 'urlContext'],
++      searchImpl: 'params',
++      searchProvider: 'google',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -125,7 +244,6 @@ const googleChatModels: AIChatModelCard[] = [
+     description:
+       'Gemini 3 Pro is Google’s most powerful agent and vibe-coding model, delivering richer visuals and deeper interaction on top of state-of-the-art reasoning.',
+     displayName: 'Gemini 3 Pro Preview',
+-    enabled: true,
+     id: 'gemini-3-pro-preview',
+     maxOutput: 65_536,
+     pricing: {
+diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
+index fb049a5ef59..b84359af9f9 100644
+--- a/packages/model-bank/src/types/aiModel.ts
++++ b/packages/model-bank/src/types/aiModel.ts
+@@ -255,6 +255,7 @@ export type ExtendParamsType =
+   | 'thinkingBudget'
+   | 'thinkingLevel'
+   | 'thinkingLevel2'
++  | 'thinkingLevel3'
+   | 'imageAspectRatio'
+   | 'imageResolution'
+   | 'urlContext';
+diff --git a/src/app/[variants]/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/app/[variants]/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+index c07c78f108d..456a6b80e69 100644
+--- a/src/app/[variants]/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
++++ b/src/app/[variants]/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+@@ -17,6 +17,7 @@ import ReasoningTokenSlider from '@/features/ChatInput/ActionBar/Model/Reasoning
+ import TextVerbositySlider from '@/features/ChatInput/ActionBar/Model/TextVerbositySlider';
+ import ThinkingBudgetSlider from '@/features/ChatInput/ActionBar/Model/ThinkingBudgetSlider';
+ import ThinkingLevel2Slider from '@/features/ChatInput/ActionBar/Model/ThinkingLevel2Slider';
++import ThinkingLevel3Slider from '@/features/ChatInput/ActionBar/Model/ThinkingLevel3Slider';
+ import ThinkingLevelSlider from '@/features/ChatInput/ActionBar/Model/ThinkingLevelSlider';
+ import ThinkingSlider from '@/features/ChatInput/ActionBar/Model/ThinkingSlider';
+ 
+@@ -86,6 +87,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.thinkingLevel2.hint',
+     key: 'thinkingLevel2',
+   },
++  {
++    hintKey: 'providerModels.item.modelConfig.extendParams.options.thinkingLevel3.hint',
++    key: 'thinkingLevel3',
++  },
+   {
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.urlContext.hint',
+     key: 'urlContext',
+@@ -108,6 +113,7 @@ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
+   gpt5_2ProReasoningEffort: 'reasoningEffort',
+   gpt5_2ReasoningEffort: 'reasoningEffort',
+   thinkingLevel2: 'thinkingLevel',
++  thinkingLevel3: 'thinkingLevel',
+ };
+ 
+ type PreviewMeta = {
+@@ -143,6 +149,7 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
+   thinkingBudget: { labelSuffix: ' (Gemini)', previewWidth: 500, tag: 'thinkingBudget' },
+   thinkingLevel: { labelSuffix: ' (Gemini 3)', previewWidth: 280, tag: 'thinkingLevel' },
+   thinkingLevel2: { labelSuffix: ' (Gemini 3)', previewWidth: 200, tag: 'thinkingLevel' },
++  thinkingLevel3: { labelSuffix: ' (Gemini 3.1)', previewWidth: 280, tag: 'thinkingLevel' },
+   urlContext: { labelSuffix: ' (Gemini)', previewWidth: 400, tag: 'urlContext' },
+ };
+ 
+@@ -243,6 +250,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
+       thinkingBudget: <ThinkingBudgetSlider defaultValue={2 * 1024} />,
+       thinkingLevel: <ThinkingLevelSlider value="high" />,
+       thinkingLevel2: <ThinkingLevel2Slider value="high" />,
++      thinkingLevel3: <ThinkingLevel3Slider value="high" />,
+       urlContext: <Switch checked disabled />,
+     }),
+     [],
+diff --git a/src/features/ChatInput/ActionBar/Model/ControlsForm.tsx b/src/features/ChatInput/ActionBar/Model/ControlsForm.tsx
+index e20db3f652e..bff076b26b9 100644
+--- a/src/features/ChatInput/ActionBar/Model/ControlsForm.tsx
++++ b/src/features/ChatInput/ActionBar/Model/ControlsForm.tsx
+@@ -24,6 +24,7 @@ import ReasoningTokenSlider from './ReasoningTokenSlider';
+ import TextVerbositySlider from './TextVerbositySlider';
+ import ThinkingBudgetSlider from './ThinkingBudgetSlider';
+ import ThinkingLevel2Slider from './ThinkingLevel2Slider';
++import ThinkingLevel3Slider from './ThinkingLevel3Slider';
+ import ThinkingLevelSlider from './ThinkingLevelSlider';
+ import ThinkingSlider from './ThinkingSlider';
+ 
+@@ -269,6 +270,17 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
+       },
+       desc: 'thinkingLevel',
+     },
++    {
++      children: <ThinkingLevel3Slider />,
++      label: t('extendParams.thinkingLevel.title'),
++      layout: 'horizontal',
++      minWidth: undefined,
++      name: 'thinkingLevel3',
++      style: {
++        paddingBottom: 0,
++      },
++      desc: 'thinkingLevel',
++    },
+     {
+       children: <ImageAspectRatioSelect />,
+       label: t('extendParams.imageAspectRatio.title'),
+diff --git a/src/features/ChatInput/ActionBar/Model/ThinkingLevel3Slider.tsx b/src/features/ChatInput/ActionBar/Model/ThinkingLevel3Slider.tsx
+new file mode 100644
+index 00000000000..0ca8db9331a
+--- /dev/null
++++ b/src/features/ChatInput/ActionBar/Model/ThinkingLevel3Slider.tsx
+@@ -0,0 +1,16 @@
++import { type CreatedLevelSliderProps } from './createLevelSlider';
++import { createLevelSliderComponent } from './createLevelSlider';
++
++const THINKING_LEVELS_3 = ['low', 'medium', 'high'] as const;
++type ThinkingLevel3 = (typeof THINKING_LEVELS_3)[number];
++
++export type ThinkingLevel3SliderProps = CreatedLevelSliderProps<ThinkingLevel3>;
++
++const ThinkingLevel3Slider = createLevelSliderComponent<ThinkingLevel3>({
++  configKey: 'thinkingLevel3',
++  defaultValue: 'high',
++  levels: THINKING_LEVELS_3,
++  style: { minWidth: 110 },
++});
++
++export default ThinkingLevel3Slider;
+diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
+index 1a33638f16f..33ce4b3b87d 100644
+--- a/src/locales/default/modelProvider.ts
++++ b/src/locales/default/modelProvider.ts
+@@ -279,6 +279,8 @@ export default {
+     'For Gemini 3 Flash Preview models; controls thinking depth.',
+   'providerModels.item.modelConfig.extendParams.options.thinkingLevel2.hint':
+     'For Gemini 3 Pro Preview models; controls thinking depth.',
++  'providerModels.item.modelConfig.extendParams.options.thinkingLevel3.hint':
++    'For Gemini 3.1 Pro Preview models; controls thinking depth.',
+   'providerModels.item.modelConfig.extendParams.options.urlContext.hint':
+     'For Gemini series; supports providing URL context.',
+   'providerModels.item.modelConfig.extendParams.placeholder':
