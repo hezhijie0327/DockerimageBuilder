@@ -711,10 +711,10 @@ index 0000000000..627d9fc1d3
 +});
 diff --git a/packages/model-runtime/src/providers/xai/createImage.ts b/packages/model-runtime/src/providers/xai/createImage.ts
 new file mode 100644
-index 0000000000..1bbcc7fc9b
+index 0000000000..c0010db1ee
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/xai/createImage.ts
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,151 @@
 +import createDebug from 'debug';
 +
 +import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
@@ -723,19 +723,7 @@ index 0000000000..1bbcc7fc9b
 +
 +const log = createDebug('lobe-image:xai');
 +
-+interface BaseXAIImageRequest {
-+  model: string;
-+  n?: number;
-+  prompt: string;
-+  quality?: 'low' | 'medium' | 'high';
-+  resolution?: '1k' | '2k';
-+  response_format?: 'url' | 'b64_json';
-+  size?: string;
-+  style?: string;
-+  user?: string;
-+}
-+
-+interface XAIImageGenerationRequest extends BaseXAIImageRequest {
++interface XAIImageRequest {
 +  aspect_ratio?:
 +    | '1:1'
 +    | '3:4'
@@ -751,9 +739,6 @@ index 0000000000..1bbcc7fc9b
 +    | '1:2'
 +    | '2:1'
 +    | 'auto';
-+}
-+
-+interface XAIImageEditRequest extends BaseXAIImageRequest {
 +  image?: {
 +    type: 'image_url';
 +    url: string;
@@ -766,9 +751,16 @@ index 0000000000..1bbcc7fc9b
 +    type: 'image_url';
 +    url: string;
 +  };
++  model: string;
++  n?: number;
++  prompt: string;
++  quality?: 'low' | 'medium' | 'high';
++  resolution?: '1k' | '2k';
++  response_format?: 'url' | 'b64_json';
++  size?: string;
++  style?: string;
++  user?: string;
 +}
-+
-+type XAIImageRequest = XAIImageGenerationRequest | XAIImageEditRequest;
 +
 +interface XAIImageData {
 +  b64_json?: string | null;
@@ -802,23 +794,21 @@ index 0000000000..1bbcc7fc9b
 +    };
 +
 +    if (!isImageEdit && params.aspectRatio) {
-+      (requestBody as XAIImageGenerationRequest).aspect_ratio =
-+        params.aspectRatio as XAIImageGenerationRequest['aspect_ratio'];
++      requestBody.aspect_ratio = params.aspectRatio as XAIImageRequest['aspect_ratio'];
 +    }
 +
 +    if (params.resolution) {
-+      (requestBody as XAIImageRequest).resolution =
-+        params.resolution as XAIImageRequest['resolution'];
++      requestBody.resolution = params.resolution as XAIImageRequest['resolution'];
 +    }
 +
 +    if (isImageEdit) {
 +      if (hasImageUrl && params.imageUrl) {
-+        (requestBody as XAIImageEditRequest).image = {
++        requestBody.image = {
 +          type: 'image_url',
 +          url: params.imageUrl,
 +        };
 +      } else if (hasImageUrls && params.imageUrls) {
-+        (requestBody as XAIImageEditRequest).images = params.imageUrls.map((url) => ({
++        requestBody.images = params.imageUrls.map((url) => ({
 +          type: 'image_url' as const,
 +          url,
 +        }));
