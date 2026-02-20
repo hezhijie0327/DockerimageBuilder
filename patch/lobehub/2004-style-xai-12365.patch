@@ -1,8 +1,8 @@
 diff --git a/packages/model-bank/src/aiModels/xai.ts b/packages/model-bank/src/aiModels/xai.ts
-index 18bb38af81..4a7df9d217 100644
+index 18bb38af81..6268e104d3 100644
 --- a/packages/model-bank/src/aiModels/xai.ts
 +++ b/packages/model-bank/src/aiModels/xai.ts
-@@ -291,6 +291,92 @@ const xaiChatModels: AIChatModelCard[] = [
+@@ -291,6 +291,88 @@ const xaiChatModels: AIChatModelCard[] = [
  ];
  
  const xaiImageModels: AIImageModelCard[] = [
@@ -32,9 +32,7 @@ index 18bb38af81..4a7df9d217 100644
 +          '2:1',
 +        ],
 +      },
-+      imageUrl: {
-+        default: '',
-+      },
++      imageUrls: { default: [] },
 +      prompt: {
 +        default: '',
 +      },
@@ -75,9 +73,7 @@ index 18bb38af81..4a7df9d217 100644
 +          '2:1',
 +        ],
 +      },
-+      imageUrl: {
-+        default: '',
-+      },
++      imageUrls: { default: [] },
 +      prompt: {
 +        default: '',
 +      },
@@ -95,7 +91,7 @@ index 18bb38af81..4a7df9d217 100644
    {
      description:
        'Our latest image generation model creates vivid, realistic images from prompts and excels in marketing, social media, and entertainment use cases.',
-@@ -302,6 +388,9 @@ const xaiImageModels: AIImageModelCard[] = [
+@@ -302,6 +384,9 @@ const xaiImageModels: AIImageModelCard[] = [
          default: '',
        },
      },
@@ -107,10 +103,10 @@ index 18bb38af81..4a7df9d217 100644
    },
 diff --git a/packages/model-runtime/src/providers/xai/createImage.test.ts b/packages/model-runtime/src/providers/xai/createImage.test.ts
 new file mode 100644
-index 0000000000..c9bac2f3cb
+index 0000000000..627d9fc1d3
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/xai/createImage.test.ts
-@@ -0,0 +1,552 @@
+@@ -0,0 +1,602 @@
 +// @vitest-environment node
 +import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 +
@@ -464,7 +460,57 @@ index 0000000000..c9bac2f3cb
 +      const result = await createXAIImage(payload, mockOptions);
 +
 +      expect(result).toEqual({
-+        imageUrl: mockImageUrls[0], // Should return the first image
++        imageUrl: mockImageUrls[0], // Should return first image
++      });
++    });
++
++    it('should handle image editing mode with imageUrls', async () => {
++      const mockImageUrl = 'https://xai-cdn.com/images/generated/edited-multi-image.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          data: [
++            {
++              url: mockImageUrl,
++              revised_prompt: 'Edit multiple images',
++            },
++          ],
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'grok-imagine-image',
++        params: {
++          prompt: 'Edit multiple images',
++          imageUrls: ['https://example.com/image1.jpg', 'https://example.com/image2.jpg'],
++        },
++      };
++
++      const result = await createXAIImage(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith(
++        'https://api.x.ai/v1/images/edits',
++        expect.objectContaining({
++          body: JSON.stringify({
++            model: 'grok-imagine-image',
++            prompt: 'Edit multiple images',
++            images: [
++              {
++                type: 'image_url',
++                url: 'https://example.com/image1.jpg',
++              },
++              {
++                type: 'image_url',
++                url: 'https://example.com/image2.jpg',
++              },
++            ],
++          }),
++        }),
++      );
++
++      expect(result).toEqual({
++        imageUrl: mockImageUrl,
 +      });
 +    });
 +  });
@@ -665,10 +711,10 @@ index 0000000000..c9bac2f3cb
 +});
 diff --git a/packages/model-runtime/src/providers/xai/createImage.ts b/packages/model-runtime/src/providers/xai/createImage.ts
 new file mode 100644
-index 0000000000..ec9cce0cdf
+index 0000000000..7ff4d7b3fd
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/xai/createImage.ts
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,159 @@
 +import createDebug from 'debug';
 +
 +import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
@@ -684,6 +730,8 @@ index 0000000000..ec9cce0cdf
 +  quality?: 'low' | 'medium' | 'high';
 +  resolution?: '1k' | '2k';
 +  response_format?: 'url' | 'b64_json';
++  size?: string;
++  style?: string;
 +  user?: string;
 +}
 +
@@ -743,7 +791,9 @@ index 0000000000..ec9cce0cdf
 +  const { model, params } = payload;
 +
 +  try {
-+    const isImageEdit = params.imageUrl && params.imageUrl !== '';
++    const hasImageUrl = params.imageUrl && params.imageUrl !== '';
++    const hasImageUrls = params.imageUrls && params.imageUrls.length > 0;
++    const isImageEdit = hasImageUrl || hasImageUrls;
 +    const endpoint = isImageEdit ? `${baseURL}/images/edits` : `${baseURL}/images/generations`;
 +
 +    const requestBody: XAIImageRequest = {
@@ -759,11 +809,18 @@ index 0000000000..ec9cce0cdf
 +      requestBody.resolution = params.resolution;
 +    }
 +
-+    if (isImageEdit && params.imageUrl) {
-+      requestBody.image = {
-+        type: 'image_url',
-+        url: params.imageUrl,
-+      };
++    if (isImageEdit) {
++      if (hasImageUrl && params.imageUrl) {
++        requestBody.image = {
++          type: 'image_url',
++          url: params.imageUrl,
++        };
++      } else if (hasImageUrls && params.imageUrls) {
++        requestBody.images = params.imageUrls.map((url) => ({
++          type: 'image_url',
++          url,
++        }));
++      }
 +    }
 +
 +    log('Calling XAI image API: %s with body: %O', endpoint, requestBody);
