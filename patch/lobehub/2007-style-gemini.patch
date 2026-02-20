@@ -1,17 +1,5 @@
-diff --git a/locales/zh-CN/modelProvider.json b/locales/zh-CN/modelProvider.json
-index 0edd3bcfe8c..bc6ca0f34c7 100644
---- a/locales/zh-CN/modelProvider.json
-+++ b/locales/zh-CN/modelProvider.json
-@@ -232,6 +232,7 @@
-   "providerModels.item.modelConfig.extendParams.options.thinkingBudget.hint": "适用于 Gemini 系列；控制思考预算。",
-   "providerModels.item.modelConfig.extendParams.options.thinkingLevel.hint": "适用于 Gemini 3 Flash 预览模型；控制思考深度。",
-   "providerModels.item.modelConfig.extendParams.options.thinkingLevel2.hint": "适用于 Gemini 3 Pro 预览模型；控制思考深度。",
-+  "providerModels.item.modelConfig.extendParams.options.thinkingLevel3.hint": "适用于 Gemini 3.1 Pro 预览模型；控制思考深度。",
-   "providerModels.item.modelConfig.extendParams.options.urlContext.hint": "适用于 Gemini 系列；支持提供 URL 上下文。",
-   "providerModels.item.modelConfig.extendParams.placeholder": "选择要启用的扩展参数",
-   "providerModels.item.modelConfig.extendParams.previewFallback": "无法预览",
 diff --git a/packages/model-bank/src/aiModels/google.ts b/packages/model-bank/src/aiModels/google.ts
-index c2598e6f0fd..a7db3a8d8b4 100644
+index c2598e6f0f..a23bf6e3a2 100644
 --- a/packages/model-bank/src/aiModels/google.ts
 +++ b/packages/model-bank/src/aiModels/google.ts
 @@ -113,6 +113,125 @@ const googleChatModels: AIChatModelCard[] = [
@@ -72,7 +60,7 @@ index c2598e6f0fd..a7db3a8d8b4 100644
 +    },
 +    releasedAt: '2026-02-19',
 +    settings: {
-+      extendParams: ['thinkingLevel3', 'urlContext'],
++      extendParams: ['reasoningEffort', 'urlContext'],
 +      searchImpl: 'params',
 +      searchProvider: 'google',
 +    },
@@ -131,7 +119,7 @@ index c2598e6f0fd..a7db3a8d8b4 100644
 +    },
 +    releasedAt: '2026-02-19',
 +    settings: {
-+      extendParams: ['thinkingLevel3', 'urlContext'],
++      extendParams: ['reasoningEffort', 'urlContext'],
 +      searchImpl: 'params',
 +      searchProvider: 'google',
 +    },
@@ -148,8 +136,24 @@ index c2598e6f0fd..a7db3a8d8b4 100644
      id: 'gemini-3-pro-preview',
      maxOutput: 65_536,
      pricing: {
+@@ -884,7 +1002,6 @@ export const nanoBananaProParameters: ModelParamsSchema = {
+   },
+ };
+ 
+-/* eslint-disable sort-keys-fix/sort-keys-fix */
+ const googleImageModels: AIImageModelCard[] = [
+   {
+     displayName: 'Nano Banana Pro',
+@@ -986,7 +1103,6 @@ const googleImageModels: AIImageModelCard[] = [
+     },
+   },
+ ];
+-/* eslint-enable sort-keys-fix/sort-keys-fix */
+ 
+ export const allModels = [...googleChatModels, ...googleImageModels];
+ 
 diff --git a/packages/model-bank/src/aiModels/vertexai.ts b/packages/model-bank/src/aiModels/vertexai.ts
-index c4739425c81..3d921475e4c 100644
+index c4739425c8..06af59cb34 100644
 --- a/packages/model-bank/src/aiModels/vertexai.ts
 +++ b/packages/model-bank/src/aiModels/vertexai.ts
 @@ -3,6 +3,125 @@ import { imagenGenParameters, nanoBananaParameters } from './google';
@@ -210,7 +214,7 @@ index c4739425c81..3d921475e4c 100644
 +    },
 +    releasedAt: '2026-02-19',
 +    settings: {
-+      extendParams: ['thinkingLevel3', 'urlContext'],
++      extendParams: ['reasoningEffort', 'urlContext'],
 +      searchImpl: 'params',
 +      searchProvider: 'google',
 +    },
@@ -269,7 +273,7 @@ index c4739425c81..3d921475e4c 100644
 +    },
 +    releasedAt: '2026-02-19',
 +    settings: {
-+      extendParams: ['thinkingLevel3', 'urlContext'],
++      extendParams: ['reasoningEffort', 'urlContext'],
 +      searchImpl: 'params',
 +      searchProvider: 'google',
 +    },
@@ -278,135 +282,11 @@ index c4739425c81..3d921475e4c 100644
    {
      abilities: {
        functionCall: true,
-diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
-index fb049a5ef59..59e4aa08f76 100644
---- a/packages/model-bank/src/types/aiModel.ts
-+++ b/packages/model-bank/src/types/aiModel.ts
-@@ -255,6 +255,7 @@ export type ExtendParamsType =
-   | 'thinkingBudget'
-   | 'thinkingLevel'
-   | 'thinkingLevel2'
-+  | 'thinkingLevel3'
-   | 'imageAspectRatio'
-   | 'imageResolution'
-   | 'urlContext';
-@@ -284,6 +285,7 @@ export const ExtendParamsTypeSchema = z.enum([
-   'thinkingBudget',
-   'thinkingLevel',
-   'thinkingLevel2',
-+  'thinkingLevel3',
-   'imageAspectRatio',
-   'imageResolution',
-   'urlContext',
-diff --git a/src/app/[variants]/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/app/[variants]/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
-index c07c78f108d..456a6b80e69 100644
---- a/src/app/[variants]/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
-+++ b/src/app/[variants]/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
-@@ -17,6 +17,7 @@ import ReasoningTokenSlider from '@/features/ChatInput/ActionBar/Model/Reasoning
- import TextVerbositySlider from '@/features/ChatInput/ActionBar/Model/TextVerbositySlider';
- import ThinkingBudgetSlider from '@/features/ChatInput/ActionBar/Model/ThinkingBudgetSlider';
- import ThinkingLevel2Slider from '@/features/ChatInput/ActionBar/Model/ThinkingLevel2Slider';
-+import ThinkingLevel3Slider from '@/features/ChatInput/ActionBar/Model/ThinkingLevel3Slider';
- import ThinkingLevelSlider from '@/features/ChatInput/ActionBar/Model/ThinkingLevelSlider';
- import ThinkingSlider from '@/features/ChatInput/ActionBar/Model/ThinkingSlider';
- 
-@@ -86,6 +87,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
-     hintKey: 'providerModels.item.modelConfig.extendParams.options.thinkingLevel2.hint',
-     key: 'thinkingLevel2',
+@@ -405,7 +524,6 @@ const vertexaiChatModels: AIChatModelCard[] = [
    },
-+  {
-+    hintKey: 'providerModels.item.modelConfig.extendParams.options.thinkingLevel3.hint',
-+    key: 'thinkingLevel3',
-+  },
+ ];
+ 
+-/* eslint-disable sort-keys-fix/sort-keys-fix */
+ const vertexaiImageModels: AIImageModelCard[] = [
    {
-     hintKey: 'providerModels.item.modelConfig.extendParams.options.urlContext.hint',
-     key: 'urlContext',
-@@ -108,6 +113,7 @@ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
-   gpt5_2ProReasoningEffort: 'reasoningEffort',
-   gpt5_2ReasoningEffort: 'reasoningEffort',
-   thinkingLevel2: 'thinkingLevel',
-+  thinkingLevel3: 'thinkingLevel',
- };
- 
- type PreviewMeta = {
-@@ -143,6 +149,7 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
-   thinkingBudget: { labelSuffix: ' (Gemini)', previewWidth: 500, tag: 'thinkingBudget' },
-   thinkingLevel: { labelSuffix: ' (Gemini 3)', previewWidth: 280, tag: 'thinkingLevel' },
-   thinkingLevel2: { labelSuffix: ' (Gemini 3)', previewWidth: 200, tag: 'thinkingLevel' },
-+  thinkingLevel3: { labelSuffix: ' (Gemini 3.1)', previewWidth: 280, tag: 'thinkingLevel' },
-   urlContext: { labelSuffix: ' (Gemini)', previewWidth: 400, tag: 'urlContext' },
- };
- 
-@@ -243,6 +250,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
-       thinkingBudget: <ThinkingBudgetSlider defaultValue={2 * 1024} />,
-       thinkingLevel: <ThinkingLevelSlider value="high" />,
-       thinkingLevel2: <ThinkingLevel2Slider value="high" />,
-+      thinkingLevel3: <ThinkingLevel3Slider value="high" />,
-       urlContext: <Switch checked disabled />,
-     }),
-     [],
-diff --git a/src/features/ChatInput/ActionBar/Model/ControlsForm.tsx b/src/features/ChatInput/ActionBar/Model/ControlsForm.tsx
-index e20db3f652e..bff076b26b9 100644
---- a/src/features/ChatInput/ActionBar/Model/ControlsForm.tsx
-+++ b/src/features/ChatInput/ActionBar/Model/ControlsForm.tsx
-@@ -24,6 +24,7 @@ import ReasoningTokenSlider from './ReasoningTokenSlider';
- import TextVerbositySlider from './TextVerbositySlider';
- import ThinkingBudgetSlider from './ThinkingBudgetSlider';
- import ThinkingLevel2Slider from './ThinkingLevel2Slider';
-+import ThinkingLevel3Slider from './ThinkingLevel3Slider';
- import ThinkingLevelSlider from './ThinkingLevelSlider';
- import ThinkingSlider from './ThinkingSlider';
- 
-@@ -269,6 +270,17 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
-       },
-       desc: 'thinkingLevel',
-     },
-+    {
-+      children: <ThinkingLevel3Slider />,
-+      label: t('extendParams.thinkingLevel.title'),
-+      layout: 'horizontal',
-+      minWidth: undefined,
-+      name: 'thinkingLevel3',
-+      style: {
-+        paddingBottom: 0,
-+      },
-+      desc: 'thinkingLevel',
-+    },
-     {
-       children: <ImageAspectRatioSelect />,
-       label: t('extendParams.imageAspectRatio.title'),
-diff --git a/src/features/ChatInput/ActionBar/Model/ThinkingLevel3Slider.tsx b/src/features/ChatInput/ActionBar/Model/ThinkingLevel3Slider.tsx
-new file mode 100644
-index 00000000000..c9dc75f62f2
---- /dev/null
-+++ b/src/features/ChatInput/ActionBar/Model/ThinkingLevel3Slider.tsx
-@@ -0,0 +1,16 @@
-+import { type CreatedLevelSliderProps } from './createLevelSlider';
-+import { createLevelSliderComponent } from './createLevelSlider';
-+
-+const THINKING_LEVELS_3 = ['low', 'medium', 'high'] as const;
-+type ThinkingLevel3 = (typeof THINKING_LEVELS_3)[number];
-+
-+export type ThinkingLevel3SliderProps = CreatedLevelSliderProps<ThinkingLevel3>;
-+
-+const ThinkingLevel3Slider = createLevelSliderComponent<ThinkingLevel3>({
-+  configKey: 'thinkingLevel',
-+  defaultValue: 'high',
-+  levels: THINKING_LEVELS_3,
-+  style: { minWidth: 110 },
-+});
-+
-+export default ThinkingLevel3Slider;
-diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
-index 1a33638f16f..33ce4b3b87d 100644
---- a/src/locales/default/modelProvider.ts
-+++ b/src/locales/default/modelProvider.ts
-@@ -279,6 +279,8 @@ export default {
-     'For Gemini 3 Flash Preview models; controls thinking depth.',
-   'providerModels.item.modelConfig.extendParams.options.thinkingLevel2.hint':
-     'For Gemini 3 Pro Preview models; controls thinking depth.',
-+  'providerModels.item.modelConfig.extendParams.options.thinkingLevel3.hint':
-+    'For Gemini 3.1 Pro Preview models; controls thinking depth.',
-   'providerModels.item.modelConfig.extendParams.options.urlContext.hint':
-     'For Gemini series; supports providing URL context.',
-   'providerModels.item.modelConfig.extendParams.placeholder':
+     displayName: 'Nano Banana',
