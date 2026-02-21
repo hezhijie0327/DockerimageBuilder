@@ -54,7 +54,7 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
     CARGO_PROFILE_RELEASE_DEBUG=false \
     CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=off \
     CARGO_PROFILE_RELEASE_STRIP=symbols \
-    RUSTFLAGS="-C target-cpu=x86-64-v2"
+    RUSTFLAGS="-C target-cpu=x86-64-v2 -C target-feature=-avx,-avx2"
 
 WORKDIR /rustfs
 
