@@ -75,6 +75,9 @@ RUN \
         flatbuffers \
         flatbuffers-dev \
     && mkdir -p /opt/rustfs/data /opt/rustfs/logs \
+    && if [ "$(uname -m)" = "x86_64" ]; then \
+        export RUSTFLAGS="-C target-cpu=x86-64-v2"; \
+    fi \
     && touch "./rustfs/build.rs" \
     && cargo run --bin gproto \
     && cargo build --release --bin rustfs -j "$(nproc)"
