@@ -81,13 +81,13 @@ RUN \
     fi \
     && touch "./rustfs/build.rs" \
     && cargo run --bin gproto \
-    && cargo build --release --bin rustfs -j "$(nproc)"
+    && cargo build --release --target $(uname -m)-unknown-linux-musl --bin rustfs -j "$(nproc)" \
+    && install -m 0755 target/$(uname -m)-unknown-linux-musl/release/rustfs /opt/rustfs/rustfs
 
 FROM scratch AS rebased_rustfs
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_rustfs /rustfs/target/release/rustfs /rustfs
 COPY --from=build_rustfs /opt/rustfs/ /
 
 FROM scratch
