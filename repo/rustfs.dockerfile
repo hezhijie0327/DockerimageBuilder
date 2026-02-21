@@ -53,7 +53,8 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
     CARGO_INCREMENTAL=0 \
     CARGO_PROFILE_RELEASE_DEBUG=false \
     CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=off \
-    CARGO_PROFILE_RELEASE_STRIP=symbols
+    CARGO_PROFILE_RELEASE_STRIP=symbols \
+    RUSTFLAGS="-C target-cpu=x86-64-v2"
 
 WORKDIR /rustfs
 
@@ -75,18 +76,17 @@ RUN \
         flatbuffers \
         flatbuffers-dev \
     && mkdir -p /opt/rustfs/data /opt/rustfs/logs \
-    && if [ "$(uname -m)" = "x86_64" ]; then \
-        export RUSTFLAGS="-C target-cpu=x86-64-v2"; \
+    && if [ "$(uname -m)" != "x86_64" ]; then \
+        export RUSTFLAGS=""; \
     fi \
     && touch "./rustfs/build.rs" \
-    && cargo run --bin gproto \
-    && cargo build --release --bin rustfs -j "$(nproc)"
+    && cargo build --release --target $(uname -m)-unknown-linux-musl --bin rustfs -j "$(nproc)" \
+    && install -m 0755 target/$(uname -m)-unknown-linux-musl/release/rustfs /opt/rustfs/rustfs
 
 FROM scratch AS rebased_rustfs
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_rustfs /rustfs/target/release/rustfs /rustfs
 COPY --from=build_rustfs /opt/rustfs/ /
 
 FROM scratch
