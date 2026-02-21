@@ -76,9 +76,6 @@ RUN \
         flatbuffers-dev \
     && mkdir -p /opt/rustfs/data /opt/rustfs/logs \
     && touch "./rustfs/build.rs" \
-    && if [ "$(uname -m)" = "x86_64" ]; then \
-        export RUSTFLAGS="-C target-cpu=x86-64-v2 -C target-feature=-avx,-avx2,-fma,-bmi1,-bmi2"; \
-    fi \
     && cargo build --release --target $(uname -m)-unknown-linux-musl --bin rustfs -j "$(nproc)" \
     && install -m 0755 target/$(uname -m)-unknown-linux-musl/release/rustfs /opt/rustfs/rustfs
 
