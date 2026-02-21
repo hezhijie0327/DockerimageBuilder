@@ -80,7 +80,6 @@ RUN \
         export RUSTFLAGS=""; \
     fi \
     && touch "./rustfs/build.rs" \
-    && cargo run --bin gproto \
     && cargo build --release --target $(uname -m)-unknown-linux-musl --bin rustfs -j "$(nproc)" \
     && install -m 0755 target/$(uname -m)-unknown-linux-musl/release/rustfs /opt/rustfs/rustfs
 
