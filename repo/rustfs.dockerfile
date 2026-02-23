@@ -63,6 +63,7 @@ COPY --from=build_rustfs_web /rustfs/out /rustfs/rustfs/static
 
 RUN \
     apk add --no-cache \
+        bash \
         build-base \
         ca-certificates \
         curl \
@@ -74,12 +75,15 @@ RUN \
         protobuf \
         flatbuffers \
         flatbuffers-dev \
+        zig \
+        zstd-dev \
     && mkdir -p /opt/rustfs/data /opt/rustfs/logs \
     && touch "./rustfs/build.rs" \
     && if [ "$(uname -m)" = "x86_64" ]; then \
-        export RUSTFLAGS="-C target-cpu=x86-64-v2 -C target-feature=-avx,-avx2,-fma,-bmi1,-bmi2"; \
+        export RUSTFLAGS="-C target-cpu=x86-64-v2"; \
     fi \
-    && cargo build --release --target $(uname -m)-unknown-linux-musl --bin rustfs -j "$(nproc)" \
+    && cargo install cargo-zigbuild \
+    && cargo zigbuild -vv --release --target $(uname -m)-unknown-linux-musl --bin rustfs -j "$(nproc)" \
     && install -m 0755 target/$(uname -m)-unknown-linux-musl/release/rustfs /opt/rustfs/rustfs
 
 FROM scratch AS rebased_rustfs
