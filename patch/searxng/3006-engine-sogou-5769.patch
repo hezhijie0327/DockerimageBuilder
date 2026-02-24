@@ -1,8 +1,8 @@
 diff --git a/searx/engines/sogou.py b/searx/engines/sogou.py
-index 6fb97024361..dc1ce64cde7 100644
+index 6fb97024361..a88c91d3d86 100644
 --- a/searx/engines/sogou.py
 +++ b/searx/engines/sogou.py
-@@ -1,9 +1,13 @@
+@@ -1,10 +1,14 @@
  # SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=too-many-branches, line-too-long
  """Sogou search engine for searxng"""
@@ -12,10 +12,12 @@ index 6fb97024361..dc1ce64cde7 100644
  from urllib.parse import urlencode
  from lxml import html
  
+-from searx.utils import extract_text
 +from searx.exceptions import SearxEngineCaptchaException
- from searx.utils import extract_text
++from searx.utils import extract_text, html_to_text
  
  # Metadata
+ about = {
 @@ -21,7 +25,12 @@
  paging = True
  time_range_support = True
@@ -41,7 +43,7 @@ index 6fb97024361..dc1ce64cde7 100644
          query_params["tsn"] = 1
  
      params["url"] = f"{base_url}/web?{urlencode(query_params)}"
-@@ -42,19 +51,63 @@ def request(query, params):
+@@ -42,26 +51,71 @@ def request(query, params):
  
  
  def response(resp):
@@ -115,10 +117,13 @@ index 6fb97024361..dc1ce64cde7 100644
  
          if title and url:
              results.append(
-@@ -62,6 +115,7 @@ def response(resp):
-                     "title": title,
-                     "url": url,
-                     "content": content,
+                 {
+-                    "title": title,
+-                    "url": url,
+-                    "content": content,
++                    "title": html_to_text(title),
++                    "url": html_to_text(url),
++                    "content": html_to_text(content),
 +                    "publishedDate": publishedDate,
                  }
              )
