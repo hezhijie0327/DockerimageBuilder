@@ -1,8 +1,8 @@
 diff --git a/searx/engines/sogou.py b/searx/engines/sogou.py
-index 6fb97024361..9bcd776fd6e 100644
+index 6fb97024361..dc1ce64cde7 100644
 --- a/searx/engines/sogou.py
 +++ b/searx/engines/sogou.py
-@@ -1,6 +1,9 @@
+@@ -1,9 +1,13 @@
  # SPDX-License-Identifier: AGPL-3.0-or-later
 +# pylint: disable=too-many-branches, line-too-long
  """Sogou search engine for searxng"""
@@ -12,7 +12,11 @@ index 6fb97024361..9bcd776fd6e 100644
  from urllib.parse import urlencode
  from lxml import html
  
-@@ -21,7 +24,12 @@
++from searx.exceptions import SearxEngineCaptchaException
+ from searx.utils import extract_text
+ 
+ # Metadata
+@@ -21,7 +25,12 @@
  paging = True
  time_range_support = True
  
@@ -26,7 +30,7 @@ index 6fb97024361..9bcd776fd6e 100644
  
  # Base URL
  base_url = "https://www.sogou.com"
-@@ -33,8 +41,8 @@ def request(query, params):
+@@ -33,8 +42,8 @@ def request(query, params):
          "page": params["pageno"],
      }
  
@@ -37,7 +41,17 @@ index 6fb97024361..9bcd776fd6e 100644
          query_params["tsn"] = 1
  
      params["url"] = f"{base_url}/web?{urlencode(query_params)}"
-@@ -45,16 +53,53 @@ def response(resp):
+@@ -42,19 +51,63 @@ def request(query, params):
+ 
+ 
+ def response(resp):
++    if (
++        resp.status_code == 302
++        and resp.next_request is not None
++        and str(resp.next_request.url).startswith("http://www.sogou.com/antispider")
++    ):
++        raise SearxEngineCaptchaException()
++
      dom = html.fromstring(resp.text)
      results = []
  
@@ -101,7 +115,7 @@ index 6fb97024361..9bcd776fd6e 100644
  
          if title and url:
              results.append(
-@@ -62,6 +107,7 @@ def response(resp):
+@@ -62,6 +115,7 @@ def response(resp):
                      "title": title,
                      "url": url,
                      "content": content,
