@@ -1,3 +1,61 @@
+diff --git a/packages/model-bank/src/aiModels/volcengine.ts b/packages/model-bank/src/aiModels/volcengine.ts
+index 0dce5350734..8de84ebce5b 100644
+--- a/packages/model-bank/src/aiModels/volcengine.ts
++++ b/packages/model-bank/src/aiModels/volcengine.ts
+@@ -1,4 +1,31 @@
+-import { type AIChatModelCard, type AIImageModelCard } from '../types/aiModel';
++import {
++  PRESET_VIDEO_ASPECT_RATIOS,
++  PRESET_VIDEO_RESOLUTIONS,
++  type VideoModelParamsSchema,
++} from '../standard-parameters/video';
++import {
++  type AIChatModelCard,
++  type AIImageModelCard,
++  type AIVideoModelCard,
++} from '../types/aiModel';
++
++export const seedance15ProParams: VideoModelParamsSchema = {
++  aspectRatio: {
++    default: 'adaptive',
++    enum: ['adaptive', ...PRESET_VIDEO_ASPECT_RATIOS],
++  },
++  cameraFixed: { default: false },
++  duration: { default: 5, max: 12, min: 4 },
++  endImageUrl: { default: null, maxFileSize: 30 * 1024 * 1024, requiresImageUrl: true },
++  generateAudio: { default: true },
++  imageUrl: { default: null, maxFileSize: 30 * 1024 * 1024 },
++  prompt: { default: '' },
++  resolution: {
++    default: '720p',
++    enum: PRESET_VIDEO_RESOLUTIONS,
++  },
++  seed: { default: null },
++};
+ 
+ // https://www.volcengine.com/docs/82379/1330310
+ 
+@@ -1227,6 +1254,19 @@ const volcengineImageModels: AIImageModelCard[] = [
+   },
+ ];
+ 
+-export const allModels = [...doubaoChatModels, ...volcengineImageModels];
++export const volcengineVideoModels: AIVideoModelCard[] = [
++  {
++    description:
++      'Seedance 1.5 Pro by ByteDance supports text-to-video, image-to-video (first frame, first+last frame), and audio generation synchronized with visuals.',
++    displayName: 'Seedance 1.5 Pro',
++    enabled: true,
++    id: 'seedance-1-5-pro-251215',
++    parameters: seedance15ProParams,
++    releasedAt: '2025-12-15',
++    type: 'video',
++  },
++];
++
++export const allModels = [...doubaoChatModels, ...volcengineImageModels, ...volcengineVideoModels];
+ 
+ export default allModels;
 diff --git a/packages/model-bank/src/aiModels/xai.ts b/packages/model-bank/src/aiModels/xai.ts
 index 6268e104d34..3b5fe2d8c68 100644
 --- a/packages/model-bank/src/aiModels/xai.ts
@@ -515,3 +573,36 @@ index 00000000000..272fc1a15ab
 +
 +  return { error: errorMessage, inferenceId, status: 'error' };
 +}
+diff --git a/src/app/[variants]/(main)/home/_layout/Header/components/Nav.tsx b/src/app/[variants]/(main)/home/_layout/Header/components/Nav.tsx
+index b2da62adddf..a5656346c25 100644
+--- a/src/app/[variants]/(main)/home/_layout/Header/components/Nav.tsx
++++ b/src/app/[variants]/(main)/home/_layout/Header/components/Nav.tsx
+@@ -10,11 +10,7 @@ import { getRouteById } from '@/config/routes';
+ import { useActiveTabKey } from '@/hooks/useActiveTabKey';
+ import { useGlobalStore } from '@/store/global';
+ import { SidebarTabKey } from '@/store/global/initialState';
+-import {
+-  featureFlagsSelectors,
+-  serverConfigSelectors,
+-  useServerConfigStore,
+-} from '@/store/serverConfig';
++import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
+ 
+ import { type NavItemProps } from '../../../../../../../features/NavPanel/components/NavItem';
+ import NavItem from '../../../../../../../features/NavPanel/components/NavItem';
+@@ -35,7 +31,6 @@ const Nav = memo(() => {
+   const { t } = useTranslation('common');
+   const toggleCommandMenu = useGlobalStore((s) => s.toggleCommandMenu);
+   const { showMarket, showAiImage } = useServerConfigStore(featureFlagsSelectors);
+-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+ 
+   const items: Item[] = useMemo(
+     () => [
+@@ -60,7 +55,6 @@ const Nav = memo(() => {
+         url: '/page',
+       },
+       {
+-        hidden: !enableBusinessFeatures,
+         icon: getRouteById('video')!.icon,
+         isNew: true,
+         key: SidebarTabKey.Video,
