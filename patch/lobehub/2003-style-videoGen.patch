@@ -100,19 +100,18 @@ index 6268e104d34..3b5fe2d8c68 100644
  
  export default allModels;
 diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
-index da6ffc843b3..df411494d24 100644
+index da6ffc843b3..3e6ee4ffc0d 100644
 --- a/packages/model-runtime/src/providers/xai/index.ts
 +++ b/packages/model-runtime/src/providers/xai/index.ts
-@@ -3,6 +3,8 @@ import { ModelProvider } from 'model-bank';
+@@ -3,6 +3,7 @@ import { ModelProvider } from 'model-bank';
  import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
  import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
  import { createXAIImage } from './createImage';
 +import { createXAIVideo } from './video/createVideo';
-+import { handleXAIVideoWebhook } from './video/handleCreateVideoWebhook';
  
  export interface XAIModelCard {
    id: string;
-@@ -16,6 +18,7 @@ export const isGrokReasoningModel = (model: string) =>
+@@ -16,6 +17,7 @@ export const isGrokReasoningModel = (model: string) =>
  export const LobeXAI = createOpenAICompatibleRuntime({
    baseURL: 'https://api.x.ai/v1',
    createImage: createXAIImage,
@@ -120,20 +119,12 @@ index da6ffc843b3..df411494d24 100644
    chatCompletion: {
      handlePayload: (payload) => {
        const { enabledSearch, frequency_penalty, model, presence_penalty, ...rest } = payload;
-@@ -56,6 +59,7 @@ export const LobeXAI = createOpenAICompatibleRuntime({
-   debug: {
-     chatCompletion: () => process.env.DEBUG_XAI_CHAT_COMPLETION === '1',
-   },
-+  handleCreateVideoWebhook: handleXAIVideoWebhook,
-   models: async ({ client }) => {
-     const modelsPage = (await client.models.list()) as any;
-     const modelList: XAIModelCard[] = modelsPage.data;
 diff --git a/packages/model-runtime/src/providers/xai/video/createVideo.test.ts b/packages/model-runtime/src/providers/xai/video/createVideo.test.ts
 new file mode 100644
-index 00000000000..7493df87f58
+index 00000000000..c1a935a7829
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/xai/video/createVideo.test.ts
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,258 @@
 +import { beforeEach, describe, expect, it, vi } from 'vitest';
 +
 +import type { CreateVideoOptions } from '../../../core/openaiCompatibleFactory';
@@ -168,22 +159,51 @@ index 00000000000..7493df87f58
 +  });
 +
 +  describe('successful creation', () => {
-+    it('should return inferenceId on success', async () => {
-+      mockFetch.mockResolvedValue({
-+        json: () => Promise.resolve({ request_id: 'req-abc-123' }),
-+        ok: true,
-+      });
++    it('should return inferenceId and videoUrl on success', async () => {
++      mockFetch
++        .mockResolvedValueOnce({
++          json: () => Promise.resolve({ request_id: 'req-abc-123' }),
++          ok: true,
++        })
++        .mockResolvedValue({
++          json: () =>
++            Promise.resolve({
++              model: 'grok-imagine-video',
++              video: {
++                url: 'https://example.com/video.mp4',
++                duration: 5,
++                respect_moderation: true,
++              },
++            }),
++          ok: true,
++        });
 +
 +      const result = await createXAIVideo(payload, options);
 +
-+      expect(result).toEqual({ inferenceId: 'req-abc-123' });
++      expect(result).toEqual({
++        inferenceId: 'req-abc-123',
++        videoUrl: 'https://example.com/video.mp4',
++      });
 +    });
 +
 +    it('should send minimal body with only prompt', async () => {
-+      mockFetch.mockResolvedValue({
-+        json: () => Promise.resolve({ request_id: 'req-1' }),
-+        ok: true,
-+      });
++      mockFetch
++        .mockResolvedValueOnce({
++          json: () => Promise.resolve({ request_id: 'req-1' }),
++          ok: true,
++        })
++        .mockResolvedValue({
++          json: () =>
++            Promise.resolve({
++              model: 'grok-imagine-video',
++              video: {
++                url: 'https://example.com/video.mp4',
++                duration: 5,
++                respect_moderation: true,
++              },
++            }),
++          ok: true,
++        });
 +
 +      await createXAIVideo(payload, options);
 +
@@ -201,10 +221,23 @@ index 00000000000..7493df87f58
 +
 +  describe('image support', () => {
 +    it('should add image when imageUrl is provided', async () => {
-+      mockFetch.mockResolvedValue({
-+        json: () => Promise.resolve({ request_id: 'req-1' }),
-+        ok: true,
-+      });
++      mockFetch
++        .mockResolvedValueOnce({
++          json: () => Promise.resolve({ request_id: 'req-1' }),
++          ok: true,
++        })
++        .mockResolvedValue({
++          json: () =>
++            Promise.resolve({
++              model: 'grok-imagine-video',
++              video: {
++                url: 'https://example.com/video.mp4',
++                duration: 5,
++                respect_moderation: true,
++              },
++            }),
++          ok: true,
++        });
 +
 +      payload.params.imageUrl = 'https://example.com/start.jpg';
 +
@@ -219,10 +252,23 @@ index 00000000000..7493df87f58
 +
 +  describe('optional params', () => {
 +    beforeEach(() => {
-+      mockFetch.mockResolvedValue({
-+        json: () => Promise.resolve({ request_id: 'req-1' }),
-+        ok: true,
-+      });
++      mockFetch
++        .mockResolvedValueOnce({
++          json: () => Promise.resolve({ request_id: 'req-1' }),
++          ok: true,
++        })
++        .mockResolvedValue({
++          json: () =>
++            Promise.resolve({
++              model: 'grok-imagine-video',
++              video: {
++                url: 'https://example.com/video.mp4',
++                duration: 5,
++                respect_moderation: true,
++              },
++            }),
++          ok: true,
++        });
 +    });
 +
 +    it('should map aspectRatio to body.aspect_ratio', async () => {
@@ -249,10 +295,23 @@ index 00000000000..7493df87f58
 +
 +  describe('client config', () => {
 +    beforeEach(() => {
-+      mockFetch.mockResolvedValue({
-+        json: () => Promise.resolve({ request_id: 'req-1' }),
-+        ok: true,
-+      });
++      mockFetch
++        .mockResolvedValueOnce({
++          json: () => Promise.resolve({ request_id: 'req-1' }),
++          ok: true,
++        })
++        .mockResolvedValue({
++          json: () =>
++            Promise.resolve({
++              model: 'grok-imagine-video',
++              video: {
++                url: 'https://example.com/video.mp4',
++                duration: 5,
++                respect_moderation: true,
++              },
++            }),
++          ok: true,
++        });
 +    });
 +
 +    it('should use default baseURL', async () => {
@@ -302,23 +361,55 @@ index 00000000000..7493df87f58
 +        'Invalid response: missing request_id',
 +      );
 +    });
++
++    it('should throw when video generation fails with error response', async () => {
++      mockFetch
++        .mockResolvedValueOnce({
++          json: () => Promise.resolve({ request_id: 'req-1' }),
++          ok: true,
++        })
++        .mockResolvedValue({
++          json: () =>
++            Promise.resolve({
++              code: 'Unrecoverable data loss or corruption',
++              error: 'Fetching image failed with HTTP status 403 Forbidden.',
++            }),
++          ok: true,
++        });
++
++      await expect(createXAIVideo(payload, options)).rejects.toThrow(
++        'Fetching image failed with HTTP status 403 Forbidden.',
++      );
++    });
 +  });
 +});
 diff --git a/packages/model-runtime/src/providers/xai/video/createVideo.ts b/packages/model-runtime/src/providers/xai/video/createVideo.ts
 new file mode 100644
-index 00000000000..02cac45f497
+index 00000000000..6423ccc28e2
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/xai/video/createVideo.ts
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,172 @@
 +import createDebug from 'debug';
 +
 +import type { CreateVideoOptions } from '../../../core/openaiCompatibleFactory';
-+import type { CreateVideoPayload, CreateVideoResponse } from '../../../types/video';
++import type { CreateVideoPayload } from '../../../types/video';
++import { asyncifyPolling } from '../../../utils/asyncifyPolling';
 +
 +const log = createDebug('lobe-video:xai');
 +
 +interface XAIVideoGenerationResponse {
 +  request_id: string;
++}
++
++interface XAIVideoStatusResponse {
++  code?: string;
++  error?: string;
++  model?: string;
++  video?: {
++    url?: string;
++    duration?: number;
++    respect_moderation?: boolean;
++  };
 +}
 +
 +interface XAIVideoRequestBody {
@@ -330,18 +421,49 @@ index 00000000000..02cac45f497
 +  model: string;
 +  prompt: string;
 +  resolution?: '720p' | '480p';
-+  video_url?: string;
++}
++
++interface PollingResult {
++  error?: string;
++  status: 'pending' | 'done' | 'failed';
++  videoUrl?: string;
 +}
 +
 +/**
-+ * XAI video generation implementation
++ * Query XAI video generation status by request_id
++ */
++async function queryVideoStatus(
++  requestId: string,
++  apiKey: string,
++  baseURL: string,
++): Promise<XAIVideoStatusResponse> {
++  const response = await fetch(`${baseURL}/videos/${requestId}`, {
++    headers: {
++      Authorization: `Bearer ${apiKey}`,
++    },
++    method: 'GET',
++  });
++
++  if (!response.ok) {
++    const errorText = await response.text();
++    log('XAI video status query error: %s %s', response.status, errorText);
++    throw new Error(`XAI video status query error: ${response.status} ${errorText}`);
++  }
++
++  return (await response.json()) as XAIVideoStatusResponse;
++}
++
++/**
++ * XAI video generation implementation with polling
 + * API docs: https://docs.x.ai/docs/video-generation
++ * Returns both inferenceId and videoUrl (for async processing)
 + */
 +export async function createXAIVideo(
 +  payload: CreateVideoPayload,
 +  options: CreateVideoOptions,
-+): Promise<CreateVideoResponse> {
++): Promise<{ inferenceId: string; videoUrl: string }> {
 +  const { model, params } = payload;
++  const { apiKey, provider } = options;
 +  const { prompt, imageUrl, aspectRatio, duration, resolution } = params;
 +
 +  log('Creating video with XAI API - model: %s, params: %O', model, params);
@@ -374,10 +496,11 @@ index 00000000000..02cac45f497
 +
 +  log('XAI video API request body: %s', JSON.stringify(body, null, 2));
 +
++  // Step 1: Submit video generation request
 +  const response = await fetch(`${baseURL}/videos/generations`, {
 +    body: JSON.stringify(body),
 +    headers: {
-+      'Authorization': `Bearer ${options.apiKey}`,
++      'Authorization': `Bearer ${apiKey}`,
 +      'Content-Type': 'application/json',
 +    },
 +    method: 'POST',
@@ -397,181 +520,46 @@ index 00000000000..02cac45f497
 +    throw new Error('Invalid response: missing request_id');
 +  }
 +
-+  return { inferenceId: data.request_id };
-+}
-diff --git a/packages/model-runtime/src/providers/xai/video/handleCreateVideoWebhook.test.ts b/packages/model-runtime/src/providers/xai/video/handleCreateVideoWebhook.test.ts
-new file mode 100644
-index 00000000000..182de8f16c9
---- /dev/null
-+++ b/packages/model-runtime/src/providers/xai/video/handleCreateVideoWebhook.test.ts
-@@ -0,0 +1,99 @@
-+import { describe, expect, it } from 'vitest';
++  const requestId = data.request_id;
 +
-+import type { HandleCreateVideoWebhookPayload } from '../../../types/video';
-+import { handleXAIVideoWebhook } from './handleCreateVideoWebhook';
++  // Step 2: Poll for video generation status
++  const videoData = await asyncifyPolling<PollingResult, { inferenceId: string; videoUrl: string }>(
++    {
++      checkStatus: (pollingResult: PollingResult) => {
++        if (pollingResult.status === 'done' && pollingResult.videoUrl) {
++          log('Video generation succeeded: %s', requestId);
++          return {
++            data: { inferenceId: requestId, videoUrl: pollingResult.videoUrl },
++            status: 'success',
++          };
++        }
 +
-+describe('handleXAIVideoWebhook', () => {
-+  describe('pending status', () => {
-+    it('should return pending when status is pending', async () => {
-+      const payload: HandleCreateVideoWebhookPayload = {
-+        body: {
-+          request_id: 'req-123',
-+          status: 'pending',
-+        },
-+      };
++        if (pollingResult.error) {
++          log('Video generation failed: %s, error: %s', requestId, pollingResult.error);
++          return {
++            error: new Error(pollingResult.error),
++            status: 'failed',
++          };
++        }
 +
-+      const result = await handleXAIVideoWebhook(payload);
++        return { status: 'pending' };
++      },
++      logger: {
++        debug: (message: any, ...args: any[]) => log(message, ...args),
++        error: (message: any, ...args: any[]) => log(message, ...args),
++      },
++      maxConsecutiveFailures: 10,
++      maxRetries: 60, // 60 retries = up to 5 minutes
++      pollingQuery: () =>
++        queryVideoStatus(requestId, apiKey, baseURL).then((response) => ({
++          error: response.error,
++          status: response.video?.url ? 'done' : 'pending',
++          videoUrl: response.video?.url,
++        })),
++    },
++  );
 +
-+      expect(result).toEqual({ status: 'pending' });
-+    });
-+  });
-+
-+  describe('success status', () => {
-+    it('should return success with videoUrl when status is done', async () => {
-+      const payload: HandleCreateVideoWebhookPayload = {
-+        body: {
-+          request_id: 'req-123',
-+          status: 'done',
-+          model: 'grok-imagine-video',
-+          video: {
-+            url: 'https://vidgen.x.ai/video.mp4',
-+            duration: 5,
-+            respect_moderation: true,
-+          },
-+        },
-+      };
-+
-+      const result = await handleXAIVideoWebhook(payload);
-+
-+      expect(result).toEqual({
-+        inferenceId: 'req-123',
-+        model: 'grok-imagine-video',
-+        status: 'success',
-+        videoUrl: 'https://vidgen.x.ai/video.mp4',
-+      });
-+    });
-+
-+    it('should throw when status is done but video URL is missing', async () => {
-+      const payload: HandleCreateVideoWebhookPayload = {
-+        body: {
-+          request_id: 'req-123',
-+          status: 'done',
-+          video: {
-+            duration: 5,
-+          },
-+        },
-+      };
-+
-+      await expect(handleXAIVideoWebhook(payload)).rejects.toThrow(
-+        'Missing video URL in done webhook body',
-+      );
-+    });
-+  });
-+
-+  describe('error status', () => {
-+    it('should return error when status is expired', async () => {
-+      const payload: HandleCreateVideoWebhookPayload = {
-+        body: {
-+          request_id: 'req-123',
-+          status: 'expired',
-+        },
-+      };
-+
-+      const result = await handleXAIVideoWebhook(payload);
-+
-+      expect(result).toEqual({
-+        error: 'Video generation task expired',
-+        inferenceId: 'req-123',
-+        status: 'error',
-+      });
-+    });
-+  });
-+
-+  describe('error handling', () => {
-+    it('should throw when request_id is missing', async () => {
-+      const payload: HandleCreateVideoWebhookPayload = {
-+        body: {
-+          status: 'done',
-+          video: {
-+            url: 'https://example.com/video.mp4',
-+          },
-+        },
-+      };
-+
-+      await expect(handleXAIVideoWebhook(payload)).rejects.toThrow(
-+        'Missing request_id in webhook body',
-+      );
-+    });
-+  });
-+});
-diff --git a/packages/model-runtime/src/providers/xai/video/handleCreateVideoWebhook.ts b/packages/model-runtime/src/providers/xai/video/handleCreateVideoWebhook.ts
-new file mode 100644
-index 00000000000..272fc1a15ab
---- /dev/null
-+++ b/packages/model-runtime/src/providers/xai/video/handleCreateVideoWebhook.ts
-@@ -0,0 +1,63 @@
-+import createDebug from 'debug';
-+
-+import type {
-+  HandleCreateVideoWebhookPayload,
-+  HandleCreateVideoWebhookResult,
-+} from '../../../types/video';
-+
-+const log = createDebug('lobe-video:xai:webhook');
-+
-+interface XAIVideoWebhookBody {
-+  model?: string;
-+  request_id?: string;
-+  status?: 'pending' | 'done' | 'expired';
-+  video?: {
-+    url?: string;
-+    duration?: number;
-+    respect_moderation?: boolean;
-+  };
-+}
-+
-+export async function handleXAIVideoWebhook(
-+  payload: HandleCreateVideoWebhookPayload,
-+): Promise<HandleCreateVideoWebhookResult> {
-+  const body = payload.body as XAIVideoWebhookBody;
-+
-+  log('Received XAI video webhook: %O', body);
-+
-+  const status = body.status;
-+
-+  // Skip intermediate statuses
-+  if (status === 'pending') {
-+    log('Skipping intermediate status: %s', status);
-+    return { status: 'pending' };
-+  }
-+
-+  const inferenceId = body.request_id;
-+  if (!inferenceId) {
-+    throw new Error('Missing request_id in webhook body');
-+  }
-+
-+  if (status === 'done') {
-+    const videoUrl = body.video?.url;
-+    if (!videoUrl) {
-+      throw new Error('Missing video URL in done webhook body');
-+    }
-+
-+    log('Video generation succeeded: %s, videoUrl: %s', inferenceId, videoUrl);
-+
-+    return {
-+      inferenceId,
-+      model: body.model,
-+      status: 'success' as const,
-+      videoUrl,
-+    };
-+  }
-+
-+  // expired
-+  const errorMessage = status === 'expired' ? 'Video generation task expired' : 'Unknown error';
-+
-+  log('Video generation failed: %s, error: %s', inferenceId, errorMessage);
-+
-+  return { error: errorMessage, inferenceId, status: 'error' };
++  return videoData;
 +}
 diff --git a/src/app/[variants]/(main)/home/_layout/Header/components/Nav.tsx b/src/app/[variants]/(main)/home/_layout/Header/components/Nav.tsx
 index b2da62adddf..a5656346c25 100644
