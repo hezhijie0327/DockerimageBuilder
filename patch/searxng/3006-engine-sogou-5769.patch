@@ -1,5 +1,5 @@
 diff --git a/searx/engines/sogou.py b/searx/engines/sogou.py
-index 6fb97024361..df423356da4 100644
+index 6fb97024361..12006003130 100644
 --- a/searx/engines/sogou.py
 +++ b/searx/engines/sogou.py
 @@ -1,9 +1,13 @@
@@ -30,7 +30,7 @@ index 6fb97024361..df423356da4 100644
  
  # Base URL
  base_url = "https://www.sogou.com"
-@@ -33,28 +42,73 @@ def request(query, params):
+@@ -33,36 +42,100 @@ def request(query, params):
          "page": params["pageno"],
      }
  
@@ -62,65 +62,91 @@ index 6fb97024361..df423356da4 100644
 -
 -        if url.startswith("/link?url="):
 -            url = f"{base_url}{url}"
--
--        content = extract_text(item.xpath('.//div[contains(@class, "text-layout")]//p[contains(@class, "star-wiki")]'))
--        if not content:
--            content = extract_text(item.xpath('.//div[contains(@class, "fz-mid space-txt")]'))
 +    for item in dom.xpath(
 +        '//div[contains(@class, "rb")] | //div[contains(@class, "vrwrap") and not(.//div[contains(@class, "special-wrap")])]'
 +    ):
-+        title = None
-+        url = None
-+        content = None
-+        publishedDate = None
-+
-+        item_html = html.tostring(item)
-+
++        item_html = html.tostring(item, encoding="unicode")
+ 
+-        content = extract_text(item.xpath('.//div[contains(@class, "text-layout")]//p[contains(@class, "star-wiki")]'))
+-        if not content:
+-            content = extract_text(item.xpath('.//div[contains(@class, "fz-mid space-txt")]'))
 +        if item.xpath('.//h3[@class="pt"]/a'):
-+            title = extract_text(item.xpath('.//h3[@class="pt"]/a'))
-+            content = extract_text(item.xpath('.//div[@class="ft"]'))
-+            url = extract_text(item.xpath('.//h3[@class="pt"]/a/@href'))
-+            if url and url.startswith("/link?url="):
-+                match = re.search(r'data-url="([^"]+)"', item_html)
-+                if match:
-+                    url = match.group(1)
-+                else:
-+                    url = f"{base_url}{url}"
-+            cite_text = extract_text(item.xpath(".//cite"))
-+            if cite_text:
-+                date_match = re.search(r"(\d{4}-\d{1,2}-\d{1,2})", cite_text)
-+                if date_match:
-+                    try:
-+                        publishedDate = datetime.strptime(date_match.group(1), "%Y-%m-%d")
-+                    except (ValueError, TypeError):
-+                        publishedDate = None
++            result = _parse_results(item, item_html)
 +        elif item.xpath('.//h3[contains(@class, "vr-title")]/a'):
-+            title = extract_text(item.xpath('.//h3[contains(@class, "vr-title")]/a'))
-+            content = extract_text(item.xpath('.//div[contains(@class, "attribute-centent")]'))
-+            if not content:
-+                content = extract_text(item.xpath('.//div[contains(@class, "fz-mid space-txt")]'))
-+            url = extract_text(item.xpath('.//h3[contains(@class, "vr-title")]/a/@href'))
-+            if url and url.startswith("/link?url="):
-+                match = re.search(r'data-url="([^"]+)"', item_html)
-+                if match:
-+                    url = match.group(1)
-+                else:
-+                    url = f"{base_url}{url}"
-+            cite_date = extract_text(item.xpath('.//span[@class="cite-date"]'))
-+            if cite_date:
-+                date_str = cite_date.strip().lstrip("-").strip()
-+                try:
-+                    publishedDate = datetime.strptime(date_str, "%Y-%m-%d")
-+                except (ValueError, TypeError):
-+                    publishedDate = None
++            result = _parse_results_with_image(item, item_html)
++        else:
++            continue
  
-         if title and url:
-             results.append(
-@@ -62,6 +116,7 @@ def response(resp):
-                     "title": title,
-                     "url": url,
-                     "content": content,
-+                    "publishedDate": publishedDate,
-                 }
-             )
+-        if title and url:
+-            results.append(
+-                {
+-                    "title": title,
+-                    "url": url,
+-                    "content": content,
+-                }
+-            )
++        if result["title"] and result["url"]:
++            results.append(result)
  
+     return results
++
++
++def _extract_url(url, item_html):
++    if url and url.startswith("/link?url="):
++        match = re.search(r'data-url="([^"]+)"', item_html)
++        if match:
++            return match.group(1)
++        return f"{base_url}{url}"
++    return url
++
++
++def _parse_date(text):
++    if text:
++        text = text.strip().lstrip("-").strip()
++        date_match = re.search(r"(\d{4}-\d{1,2}-\d{1,2})", text)
++        if date_match:
++            try:
++                return datetime.strptime(date_match.group(1), "%Y-%m-%d")
++            except (ValueError, TypeError):
++                pass
++    return None
++
++
++def _parse_results(item, item_html):
++    title = extract_text(item.xpath('.//h3[@class="pt"]/a'))
++    content = extract_text(item.xpath('.//div[@class="ft"]'))
++    url = _extract_url(
++        extract_text(item.xpath('.//h3[@class="pt"]/a/@href')), item_html
++    )
++    publishedDate = _parse_date(extract_text(item.xpath(".//cite")))
++    return {
++        "title": title,
++        "url": url,
++        "content": content,
++        "publishedDate": publishedDate,
++    }
++
++
++def _parse_results_with_image(item, item_html):
++    title = extract_text(item.xpath('.//h3[contains(@class, "vr-title")]/a'))
++    content = extract_text(item.xpath('.//div[contains(@class, "attribute-centent")]'))
++    if not content:
++        content = extract_text(item.xpath('.//div[contains(@class, "fz-mid space-txt")]'))
++    url = _extract_url(extract_text(item.xpath('.//h3[contains(@class, "vr-title")]/a/@href')), item_html)
++    publishedDate = _parse_date(extract_text(item.xpath('.//span[@class="cite-date"]')))
++
++    thumbnail = None
++    try:
++        thumbnail_src = extract_text(item.xpath('.//div[contains(@class, "img-layout")]//img/@src'))
++        if thumbnail_src:
++            thumbnail = thumbnail_src.replace("http://", "https://")
++    except (ValueError, TypeError):
++        pass
++
++    return {
++        "title": title,
++        "url": url,
++        "content": content,
++        "publishedDate": publishedDate,
++        "thumbnail": thumbnail,
++    }
