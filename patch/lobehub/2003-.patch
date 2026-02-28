@@ -1,0 +1,238 @@
+diff --git a/Dockerfile b/Dockerfile
+index 004a80b0df3..cbc7d241812 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -101,17 +101,6 @@ RUN rm -rf src/app/desktop "src/app/(backend)/trpc/desktop"
+ # run build standalone for docker version
+ RUN npm run build:docker
+ 
+-# Prepare desktop export assets for Electron packaging (if generated)
+-RUN set -e && \
+-    if [ -d "/app/out" ]; then \
+-        mkdir -p /app/apps/desktop/dist/next && \
+-        cp -a /app/out/. /app/apps/desktop/dist/next/ && \
+-        echo "Copied Next export output into /app/apps/desktop/dist/next"; \
+-    else \
+-        echo "No Next export output found at /app/out, creating empty directory" && \
+-        mkdir -p /app/apps/desktop/dist/next; \
+-    fi
+-
+ ## Application image, copy all the files for production
+ FROM busybox:latest AS app
+ 
+@@ -120,11 +109,9 @@ COPY --from=base /distroless/ /
+ # Automatically leverage output traces to reduce image size
+ # https://nextjs.org/docs/advanced-features/output-file-tracing
+ COPY --from=builder /app/.next/standalone /app/
++COPY --from=builder /app/.next/static /app/.next/static
+ # Copy SPA assets (Vite build output)
+ COPY --from=builder /app/public/spa /app/public/spa
+-# Copy Next export output for desktop renderer
+-COPY --from=builder /app/apps/desktop/dist/next /app/apps/desktop/dist/next
+-
+ # Copy database migrations
+ COPY --from=builder /app/packages/database/migrations /app/migrations
+ COPY --from=builder /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
+diff --git a/next.config.ts b/next.config.ts
+index b2a23027ad2..559e37d95d1 100644
+--- a/next.config.ts
++++ b/next.config.ts
+@@ -2,42 +2,31 @@ import { defineConfig } from './src/libs/next/config/define-config';
+ 
+ const isVercel = !!process.env.VERCEL_ENV;
+ 
+-const nextConfig = defineConfig({
++const vercelConfig = {
+   // Vercel serverless optimization: exclude musl binaries and ffmpeg from all routes
+   // Vercel uses Amazon Linux (glibc), not Alpine Linux (musl)
+   // ffmpeg-static (~76MB) is only needed by /api/webhooks/video/* route
+   // This saves ~120MB (29MB canvas-musl + 16MB sharp-musl + 76MB ffmpeg)
+-  outputFileTracingExcludes: isVercel
+-    ? {
+-        '*': [
+-          'node_modules/.pnpm/@napi-rs+canvas-*-musl*',
+-          'node_modules/.pnpm/@img+sharp-libvips-*musl*',
+-          'node_modules/ffmpeg-static/**',
+-          'node_modules/.pnpm/ffmpeg-static*/**',
+-          // Exclude SPA/desktop/mobile build artifacts from serverless functions
+-          'public/spa/**',
+-          'dist/desktop/**',
+-          'dist/mobile/**',
+-          'apps/desktop/**',
+-          'packages/database/migrations/**',
+-        ],
+-      }
+-    : undefined,
+-  // Include ffmpeg binary only for video webhook processing
+-  // refs: https://github.com/vercel-labs/ffmpeg-on-vercel
+-  outputFileTracingIncludes: isVercel
+-    ? {
+-        '/api/webhooks/video/*': ['./node_modules/ffmpeg-static/ffmpeg'],
+-      }
+-    : undefined,
+-  webpack: (webpackConfig, context) => {
+-    const { dev } = context;
+-    if (!dev) {
+-      webpackConfig.cache = false;
+-    }
+-
+-    return webpackConfig;
++  outputFileTracingExcludes: {
++    '*': [
++      'node_modules/.pnpm/@napi-rs+canvas-*-musl*',
++      'node_modules/.pnpm/@img+sharp-libvips-*musl*',
++      'node_modules/ffmpeg-static/**',
++      'node_modules/.pnpm/ffmpeg-static*/**',
++      // Exclude SPA/desktop/mobile build artifacts from serverless functions
++      'public/spa/**',
++      'dist/desktop/**',
++      'dist/mobile/**',
++      'apps/desktop/**',
++      'packages/database/migrations/**',
++    ],
+   },
++  outputFileTracingIncludes: {
++    '/api/webhooks/video/*': ['./node_modules/ffmpeg-static/ffmpeg'],
++  },
++};
++const nextConfig = defineConfig({
++  ...(isVercel ? vercelConfig : {}),
+ });
+ 
+ export default nextConfig;
+diff --git a/src/libs/next/config/define-config.ts b/src/libs/next/config/define-config.ts
+index 3e7d69ffa2a..b2d610a91fb 100644
+--- a/src/libs/next/config/define-config.ts
++++ b/src/libs/next/config/define-config.ts
+@@ -1,7 +1,6 @@
+ import { codeInspectorPlugin } from 'code-inspector-plugin';
+ import { type NextConfig } from 'next';
+ import { type Header, type Redirect } from 'next/dist/lib/load-custom-routes';
+-import ReactComponentName from 'react-scan/react-component-name/webpack';
+ 
+ interface CustomNextConfig {
+   experimental?: NextConfig['experimental'];
+@@ -11,14 +10,12 @@ interface CustomNextConfig {
+   redirects?: Redirect[];
+   serverExternalPackages?: NextConfig['serverExternalPackages'];
+   turbopack?: NextConfig['turbopack'];
+-  webpack?: NextConfig['webpack'];
+ }
+ 
+ export function defineConfig(config: CustomNextConfig) {
+   const isProd = process.env.NODE_ENV === 'production';
+   const buildWithDocker = process.env.DOCKER === 'true';
+ 
+-  const enableReactScan = !!process.env.REACT_SCAN_MONITOR_API_KEY;
+   const shouldUseCSP = process.env.ENABLED_CSP === '1';
+ 
+   const isTest =
+@@ -28,14 +25,23 @@ export function defineConfig(config: CustomNextConfig) {
+ 
+   const standaloneConfig: NextConfig = {
+     output: 'standalone',
++
+     outputFileTracingIncludes: {
+       '*': [
+         'public/**/*',
+         '.next/static/**/*',
++
+         // Only needed for Docker standalone builds.
+         // On Vercel (serverless), including native bindings can easily exceed function size limits.
+         ...(buildWithDocker
+           ? [
++              // Exclude SPA/desktop/mobile build artifacts from serverless functions
++              'public/spa/**',
++              'dist/desktop/**',
++              'dist/mobile/**',
++
++              'packages/database/migrations/**',
++
+               // Ensure native bindings are included in standalone output.
+               // `@napi-rs/canvas` is loaded via dynamic `require()` (see packages/file-loaders),
+               // which may not be picked up by Next.js output tracing.
+@@ -370,62 +376,6 @@ export function defineConfig(config: CustomNextConfig) {
+     typescript: {
+       ignoreBuildErrors: true,
+     },
+-
+-    webpack(baseWebpackConfig, options) {
+-      baseWebpackConfig.experiments = {
+-        asyncWebAssembly: true,
+-        layers: true,
+-      };
+-
+-      // 开启该插件会导致 pglite 的 fs bundler 被改表
+-      if (enableReactScan) {
+-        baseWebpackConfig.plugins.push(ReactComponentName({}));
+-      }
+-
+-      // to fix shikiji compile error
+-      // refs: https://github.com/antfu/shikiji/issues/23
+-      baseWebpackConfig.module.rules.push({
+-        resolve: {
+-          fullySpecified: false,
+-        },
+-        test: /\.m?js$/,
+-        type: 'javascript/auto',
+-      });
+-
+-      baseWebpackConfig.resolve.alias.canvas = false;
+-
+-      // to ignore epub2 compile error
+-      // refs: https://github.com/lobehub/lobe-chat/discussions/6769
+-      baseWebpackConfig.resolve.fallback = {
+-        ...baseWebpackConfig.resolve.fallback,
+-        zipfile: false,
+-      };
+-
+-      if (
+-        assetPrefix &&
+-        (assetPrefix.startsWith('http://') || assetPrefix.startsWith('https://'))
+-      ) {
+-        // fix the Worker URL cross-origin issue
+-        // refs: https://github.com/lobehub/lobe-chat/pull/9624
+-        baseWebpackConfig.module.rules.push({
+-          generator: {
+-            // @see https://webpack.js.org/configuration/module/#rulegeneratorpublicpath
+-            publicPath: '/_next/',
+-          },
+-          test: /worker\.ts$/,
+-          // @see https://webpack.js.org/guides/asset-modules/
+-          type: 'asset/resource',
+-        });
+-      }
+-
+-      const updatedConfig = baseWebpackConfig;
+-
+-      if (config.webpack) {
+-        return config.webpack(updatedConfig, options);
+-      }
+-
+-      return updatedConfig;
+-    },
+   };
+ 
+   return nextConfig;
+diff --git a/src/server/services/generation/video.ts b/src/server/services/generation/video.ts
+index b7b572e0bcc..8d992b98ffc 100644
+--- a/src/server/services/generation/video.ts
++++ b/src/server/services/generation/video.ts
+@@ -66,7 +66,7 @@ export class VideoGenerationService {
+ 
+       const [metadata, videoBuffer] = await Promise.all([
+         this.getVideoMetadata(tempVideoPath),
+-        fs.readFile(tempVideoPath),
++        fs.readFile(String(tempVideoPath)),
+       ]);
+ 
+       log('Video metadata: %O', metadata);
+@@ -91,7 +91,7 @@ export class VideoGenerationService {
+ 
+       // Generate cover screenshot and thumbnail
+       tempCoverPath = await this.generateScreenshot(tempVideoPath, metadata.width, metadata.height);
+-      const coverBuffer = await fs.readFile(tempCoverPath);
++      const coverBuffer = await fs.readFile(String(tempCoverPath));
+ 
+       // Convert cover to webp
+       const coverWebpBuffer = await sharp(coverBuffer).webp({ quality: 100 }).toBuffer();
