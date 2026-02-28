@@ -86,6 +86,7 @@ COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 COPY --from=build_baseos /distroless/ /
 
 COPY --from=build_lobehub /app/.next/standalone /app/
+COPY --from=build_lobehub /app/.next/static /app/.next/static
 COPY --from=build_lobehub /app/public/spa /app/public/spa
 
 COPY --from=build_lobehub /app/packages/database/migrations /app/migrations
