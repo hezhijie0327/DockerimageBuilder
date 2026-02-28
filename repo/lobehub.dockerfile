@@ -75,7 +75,9 @@ RUN \
 COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/ .
 
 RUN \
-    npm run build:docker
+    pnpm exec tsx scripts/dockerPrebuild.mts \
+    && rm -rf src/app/desktop "src/app/(backend)/trpc/desktop" \
+    && pnpm run build:docker
 
 FROM busybox:latest AS rebased_lobehub
 
@@ -84,6 +86,7 @@ COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certif
 COPY --from=build_baseos /distroless/ /
 
 COPY --from=build_lobehub /app/.next/standalone /app/
+COPY --from=build_lobehub /app/public/spa /app/public/spa
 
 COPY --from=build_lobehub /app/packages/database/migrations /app/migrations
 COPY --from=build_lobehub /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
