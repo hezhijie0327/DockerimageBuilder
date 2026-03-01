@@ -1,6 +1,6 @@
 ARG GCC_VERSION="15"
 
-FROM hezhijie0327/base:alpine AS GET_INFO
+FROM ghcr.io/hezhijie0327/module:alpine AS get_info
 
 WORKDIR /tmp
 
@@ -17,7 +17,7 @@ FROM gcc:${GCC_VERSION} AS build_lua
 
 WORKDIR /tmp
 
-COPY --from=GET_INFO /tmp/lua.autobuild /tmp/
+COPY --from=get_info /tmp/lua.autobuild /tmp/
 
 RUN \
     PREFIX="/BUILDLIB" \
