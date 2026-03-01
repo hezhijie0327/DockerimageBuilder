@@ -9,6 +9,7 @@ export CLOUDFLARED_VERSION_FIXED=""
 export JELLYFIN_VERSION_FIXED=""
 export JELLYFIN_WEB_VERSION_FIXED=""
 export LOBEHUB_VERSION_FIXED=""
+export LUA_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
 export QBITTORRENT_VERSION_FIXED=""
 export RUSTFS_VERSION_FIXED="1.0.0"
@@ -29,6 +30,7 @@ function GetLatestVersion() {
     JELLYFIN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JELLYFIN_WEB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-web/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     LOBEHUB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lobehub/lobehub/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | sort -V | grep -v "canary\|nightly" | tail -n 1 | sed "s/refs\/tags\/v//")
+    LUA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lua/lua/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
     QBITTORRENT_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|rc" | grep "^refs/tags/release-" | tail -n 1 | sed "s/refs\/tags\/release\-//")
     RUSTFS_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/rustfs/rustfs/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | grep -v "alpha" | tail -n 1 | sed "s/refs\/tags\///")
@@ -49,6 +51,7 @@ function GenerateReplacements() {
         "s/{JELLYFIN_VERSION}/${JELLYFIN_VERSION_FIXED:-${JELLYFIN_VERSION}}/g"
         "s/{JELLYFIN_WEB_VERSION}/${JELLYFIN_WEB_VERSION_FIXED:-${JELLYFIN_WEB_VERSION}}/g"
         "s/{LOBEHUB_VERSION}/${LOBEHUB_VERSION_FIXED:-${LOBEHUB_VERSION}}/g"
+        "s/{LUA_VERSION}/${LUA_VERSION_FIXED:-${LUA_VERSION}}/g"
         "s/{OPENSSL_VERSION}/${OPENSSL_VERSION_FIXED:-${OPENSSL_VERSION}}/g"
         "s/{QBITTORRENT_VERSION}/${QBITTORRENT_VERSION_FIXED:-${QBITTORRENT_VERSION}}/g"
         "s/{RUSTFS_VERSION}/${RUSTFS_VERSION_FIXED:-${RUSTFS_VERSION}}/g"
