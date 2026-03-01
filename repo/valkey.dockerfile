@@ -22,6 +22,8 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/VALKEY" \
     && sed -i 's/\(VALKEY_VERSION "\)[0-9]\+\(\.[0-9]\+\)*"/\1'"${VALKEY_CUSTOM_VERSION}"'"/' "${WORKDIR}/BUILDTMP/VALKEY/src/version.h"
 
+FROM ghcr.io/hezhijie0327/module:lua AS build_lua
+
 FROM ghcr.io/hezhijie0327/module:openssl AS build_openssl
 
 FROM gcc:${GCC_VERSION} AS build_valkey
@@ -30,12 +32,14 @@ WORKDIR /valkey
 
 COPY --from=get_info /tmp/BUILDTMP/VALKEY /valkey
 
+COPY --from=build_lua / /BUILDLIB/
+
 COPY --from=build_openssl / /BUILDLIB/
 
 RUN \
     PREFIX="/BUILDLIB" \
     && export CPPFLAGS="-I$PREFIX/include -static" \
-    && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static --static" \
+    && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
@@ -45,18 +49,17 @@ RUN \
     && apt install -qy \
           libjemalloc-dev \
     && make -j $(nproc) \
-        BUILD_LUA="no" BUILD_RDMA="no" BUILD_TLS="yes" \
+        BUILD_LUA="yes" BUILD_RDMA="no" BUILD_TLS="yes" \
         USE_FAST_FLOAT="yes" USE_LIBBACKTRACE="no" USE_SYSTEMD="no" \
         MALLOC="jemalloc" \
-    && make install \
-    && rm -rf /usr/local/bin/valkey-check-* "/usr/local/bin/valkey-sentinel" \
-    && strip -s /usr/local/bin/valkey-*
+    && make install
 
-FROM scratch AS rebased_valkey
+FROM busybox:latest AS rebased_valkey
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_valkey /usr/local/bin/valkey-* /
+COPY --from=build_valkey /usr/local/bin/valkey-* /app/
+COPY --from=build_valkey /usr/local/lib/libvalkeylua.so /lib/
 
 FROM scratch
 
@@ -64,4 +67,4 @@ COPY --from=rebased_valkey / /
 
 EXPOSE 6379/tcp
 
-ENTRYPOINT ["/valkey-server"]
+ENTRYPOINT ["/app/valkey-server"]
