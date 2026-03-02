@@ -22,6 +22,8 @@ RUN \
     && cd "${WORKDIR}/BUILDTMP/VALKEY" \
     && sed -i 's/\(VALKEY_VERSION "\)[0-9]\+\(\.[0-9]\+\)*"/\1'"${VALKEY_CUSTOM_VERSION}"'"/' "${WORKDIR}/BUILDTMP/VALKEY/src/version.h"
 
+FROM ghcr.io/hezhijie0327/module:jemalloc AS build_jemalloc
+
 FROM ghcr.io/hezhijie0327/module:lua AS build_lua
 
 FROM ghcr.io/hezhijie0327/module:openssl AS build_openssl
@@ -31,6 +33,8 @@ FROM gcc:${GCC_VERSION} AS build_valkey
 WORKDIR /valkey
 
 COPY --from=get_info /tmp/BUILDTMP/VALKEY /valkey
+
+COPY --from=build_jemalloc / /BUILDLIB/
 
 COPY --from=build_lua / /BUILDLIB/
 
@@ -45,9 +49,6 @@ RUN \
     && export PATH="$PREFIX/bin:$PATH" \
     && export OPENSSL_PREFIX="$PREFIX" \
     && ldconfig --verbose \
-    && apt update \
-    && apt install -qy \
-          libjemalloc-dev \
     && make -j $(nproc) \
         BUILD_LUA="yes" BUILD_RDMA="no" BUILD_TLS="yes" \
         USE_FAST_FLOAT="yes" USE_LIBBACKTRACE="no" USE_SYSTEMD="no" \

@@ -8,6 +8,7 @@ export BROWSERLESS_VERSION_FIXED=""
 export CLOUDFLARED_VERSION_FIXED=""
 export JELLYFIN_VERSION_FIXED=""
 export JELLYFIN_WEB_VERSION_FIXED=""
+export JEMALLOC_VERSION_FIXED=""
 export LOBEHUB_VERSION_FIXED=""
 export LUA_VERSION_FIXED=""
 export OPENSSL_VERSION_FIXED=""
@@ -29,6 +30,7 @@ function GetLatestVersion() {
     CLOUDFLARED_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/cloudflare/cloudflared/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/" | tail -n 1 | sed "s/refs\/tags\///")
     JELLYFIN_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
     JELLYFIN_WEB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-web/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | grep -v "-" | tail -n 1 | sed "s/refs\/tags\/v//")
+    JEMALLOC_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/jemalloc/jemalloc/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags" | tail -n 1 | sed "s/refs\/tags\///")
     LOBEHUB_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lobehub/lobehub/git/matching-refs/tags" | jq -Sr ".[].ref" | grep "^refs/tags/v" | sort -V | grep -v "canary\|nightly" | tail -n 1 | sed "s/refs\/tags\/v//")
     LUA_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/lua/lua/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta" | grep "^refs/tags/v" | tail -n 1 | sed "s/refs\/tags\/v//")
     OPENSSL_VERSION=$(curl -s --connect-timeout 15 "https://api.github.com/repos/openssl/openssl/git/matching-refs/tags" | jq -Sr ".[].ref" | grep -v "alpha\|beta\|pre" | grep "^refs/tags/OpenSSL\_1\|^refs/tags/openssl\-3" | sort | tail -n 1 | sed "s/refs\/tags\/OpenSSL\_//;s/refs\/tags\/openssl\-//" | tr "_" ".")
@@ -50,6 +52,7 @@ function GenerateReplacements() {
         "s/{CLOUDFLARED_VERSION}/${CLOUDFLARED_VERSION_FIXED:-${CLOUDFLARED_VERSION}}/g"
         "s/{JELLYFIN_VERSION}/${JELLYFIN_VERSION_FIXED:-${JELLYFIN_VERSION}}/g"
         "s/{JELLYFIN_WEB_VERSION}/${JELLYFIN_WEB_VERSION_FIXED:-${JELLYFIN_WEB_VERSION}}/g"
+        "s/{JEMALLOC_VERSION}/${JEMALLOC_VERSION_FIXED:-${JEMALLOC_VERSION}}/g"
         "s/{LOBEHUB_VERSION}/${LOBEHUB_VERSION_FIXED:-${LOBEHUB_VERSION}}/g"
         "s/{LUA_VERSION}/${LUA_VERSION_FIXED:-${LUA_VERSION}}/g"
         "s/{OPENSSL_VERSION}/${OPENSSL_VERSION_FIXED:-${OPENSSL_VERSION}}/g"
