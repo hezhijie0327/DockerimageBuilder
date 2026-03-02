@@ -15,9 +15,9 @@ RUN \
 
 FROM gcc:${GCC_VERSION} AS build_lua
 
-WORKDIR /tmp
+WORKDIR /lua
 
-COPY --from=get_info /tmp/lua.autobuild /tmp/
+COPY --from=get_info /tmp/BUILDTMP/LUA /lua
 
 RUN \
     PREFIX="/BUILDLIB" \
@@ -27,9 +27,9 @@ RUN \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
     && ldconfig --verbose \
-    && make -j $(nproc) CFLAGS="-O3 -march=native -fPIE -fstack-protector-all -D_FORTIFY_SOURCE=2" LDFLAGS="-Wl,-z,now -Wl,-z,relro -ltermcap" linux \
+    && make -j $(nproc) \
     && make install INSTALL_TOP="${PREFIX}/LUA" INSTALL_LIB="${PREFIX}/LUA/lib"
 
 FROM scratch
 
-COPY --from=build_lua /tmp/BUILDLIB/LUA /
+COPY --from=build_lua /BUILDLIB/LUA /
