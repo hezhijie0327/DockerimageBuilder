@@ -233,16 +233,35 @@ index 00000000000..760bc4d12fa
 +});
 diff --git a/packages/model-runtime/src/providers/longcat/index.ts b/packages/model-runtime/src/providers/longcat/index.ts
 new file mode 100644
-index 00000000000..0b5e6682d76
+index 00000000000..51264b3080c
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/longcat/index.ts
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,30 @@
 +import { ModelProvider } from 'model-bank';
 +
 +import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 +
 +export const LobeLongCatAI = createOpenAICompatibleRuntime({
 +  baseURL: 'https://api.longcat.chat/openai/v1',
++  chatCompletion: {
++    handlePayload: (payload) => {
++      const { frequency_penalty, presence_penalty, thinking, ...rest } = payload;
++
++      return {
++        ...rest,
++        frequency_penalty: undefined,
++        presence_penalty: undefined,
++        ...(thinking?.type !== undefined
++          ? {
++              enable_thinking: thinking.type === 'enabled',
++              thinking_budget:
++                thinking.budget_tokens === 0 ? 0 : thinking.budget_tokens || undefined,
++            }
++          : {}),
++        stream: true,
++      } as any;
++    },
++  },
 +  debug: {
 +    chatCompletion: () => process.env.DEBUG_LONGCAT_CHAT_COMPLETION === '1',
 +  },
