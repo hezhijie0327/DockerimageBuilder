@@ -1,8 +1,8 @@
 diff --git a/searx/engines/bing.py b/searx/engines/bing.py
-index 4a1934a2dad..880d5aeca84 100644
+index 4a1934a2dad..54cab7f988d 100644
 --- a/searx/engines/bing.py
 +++ b/searx/engines/bing.py
-@@ -1,197 +1,179 @@
+@@ -1,197 +1,175 @@
  # SPDX-License-Identifier: AGPL-3.0-or-later
 -"""This is the implementation of the Bing-WEB engine. Some of this
 +"""This is the implementation of the Bing-Web engine.  Some of this
@@ -90,40 +90,53 @@ index 4a1934a2dad..880d5aeca84 100644
 +    2: "strict",
 +}
 +"""Filter results. 0: None, 1: Moderate, 2: Strict"""
-+
-+send_accept_language_header = True
-+"""Must match the ``mkt`` param"""
-+
-+base_url = "https://www.bing.com/search"
-+"""Bing-Web search URL"""
  
 -base_url = 'https://www.bing.com/search'
 -"""Bing (Web) search URL"""
++send_accept_language_header = True
++"""Locale"""
+ 
++base_url = "https://www.bing.com/search"
++"""Bing-Web search URL"""
+ 
+-def _page_offset(pageno):
+-    return (int(pageno) - 1) * 10 + 1
  
 +def get_locale_params(engine_region: str | None) -> dict[str, str] | None:
 +    """API documentation states the ``mkt`` parameter is *the
 +    recommended primary signal* for locale:
  
--def _page_offset(pageno):
--    return (int(pageno) - 1) * 10 + 1
+-def set_bing_cookies(params, engine_language, engine_region):
+-    params['cookies']['_EDGE_CD'] = f'm={engine_region}&u={engine_language}'
+-    params['cookies']['_EDGE_S'] = f'mkt={engine_region}&ui={engine_language}'
+-    logger.debug("bing cookies: %s", params['cookies'])
 +        If known, you are encouraged to always specify the market.
 +        Specifying the market helps Bing route the request and return an
 +        appropriate and optimal response.
  
 +    The ``mkt`` parameter takes a full ``<language>-<country>`` code.
  
--def set_bing_cookies(params, engine_language, engine_region):
--    params['cookies']['_EDGE_CD'] = f'm={engine_region}&u={engine_language}'
--    params['cookies']['_EDGE_S'] = f'mkt={engine_region}&ui={engine_language}'
--    logger.debug("bing cookies: %s", params['cookies'])
+-def request(query, params):
+-    """Assemble a Bing-Web request."""
 +    This function is shared with :py:mod:`searx.engines.bing_images`,
 +    :py:mod:`searx.engines.bing_news`, and :py:mod:`searx.engines.bing_videos`.
 +    """
  
+-    engine_region = traits.get_region(params['searxng_locale'], traits.all_locale)  # type: ignore
+-    engine_language = traits.get_language(params['searxng_locale'], 'en')  # type: ignore
+-    set_bing_cookies(params, engine_language, engine_region)
+-
+-    page = params.get('pageno', 1)
+-    query_params = {
+-        'q': query,
+-        # if arg 'pq' is missed, sometimes on page 4 we get results from page 1,
+-        # don't ask why it is only sometimes / its M$ and they have never been
+-        # deterministic ;)
+-        'pq': query,
+-    }
 +    if not engine_region or engine_region == "clear":
 +        return None
- 
--def request(query, params):
++
 +    return {"mkt": engine_region}
 +
 +
@@ -150,26 +163,12 @@ index 4a1934a2dad..880d5aeca84 100644
 +
 +
 +def request(query: str, params: "OnlineParams") -> "OnlineParams":
-     """Assemble a Bing-Web request."""
- 
--    engine_region = traits.get_region(params['searxng_locale'], traits.all_locale)  # type: ignore
--    engine_language = traits.get_language(params['searxng_locale'], 'en')  # type: ignore
--    set_bing_cookies(params, engine_language, engine_region)
--
--    page = params.get('pageno', 1)
--    query_params = {
--        'q': query,
--        # if arg 'pq' is missed, sometimes on page 4 we get results from page 1,
--        # don't ask why it is only sometimes / its M$ and they have never been
--        # deterministic ;)
--        'pq': query,
--    }
-+    engine_region = traits.get_region(params["searxng_locale"], traits.all_locale)
++    """Assemble a Bing-Web request."""
  
 -    # To get correct page, arg first and this arg FORM is needed, the value PERE
 -    # is on page 2, on page 3 its PERE1 and on page 4 its PERE2 .. and so forth.
 -    # The 'first' arg should never send on page 1.
-+    override_accept_language(params, engine_region)
++    engine_region = traits.get_region(params["searxng_locale"], traits.all_locale)
  
 -    if page > 1:
 -        query_params['first'] = _page_offset(page)  # see also arg FORM
@@ -177,15 +176,13 @@ index 4a1934a2dad..880d5aeca84 100644
 -        query_params['FORM'] = 'PERE'
 -    elif page > 2:
 -        query_params['FORM'] = 'PERE%s' % (page - 2)
++    override_accept_language(params, engine_region)
+ 
+-    params['url'] = f'{base_url}?{urlencode(query_params)}'
 +    query_params: dict[str, str | int] = {
 +        "q": query,
 +        "adlt": _safesearch_map.get(params.get("safesearch", 0), "off"),
 +    }
- 
--    params['url'] = f'{base_url}?{urlencode(query_params)}'
-+    locale_params = get_locale_params(engine_region)
-+    if locale_params:
-+        query_params.update(locale_params)
  
 -    if params.get('time_range'):
 -        unix_day = int(time.time() / 86400)
@@ -319,7 +316,7 @@ index 4a1934a2dad..880d5aeca84 100644
      # pylint: disable=import-outside-toplevel
  
      from searx.network import get  # see https://github.com/searxng/searxng/issues/762
-@@ -208,72 +190,38 @@ def fetch_traits(engine_traits: EngineTraits):
+@@ -208,72 +186,38 @@ def fetch_traits(engine_traits: EngineTraits):
          "Cache-Control": "max-age=0",
      }
  
@@ -328,12 +325,12 @@ index 4a1934a2dad..880d5aeca84 100644
 -        print("ERROR: response from bing is not OK.")
 -
 -    dom = html.fromstring(resp.text)  # type: ignore
--
--    # languages
 +    resp = get("https://www.bing.com/account/general", headers=headers, timeout=5)
 +    if not resp.ok:
 +        raise RuntimeError("Response from Bing is not OK.")
  
+-    # languages
+-
 -    engine_traits.languages['zh'] = 'zh-hans'
 +    dom = html.fromstring(resp.text)
  
