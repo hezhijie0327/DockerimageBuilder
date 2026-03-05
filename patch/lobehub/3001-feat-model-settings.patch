@@ -1,0 +1,531 @@
+diff --git a/locales/en-US/setting.json b/locales/en-US/setting.json
+index 3813b728b4f..5d6640b688e 100644
+--- a/locales/en-US/setting.json
++++ b/locales/en-US/setting.json
+@@ -191,6 +191,22 @@
+   "defaultAgent.model.desc": "Default model used when creating a new Agent",
+   "defaultAgent.model.title": "Model",
+   "defaultAgent.title": "Default Agent Settings",
++  "filesConfig.embeddingGroup.title": "Embedding",
++  "filesConfig.embeddingModel.desc": "Select embedding model used for file indexing and knowledge base",
++  "filesConfig.embeddingModel.placeholder": "Select embedding model",
++  "filesConfig.embeddingModel.title": "Embedding Model",
++  "filesConfig.queryGroup.title": "Query",
++  "filesConfig.queryMode.desc": "Choose how to search and retrieve content from files",
++  "filesConfig.queryMode.fullText": "Full Text",
++  "filesConfig.queryMode.hybrid": "Hybrid",
++  "filesConfig.queryMode.placeholder": "Select query mode",
++  "filesConfig.queryMode.semantic": "Semantic",
++  "filesConfig.queryMode.title": "Query Mode",
++  "filesConfig.rerankGroup.title": "Rerank",
++  "filesConfig.rerankModel.desc": "Select rerank model to improve search relevance",
++  "filesConfig.rerankModel.placeholder": "Select rerank model",
++  "filesConfig.rerankModel.title": "Rerank Model",
++  "filesConfig.title": "Files & Knowledge Base",
+   "group.aiConfig": "Agent",
+   "group.common": "General",
+   "group.profile": "Account",
+@@ -697,6 +713,7 @@
+   "tab.chatAppearance": "Chat Appearance",
+   "tab.common": "Appearance",
+   "tab.experiment": "Experiment",
++  "tab.files": "Files & Knowledge",
+   "tab.hotkey": "Hotkeys",
+   "tab.image": "Image Generation Service",
+   "tab.importFromGithub": "Import from GitHub",
+diff --git a/locales/zh-CN/setting.json b/locales/zh-CN/setting.json
+index 29b1f05d44a..a0d103f1344 100644
+--- a/locales/zh-CN/setting.json
++++ b/locales/zh-CN/setting.json
+@@ -191,6 +191,22 @@
+   "defaultAgent.model.desc": "创建新助理时使用的默认模型",
+   "defaultAgent.model.title": "模型",
+   "defaultAgent.title": "默认助理设置",
++  "filesConfig.embeddingGroup.title": "向量化",
++  "filesConfig.embeddingModel.desc": "选择用于文件索引和知识库的向量化模型",
++  "filesConfig.embeddingModel.placeholder": "选择向量化模型",
++  "filesConfig.embeddingModel.title": "向量化模型",
++  "filesConfig.queryGroup.title": "查询",
++  "filesConfig.queryMode.desc": "选择从文件中搜索和检索内容的方式",
++  "filesConfig.queryMode.fullText": "全文",
++  "filesConfig.queryMode.hybrid": "混合",
++  "filesConfig.queryMode.placeholder": "选择查询模式",
++  "filesConfig.queryMode.semantic": "语义",
++  "filesConfig.queryMode.title": "查询模式",
++  "filesConfig.rerankGroup.title": "重排序",
++  "filesConfig.rerankModel.desc": "选择重排序模型以提升搜索相关性",
++  "filesConfig.rerankModel.placeholder": "选择重排序模型",
++  "filesConfig.rerankModel.title": "重排序模型",
++  "filesConfig.title": "文件与知识库",
+   "group.aiConfig": "智能体",
+   "group.common": "通用",
+   "group.profile": "账号",
+@@ -697,6 +713,7 @@
+   "tab.chatAppearance": "聊天外观",
+   "tab.common": "外观",
+   "tab.experiment": "实验",
++  "tab.files": "文件与知识库",
+   "tab.hotkey": "快捷键",
+   "tab.image": "绘画服务",
+   "tab.importFromGithub": "从 GitHub 导入",
+diff --git a/packages/config/src/index.ts b/packages/config/src/index.ts
+index ee819559a21..d2a0ac9dc51 100644
+--- a/packages/config/src/index.ts
++++ b/packages/config/src/index.ts
+@@ -2,6 +2,7 @@ import { DEFAULT_LLM_CONFIG } from '@lobechat/business-config';
+ import {
+   DEFAULT_AGENT,
+   DEFAULT_COMMON_SETTINGS,
++  DEFAULT_FILES_CONFIG,
+   DEFAULT_HOTKEY_CONFIG,
+   DEFAULT_IMAGE_CONFIG,
+   DEFAULT_MEMORY_SETTINGS,
+@@ -13,6 +14,7 @@ import type { UserSettings } from '@lobechat/types';
+ 
+ export const DEFAULT_SETTINGS: UserSettings = {
+   defaultAgent: DEFAULT_AGENT,
++  filesConfig: DEFAULT_FILES_CONFIG,
+   general: DEFAULT_COMMON_SETTINGS,
+   hotkey: DEFAULT_HOTKEY_CONFIG,
+   image: DEFAULT_IMAGE_CONFIG,
+diff --git a/packages/types/src/user/settings/index.ts b/packages/types/src/user/settings/index.ts
+index 0796940e178..03671c8047b 100644
+--- a/packages/types/src/user/settings/index.ts
++++ b/packages/types/src/user/settings/index.ts
+@@ -1,6 +1,7 @@
+ import { z } from 'zod';
+ 
+ import type { LobeAgentSettings } from '../../session';
++import type { FilesConfig } from './filesConfig';
+ import type { UserGeneralConfig } from './general';
+ import type { UserHotkeyConfig } from './hotkey';
+ import type { UserImageConfig } from './image';
+@@ -32,6 +33,7 @@ export * from './tts';
+  */
+ export interface UserSettings {
+   defaultAgent: UserDefaultAgent;
++  filesConfig?: FilesConfig;
+   general: UserGeneralConfig;
+   hotkey: UserHotkeyConfig;
+   image: UserImageConfig;
+@@ -51,6 +53,7 @@ export interface UserSettings {
+ export const UserSettingsSchema = z
+   .object({
+     defaultAgent: z.any().optional(),
++    filesConfig: z.any().optional(),
+     general: z.any().optional(),
+     hotkey: z.any().optional(),
+     image: z.any().optional(),
+diff --git a/src/hooks/useEnabledEmbeddingModels.ts b/src/hooks/useEnabledEmbeddingModels.ts
+new file mode 100644
+index 00000000000..5b4b808b242
+--- /dev/null
++++ b/src/hooks/useEnabledEmbeddingModels.ts
+@@ -0,0 +1,10 @@
++import isEqual from 'fast-deep-equal';
++
++import { useAiInfraStore } from '@/store/aiInfra';
++import { type EnabledProviderWithModels } from '@/types/aiProvider';
++
++export const useEnabledEmbeddingModels = (): EnabledProviderWithModels[] => {
++  const enabledEmbeddingModelList = useAiInfraStore((s) => s.enabledEmbeddingModelList, isEqual);
++
++  return enabledEmbeddingModelList || [];
++};
+diff --git a/src/locales/default/setting.ts b/src/locales/default/setting.ts
+index e4a7454932d..4fa94cb7738 100644
+--- a/src/locales/default/setting.ts
++++ b/src/locales/default/setting.ts
+@@ -360,6 +360,22 @@ export default {
+     'Allow LobeHub to extract preferences and info from conversations and use them later. You can view, edit, or clear memory anytime.',
+   'memory.enabled.title': 'Enable Memory',
+   'memory.title': 'Memory Settings',
++  'filesConfig.embeddingGroup.title': 'Embedding',
++  'filesConfig.embeddingModel.desc':
++    'Select the embedding model used for file indexing and knowledge base',
++  'filesConfig.embeddingModel.placeholder': 'Select embedding model',
++  'filesConfig.embeddingModel.title': 'Embedding Model',
++  'filesConfig.queryGroup.title': 'Query',
++  'filesConfig.queryMode.desc': 'Choose how to search and retrieve content from files',
++  'filesConfig.queryMode.fullText': 'Full Text',
++  'filesConfig.queryMode.hybrid': 'Hybrid',
++  'filesConfig.queryMode.placeholder': 'Select query mode',
++  'filesConfig.queryMode.semantic': 'Semantic',
++  'filesConfig.queryMode.title': 'Query Mode',
++  'filesConfig.rerankGroup.title': 'Rerank',
++  'filesConfig.rerankModel.desc': 'Select the rerank model to improve search relevance',
++  'filesConfig.rerankModel.placeholder': 'Select rerank model',
++  'filesConfig.rerankModel.title': 'Rerank Model',
+   'message.success': 'Update successful',
+   'myAgents.actions.cancel': 'Cancel',
+   'myAgents.actions.confirmDeprecate': 'Confirm Deprecate',
+@@ -812,6 +828,7 @@ When I am ___, I need ___
+   'tab.llm': 'Language Model',
+   'tab.manualFill': 'Manually Fill In',
+   'tab.manualFill.desc': 'Configure a custom MCP skill manually',
++  'tab.files': 'Files & Knowledge',
+   'tab.memory': 'Memory',
+   'tab.profile': 'My Account',
+   'tab.provider': 'AI Service Provider',
+diff --git a/src/routes/(main)/settings/features/componentMap.ts b/src/routes/(main)/settings/features/componentMap.ts
+index 6d70ea5df99..fe74034d1ee 100644
+--- a/src/routes/(main)/settings/features/componentMap.ts
++++ b/src/routes/(main)/settings/features/componentMap.ts
+@@ -19,6 +19,9 @@ export const componentMap = {
+   [SettingsTabs.Image]: dynamic(() => import('../image'), {
+     loading: loading('Settings > Image'),
+   }),
++  [SettingsTabs.Files]: dynamic(() => import('../files'), {
++    loading: loading('Settings > Files'),
++  }),
+   [SettingsTabs.Memory]: dynamic(() => import('../memory'), {
+     loading: loading('Settings > Memory'),
+   }),
+diff --git a/src/routes/(main)/settings/files/features/FilesConfig.tsx b/src/routes/(main)/settings/files/features/FilesConfig.tsx
+new file mode 100644
+index 00000000000..92f2519bb60
+--- /dev/null
++++ b/src/routes/(main)/settings/files/features/FilesConfig.tsx
+@@ -0,0 +1,158 @@
++'use client';
++
++import { type FormGroupItemType } from '@lobehub/ui';
++import { Form, Skeleton } from '@lobehub/ui';
++import { Select } from '@lobehub/ui/base-ui';
++import isEqual from 'fast-deep-equal';
++import { memo, useState } from 'react';
++import { useTranslation } from 'react-i18next';
++
++import { FORM_STYLE } from '@/const/layoutTokens';
++import { useEnabledChatModels } from '@/hooks/useEnabledChatModels';
++import { useEnabledEmbeddingModels } from '@/hooks/useEnabledEmbeddingModels';
++import { useUserStore } from '@/store/user';
++import { settingsSelectors } from '@/store/user/selectors';
++
++const FilesConfigSetting = memo(() => {
++  const { t } = useTranslation('setting');
++  const [form] = Form.useForm();
++  const { filesConfig } = useUserStore(settingsSelectors.currentSettings, isEqual);
++  const [setSettings, isUserStateInit] = useUserStore((s) => [s.setSettings, s.isUserStateInit]);
++  const [loading, setLoading] = useState(false);
++
++  const embeddingModels = useEnabledEmbeddingModels();
++  const chatModels = useEnabledChatModels();
++
++  if (!isUserStateInit) return <Skeleton active paragraph={{ rows: 3 }} title={false} />;
++
++  const embeddingModelOptions = embeddingModels.flatMap((provider) =>
++    provider.children.map((model) => ({
++      label: `${provider.name} / ${model.displayName || model.id}`,
++      value: `${provider.id}/${model.id}`,
++    })),
++  );
++
++  const rerankModelOptions = chatModels.flatMap((provider) =>
++    provider.children.map((model) => ({
++      label: `${provider.name} / ${model.displayName || model.id}`,
++      value: `${provider.id}/${model.id}`,
++    })),
++  );
++
++  const queryModeOptions = [
++    { label: t('filesConfig.queryMode.fullText'), value: 'full_text' },
++    { label: t('filesConfig.queryMode.semantic'), value: 'semantic' },
++    { label: t('filesConfig.queryMode.hybrid'), value: 'hybrid' },
++  ];
++
++  const embeddingConfig: FormGroupItemType = {
++    children: [
++      {
++        children: (
++          <Select
++            options={embeddingModelOptions}
++            placeholder={t('filesConfig.embeddingModel.placeholder')}
++            value={
++              filesConfig?.embeddingModel
++                ? `${filesConfig.embeddingModel.provider}/${filesConfig.embeddingModel.model}`
++                : undefined
++            }
++            onChange={async (value: string) => {
++              setLoading(true);
++              const [provider, model] = value.split('/');
++              await setSettings({
++                filesConfig: {
++                  ...filesConfig,
++                  embeddingModel: { model, provider },
++                },
++              });
++              setLoading(false);
++            }}
++          />
++        ),
++        desc: t('filesConfig.embeddingModel.desc'),
++        label: t('filesConfig.embeddingModel.title'),
++        layout: 'horizontal',
++        minWidth: undefined,
++      },
++    ],
++    title: t('filesConfig.embeddingGroup.title'),
++  };
++
++  const queryConfig: FormGroupItemType = {
++    children: [
++      {
++        children: (
++          <Select
++            options={queryModeOptions}
++            placeholder={t('filesConfig.queryMode.placeholder')}
++            value={filesConfig?.queryMode}
++            onChange={async (value: string) => {
++              setLoading(true);
++              await setSettings({
++                filesConfig: {
++                  ...filesConfig,
++                  queryMode: value,
++                },
++              });
++              setLoading(false);
++            }}
++          />
++        ),
++        desc: t('filesConfig.queryMode.desc'),
++        label: t('filesConfig.queryMode.title'),
++        layout: 'horizontal',
++        minWidth: undefined,
++      },
++    ],
++    title: t('filesConfig.queryGroup.title'),
++  };
++
++  const rerankConfig: FormGroupItemType = {
++    children: [
++      {
++        children: (
++          <Select
++            options={rerankModelOptions}
++            placeholder={t('filesConfig.rerankModel.placeholder')}
++            value={
++              filesConfig?.rerankerModel
++                ? `${filesConfig.rerankerModel.provider}/${filesConfig.rerankerModel.model}`
++                : undefined
++            }
++            onChange={async (value: string) => {
++              setLoading(true);
++              const [provider, model] = value.split('/');
++              await setSettings({
++                filesConfig: {
++                  ...filesConfig,
++                  rerankerModel: { model, provider },
++                },
++              });
++              setLoading(false);
++            }}
++          />
++        ),
++        desc: t('filesConfig.rerankModel.desc'),
++        label: t('filesConfig.rerankModel.title'),
++        layout: 'horizontal',
++        minWidth: undefined,
++      },
++    ],
++    title: t('filesConfig.rerankGroup.title'),
++  };
++
++  return (
++    <Form
++      collapsible={false}
++      form={form}
++      initialValues={filesConfig}
++      items={[embeddingConfig, queryConfig, rerankConfig]}
++      itemsType={'group'}
++      variant={'filled'}
++      {...FORM_STYLE}
++    />
++  );
++});
++
++export default FilesConfigSetting;
+diff --git a/src/routes/(main)/settings/files/index.tsx b/src/routes/(main)/settings/files/index.tsx
+new file mode 100644
+index 00000000000..9134efd5e99
+--- /dev/null
++++ b/src/routes/(main)/settings/files/index.tsx
+@@ -0,0 +1,17 @@
++import { useTranslation } from 'react-i18next';
++
++import SettingHeader from '@/routes/(main)/settings/features/SettingHeader';
++
++import FilesConfig from './features/FilesConfig';
++
++const Page = () => {
++  const { t } = useTranslation('setting');
++  return (
++    <>
++      <SettingHeader title={t('tab.files')} />
++      <FilesConfig />
++    </>
++  );
++};
++
++export default Page;
+diff --git a/src/store/aiInfra/slices/aiProvider/action.ts b/src/store/aiInfra/slices/aiProvider/action.ts
+index 55ac14e2e28..7cc9315c965 100644
+--- a/src/store/aiInfra/slices/aiProvider/action.ts
++++ b/src/store/aiInfra/slices/aiProvider/action.ts
+@@ -168,6 +168,8 @@ export const getChatModelList = createProviderModelCollector('chat', async (mode
+ 
+ export const getImageModelList = createProviderModelCollector('image', normalizeImageModel);
+ 
++export const getEmbeddingModelList = createProviderModelCollector('embedding', normalizeChatModel);
++
+ export const getVideoModelList = createProviderModelCollector('video', normalizeVideoModel);
+ 
+ const buildProviderModelLists = async (
+@@ -203,6 +205,14 @@ const buildChatProviderModelLists = async (
+   enabledAiModels: EnabledAiModel[],
+ ) => buildProviderModelLists(providers, enabledAiModels, getChatModelList);
+ 
++/**
++ * Build embedding provider model lists with proper async handling
++ */
++const buildEmbeddingProviderModelLists = async (
++  providers: EnabledProvider[],
++  enabledAiModels: EnabledAiModel[],
++) => buildProviderModelLists(providers, enabledAiModels, getEmbeddingModelList);
++
+ /**
+  * Build video provider model lists with proper async handling
+  */
+@@ -220,6 +230,7 @@ enum AiProviderSwrKey {
+ type AiProviderRuntimeStateWithBuiltinModels = AiProviderRuntimeState & {
+   builtinAiModelList: LobeDefaultAiModelListItem[];
+   enabledChatModelList?: EnabledProviderWithModels[];
++  enabledEmbeddingModelList?: EnabledProviderWithModels[];
+   enabledImageModelList?: EnabledProviderWithModels[];
+   enabledVideoModelList?: EnabledProviderWithModels[];
+ };
+@@ -465,17 +476,23 @@ export class AiProviderActionImpl {
+         if (isLogin) {
+           const data = await aiProviderService.getAiProviderRuntimeState();
+           // Build model lists with proper async handling
+-          const [enabledChatModelList, enabledImageModelList, enabledVideoModelList] =
+-            await Promise.all([
+-              buildChatProviderModelLists(data.enabledChatAiProviders, data.enabledAiModels),
+-              buildImageProviderModelLists(data.enabledImageAiProviders, data.enabledAiModels),
+-              buildVideoProviderModelLists(data.enabledVideoAiProviders, data.enabledAiModels),
+-            ]);
++          const [
++            enabledChatModelList,
++            enabledEmbeddingModelList,
++            enabledImageModelList,
++            enabledVideoModelList,
++          ] = await Promise.all([
++            buildChatProviderModelLists(data.enabledChatAiProviders, data.enabledAiModels),
++            buildEmbeddingProviderModelLists(data.enabledAiProviders, data.enabledAiModels),
++            buildImageProviderModelLists(data.enabledImageAiProviders, data.enabledAiModels),
++            buildVideoProviderModelLists(data.enabledVideoAiProviders, data.enabledAiModels),
++          ]);
+ 
+           return {
+             ...data,
+             builtinAiModelList,
+             enabledChatModelList,
++            enabledEmbeddingModelList,
+             enabledImageModelList,
+             enabledVideoModelList,
+           };
+@@ -507,14 +524,27 @@ export class AiProviderActionImpl {
+           })
+           .map((item) => ({ id: item.id, name: item.name, source: AiProviderSourceEnum.Builtin }));
+ 
++        const enabledEmbeddingAiProviders = enabledAiProviders
++          .filter((provider) => {
++            return builtinAiModelList.some(
++              (model) => model.providerId === provider.id && model.type === 'embedding',
++            );
++          })
++          .map((item) => ({ id: item.id, name: item.name, source: AiProviderSourceEnum.Builtin }));
++
+         // Build model lists for non-login state as well
+         const enabledAiModels = builtinAiModelList.filter((m) => m.enabled);
+-        const [enabledChatModelList, enabledImageModelList, enabledVideoModelList] =
+-          await Promise.all([
+-            buildChatProviderModelLists(enabledChatAiProviders, enabledAiModels),
+-            buildImageProviderModelLists(enabledImageAiProviders, enabledAiModels),
+-            buildVideoProviderModelLists(enabledVideoAiProviders, enabledAiModels),
+-          ]);
++        const [
++          enabledChatModelList,
++          enabledEmbeddingModelList,
++          enabledImageModelList,
++          enabledVideoModelList,
++        ] = await Promise.all([
++          buildChatProviderModelLists(enabledChatAiProviders, enabledAiModels),
++          buildEmbeddingProviderModelLists(enabledEmbeddingAiProviders, enabledAiModels),
++          buildImageProviderModelLists(enabledImageAiProviders, enabledAiModels),
++          buildVideoProviderModelLists(enabledVideoAiProviders, enabledAiModels),
++        ]);
+ 
+         return {
+           builtinAiModelList,
+@@ -522,6 +552,7 @@ export class AiProviderActionImpl {
+           enabledAiProviders,
+           enabledChatAiProviders,
+           enabledChatModelList,
++          enabledEmbeddingModelList,
+           enabledImageAiProviders,
+           enabledImageModelList,
+           enabledVideoAiProviders,
+@@ -540,6 +571,7 @@ export class AiProviderActionImpl {
+               enabledAiModels: data.enabledAiModels,
+               enabledAiProviders: data.enabledAiProviders,
+               enabledChatModelList: data.enabledChatModelList || [],
++              enabledEmbeddingModelList: data.enabledEmbeddingModelList || [],
+               enabledImageModelList: data.enabledImageModelList || [],
+               enabledVideoModelList: data.enabledVideoModelList || [],
+               isInitAiProviderRuntimeState: true,
+diff --git a/src/store/aiInfra/slices/aiProvider/initialState.ts b/src/store/aiInfra/slices/aiProvider/initialState.ts
+index 7a7bb6949c1..39edcb3e584 100644
+--- a/src/store/aiInfra/slices/aiProvider/initialState.ts
++++ b/src/store/aiInfra/slices/aiProvider/initialState.ts
+@@ -24,6 +24,7 @@ export interface AIProviderState {
+   enabledAiProviders?: EnabledProvider[];
+   // used for select
+   enabledChatModelList?: EnabledProviderWithModels[];
++  enabledEmbeddingModelList?: EnabledProviderWithModels[];
+   enabledImageModelList?: EnabledProviderWithModels[];
+   enabledVideoModelList?: EnabledProviderWithModels[];
+   initAiProviderList: boolean;
+diff --git a/src/store/aiInfra/slices/aiProvider/selectors.ts b/src/store/aiInfra/slices/aiProvider/selectors.ts
+index 3f67cd34d50..4903e347208 100644
+--- a/src/store/aiInfra/slices/aiProvider/selectors.ts
++++ b/src/store/aiInfra/slices/aiProvider/selectors.ts
+@@ -17,6 +17,8 @@ const disabledCustomAiProviderList = (s: AIProviderStoreState) =>
+ 
+ const enabledImageModelList = (s: AIProviderStoreState) => s.enabledImageModelList || [];
+ 
++const enabledEmbeddingModelList = (s: AIProviderStoreState) => s.enabledEmbeddingModelList || [];
++
+ const enabledVideoModelList = (s: AIProviderStoreState) => s.enabledVideoModelList || [];
+ 
+ const isProviderEnabled = (id: string) => (s: AIProviderStoreState) =>
+@@ -137,6 +139,7 @@ export const aiProviderSelectors = {
+   disabledAiProviderList,
+   disabledCustomAiProviderList,
+   enabledAiProviderList,
++  enabledEmbeddingModelList,
+   enabledImageModelList,
+   enabledVideoModelList,
+   isActiveProviderApiKeyNotEmpty,
+diff --git a/src/store/global/initialState.ts b/src/store/global/initialState.ts
+index f66fb48ea90..7969f8272d4 100644
+--- a/src/store/global/initialState.ts
++++ b/src/store/global/initialState.ts
+@@ -43,6 +43,7 @@ export enum SettingsTabs {
+   Billing = 'billing',
+   ChatAppearance = 'chat-appearance',
+   Common = 'common',
++  Files = 'files',
+   Funds = 'funds',
+   Hotkey = 'hotkey',
+   Image = 'image',
