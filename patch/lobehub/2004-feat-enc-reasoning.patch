@@ -1,0 +1,352 @@
+diff --git a/packages/model-runtime/src/core/contextBuilders/openai.ts b/packages/model-runtime/src/core/contextBuilders/openai.ts
+index 9a506725f8a..08aa4f90037 100644
+--- a/packages/model-runtime/src/core/contextBuilders/openai.ts
++++ b/packages/model-runtime/src/core/contextBuilders/openai.ts
+@@ -78,6 +78,18 @@ export const convertOpenAIResponseInputs = async (
+   const input: OpenAI.Responses.ResponseInputItem[] = [];
+   await Promise.all(
+     messages.map(async (message) => {
++      // if message has reasoning.encrypted_content, add it as a separate reasoning item
++      const reasoningData = message.reasoning as any;
++      if (reasoningData?.encrypted_content) {
++        input.push({
++          encrypted_content: reasoningData.encrypted_content,
++          id: reasoningData.id,
++          status: 'completed',
++          summary: reasoningData.summary || [],
++          type: 'reasoning',
++        } as any);
++      }
++
+       // if message has reasoning, add it as a separate reasoning item
+       if (message.reasoning?.content) {
+         input.push({
+diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
+index 2834fad6663..fd65cfe620f 100644
+--- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
++++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
+@@ -918,10 +918,18 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+ 
+       const inputStartAt = Date.now();
+ 
+-      const { messages, reasoning_effort, tools, reasoning, responseMode, max_tokens, ...res } =
+-        responses?.handlePayload
+-          ? (responses?.handlePayload(payload, this._options) as ChatStreamPayload)
+-          : payload;
++      const {
++        messages,
++        reasoning_effort,
++        tools,
++        reasoning,
++        responseMode,
++        max_tokens,
++        include,
++        ...res
++      } = responses?.handlePayload
++        ? (responses?.handlePayload(payload, this._options) as ChatStreamPayload)
++        : payload;
+ 
+       // remove penalty params and chat completion specific params
+       delete res.apiMode;
+@@ -950,6 +958,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+               },
+             }
+           : {}),
++        include: include?.length ? include : undefined,
+         input,
+         ...(max_tokens && { max_output_tokens: max_tokens }),
+         store: false,
+diff --git a/packages/model-runtime/src/core/streams/openai/__snapshots__/responsesStream.test.ts.snap b/packages/model-runtime/src/core/streams/openai/__snapshots__/responsesStream.test.ts.snap
+index 760a2d2d8d8..f1d2c6cabec 100644
+--- a/packages/model-runtime/src/core/streams/openai/__snapshots__/responsesStream.test.ts.snap
++++ b/packages/model-runtime/src/core/streams/openai/__snapshots__/responsesStream.test.ts.snap
+@@ -145,6 +145,53 @@ exports[`OpenAIResponsesStream > Reasoning > summary 1`] = `
+ ]
+ `;
+ 
++exports[`OpenAIResponsesStream > Reasoning Encrypted Content > should handle reasoning.encrypted_content from x.ai 1`] = `
++[
++  "id: resp_xai_reasoning
++",
++  "event: data
++",
++  "data: "in_progress"
++
++",
++  "id: resp_xai_reasoning
++",
++  "event: data
++",
++  "data: {"id":"rs_xai_reasoning_123","type":"reasoning","summary":[],"status":"in_progress"}
++
++",
++  "id: rs_xai_reasoning_123
++",
++  "event: reasoning_encrypted
++",
++  "data: {"id":"rs_xai_reasoning_123","type":"reasoning","summary":[],"status":"completed","encrypted_content":"g6LZZR+Ei+tsiEaKVvnh5fnpdOx71Cee/urDNIxYZTpuE3n0iAkj/E/796NZOOkKqkgNVMXUNPnQHMBVZrMbF/SQROCnvmKVT0WorULtR1YYa7cYcQmVzqTeahYCvhoVildmVF/nPh3czwIcsJ8zrvyiWq7K2+46jZXoBQN+JlBoAAR63qonlnz/WH0JqTR01v53biGOx2LEEWxKCdXEvYk3E//jC8wgnbP78BSfMASLkGSWEk6z2JytD7ZSqSRvByBSVg0FBnwEUG7QbxvkmIjBCvHdh/qRdZY6rodNQw+pGeLxbi5ixeuunE4fTyyYnuLs+NgpNo5IkMY2ZxOYoKkcpwBpyLvOYckHDyd0Bl1Vfj4PQm/1TdVR/QaEN1xfIPciImAE5VA0LMzXY64OeNTpP2zbBR3m3E8ItE4LaHdcbx1TL0Rpidy5NCY1yHTQg6ao53xWfrapUHTGFo7XRfxnUprfG+Vz6x8KzPggpCi2j6mgbYzkuPM05ZP9wyjbOmgnedPsSTfU2pUbxp0woJnwW3Css6IdLUVRd5957KrpiMD9gr2eq4ZlpkYsOlu3CPa8KrUboovZTx92KGmdkgdcqpME/wt8PuOFiOMSMOsqaqTgzJPnnutRvqz0zB9EzSF5rHfP3UK+R1YlAYQpkJE5/ocqyIOXLi9CcFI0b0EDYsEX8bd4oa/sXOeg9i3Mbf3XHpftg2sV/d8"}
++
++",
++  "id: resp_xai_reasoning
++",
++  "event: data
++",
++  "data: {"id":"msg_xai_123","type":"message","status":"in_progress","content":[],"role":"assistant"}
++
++",
++  "id: msg_xai_123
++",
++  "event: text
++",
++  "data: "Hello!"
++
++",
++  "id: resp_xai_reasoning
++",
++  "event: usage
++",
++  "data: {"inputCacheMissTokens":100,"inputTextTokens":100,"outputTextTokens":50,"totalInputTokens":100,"totalOutputTokens":50,"totalTokens":150}
++
++",
++]
++`;
++
+ exports[`OpenAIResponsesStream > should handle chunks with undefined values gracefully 1`] = `
+ [
+   "id: resp_undefined_vals
+diff --git a/packages/model-runtime/src/core/streams/openai/responsesStream.test.ts b/packages/model-runtime/src/core/streams/openai/responsesStream.test.ts
+index 761358f4b6d..d6e9f903edc 100644
+--- a/packages/model-runtime/src/core/streams/openai/responsesStream.test.ts
++++ b/packages/model-runtime/src/core/streams/openai/responsesStream.test.ts
+@@ -1373,4 +1373,77 @@ describe('OpenAIResponsesStream', () => {
+       expect(onCompletionMock).toHaveBeenCalledTimes(1);
+     });
+   });
++
++  describe('Reasoning Encrypted Content', () => {
++    it('should handle reasoning.encrypted_content from x.ai', async () => {
++      const mockOpenAIStream = createReadableStream([
++        {
++          type: 'response.created',
++          response: {
++            id: 'resp_xai_reasoning',
++            status: 'in_progress',
++          },
++        },
++        {
++          type: 'response.output_item.added',
++          output_index: 0,
++          item: {
++            id: 'rs_xai_reasoning_123',
++            type: 'reasoning',
++            summary: [],
++            status: 'in_progress',
++          },
++        },
++        {
++          type: 'response.output_item.done',
++          output_index: 0,
++          item: {
++            id: 'rs_xai_reasoning_123',
++            type: 'reasoning',
++            summary: [],
++            status: 'completed',
++            encrypted_content:
++              'g6LZZR+Ei+tsiEaKVvnh5fnpdOx71Cee/urDNIxYZTpuE3n0iAkj/E/796NZOOkKqkgNVMXUNPnQHMBVZrMbF/SQROCnvmKVT0WorULtR1YYa7cYcQmVzqTeahYCvhoVildmVF/nPh3czwIcsJ8zrvyiWq7K2+46jZXoBQN+JlBoAAR63qonlnz/WH0JqTR01v53biGOx2LEEWxKCdXEvYk3E//jC8wgnbP78BSfMASLkGSWEk6z2JytD7ZSqSRvByBSVg0FBnwEUG7QbxvkmIjBCvHdh/qRdZY6rodNQw+pGeLxbi5ixeuunE4fTyyYnuLs+NgpNo5IkMY2ZxOYoKkcpwBpyLvOYckHDyd0Bl1Vfj4PQm/1TdVR/QaEN1xfIPciImAE5VA0LMzXY64OeNTpP2zbBR3m3E8ItE4LaHdcbx1TL0Rpidy5NCY1yHTQg6ao53xWfrapUHTGFo7XRfxnUprfG+Vz6x8KzPggpCi2j6mgbYzkuPM05ZP9wyjbOmgnedPsSTfU2pUbxp0woJnwW3Css6IdLUVRd5957KrpiMD9gr2eq4ZlpkYsOlu3CPa8KrUboovZTx92KGmdkgdcqpME/wt8PuOFiOMSMOsqaqTgzJPnnutRvqz0zB9EzSF5rHfP3UK+R1YlAYQpkJE5/ocqyIOXLi9CcFI0b0EDYsEX8bd4oa/sXOeg9i3Mbf3XHpftg2sV/d8',
++          },
++        },
++        {
++          type: 'response.output_item.added',
++          output_index: 1,
++          item: {
++            id: 'msg_xai_123',
++            type: 'message',
++            status: 'in_progress',
++            content: [],
++            role: 'assistant',
++          },
++        },
++        {
++          type: 'response.output_text.delta',
++          item_id: 'msg_xai_123',
++          delta: 'Hello!',
++        },
++        {
++          type: 'response.completed',
++          response: {
++            id: 'resp_xai_reasoning',
++            status: 'completed',
++            usage: {
++              input_tokens: 100,
++              output_tokens: 50,
++              total_tokens: 150,
++            },
++          },
++        },
++      ]);
++
++      const protocolStream = OpenAIResponsesStream(mockOpenAIStream, {
++        payload: { model: 'grok-4-1-fast-reasoning', provider: 'xai' },
++      });
++      const chunks = await readStreamChunk(protocolStream);
++
++      expect(chunks).toMatchSnapshot();
++      expect(chunks.some((c) => c.includes('event: reasoning_encrypted'))).toBe(true);
++      expect(chunks.some((c) => c.includes('encrypted_content'))).toBe(true);
++    });
++  });
+ });
+diff --git a/packages/model-runtime/src/core/streams/openai/responsesStream.ts b/packages/model-runtime/src/core/streams/openai/responsesStream.ts
+index e1cfea1ee7f..d34645bd3c8 100644
+--- a/packages/model-runtime/src/core/streams/openai/responsesStream.ts
++++ b/packages/model-runtime/src/core/streams/openai/responsesStream.ts
+@@ -145,6 +145,14 @@ const transformOpenAIStream = (
+       }
+ 
+       case 'response.output_item.done': {
++        if (chunk.item.type === 'reasoning' && 'encrypted_content' in chunk.item) {
++          return {
++            data: chunk.item,
++            id: chunk.item.id,
++            type: 'reasoning_encrypted',
++          };
++        }
++
+         if (streamContext.returnedCitationArray?.length) {
+           return {
+             data: { citations: streamContext.returnedCitationArray },
+diff --git a/packages/model-runtime/src/core/streams/protocol.ts b/packages/model-runtime/src/core/streams/protocol.ts
+index 40e8a9f7cb8..1ef08d5e35d 100644
+--- a/packages/model-runtime/src/core/streams/protocol.ts
++++ b/packages/model-runtime/src/core/streams/protocol.ts
+@@ -78,6 +78,8 @@ export interface StreamProtocolChunk {
+     | 'tool_calls'
+     // Model Thinking
+     | 'reasoning'
++    // encrypted reasoning content
++    | 'reasoning_encrypted'
+     // use for reasoning signature, maybe only anthropic
+     | 'reasoning_signature'
+     // flagged reasoning signature
+@@ -262,6 +264,14 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined)
+   const textEncoder = new TextEncoder();
+   let aggregatedText = '';
+   let aggregatedThinking: string | undefined = undefined;
++  let reasoningEncrypted:
++    | {
++        encrypted_content: string;
++        id: string;
++        summary?: any[];
++        type: 'reasoning';
++      }
++    | undefined;
+   let usage: ModelUsage | undefined;
+   let speed: ModelPerformance | undefined;
+   let grounding: any;
+@@ -278,6 +288,7 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined)
+       const data = {
+         error: streamError,
+         grounding,
++        reasoningEncrypted,
+         speed,
+         text: aggregatedText,
+         thinking: aggregatedThinking,
+@@ -330,6 +341,12 @@ export function createCallbacksTransformer(cb: ChatStreamCallbacks | undefined)
+             break;
+           }
+ 
++          case 'reasoning_encrypted': {
++            reasoningEncrypted = data;
++            await callbacks.onReasoningEncrypted?.(data);
++            break;
++          }
++
+           case 'base64_image': {
+             // data format: { image: { id, data }, images: [...] }
+             const imageData = data as { image: { data: string; id: string }; images: any[] };
+diff --git a/packages/model-runtime/src/types/chat.ts b/packages/model-runtime/src/types/chat.ts
+index 8523e810aec..0221831fb99 100644
+--- a/packages/model-runtime/src/types/chat.ts
++++ b/packages/model-runtime/src/types/chat.ts
+@@ -83,6 +83,10 @@ export interface ChatStreamPayload {
+    * @title Image resolution for image generation (e.g., '1K', '2K', '4K')
+    */
+   imageResolution?: '1K' | '2K' | '4K';
++  /**
++   * Additional options to include in the response (for Responses API)
++   */
++  include?: string[];
+   /**
+    * @title Maximum length of generated text
+    */
+@@ -218,6 +222,12 @@ export interface ChatCompletionTool {
+ export interface OnFinishData {
+   error?: any;
+   grounding?: any;
++  reasoningEncrypted?: {
++    encrypted_content: string;
++    id: string;
++    summary?: any[];
++    type: 'reasoning';
++  };
+   speed?: ModelPerformance;
+   text: string;
+   thinking?: string;
+@@ -273,6 +283,11 @@ export interface ChatStreamCallbacks {
+    **/
+   onFinal?: (data: OnFinishData) => Promise<void> | void;
+   onGrounding?: (grounding: any) => Promise<void> | void;
++  /**
++   * `onReasoningEncrypted`: Called when encrypted reasoning content is received.
++   * Used for models that return encrypted reasoning data (e.g., x.ai grok reasoning models)
++   */
++  onReasoningEncrypted?: (data: { encrypted_content: string }) => Promise<void> | void;
+   /**
+    * `onReasoningPart`: Called for each reasoning/thinking part in multimodal output.
+    * Used for models that return structured reasoning with mixed text and images.
+diff --git a/src/server/modules/AgentRuntime/RuntimeExecutors.ts b/src/server/modules/AgentRuntime/RuntimeExecutors.ts
+index cefd4920f66..60b4f6c9c27 100644
+--- a/src/server/modules/AgentRuntime/RuntimeExecutors.ts
++++ b/src/server/modules/AgentRuntime/RuntimeExecutors.ts
+@@ -117,6 +117,14 @@ export const createRuntimeExecutors = (
+       let toolsCalling: ChatToolPayload[] = [];
+       let tool_calls: MessageToolCall[] = [];
+       let thinkingContent = '';
++      let reasoningEncrypted:
++        | {
++            encrypted_content: string;
++            id: string;
++            summary?: any[];
++            type: 'reasoning';
++          }
++        | undefined;
+       const imageList: any[] = [];
+       let grounding: any = null;
+       let currentStepUsage: any = undefined;
+@@ -287,6 +295,17 @@ export const createRuntimeExecutors = (
+               currentStepUsage = data.usage;
+             }
+           },
++          onFinal: async (data) => {
++            // Capture reasoning encrypted content for multi-turn conversation
++            if (data.reasoningEncrypted) {
++              reasoningEncrypted = data.reasoningEncrypted;
++              log(
++                `[${operationLogId}][reasoningEncrypted] captured, id: %s, length: %d`,
++                reasoningEncrypted.id,
++                reasoningEncrypted.encrypted_content.length,
++              );
++            }
++          },
+           onGrounding: async (groundingData) => {
+             log(`[${operationLogId}][grounding] %O`, groundingData);
+             grounding = groundingData;
+@@ -468,7 +487,7 @@ export const createRuntimeExecutors = (
+           content: finalContent,
+           imageList: imageList.length > 0 ? imageList : undefined,
+           metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+-          reasoning: finalReasoning,
++          reasoning: reasoningEncrypted || finalReasoning || undefined,
+           search: grounding,
+           tools: toolsCalling.length > 0 ? toolsCalling : undefined,
+         });
