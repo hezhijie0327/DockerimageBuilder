@@ -1,0 +1,482 @@
+diff --git a/locales/en-US/modelProvider.json b/locales/en-US/modelProvider.json
+index 3dd4ad0435b..16259e4b1af 100644
+--- a/locales/en-US/modelProvider.json
++++ b/locales/en-US/modelProvider.json
+@@ -215,6 +215,7 @@
+   "providerModels.item.modelConfig.displayName.placeholder": "Please enter the display name of the model, e.g., ChatGPT, GPT-4, etc.",
+   "providerModels.item.modelConfig.displayName.title": "Model Display Name",
+   "providerModels.item.modelConfig.extendParams.extra": "Choose extended parameters supported by the model. Hover an option to preview controls. Incorrect configs may cause request failures.",
++  "providerModels.item.modelConfig.extendParams.options.codexMaxReasoningEffort.hint": "For Codex models; controls reasoning intensity.",
+   "providerModels.item.modelConfig.extendParams.options.disableContextCaching.hint": "For Claude models; can lower cost and speed up responses.",
+   "providerModels.item.modelConfig.extendParams.options.effort.hint": "For Claude Opus 4.6; controls effort level (low/medium/high/max).",
+   "providerModels.item.modelConfig.extendParams.options.enableAdaptiveThinking.hint": "For Claude Opus 4.6; toggles adaptive thinking on or off.",
+diff --git a/locales/zh-CN/modelProvider.json b/locales/zh-CN/modelProvider.json
+index 0d5597c2304..a06eda54b9e 100644
+--- a/locales/zh-CN/modelProvider.json
++++ b/locales/zh-CN/modelProvider.json
+@@ -215,6 +215,7 @@
+   "providerModels.item.modelConfig.displayName.placeholder": "请输入模型的展示名称，例如 ChatGPT、GPT-4 等",
+   "providerModels.item.modelConfig.displayName.title": "模型展示名称",
+   "providerModels.item.modelConfig.extendParams.extra": "选择模型支持的扩展参数。将鼠标悬停在选项上可预览控制项。配置错误可能导致请求失败。",
++  "providerModels.item.modelConfig.extendParams.options.codexMaxReasoningEffort.hint": "适用于 Codex 模型；控制推理强度。",
+   "providerModels.item.modelConfig.extendParams.options.disableContextCaching.hint": "适用于 Claude 模型；可降低成本并加快响应速度。",
+   "providerModels.item.modelConfig.extendParams.options.effort.hint": "适用于 Claude Opus 4.6；控制努力程度（低/中/高/最大）。",
+   "providerModels.item.modelConfig.extendParams.options.enableAdaptiveThinking.hint": "适用于 Claude Opus 4.6；切换自适应思维的开启或关闭。",
+diff --git a/packages/model-bank/src/aiModels/openai.ts b/packages/model-bank/src/aiModels/openai.ts
+index f6f031b5844..0c3ffaf708e 100644
+--- a/packages/model-bank/src/aiModels/openai.ts
++++ b/packages/model-bank/src/aiModels/openai.ts
+@@ -18,6 +18,167 @@ export const gptImage1ParamsSchema: ModelParamsSchema = {
+ };
+ 
+ export const openaiChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      structuredOutput: true,
++      vision: true,
++    },
++    contextWindowTokens: 1_050_000,
++    description:
++      'GPT-5.4 is the frontier model for complex professional work with highest reasoning capability.',
++    displayName: 'GPT-5.4',
++    enabled: true,
++    id: 'gpt-5.4',
++    maxOutput: 128_000,
++    pricing: {
++      units: [
++        {
++          lookup: {
++            prices: {
++              '[0, 0.272]': 2.5,
++              '[0.272, infinity]': 5,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textInput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.272]': 0.25,
++              '[0.272, infinity]': 0.5,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textInput_cacheRead',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.272]': 15,
++              '[0.272, infinity]': 22.5,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textOutput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2026-03-05',
++    settings: {
++      extendParams: ['gpt5_2ReasoningEffort', 'textVerbosity'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      vision: true,
++    },
++    contextWindowTokens: 1_050_000,
++    description:
++      'GPT-5.4 pro uses more compute to think harder and provide consistently better answers, available in the Responses API only.',
++    displayName: 'GPT-5.4 pro',
++    id: 'gpt-5.4-pro',
++    maxOutput: 128_000,
++    pricing: {
++      units: [
++        {
++          lookup: {
++            prices: {
++              '[0, 0.272]': 30,
++              '[0.272, infinity]': 60,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textInput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.272]': 180,
++              '[0.272, infinity]': 270,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textOutput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2026-03-05',
++    settings: {
++      extendParams: ['gpt5_2ProReasoningEffort'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      vision: true,
++      structuredOutput: true,
++    },
++    contextWindowTokens: 128_000,
++    description:
++      'GPT-5.3 Chat is the latest ChatGPT model used in ChatGPT with improved conversation experiences.',
++    displayName: 'GPT-5.3 Chat',
++    enabled: true,
++    id: 'gpt-5.3-chat-latest',
++    maxOutput: 16_384,
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 1.75, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput_cacheRead', rate: 0.175, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 14, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2026-03-04',
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      structuredOutput: true,
++      vision: true,
++    },
++    contextWindowTokens: 400_000,
++    description:
++      'GPT-5.3-Codex is the most capable agentic coding model to date, optimized for agentic coding tasks in Codex or similar environments.',
++    displayName: 'GPT-5.3 Codex',
++    id: 'gpt-5.3-codex',
++    maxOutput: 128_000,
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 1.75, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput_cacheRead', rate: 0.175, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 14, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2026-02-05',
++    settings: {
++      extendParams: ['codexMaxReasoningEffort'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -30,7 +191,6 @@ export const openaiChatModels: AIChatModelCard[] = [
+     description:
+       'GPT-5.2 is a flagship model for coding and agentic workflows with stronger reasoning and long-context performance.',
+     displayName: 'GPT-5.2',
+-    enabled: true,
+     id: 'gpt-5.2',
+     maxOutput: 128_000,
+     pricing: {
+@@ -47,6 +207,34 @@ export const openaiChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      structuredOutput: true,
++      vision: true,
++    },
++    contextWindowTokens: 400_000,
++    description:
++      'GPT-5.2-Codex is an upgraded GPT-5.2 variant optimized for long-horizon, agentic coding tasks.',
++    displayName: 'GPT-5.2 Codex',
++    id: 'gpt-5.2-codex',
++    maxOutput: 128_000,
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 1.75, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput_cacheRead', rate: 0.175, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 14, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2025-12-18',
++    settings: {
++      extendParams: ['codexMaxReasoningEffort'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -82,7 +270,6 @@ export const openaiChatModels: AIChatModelCard[] = [
+     description:
+       'GPT-5.2 Chat is the ChatGPT variant (chat-latest) for the latest conversation improvements.',
+     displayName: 'GPT-5.2 Chat',
+-    enabled: true,
+     id: 'gpt-5.2-chat-latest',
+     maxOutput: 16_384,
+     pricing: {
+@@ -142,6 +329,33 @@ export const openaiChatModels: AIChatModelCard[] = [
+     releasedAt: '2025-11-13',
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      vision: true,
++    },
++    contextWindowTokens: 400_000,
++    description:
++      "GPT-5.1 Codex Max: OpenAI's most intelligent coding model, optimized for long-horizon agentic coding tasks, supports reasoning tokens.",
++    displayName: 'GPT-5.1 Codex Max',
++    id: 'gpt-5.1-codex-max',
++    maxOutput: 128_000,
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 1.25, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput_cacheRead', rate: 0.125, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2025-12-04',
++    settings: {
++      extendParams: ['codexMaxReasoningEffort'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
+index 8da274d39f3..26cfb5806e7 100644
+--- a/packages/model-bank/src/types/aiModel.ts
++++ b/packages/model-bank/src/types/aiModel.ts
+@@ -250,6 +250,7 @@ export type ExtendParamsType =
+   | 'gpt5_1ReasoningEffort'
+   | 'gpt5_2ReasoningEffort'
+   | 'gpt5_2ProReasoningEffort'
++  | 'codexMaxReasoningEffort'
+   | 'textVerbosity'
+   | 'thinking'
+   | 'thinkingBudget'
+@@ -284,6 +285,7 @@ export const ExtendParamsTypeSchema = z.enum([
+   'gpt5_1ReasoningEffort',
+   'gpt5_2ReasoningEffort',
+   'gpt5_2ProReasoningEffort',
++  'codexMaxReasoningEffort',
+   'textVerbosity',
+   'thinking',
+   'thinkingBudget',
+diff --git a/packages/model-runtime/src/const/models.ts b/packages/model-runtime/src/const/models.ts
+index 91802014139..b595ec09ab9 100644
+--- a/packages/model-runtime/src/const/models.ts
++++ b/packages/model-runtime/src/const/models.ts
+@@ -40,9 +40,12 @@ export const responsesAPIModels = new Set([
+   'gpt-5-pro-2025-10-06',
+   'gpt-5.1-codex',
+   'gpt-5.1-codex-mini',
++  'gpt-5.1-codex-max',
+   'gpt-5.2',
++  'gpt-5.2-codex',
+   'gpt-5.2-pro-2025-12-11',
+   'gpt-5.2-pro',
++  'gpt-5.3-codex',
+   'gpt-5.4',
+   'gpt-5.4-pro',
+ ]);
+diff --git a/packages/types/src/agent/chatConfig.ts b/packages/types/src/agent/chatConfig.ts
+index 75d60a6f794..d5a09fcdc10 100644
+--- a/packages/types/src/agent/chatConfig.ts
++++ b/packages/types/src/agent/chatConfig.ts
+@@ -19,10 +19,12 @@ export interface AgentMemoryChatConfig {
+ 
+ export interface LobeAgentChatConfig extends AgentMemoryChatConfig {
+   autoCreateTopicThreshold: number;
++  codexMaxReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+   /**
+    * Model ID to use for generating compression summaries
+    */
+   compressionModelId?: string;
++
+   /**
+    * Disable context caching
+    */
+@@ -34,7 +36,6 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig {
+    * Whether to enable adaptive thinking (Claude Opus 4.6)
+    */
+   enableAdaptiveThinking?: boolean;
+-
+   enableAutoCreateTopic?: boolean;
+   /**
+    * Whether to auto-scroll during AI streaming output
+@@ -147,6 +148,7 @@ export const MemoryChatConfigSchema = z.object({
+ export const AgentChatConfigSchema = z
+   .object({
+     autoCreateTopicThreshold: z.number().default(2),
++    codexMaxReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
+     compressionModelId: z.string().optional(),
+     disableContextCaching: z.boolean().optional(),
+     effort: z.enum(['low', 'medium', 'high', 'max']).optional(),
+diff --git a/src/features/ModelSwitchPanel/components/ControlsForm/CodexMaxReasoningEffortSlider.tsx b/src/features/ModelSwitchPanel/components/ControlsForm/CodexMaxReasoningEffortSlider.tsx
+new file mode 100644
+index 00000000000..c83215312c5
+--- /dev/null
++++ b/src/features/ModelSwitchPanel/components/ControlsForm/CodexMaxReasoningEffortSlider.tsx
+@@ -0,0 +1,16 @@
++import { type CreatedLevelSliderProps } from './createLevelSlider';
++import { createLevelSliderComponent } from './createLevelSlider';
++
++const CODEX_MAX_REASONING_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh'] as const;
++type CodexMaxReasoningEffort = (typeof CODEX_MAX_REASONING_EFFORT_LEVELS)[number];
++
++export type CodexMaxReasoningEffortSliderProps = CreatedLevelSliderProps<CodexMaxReasoningEffort>;
++
++const CodexMaxReasoningEffortSlider = createLevelSliderComponent<CodexMaxReasoningEffort>({
++  configKey: 'codexMaxReasoningEffort',
++  defaultValue: 'medium',
++  levels: CODEX_MAX_REASONING_EFFORT_LEVELS,
++  style: { minWidth: 200 },
++});
++
++export default CodexMaxReasoningEffortSlider;
+diff --git a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
+index e5e99313892..ea709fc7c05 100644
+--- a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
++++ b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
+@@ -11,6 +11,7 @@ import { useAgentStore } from '@/store/agent';
+ import { agentByIdSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
+ import { aiModelSelectors, useAiInfraStore } from '@/store/aiInfra';
+ 
++import CodexMaxReasoningEffortSlider from './CodexMaxReasoningEffortSlider';
+ import ContextCachingSwitch from './ContextCachingSwitch';
+ import EffortSlider from './EffortSlider';
+ import GPT5ReasoningEffortSlider from './GPT5ReasoningEffortSlider';
+@@ -206,6 +207,17 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
+         paddingBottom: 0,
+       },
+     },
++    {
++      children: <CodexMaxReasoningEffortSlider />,
++      desc: 'reasoning_effort',
++      label: t('extendParams.reasoningEffort.title'),
++      layout: 'horizontal',
++      minWidth: undefined,
++      name: 'codexMaxReasoningEffort',
++      style: {
++        paddingBottom: 0,
++      },
++    },
+     {
+       children: <TextVerbositySlider />,
+       desc: 'text_verbosity',
+diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
+index 6c7f0d85add..d097e476df5 100644
+--- a/src/locales/default/modelProvider.ts
++++ b/src/locales/default/modelProvider.ts
+@@ -245,6 +245,8 @@ export default {
+   'providerModels.item.modelConfig.displayName.title': 'Model Display Name',
+   'providerModels.item.modelConfig.extendParams.extra':
+     'Choose extended parameters supported by the model. Hover an option to preview controls. Incorrect configs may cause request failures.',
++  'providerModels.item.modelConfig.extendParams.options.codexMaxReasoningEffort.hint':
++    'For Codex models; controls reasoning intensity.',
+   'providerModels.item.modelConfig.extendParams.options.disableContextCaching.hint':
+     'For Claude models; can lower cost and speed up responses.',
+   'providerModels.item.modelConfig.extendParams.options.effort.hint':
+diff --git a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+index 5181202c580..fdecf52b36e 100644
+--- a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
++++ b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+@@ -5,6 +5,7 @@ import { type ReactNode } from 'react';
+ import { memo, useMemo } from 'react';
+ import { Trans, useTranslation } from 'react-i18next';
+ 
++import CodexMaxReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/CodexMaxReasoningEffortSlider';
+ import EffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/EffortSlider';
+ import GPT5ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/GPT5ReasoningEffortSlider';
+ import GPT51ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/GPT51ReasoningEffortSlider';
+@@ -71,6 +72,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.gpt5_2ProReasoningEffort.hint',
+     key: 'gpt5_2ProReasoningEffort',
+   },
++  {
++    hintKey: 'providerModels.item.modelConfig.extendParams.options.codexMaxReasoningEffort.hint',
++    key: 'codexMaxReasoningEffort',
++  },
+   {
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.textVerbosity.hint',
+     key: 'textVerbosity',
+@@ -128,6 +133,7 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+ // Map variant keys to their base i18n title key (synced with ControlsForm.tsx)
+ // This allows reusing existing i18n translations instead of adding new ones
+ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
++  codexMaxReasoningEffort: 'reasoningEffort',
+   gpt5ReasoningEffort: 'reasoningEffort',
+   gpt5_1ReasoningEffort: 'reasoningEffort',
+   gpt5_2ProReasoningEffort: 'reasoningEffort',
+@@ -147,6 +153,11 @@ type PreviewMeta = {
+ };
+ 
+ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
++  codexMaxReasoningEffort: {
++    labelSuffix: ' (Codex)',
++    previewWidth: 300,
++    tag: 'reasoning_effort',
++  },
+   disableContextCaching: { labelSuffix: ' (Claude)', previewWidth: 400 },
+   effort: { labelSuffix: ' (Opus 4.6)', previewWidth: 280, tag: 'output_config.effort' },
+   enableAdaptiveThinking: {
+@@ -260,6 +271,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
+   // Preview controls use controlled mode with default values (no store access)
+   const previewControls = useMemo<Partial<Record<ExtendParamsType, ReactNode>>>(
+     () => ({
++      codexMaxReasoningEffort: <CodexMaxReasoningEffortSlider value="medium" />,
+       disableContextCaching: <Switch checked disabled />,
+       effort: <EffortSlider value="high" />,
+       enableAdaptiveThinking: <Switch checked disabled />,
+diff --git a/src/services/chat/mecha/modelParamsResolver.ts b/src/services/chat/mecha/modelParamsResolver.ts
+index 81e0674a4bb..bf3fdbb6e8b 100644
+--- a/src/services/chat/mecha/modelParamsResolver.ts
++++ b/src/services/chat/mecha/modelParamsResolver.ts
+@@ -122,6 +122,10 @@ export const resolveModelExtendParams = (ctx: ModelParamsContext): ModelExtendPa
+     extendParams.reasoning_effort = chatConfig.gpt5_2ProReasoningEffort;
+   }
+ 
++  if (modelExtendParams.includes('codexMaxReasoningEffort') && chatConfig.codexMaxReasoningEffort) {
++    extendParams.reasoning_effort = chatConfig.codexMaxReasoningEffort;
++  }
++
+   if (modelExtendParams.includes('effort') && chatConfig.effort) {
+     extendParams.effort = chatConfig.effort;
+   }
