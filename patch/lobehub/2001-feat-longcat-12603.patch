@@ -195,10 +195,10 @@ index e2b2dc94737..ef8ba78e0e8 100644
  export { default as ModelScopeProviderCard } from './modelscope';
 diff --git a/packages/model-bank/src/modelProviders/longcat.ts b/packages/model-bank/src/modelProviders/longcat.ts
 new file mode 100644
-index 00000000000..29b6d65a4c2
+index 00000000000..0263075dddb
 --- /dev/null
 +++ b/packages/model-bank/src/modelProviders/longcat.ts
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,19 @@
 +import { type ModelProviderCard } from '@/types/llm';
 +
 +const LongCat: ModelProviderCard = {
@@ -211,9 +211,6 @@ index 00000000000..29b6d65a4c2
 +  name: 'LongCat',
 +  settings: {
 +    disableBrowserRequest: false,
-+    proxyUrl: {
-+      placeholder: 'https://api.longcat.chat/openai/v1',
-+    },
 +    sdkType: 'openai',
 +    showModelFetcher: false,
 +  },
@@ -235,159 +232,52 @@ index 2b545d49838..ab51ef57a67 100644
  export { LobeMoonshotAI } from './providers/moonshot';
 diff --git a/packages/model-runtime/src/providers/longcat/index.test.ts b/packages/model-runtime/src/providers/longcat/index.test.ts
 new file mode 100644
-index 00000000000..35e9c6557d0
+index 00000000000..760bc4d12fa
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/longcat/index.test.ts
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,13 @@
 +// @vitest-environment node
-+import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { ModelProvider } from 'model-bank';
 +
++import { testProvider } from '../../providerTestUtils';
 +import { LobeLongCatAI } from './index';
 +
-+describe('LobeLongCatAI', () => {
-+  let instance: InstanceType<typeof LobeLongCatAI>;
-+
-+  beforeEach(() => {
-+    instance = new LobeLongCatAI({ apiKey: 'test_api_key' });
-+  });
-+
-+  describe('constructor', () => {
-+    it('should initialize with correct provider', () => {
-+      expect(instance).toBeDefined();
-+    });
-+
-+    it('should be instance of LobeLongCatAI', () => {
-+      expect(instance).toBeInstanceOf(LobeLongCatAI);
-+    });
-+  });
-+
-+  describe('chat', () => {
-+    it('should support chat method', async () => {
-+      vi.spyOn(instance as any, 'runWithFallback').mockResolvedValue(new Response());
-+
-+      const payload = {
-+        messages: [{ content: 'Hello', role: 'user' as const }],
-+        model: 'LongCat-Flash-Lite',
-+        temperature: 0.7,
-+      };
-+
-+      const result = await instance.chat(payload);
-+      expect(result).toBeDefined();
-+    });
-+  });
-+
-+  describe('routing', () => {
-+    it('should route to OpenAI format by default', async () => {
-+      const runtime = new LobeLongCatAI({ apiKey: 'test' });
-+      expect(runtime).toBeInstanceOf(LobeLongCatAI);
-+    });
-+
-+    it('should route to OpenAI format when baseURL does not match anthropic pattern', async () => {
-+      const runtime = new LobeLongCatAI({
-+        apiKey: 'test',
-+        baseURL: 'https://api.longcat.chat/openai/v1',
-+      });
-+      expect(runtime).toBeInstanceOf(LobeLongCatAI);
-+    });
-+
-+    it('should route to Anthropic format when baseURL matches /anthropic pattern', async () => {
-+      const runtime = new LobeLongCatAI({
-+        apiKey: 'test',
-+        baseURL: 'https://api.longcat.chat/anthropic',
-+      });
-+      expect(runtime).toBeInstanceOf(LobeLongCatAI);
-+    });
-+
-+    it('should route to Anthropic format when baseURL matches /anthropic/ pattern', async () => {
-+      const runtime = new LobeLongCatAI({
-+        apiKey: 'test',
-+        baseURL: 'https://api.longcat.chat/anthropic/',
-+      });
-+      expect(runtime).toBeInstanceOf(LobeLongCatAI);
-+    });
-+  });
-+
-+  describe('models', () => {
-+    it('should handle models method', async () => {
-+      // Longcat does not support model fetching via API
-+      // This test just verifies the method exists
-+      // Mock the resolveRouters method to return a mock router
-+      vi.spyOn(instance as any, 'resolveRouters').mockResolvedValue([
-+        {
-+          apiType: 'openai',
-+          models: [],
-+          options: {},
-+          runtime: class MockRuntime {
-+            client = {
-+              models: {
-+                list: vi.fn().mockResolvedValue({ data: [] }),
-+              },
-+            };
-+            async models() {
-+              return [];
-+            }
-+          },
-+        },
-+      ]);
-+      const models = await instance.models();
-+      expect(models).toBeDefined();
-+    });
-+  });
++testProvider({
++  Runtime: LobeLongCatAI,
++  provider: ModelProvider.LongCat,
++  defaultBaseURL: 'https://api.longcat.chat/openai/v1',
++  chatDebugEnv: 'DEBUG_LONGCAT_CHAT_COMPLETION',
++  chatModel: 'LongCat-Flash-Lite',
 +});
 diff --git a/packages/model-runtime/src/providers/longcat/index.ts b/packages/model-runtime/src/providers/longcat/index.ts
 new file mode 100644
-index 00000000000..a3b7229366d
+index 00000000000..1c03f315350
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/longcat/index.ts
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,23 @@
 +import { ModelProvider } from 'model-bank';
 +
-+import { createRouterRuntime } from '../../core/RouterRuntime';
-+import type { CreateRouterRuntimeOptions } from '../../core/RouterRuntime/createRuntime';
-+import type { ChatStreamPayload } from '../../types';
++import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
 +
-+const DEFAULT_LONGCAT_BASE_URL = 'https://api.longcat.chat/openai/v1';
-+const DEFAULT_LONGCAT_ANTHROPIC_BASE_URL = 'https://api.longcat.chat/anthropic';
++export const LobeLongCatAI = createOpenAICompatibleRuntime({
++  baseURL: 'https://api.longcat.chat/openai/v1',
++  chatCompletion: {
++    handlePayload: (payload) => {
++      const { frequency_penalty, presence_penalty, ...rest } = payload;
 +
-+const handleLongCatPayload = (payload: ChatStreamPayload) => {
-+  const { frequency_penalty, presence_penalty, ...rest } = payload;
-+
-+  return {
-+    ...rest,
-+    frequency_penalty: undefined,
-+    presence_penalty: undefined,
-+  } as any;
-+};
-+
-+export const params: CreateRouterRuntimeOptions = {
++      return {
++        ...rest,
++        frequency_penalty: undefined,
++        presence_penalty: undefined,
++        stream: true,
++      } as any;
++    },
++  },
 +  debug: {
 +    chatCompletion: () => process.env.DEBUG_LONGCAT_CHAT_COMPLETION === '1',
 +  },
-+  id: ModelProvider.LongCat,
-+  routers: [
-+    {
-+      apiType: 'anthropic',
-+      baseURLPattern: /\/anthropic\/?$/,
-+      options: {
-+        baseURL: DEFAULT_LONGCAT_ANTHROPIC_BASE_URL,
-+        chatCompletion: {
-+          handlePayload: handleLongCatPayload,
-+        },
-+      },
-+    },
-+    {
-+      apiType: 'openai',
-+      options: {
-+        baseURL: DEFAULT_LONGCAT_BASE_URL,
-+        chatCompletion: {
-+          handlePayload: handleLongCatPayload,
-+        },
-+      },
-+    },
-+  ],
-+};
-+
-+export const LobeLongCatAI = createRouterRuntime(params);
++  provider: ModelProvider.LongCat,
++});
 diff --git a/packages/model-runtime/src/runtimeMap.ts b/packages/model-runtime/src/runtimeMap.ts
 index 3577be1a3c6..d7ce683653f 100644
 --- a/packages/model-runtime/src/runtimeMap.ts
