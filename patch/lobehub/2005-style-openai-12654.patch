@@ -1,5 +1,5 @@
 diff --git a/locales/en-US/modelProvider.json b/locales/en-US/modelProvider.json
-index 3dd4ad0435b..16259e4b1af 100644
+index 240d4ece398..25ce45f955c 100644
 --- a/locales/en-US/modelProvider.json
 +++ b/locales/en-US/modelProvider.json
 @@ -215,6 +215,7 @@
@@ -11,7 +11,7 @@ index 3dd4ad0435b..16259e4b1af 100644
    "providerModels.item.modelConfig.extendParams.options.effort.hint": "For Claude Opus 4.6; controls effort level (low/medium/high/max).",
    "providerModels.item.modelConfig.extendParams.options.enableAdaptiveThinking.hint": "For Claude Opus 4.6; toggles adaptive thinking on or off.",
 diff --git a/locales/zh-CN/modelProvider.json b/locales/zh-CN/modelProvider.json
-index 0d5597c2304..a06eda54b9e 100644
+index 34c6a0135e6..fabdbc03dd8 100644
 --- a/locales/zh-CN/modelProvider.json
 +++ b/locales/zh-CN/modelProvider.json
 @@ -215,6 +215,7 @@
@@ -280,27 +280,27 @@ index f6f031b5844..0c3ffaf708e 100644
      abilities: {
        functionCall: true,
 diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
-index 8da274d39f3..26cfb5806e7 100644
+index 5d854cc1956..418b79033b7 100644
 --- a/packages/model-bank/src/types/aiModel.ts
 +++ b/packages/model-bank/src/types/aiModel.ts
-@@ -250,6 +250,7 @@ export type ExtendParamsType =
-   | 'gpt5_1ReasoningEffort'
+@@ -251,6 +251,7 @@ export type ExtendParamsType =
    | 'gpt5_2ReasoningEffort'
    | 'gpt5_2ProReasoningEffort'
+   | 'grok4_20ReasoningEffort'
 +  | 'codexMaxReasoningEffort'
    | 'textVerbosity'
    | 'thinking'
    | 'thinkingBudget'
-@@ -284,6 +285,7 @@ export const ExtendParamsTypeSchema = z.enum([
-   'gpt5_1ReasoningEffort',
+@@ -286,6 +287,7 @@ export const ExtendParamsTypeSchema = z.enum([
    'gpt5_2ReasoningEffort',
    'gpt5_2ProReasoningEffort',
+   'grok4_20ReasoningEffort',
 +  'codexMaxReasoningEffort',
    'textVerbosity',
    'thinking',
    'thinkingBudget',
 diff --git a/packages/model-runtime/src/const/models.ts b/packages/model-runtime/src/const/models.ts
-index 91802014139..b595ec09ab9 100644
+index fa8d4d7cd23..e8608e326a6 100644
 --- a/packages/model-runtime/src/const/models.ts
 +++ b/packages/model-runtime/src/const/models.ts
 @@ -40,9 +40,12 @@ export const responsesAPIModels = new Set([
@@ -317,7 +317,7 @@ index 91802014139..b595ec09ab9 100644
    'gpt-5.4-pro',
  ]);
 diff --git a/packages/types/src/agent/chatConfig.ts b/packages/types/src/agent/chatConfig.ts
-index 75d60a6f794..d5a09fcdc10 100644
+index 9769f82a1b1..8594539fa38 100644
 --- a/packages/types/src/agent/chatConfig.ts
 +++ b/packages/types/src/agent/chatConfig.ts
 @@ -19,10 +19,12 @@ export interface AgentMemoryChatConfig {
@@ -341,7 +341,7 @@ index 75d60a6f794..d5a09fcdc10 100644
    enableAutoCreateTopic?: boolean;
    /**
     * Whether to auto-scroll during AI streaming output
-@@ -147,6 +148,7 @@ export const MemoryChatConfigSchema = z.object({
+@@ -148,6 +149,7 @@ export const MemoryChatConfigSchema = z.object({
  export const AgentChatConfigSchema = z
    .object({
      autoCreateTopicThreshold: z.number().default(2),
@@ -372,7 +372,7 @@ index 00000000000..c83215312c5
 +
 +export default CodexMaxReasoningEffortSlider;
 diff --git a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
-index e5e99313892..ea709fc7c05 100644
+index b065fa8f1a6..d94bc84d7ff 100644
 --- a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
 +++ b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
 @@ -11,6 +11,7 @@ import { useAgentStore } from '@/store/agent';
@@ -383,7 +383,7 @@ index e5e99313892..ea709fc7c05 100644
  import ContextCachingSwitch from './ContextCachingSwitch';
  import EffortSlider from './EffortSlider';
  import GPT5ReasoningEffortSlider from './GPT5ReasoningEffortSlider';
-@@ -206,6 +207,17 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
+@@ -218,6 +219,17 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
          paddingBottom: 0,
        },
      },
@@ -402,7 +402,7 @@ index e5e99313892..ea709fc7c05 100644
        children: <TextVerbositySlider />,
        desc: 'text_verbosity',
 diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
-index 6c7f0d85add..d097e476df5 100644
+index 025b9e36d68..d256bfa3537 100644
 --- a/src/locales/default/modelProvider.ts
 +++ b/src/locales/default/modelProvider.ts
 @@ -245,6 +245,8 @@ export default {
@@ -415,7 +415,7 @@ index 6c7f0d85add..d097e476df5 100644
      'For Claude models; can lower cost and speed up responses.',
    'providerModels.item.modelConfig.extendParams.options.effort.hint':
 diff --git a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
-index 5181202c580..fdecf52b36e 100644
+index 909926d0fd9..7dc7e8d58f2 100644
 --- a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
 +++ b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
 @@ -5,6 +5,7 @@ import { type ReactNode } from 'react';
@@ -426,9 +426,9 @@ index 5181202c580..fdecf52b36e 100644
  import EffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/EffortSlider';
  import GPT5ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/GPT5ReasoningEffortSlider';
  import GPT51ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/GPT51ReasoningEffortSlider';
-@@ -71,6 +72,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
-     hintKey: 'providerModels.item.modelConfig.extendParams.options.gpt5_2ProReasoningEffort.hint',
-     key: 'gpt5_2ProReasoningEffort',
+@@ -76,6 +77,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.grok4_20ReasoningEffort.hint',
+     key: 'grok4_20ReasoningEffort',
    },
 +  {
 +    hintKey: 'providerModels.item.modelConfig.extendParams.options.codexMaxReasoningEffort.hint',
@@ -437,7 +437,7 @@ index 5181202c580..fdecf52b36e 100644
    {
      hintKey: 'providerModels.item.modelConfig.extendParams.options.textVerbosity.hint',
      key: 'textVerbosity',
-@@ -128,6 +133,7 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+@@ -133,6 +138,7 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
  // Map variant keys to their base i18n title key (synced with ControlsForm.tsx)
  // This allows reusing existing i18n translations instead of adding new ones
  const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
@@ -445,7 +445,7 @@ index 5181202c580..fdecf52b36e 100644
    gpt5ReasoningEffort: 'reasoningEffort',
    gpt5_1ReasoningEffort: 'reasoningEffort',
    gpt5_2ProReasoningEffort: 'reasoningEffort',
-@@ -147,6 +153,11 @@ type PreviewMeta = {
+@@ -153,6 +159,11 @@ type PreviewMeta = {
  };
  
  const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
@@ -457,7 +457,7 @@ index 5181202c580..fdecf52b36e 100644
    disableContextCaching: { labelSuffix: ' (Claude)', previewWidth: 400 },
    effort: { labelSuffix: ' (Opus 4.6)', previewWidth: 280, tag: 'output_config.effort' },
    enableAdaptiveThinking: {
-@@ -260,6 +271,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
+@@ -271,6 +282,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
    // Preview controls use controlled mode with default values (no store access)
    const previewControls = useMemo<Partial<Record<ExtendParamsType, ReactNode>>>(
      () => ({
@@ -466,11 +466,11 @@ index 5181202c580..fdecf52b36e 100644
        effort: <EffortSlider value="high" />,
        enableAdaptiveThinking: <Switch checked disabled />,
 diff --git a/src/services/chat/mecha/modelParamsResolver.ts b/src/services/chat/mecha/modelParamsResolver.ts
-index 81e0674a4bb..bf3fdbb6e8b 100644
+index cf3b2294792..ecfa045ddb5 100644
 --- a/src/services/chat/mecha/modelParamsResolver.ts
 +++ b/src/services/chat/mecha/modelParamsResolver.ts
-@@ -122,6 +122,10 @@ export const resolveModelExtendParams = (ctx: ModelParamsContext): ModelExtendPa
-     extendParams.reasoning_effort = chatConfig.gpt5_2ProReasoningEffort;
+@@ -126,6 +126,10 @@ export const resolveModelExtendParams = (ctx: ModelParamsContext): ModelExtendPa
+     extendParams.reasoning_effort = chatConfig.grok4_20ReasoningEffort;
    }
  
 +  if (modelExtendParams.includes('codexMaxReasoningEffort') && chatConfig.codexMaxReasoningEffort) {
