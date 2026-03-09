@@ -27,7 +27,7 @@ index fa8d4d7cd2..9180201413 100644
   * Regex patterns for models that support context caching (3.5+)
   */
 diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
-index 83669f0e1e..5a4511908d 100644
+index 83669f0e1e..67e688dc85 100644
 --- a/packages/model-runtime/src/providers/xai/index.ts
 +++ b/packages/model-runtime/src/providers/xai/index.ts
 @@ -1,8 +1,6 @@
@@ -68,3 +68,22 @@ index 83669f0e1e..5a4511908d 100644
      responses: () => process.env.DEBUG_XAI_RESPONSES === '1',
    },
    models: async ({ client }) => {
+@@ -48,7 +31,7 @@ export const LobeXAI = createOpenAICompatibleRuntime({
+   provider: ModelProvider.XAI,
+   responses: {
+     handlePayload: (payload) => {
+-      const { enabledSearch, tools, ...rest } = payload;
++      const { enabledSearch, frequency_penalty, model, presence_penalty, tools, ...rest } = payload;
+ 
+       const xaiTools = enabledSearch
+         ? [...(tools || []), { type: 'web_search' }, { type: 'x_search' }]
+@@ -56,6 +39,9 @@ export const LobeXAI = createOpenAICompatibleRuntime({
+ 
+       return {
+         ...rest,
++        frequency_penalty: isGrokReasoningModel(model) ? undefined : frequency_penalty,
++        model,
++        presence_penalty: isGrokReasoningModel(model) ? undefined : presence_penalty,
+         stream: payload.stream ?? true,
+         tools: xaiTools,
+         include: ['reasoning.encrypted_content'],
