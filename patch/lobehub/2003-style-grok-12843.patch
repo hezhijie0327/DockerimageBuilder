@@ -1,0 +1,70 @@
+diff --git a/packages/model-bank/src/modelProviders/xai.ts b/packages/model-bank/src/modelProviders/xai.ts
+index 1aaafc046b..ca873cb0c4 100644
+--- a/packages/model-bank/src/modelProviders/xai.ts
++++ b/packages/model-bank/src/modelProviders/xai.ts
+@@ -17,7 +17,6 @@ const XAI: ModelProviderCard = {
+     },
+     sdkType: 'openai',
+     showModelFetcher: true,
+-    supportResponsesApi: true,
+   },
+   url: 'https://x.ai/api',
+ };
+diff --git a/packages/model-runtime/src/const/models.ts b/packages/model-runtime/src/const/models.ts
+index fa8d4d7cd2..9180201413 100644
+--- a/packages/model-runtime/src/const/models.ts
++++ b/packages/model-runtime/src/const/models.ts
+@@ -47,11 +47,6 @@ export const responsesAPIModels = new Set([
+   'gpt-5.4-pro',
+ ]);
+ 
+-/**
+- * Grok models use Responses API only
+- */
+-export const responsesAPIGrokModels = new Set(['grok-4.20-multi-agent-experimental-beta-0304']);
+-
+ /**
+  * Regex patterns for models that support context caching (3.5+)
+  */
+diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
+index 83669f0e1e..5a4511908d 100644
+--- a/packages/model-runtime/src/providers/xai/index.ts
++++ b/packages/model-runtime/src/providers/xai/index.ts
+@@ -1,8 +1,6 @@
+ import { ModelProvider } from 'model-bank';
+ 
+-import { responsesAPIGrokModels } from '../../const/models';
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+-import type { ChatStreamPayload } from '../../types';
+ import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
+ import { createXAIImage } from './createImage';
+ 
+@@ -17,26 +15,11 @@ export const isGrokReasoningModel = (model: string) =>
+ 
+ export const LobeXAI = createOpenAICompatibleRuntime({
+   baseURL: 'https://api.x.ai/v1',
+-  createImage: createXAIImage,
+   chatCompletion: {
+-    handlePayload: (payload) => {
+-      const { enabledSearch, frequency_penalty, model, presence_penalty, ...rest } = payload;
+-
+-      if (responsesAPIGrokModels.has(model) || enabledSearch) {
+-        return { ...rest, apiMode: 'responses', enabledSearch, model } as ChatStreamPayload;
+-      }
+-
+-      return {
+-        ...rest,
+-        frequency_penalty: isGrokReasoningModel(model) ? undefined : frequency_penalty,
+-        model,
+-        presence_penalty: isGrokReasoningModel(model) ? undefined : presence_penalty,
+-        stream: true,
+-      } as any;
+-    },
++    useResponse: true,
+   },
++  createImage: createXAIImage,
+   debug: {
+-    chatCompletion: () => process.env.DEBUG_XAI_CHAT_COMPLETION === '1',
+     responses: () => process.env.DEBUG_XAI_RESPONSES === '1',
+   },
+   models: async ({ client }) => {
