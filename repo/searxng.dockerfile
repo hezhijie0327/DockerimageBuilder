@@ -1,7 +1,7 @@
 ARG NODEJS_VERSION="24"
 ARG PYTHON_VERSION="3"
 
-FROM ghcr.io/hezhijie0327/module:alpine AS get_info
+FROM ghcr.io/hezhijie0327/base:alpine AS get_info
 
 WORKDIR /tmp
 
