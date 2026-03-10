@@ -1,0 +1,140 @@
+diff --git a/packages/model-bank/src/aiModels/moonshot.ts b/packages/model-bank/src/aiModels/moonshot.ts
+index e93016b1477..b6f49f51081 100644
+--- a/packages/model-bank/src/aiModels/moonshot.ts
++++ b/packages/model-bank/src/aiModels/moonshot.ts
+@@ -84,7 +84,7 @@ const moonshotChatModels: AIChatModelCard[] = [
+     contextWindowTokens: 262_144,
+     description:
+       'kimi-k2-0905-preview offers a 256k context window, stronger agentic coding, better front-end code quality, and improved context understanding.',
+-    displayName: 'Kimi K2 0905',
++    displayName: 'Kimi K2 0905 Preview',
+     id: 'kimi-k2-0905-preview',
+     maxOutput: 65_536,
+     pricing: {
+@@ -105,7 +105,7 @@ const moonshotChatModels: AIChatModelCard[] = [
+     contextWindowTokens: 131_072,
+     description:
+       'kimi-k2 is an MoE foundation model with strong coding and agent capabilities (1T total params, 32B active), outperforming other mainstream open models across reasoning, programming, math, and agent benchmarks.',
+-    displayName: 'Kimi K2 0711',
++    displayName: 'Kimi K2 0711 Preview',
+     id: 'kimi-k2-0711-preview',
+     pricing: {
+       currency: 'CNY',
+@@ -125,7 +125,8 @@ const moonshotChatModels: AIChatModelCard[] = [
+     contextWindowTokens: 262_144,
+     description:
+       'kimi-k2 is an MoE foundation model with strong coding and agent capabilities (1T total params, 32B active), outperforming other mainstream open models across reasoning, programming, math, and agent benchmarks.',
+-    displayName: 'Kimi K2 0905 Turbo',
++    displayName: 'Kimi K2 Turbo Preview',
++    enabled: true,
+     id: 'kimi-k2-turbo-preview',
+     pricing: {
+       currency: 'CNY',
+@@ -138,70 +139,6 @@ const moonshotChatModels: AIChatModelCard[] = [
+     releasedAt: '2025-09-05',
+     type: 'chat',
+   },
+-  {
+-    abilities: {
+-      functionCall: true,
+-      vision: true,
+-    },
+-    contextWindowTokens: 131_072,
+-    description:
+-      'Kimi Latest uses the newest Kimi model and may include experimental features. It supports image understanding and automatically selects 8k/32k/128k billing models based on context length.',
+-    displayName: 'Kimi Latest',
+-    enabled: true,
+-    id: 'kimi-latest',
+-    pricing: {
+-      currency: 'CNY',
+-      units: [
+-        { name: 'textInput_cacheRead', rate: 1, strategy: 'fixed', unit: 'millionTokens' },
+-        {
+-          lookup: {
+-            prices: {
+-              '[0, 0.008_192]': 2,
+-              '[0.008_193, 0.032_768]': 5,
+-              '[0.032_769, 0.131_072]': 10,
+-            },
+-            pricingParams: ['textInput'],
+-          },
+-          name: 'textInput',
+-          strategy: 'lookup',
+-          unit: 'millionTokens',
+-        },
+-        {
+-          lookup: {
+-            prices: {
+-              '[0, 0.008_192]': 10,
+-              '[0.008_193, 0.032_768]': 20,
+-              '[0.032_769, 0.131_072]': 30,
+-            },
+-            pricingParams: ['textInput'],
+-          },
+-          name: 'textOutput',
+-          strategy: 'lookup',
+-          unit: 'millionTokens',
+-        },
+-      ],
+-    },
+-    releasedAt: '2025-02-17',
+-    type: 'chat',
+-  },
+-  {
+-    abilities: {
+-      functionCall: true,
+-    },
+-    contextWindowTokens: 131_072,
+-    description:
+-      'Moonshot V1 Auto selects the appropriate model based on current context token usage.',
+-    displayName: 'Moonshot V1 Auto',
+-    id: 'moonshot-v1-auto',
+-    pricing: {
+-      currency: 'CNY',
+-      units: [
+-        { name: 'textInput', rate: 10, strategy: 'fixed', unit: 'millionTokens' },
+-        { name: 'textOutput', rate: 30, strategy: 'fixed', unit: 'millionTokens' },
+-      ],
+-    },
+-    type: 'chat',
+-  },
+   {
+     abilities: {
+       functionCall: true,
+diff --git a/packages/model-bank/src/modelProviders/moonshot.ts b/packages/model-bank/src/modelProviders/moonshot.ts
+index 4b225b11186..97bf72b1b2a 100644
+--- a/packages/model-bank/src/modelProviders/moonshot.ts
++++ b/packages/model-bank/src/modelProviders/moonshot.ts
+@@ -2,7 +2,7 @@ import type { ModelProviderCard } from '@/types/llm';
+ 
+ const Moonshot: ModelProviderCard = {
+   chatModels: [],
+-  checkModel: 'kimi-latest',
++  checkModel: 'kimi-k2.5',
+   description:
+     'Moonshot, from Moonshot AI (Beijing Moonshot Technology), offers multiple NLP models for use cases like content creation, research, recommendations, and medical analysis, with strong long-context and complex generation support.',
+   id: 'moonshot',
+@@ -12,7 +12,7 @@ const Moonshot: ModelProviderCard = {
+   settings: {
+     disableBrowserRequest: true, // CORS error
+     proxyUrl: {
+-      placeholder: 'https://api.moonshot.ai/v1',
++      placeholder: 'https://api.moonshot.cn/v1',
+     },
+     responseAnimation: {
+       speed: 2,
+diff --git a/packages/model-runtime/src/providers/moonshot/index.ts b/packages/model-runtime/src/providers/moonshot/index.ts
+index a26b4e562d8..8885ae1bbe7 100644
+--- a/packages/model-runtime/src/providers/moonshot/index.ts
++++ b/packages/model-runtime/src/providers/moonshot/index.ts
+@@ -21,8 +21,8 @@ export interface MoonshotModelCard {
+   supports_image_in?: boolean;
+ }
+ 
+-const DEFAULT_MOONSHOT_BASE_URL = 'https://api.moonshot.ai/v1';
+-const DEFAULT_MOONSHOT_ANTHROPIC_BASE_URL = 'https://api.moonshot.ai/anthropic';
++const DEFAULT_MOONSHOT_BASE_URL = 'https://api.moonshot.cn/v1';
++const DEFAULT_MOONSHOT_ANTHROPIC_BASE_URL = 'https://api.moonshot.cn/anthropic';
+ 
+ // Shared constants and helpers
+ const MOONSHOT_SEARCH_TOOL = { function: { name: '$web_search' }, type: 'builtin_function' } as any;
