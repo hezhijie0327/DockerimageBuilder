@@ -629,7 +629,7 @@ index a6edbab29d1..2b914a9d0c2 100644
      sdkType: 'openai',
      showModelFetcher: true,
 diff --git a/packages/model-runtime/src/core/contextBuilders/openai.test.ts b/packages/model-runtime/src/core/contextBuilders/openai.test.ts
-index b1ac1082d45..b4a62469711 100644
+index b1ac1082d45..9137843e04b 100644
 --- a/packages/model-runtime/src/core/contextBuilders/openai.test.ts
 +++ b/packages/model-runtime/src/core/contextBuilders/openai.test.ts
 @@ -1,4 +1,4 @@
@@ -851,8 +851,99 @@ index b1ac1082d45..b4a62469711 100644
    it('应该正确处理混合类型的消息序列', async () => {
      const messages: OpenAIChatMessage[] = [
        { role: 'user', content: 'I need help with a function' },
+@@ -479,6 +666,90 @@ describe('convertOpenAIResponseInputs', () => {
+       },
+     ]);
+   });
++
++  it('should pass forceVideoBase64 to convertMessageContent in video_url branch', async () => {
++    process.env.LLM_VISION_VIDEO_USE_BASE64 = undefined;
++
++    const messages: OpenAIChatMessage[] = [
++      {
++        role: 'user',
++        content: [
++          { type: 'text', text: 'Here is a video' },
++          {
++            type: 'video_url',
++            video_url: {
++              url: 'https://example.com/video.mp4',
++            },
++          },
++        ],
++      },
++    ];
++
++    vi.mocked(parseDataUri).mockReturnValue({ type: 'url', base64: null, mimeType: null });
++    vi.mocked(videoUrlToBase64).mockResolvedValue({
++      base64: 'forcedBase64',
++      mimeType: 'video/mp4',
++    });
++
++    const result = await convertOpenAIResponseInputs(messages, { forceVideoBase64: true });
++
++    expect(result).toEqual([
++      {
++        role: 'user',
++        content: [
++          { type: 'input_text', text: 'Here is a video' },
++          {
++            type: 'input_video',
++            video_url: 'data:video/mp4;base64,forcedBase64',
++          },
++        ],
++      },
++    ]);
++
++    expect(videoUrlToBase64).toHaveBeenCalledWith('https://example.com/video.mp4');
++  });
++
++  it('should pass forceImageBase64 to convertMessageContent in image_url branch', async () => {
++    process.env.LLM_VISION_IMAGE_USE_BASE64 = undefined;
++
++    const messages: OpenAIChatMessage[] = [
++      {
++        role: 'user',
++        content: [
++          { type: 'text', text: 'Here is an image' },
++          {
++            type: 'image_url',
++            image_url: {
++              url: 'https://example.com/image.jpg',
++            },
++          },
++        ],
++      },
++    ];
++
++    vi.mocked(parseDataUri).mockReturnValue({ type: 'url', base64: null, mimeType: null });
++    vi.mocked(imageUrlToBase64).mockResolvedValue({
++      base64: 'forcedBase64',
++      mimeType: 'image/jpeg',
++    });
++
++    const result = await convertOpenAIResponseInputs(messages, { forceImageBase64: true });
++
++    expect(result).toEqual([
++      {
++        role: 'user',
++        content: [
++          { type: 'input_text', text: 'Here is an image' },
++          {
++            type: 'input_image',
++            image_url: 'data:image/jpeg;base64,forcedBase64',
++          },
++        ],
++      },
++    ]);
++
++    expect(imageUrlToBase64).toHaveBeenCalledWith('https://example.com/image.jpg');
++  });
+ });
+ 
+ describe('convertImageUrlToFile', () => {
 diff --git a/packages/model-runtime/src/core/contextBuilders/openai.ts b/packages/model-runtime/src/core/contextBuilders/openai.ts
-index c8fd03a2313..78073e78724 100644
+index c8fd03a2313..70e3245d8c6 100644
 --- a/packages/model-runtime/src/core/contextBuilders/openai.ts
 +++ b/packages/model-runtime/src/core/contextBuilders/openai.ts
 @@ -1,4 +1,4 @@
@@ -914,12 +1005,13 @@ index c8fd03a2313..78073e78724 100644
    return content;
  };
  
-@@ -132,6 +161,16 @@ export const convertOpenAIResponseInputs = async (
+@@ -132,7 +161,20 @@ export const convertOpenAIResponseInputs = async (
                    }
                    return { ...c, type: 'input_text' };
                  }
+-                const image = await convertMessageContent(c as OpenAI.ChatCompletionContentPart);
 +                if (c.type === 'video_url') {
-+                  const video = await convertMessageContent(c);
++                  const video = await convertMessageContent(c, options);
 +                  if (!('video_url' in video) || !video.video_url?.url) {
 +                    return undefined;
 +                  }
@@ -928,87 +1020,164 @@ index c8fd03a2313..78073e78724 100644
 +                    type: 'input_video',
 +                  };
 +                }
-                 const image = await convertMessageContent(c as OpenAI.ChatCompletionContentPart);
++                const image = await convertMessageContent(
++                  c as OpenAI.ChatCompletionContentPart,
++                  options,
++                );
                  if (!(image as OpenAI.ChatCompletionContentPartImage).image_url?.url) {
                    return undefined;
+                 }
 diff --git a/packages/model-runtime/src/core/contextBuilders/sensenova.test.ts b/packages/model-runtime/src/core/contextBuilders/sensenova.test.ts
-index 233027c94bb..a9a713b2932 100644
+deleted file mode 100644
+index 233027c94bb..00000000000
 --- a/packages/model-runtime/src/core/contextBuilders/sensenova.test.ts
-+++ b/packages/model-runtime/src/core/contextBuilders/sensenova.test.ts
-@@ -33,6 +33,13 @@ describe('convertSenseNovaMessage', () => {
-     expect(result).toEqual([{ type: 'image_url', image_url: 'https://example.com/image.jpg' }]);
-   });
- 
-+  it('should convert video_url to video_url type', () => {
-+    const content = [{ type: 'video_url', video_url: { url: 'https://example.com/video.mp4' } }];
-+    const result = convertSenseNovaMessage(content);
-+
-+    expect(result).toEqual([{ type: 'video_url', video_url: 'https://example.com/video.mp4' }]);
-+  });
-+
-   it('should handle mixed content types', () => {
-     const content = [
-       { type: 'text', text: 'Hello world' },
-@@ -48,6 +55,21 @@ describe('convertSenseNovaMessage', () => {
-     ]);
-   });
- 
-+  it('should handle mixed content with video_url', () => {
-+    const content = [
-+      { type: 'text', text: 'Hello world' },
-+      { type: 'image_url', image_url: { url: 'https://example.com/image.jpg' } },
-+      { type: 'video_url', video_url: { url: 'https://example.com/video.mp4' } },
-+    ];
-+    const result = convertSenseNovaMessage(content);
-+
-+    expect(result).toEqual([
-+      { type: 'text', text: 'Hello world' },
-+      { type: 'image_url', image_url: 'https://example.com/image.jpg' },
-+      { type: 'video_url', video_url: 'https://example.com/video.mp4' },
-+    ]);
-+  });
-+
-   it('should filter out invalid items', () => {
-     const content = [
-       { type: 'text', text: 'Hello world' },
-@@ -59,6 +81,16 @@ describe('convertSenseNovaMessage', () => {
-     expect(result).toEqual([{ type: 'text', text: 'Hello world' }]);
-   });
- 
-+  it('should filter out invalid video_url items', () => {
-+    const content = [
-+      { type: 'text', text: 'Hello world' },
-+      { type: 'video_url', video_url: { notUrl: 'missing url field' } },
-+    ];
-+    const result = convertSenseNovaMessage(content);
-+
-+    expect(result).toEqual([{ type: 'text', text: 'Hello world' }]);
-+  });
-+
-   it('should handle the example input format correctly', () => {
-     const messages = [
-       {
++++ /dev/null
+@@ -1,99 +0,0 @@
+-import { describe, expect, it } from 'vitest';
+-
+-import { convertSenseNovaMessage } from './sensenova';
+-
+-describe('convertSenseNovaMessage', () => {
+-  it('should convert string content to text type array', () => {
+-    const content = 'Hello world';
+-    const result = convertSenseNovaMessage(content);
+-
+-    expect(result).toEqual([{ type: 'text', text: 'Hello world' }]);
+-  });
+-
+-  it('should handle array content with text type', () => {
+-    const content = [{ type: 'text', text: 'Hello world' }];
+-    const result = convertSenseNovaMessage(content);
+-
+-    expect(result).toEqual([{ type: 'text', text: 'Hello world' }]);
+-  });
+-
+-  it('should convert image_url with base64 format to image_base64', () => {
+-    const content = [
+-      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,ABCDEF123456' } },
+-    ];
+-    const result = convertSenseNovaMessage(content);
+-
+-    expect(result).toEqual([{ type: 'image_base64', image_base64: 'ABCDEF123456' }]);
+-  });
+-
+-  it('should keep image_url format for non-base64 urls', () => {
+-    const content = [{ type: 'image_url', image_url: { url: 'https://example.com/image.jpg' } }];
+-    const result = convertSenseNovaMessage(content);
+-
+-    expect(result).toEqual([{ type: 'image_url', image_url: 'https://example.com/image.jpg' }]);
+-  });
+-
+-  it('should handle mixed content types', () => {
+-    const content = [
+-      { type: 'text', text: 'Hello world' },
+-      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,ABCDEF123456' } },
+-      { type: 'image_url', image_url: { url: 'https://example.com/image.jpg' } },
+-    ];
+-    const result = convertSenseNovaMessage(content);
+-
+-    expect(result).toEqual([
+-      { type: 'text', text: 'Hello world' },
+-      { type: 'image_base64', image_base64: 'ABCDEF123456' },
+-      { type: 'image_url', image_url: 'https://example.com/image.jpg' },
+-    ]);
+-  });
+-
+-  it('should filter out invalid items', () => {
+-    const content = [
+-      { type: 'text', text: 'Hello world' },
+-      { type: 'unknown', value: 'should be filtered' },
+-      { type: 'image_url', image_url: { notUrl: 'missing url field' } },
+-    ];
+-    const result = convertSenseNovaMessage(content);
+-
+-    expect(result).toEqual([{ type: 'text', text: 'Hello world' }]);
+-  });
+-
+-  it('should handle the example input format correctly', () => {
+-    const messages = [
+-      {
+-        content: [
+-          {
+-            content: 'Hi',
+-            role: 'user',
+-          },
+-          {
+-            image_url: {
+-              detail: 'auto',
+-              url: 'data:image/jpeg;base64,ABCDEF123456',
+-            },
+-            type: 'image_url',
+-          },
+-        ],
+-        role: 'user',
+-      },
+-    ];
+-
+-    // This is simulating how you might use convertSenseNovaMessage with the example input
+-    // Note: The actual function only converts the content part, not the entire messages array
+-    const content = messages[0].content;
+-
+-    // This is how the function would be expected to handle a mixed array like this
+-    // However, the actual test would need to be adjusted based on how your function
+-    // is intended to handle this specific format with nested content objects
+-    const result = convertSenseNovaMessage([
+-      { type: 'text', text: 'Hi' },
+-      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,ABCDEF123456' } },
+-    ]);
+-
+-    expect(result).toEqual([
+-      { type: 'text', text: 'Hi' },
+-      { type: 'image_base64', image_base64: 'ABCDEF123456' },
+-    ]);
+-  });
+-});
 diff --git a/packages/model-runtime/src/core/contextBuilders/sensenova.ts b/packages/model-runtime/src/core/contextBuilders/sensenova.ts
-index 09887732783..9932eb0bbfa 100644
+deleted file mode 100644
+index 09887732783..00000000000
 --- a/packages/model-runtime/src/core/contextBuilders/sensenova.ts
-+++ b/packages/model-runtime/src/core/contextBuilders/sensenova.ts
-@@ -18,6 +18,16 @@ export const convertSenseNovaMessage = (content: any) => {
-       // If it's content, convert format to text type
-       if (item.type === 'text') return item;
- 
-+      // If it's video_url, convert format to video_url type
-+      if (item.type === 'video_url' && item.video_url) {
-+        const url = item.video_url.url;
-+
-+        // Ensure URL exists and is a string
-+        if (!url || typeof url !== 'string') return null;
-+
-+        return { video_url: url, type: 'video_url' };
-+      }
-+
-       // If it's image_url, convert format to image_url type
-       if (item.type === 'image_url' && item.image_url) {
-         const url = item.image_url.url;
++++ /dev/null
+@@ -1,40 +0,0 @@
+-export const convertSenseNovaMessage = (content: any) => {
+-  // If it's a single string content, convert format to text type
+-  if (typeof content === 'string') {
+-    return [{ text: content, type: 'text' }];
+-  }
+-
+-  // If content is empty or not an array, return empty array to avoid subsequent errors
+-  if (!Array.isArray(content)) {
+-    return [];
+-  }
+-
+-  // If content contains images, need to convert array content format
+-  return content
+-    .map((item: any) => {
+-      // If item is empty, skip processing
+-      if (!item) return null;
+-
+-      // If it's content, convert format to text type
+-      if (item.type === 'text') return item;
+-
+-      // If it's image_url, convert format to image_url type
+-      if (item.type === 'image_url' && item.image_url) {
+-        const url = item.image_url.url;
+-
+-        // Ensure URL exists and is a string
+-        if (!url || typeof url !== 'string') return null;
+-
+-        // If image_url is in base64 format, return image_base64 type, otherwise return image_url type
+-        return url.startsWith('data:image/jpeg;base64') || url.startsWith('data:image/png;base64')
+-          ? {
+-              image_base64: url.split(',')[1],
+-              type: 'image_base64',
+-            }
+-          : { image_url: url, type: 'image_url' };
+-      }
+-
+-      return null;
+-    })
+-    .filter(Boolean);
+-};
 diff --git a/packages/model-runtime/src/core/contextBuilders/siliconcloud.test.ts b/packages/model-runtime/src/core/contextBuilders/siliconcloud.test.ts
 deleted file mode 100644
 index c8a72257316..00000000000
@@ -1345,7 +1514,7 @@ index a26b4e562d8..8885ae1bbe7 100644
  // Shared constants and helpers
  const MOONSHOT_SEARCH_TOOL = { function: { name: '$web_search' }, type: 'builtin_function' } as any;
 diff --git a/packages/model-runtime/src/providers/sensenova/index.test.ts b/packages/model-runtime/src/providers/sensenova/index.test.ts
-index 9f92b90f49e..7e3642a99b2 100644
+index 9f92b90f49e..dc20a1f906b 100644
 --- a/packages/model-runtime/src/providers/sensenova/index.test.ts
 +++ b/packages/model-runtime/src/providers/sensenova/index.test.ts
 @@ -7,7 +7,7 @@ import { testProvider } from '../../providerTestUtils';
@@ -1378,7 +1547,62 @@ index 9f92b90f49e..7e3642a99b2 100644
        expect(params.provider).toBe('sensenova');
        expect(params.chatCompletion).toBeDefined();
        expect(params.debug).toBeDefined();
-@@ -453,7 +453,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -375,6 +375,54 @@ describe('LobeSenseNovaAI - custom features', () => {
+         ]);
+       });
+ 
++      it('should convert messages for sensenova-v6-pro (lowercase)', () => {
++        const payload = createMockPayload({
++          messages: [
++            {
++              content: [
++                { text: 'Hello', type: 'text' },
++                {
++                  image_url: { url: 'https://example.com/image.jpg' },
++                  type: 'image_url',
++                },
++              ],
++              role: 'user',
++            },
++          ],
++          model: 'sensenova-v6-pro',
++        });
++
++        const result = params.chatCompletion.handlePayload(payload as any);
++        expect(result.messages[0].content).toEqual([
++          { text: 'Hello', type: 'text' },
++          { image_url: 'https://example.com/image.jpg', type: 'image_url' },
++        ]);
++      });
++
++      it('should convert messages for sensenova-v6-pro with video_url', () => {
++        const payload = createMockPayload({
++          messages: [
++            {
++              content: [
++                { text: 'Analyze this video', type: 'text' },
++                {
++                  video_url: { url: 'https://example.com/video.mp4' },
++                  type: 'video_url',
++                },
++              ],
++              role: 'user',
++            },
++          ],
++          model: 'sensenova-v6-pro',
++        });
++
++        const result = params.chatCompletion.handlePayload(payload as any);
++        expect(result.messages[0].content).toEqual([
++          { text: 'Analyze this video', type: 'text' },
++          { video_url: 'https://example.com/video.mp4', type: 'video_url' },
++        ]);
++      });
++
+       it('should not convert messages for non-vision models', () => {
+         const originalContent = [
+           { text: 'Hello', type: 'text' },
+@@ -453,7 +501,7 @@ describe('LobeSenseNovaAI - custom features', () => {
      it('should fetch and process model list', async () => {
        const mockClient = {
          apiKey: 'test',
@@ -1387,7 +1611,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [
-@@ -475,7 +475,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -475,7 +523,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should detect function call capability by keyword 1202', async () => {
        const mockClient = {
@@ -1396,7 +1620,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'model-1202' }, { id: 'normal-model' }],
-@@ -493,7 +493,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -493,7 +541,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should detect vision capability by keyword vision', async () => {
        const mockClient = {
@@ -1405,7 +1629,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'model-vision' }, { id: 'normal-model' }],
-@@ -511,7 +511,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -511,7 +559,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should detect vision capability by keyword sensenova-v6', async () => {
        const mockClient = {
@@ -1414,7 +1638,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'sensenova-v6' }, { id: 'sensenova-v5' }],
-@@ -529,7 +529,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -529,7 +577,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should detect reasoning capability by keyword deepseek-r1', async () => {
        const mockClient = {
@@ -1423,7 +1647,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'deepseek-r1' }, { id: 'deepseek' }],
-@@ -547,7 +547,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -547,7 +595,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should detect reasoning capability by keyword reasoner', async () => {
        const mockClient = {
@@ -1432,7 +1656,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'model-reasoner' }, { id: 'model' }],
-@@ -565,7 +565,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -565,7 +613,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should merge with LOBE_DEFAULT_MODEL_LIST when model is known', async () => {
        const mockClient = {
@@ -1441,7 +1665,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'SenseChat-5' }],
-@@ -583,7 +583,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -583,7 +631,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should use default values for unknown models', async () => {
        const mockClient = {
@@ -1450,7 +1674,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'unknown-model-xyz' }],
-@@ -602,7 +602,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -602,7 +650,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should handle case-insensitive model matching', async () => {
        const mockClient = {
@@ -1459,7 +1683,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'SENSECHAT-5' }],
-@@ -617,7 +617,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -617,7 +665,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should merge abilities from known model', async () => {
        const mockClient = {
@@ -1468,7 +1692,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'test-model' }],
-@@ -636,7 +636,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -636,7 +684,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should handle API errors gracefully', async () => {
        const mockClient = {
@@ -1477,7 +1701,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockRejectedValue(new Error('API Error')),
          },
-@@ -647,7 +647,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -647,7 +695,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should handle empty model list', async () => {
        const mockClient = {
@@ -1486,7 +1710,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [],
-@@ -661,7 +661,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -661,7 +709,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should change client baseURL to models endpoint', async () => {
        const mockClient = {
@@ -1495,7 +1719,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'test-model' }],
-@@ -675,7 +675,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -675,7 +723,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should detect multiple ability keywords in one model', async () => {
        const mockClient = {
@@ -1504,7 +1728,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'model-1202-vision-reasoner' }],
-@@ -693,7 +693,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -693,7 +741,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should prioritize keyword detection over known model abilities', async () => {
        const mockClient = {
@@ -1513,7 +1737,7 @@ index 9f92b90f49e..7e3642a99b2 100644
          models: {
            list: vi.fn().mockResolvedValue({
              data: [{ id: 'custom-1202-model' }],
-@@ -710,7 +710,7 @@ describe('LobeSenseNovaAI - custom features', () => {
+@@ -710,7 +758,7 @@ describe('LobeSenseNovaAI - custom features', () => {
  
      it('should use OR logic for combining keyword and known model abilities', async () => {
        const mockClient = {
@@ -1523,10 +1747,18 @@ index 9f92b90f49e..7e3642a99b2 100644
            list: vi.fn().mockResolvedValue({
              data: [
 diff --git a/packages/model-runtime/src/providers/sensenova/index.ts b/packages/model-runtime/src/providers/sensenova/index.ts
-index 1adb8a3591a..ed1888e5ef3 100644
+index 1adb8a3591a..2e76171d200 100644
 --- a/packages/model-runtime/src/providers/sensenova/index.ts
 +++ b/packages/model-runtime/src/providers/sensenova/index.ts
-@@ -10,7 +10,7 @@ export interface SenseNovaModelCard {
+@@ -1,7 +1,6 @@
+ import type { ChatModelCard } from '@lobechat/types';
+ import { ModelProvider } from 'model-bank';
+ 
+-import { convertSenseNovaMessage } from '../../core/contextBuilders/sensenova';
+ import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+ 
+@@ -10,19 +9,11 @@ export interface SenseNovaModelCard {
  }
  
  export const params = {
@@ -1534,16 +1766,33 @@ index 1adb8a3591a..ed1888e5ef3 100644
 +  baseURL: 'https://api.sensenova.cn/compatible-mode/v2',
    chatCompletion: {
      handlePayload: (payload) => {
-       const {
-@@ -32,7 +32,7 @@ export const params = {
+-      const {
+-        frequency_penalty,
+-        max_tokens,
+-        messages,
+-        model,
+-        temperature,
+-        thinking,
+-        top_p,
+-        ...rest
+-      } = payload;
++      const { frequency_penalty, max_tokens, model, temperature, thinking, top_p, ...rest } =
++        payload;
+ 
+       return {
+         ...rest,
+@@ -31,11 +22,6 @@ export const params = {
+             ? frequency_penalty
              : undefined,
          max_new_tokens: max_tokens !== undefined && max_tokens > 0 ? max_tokens : undefined,
-         messages: messages.map((message) =>
+-        messages: messages.map((message) =>
 -          message.role !== 'user' || !model || !/^Sense(Nova-V6|Chat-Vision)/.test(model)
-+          message.role !== 'user' || !model || !/^Sense(?:Nova-V6|Chat-Vision)/.test(model)
-             ? message
-             : { ...message, content: convertSenseNovaMessage(message.content) },
-         ) as any[],
+-            ? message
+-            : { ...message, content: convertSenseNovaMessage(message.content) },
+-        ) as any[],
+         model,
+         stream: true,
+         temperature:
 diff --git a/packages/model-runtime/src/providers/siliconcloud/index.ts b/packages/model-runtime/src/providers/siliconcloud/index.ts
 index af575b0ac38..b072daffdb8 100644
 --- a/packages/model-runtime/src/providers/siliconcloud/index.ts
