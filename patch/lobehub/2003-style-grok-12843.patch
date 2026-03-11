@@ -1,5 +1,5 @@
 diff --git a/packages/model-bank/src/modelProviders/xai.ts b/packages/model-bank/src/modelProviders/xai.ts
-index 1aaafc046b..ca873cb0c4 100644
+index 1aaafc046bf..ca873cb0c4e 100644
 --- a/packages/model-bank/src/modelProviders/xai.ts
 +++ b/packages/model-bank/src/modelProviders/xai.ts
 @@ -17,7 +17,6 @@ const XAI: ModelProviderCard = {
@@ -11,10 +11,10 @@ index 1aaafc046b..ca873cb0c4 100644
    url: 'https://x.ai/api',
  };
 diff --git a/packages/model-runtime/src/const/models.ts b/packages/model-runtime/src/const/models.ts
-index fa8d4d7cd2..9180201413 100644
+index e8608e326a6..b595ec09ab9 100644
 --- a/packages/model-runtime/src/const/models.ts
 +++ b/packages/model-runtime/src/const/models.ts
-@@ -47,11 +47,6 @@ export const responsesAPIModels = new Set([
+@@ -50,11 +50,6 @@ export const responsesAPIModels = new Set([
    'gpt-5.4-pro',
  ]);
  
@@ -26,8 +26,312 @@ index fa8d4d7cd2..9180201413 100644
  /**
   * Regex patterns for models that support context caching (3.5+)
   */
+diff --git a/packages/model-runtime/src/providerTestUtils.ts b/packages/model-runtime/src/providerTestUtils.ts
+index 8969609b3e9..39c01b028f1 100644
+--- a/packages/model-runtime/src/providerTestUtils.ts
++++ b/packages/model-runtime/src/providerTestUtils.ts
+@@ -12,10 +12,12 @@ interface TesstProviderParams {
+   defaultBaseURL: string;
+   invalidErrorType?: string;
+   provider: string;
++  responseDebugEnv?: string;
+   Runtime: any;
+   test?: {
+     skipAPICall?: boolean;
+     skipErrorHandle?: boolean;
++    useResponsesAPI?: boolean;
+   };
+ }
+ 
+@@ -26,6 +28,7 @@ export const testProvider = ({
+   defaultBaseURL,
+   Runtime,
+   chatDebugEnv,
++  responseDebugEnv,
+   chatModel,
+   test = {},
+ }: TesstProviderParams) => {
+@@ -37,10 +40,11 @@ export const testProvider = ({
+   beforeEach(() => {
+     instance = new Runtime({ apiKey: 'test' });
+ 
+-    // 使用 vi.spyOn 来模拟 chat.completions.create 方法
++    // 使用 vi.spyOn 来模拟 chat.completions.create 方法或 responses.create 方法
+     vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
+       new ReadableStream() as any,
+     );
++    vi.spyOn(instance['client'].responses, 'create').mockResolvedValue(new ReadableStream() as any);
+   });
+ 
+   afterEach(() => {
+@@ -62,7 +66,10 @@ export const testProvider = ({
+         const mockStream = new ReadableStream();
+         const mockResponse = Promise.resolve(mockStream);
+ 
+-        (instance['client'].chat.completions.create as Mock).mockResolvedValue(mockResponse);
++        const createMethod = test?.useResponsesAPI
++          ? instance['client'].responses.create
++          : instance['client'].chat.completions.create;
++        (createMethod as Mock).mockResolvedValue(mockResponse);
+ 
+         // Act
+         const result = await instance.chat({
+@@ -81,7 +88,10 @@ export const testProvider = ({
+           const mockStream = new ReadableStream();
+           const mockResponse = Promise.resolve(mockStream);
+ 
+-          (instance['client'].chat.completions.create as Mock).mockResolvedValue(mockResponse);
++          const createMethod = test?.useResponsesAPI
++            ? instance['client'].responses.create
++            : instance['client'].chat.completions.create;
++          (createMethod as Mock).mockResolvedValue(mockResponse);
+ 
+           // Act
+           const result = await instance.chat({
+@@ -93,20 +103,24 @@ export const testProvider = ({
+           });
+ 
+           // Assert
+-          expect(instance['client'].chat.completions.create).toHaveBeenCalledWith(
+-            {
+-              max_tokens: 1024,
+-              messages: [{ content: 'Hello', role: 'user' }],
+-              model: chatModel,
+-              stream: true,
+-              stream_options: {
+-                include_usage: true,
++          if (test?.useResponsesAPI) {
++            expect(instance['client'].responses.create).toHaveBeenCalled();
++          } else {
++            expect(instance['client'].chat.completions.create).toHaveBeenCalledWith(
++              {
++                max_tokens: 1024,
++                messages: [{ content: 'Hello', role: 'user' }],
++                model: chatModel,
++                stream: true,
++                stream_options: {
++                  include_usage: true,
++                },
++                temperature: 0.7,
++                top_p: 1,
+               },
+-              temperature: 0.7,
+-              top_p: 1,
+-            },
+-            { headers: { Accept: '*/*' } },
+-          );
++              { headers: { Accept: '*/*' } },
++            );
++          }
+           expect(result).toBeInstanceOf(Response);
+         });
+       }
+@@ -127,7 +141,11 @@ export const testProvider = ({
+               {},
+             );
+ 
+-            vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++            if (test?.useResponsesAPI) {
++              vi.mocked(instance['client'].responses.create).mockRejectedValue(apiError);
++            } else {
++              vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(apiError);
++            }
+ 
+             // Act
+             try {
+@@ -166,7 +184,11 @@ export const testProvider = ({
+             };
+             const apiError = new OpenAI.APIError(400, errorInfo, 'module error', {});
+ 
+-            vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++            if (test?.useResponsesAPI) {
++              vi.mocked(instance['client'].responses.create).mockRejectedValue(apiError);
++            } else {
++              vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(apiError);
++            }
+ 
+             // Act
+             try {
+@@ -196,11 +218,14 @@ export const testProvider = ({
+ 
+             instance = new Runtime({
+               apiKey: 'test',
+-
+               baseURL: 'https://api.abc.com/v1',
+             });
+ 
+-            vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++            if (test?.useResponsesAPI) {
++              vi.spyOn(instance['client'].responses, 'create').mockRejectedValue(apiError);
++            } else {
++              vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(apiError);
++            }
+ 
+             // Act
+             try {
+@@ -225,7 +250,12 @@ export const testProvider = ({
+             // Mock the API call to simulate a 401 error
+             const error = new Error('Unauthorized') as any;
+             error.status = 401;
+-            vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(error);
++
++            if (test?.useResponsesAPI) {
++              vi.mocked(instance['client'].responses.create).mockRejectedValue(error);
++            } else {
++              vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(error);
++            }
+ 
+             try {
+               await instance.chat({
+@@ -248,7 +278,11 @@ export const testProvider = ({
+             // Arrange
+             const genericError = new Error('Generic Error');
+ 
+-            vi.spyOn(instance['client'].chat.completions, 'create').mockRejectedValue(genericError);
++            if (test?.useResponsesAPI) {
++              vi.mocked(instance['client'].responses.create).mockRejectedValue(genericError);
++            } else {
++              vi.mocked(instance['client'].chat.completions.create).mockRejectedValue(genericError);
++            }
+ 
+             // Act
+             try {
+@@ -286,15 +320,20 @@ export const testProvider = ({
+           mockDebugStream.toReadableStream = () => mockDebugStream; // 添加 toReadableStream 方法
+ 
+           // 模拟 chat.completions.create 返回值，包括模拟的 tee 方法
+-          (instance['client'].chat.completions.create as Mock).mockResolvedValue({
++          const createMethod = test?.useResponsesAPI
++            ? instance['client'].responses.create
++            : instance['client'].chat.completions.create;
++          (createMethod as Mock).mockResolvedValue({
+             tee: () => [mockProdStream, { toReadableStream: () => mockDebugStream }],
+           });
+ 
++          const debugEnv = test?.useResponsesAPI
++            ? (responseDebugEnv ?? chatDebugEnv)
++            : chatDebugEnv;
+           // 保存原始环境变量值
+-          const originalDebugValue = process.env[chatDebugEnv];
+-
++          const originalDebugValue = process.env[debugEnv];
+           // 模拟环境变量
+-          process.env[chatDebugEnv] = '1';
++          process.env[debugEnv] = '1';
+           vi.spyOn(debugStreamModule, 'debugStream').mockImplementation(() => Promise.resolve());
+ 
+           // 执行测试
+@@ -309,9 +348,8 @@ export const testProvider = ({
+ 
+           // 验证 debugStream 被调用
+           expect(debugStreamModule.debugStream).toHaveBeenCalled();
+-
+           // 恢复原始环境变量值
+-          process.env[chatDebugEnv] = originalDebugValue;
++          process.env[debugEnv] = originalDebugValue;
+         });
+       });
+     });
+diff --git a/packages/model-runtime/src/providers/xai/index.test.ts b/packages/model-runtime/src/providers/xai/index.test.ts
+index bc023bcc88b..4b3fc6b5130 100644
+--- a/packages/model-runtime/src/providers/xai/index.test.ts
++++ b/packages/model-runtime/src/providers/xai/index.test.ts
+@@ -5,14 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
+ 
+ import { testProvider } from '../../providerTestUtils';
+ import type { XAIModelCard } from './index';
+-import { isGrokReasoningModel, LobeXAI } from './index';
++import { LobeXAI } from './index';
+ 
+ testProvider({
+   Runtime: LobeXAI,
+   provider: ModelProvider.XAI,
+   defaultBaseURL: 'https://api.x.ai/v1',
+   chatDebugEnv: 'DEBUG_XAI_CHAT_COMPLETION',
++  responseDebugEnv: 'DEBUG_XAI_RESPONSES',
+   chatModel: 'grok',
++  test: { useResponsesAPI: true },
+ });
+ 
+ describe('LobeXAI - custom features', () => {
+@@ -20,75 +22,9 @@ describe('LobeXAI - custom features', () => {
+ 
+   beforeEach(() => {
+     instance = new LobeXAI({ apiKey: 'test_api_key' });
+-    vi.spyOn(instance['client'].chat.completions, 'create').mockResolvedValue(
+-      new ReadableStream() as any,
+-    );
+     vi.spyOn(instance['client'].responses, 'create').mockResolvedValue(new ReadableStream() as any);
+   });
+ 
+-  describe('isGrokReasoningModel', () => {
+-    it('should identify Grok reasoning models correctly', () => {
+-      expect(isGrokReasoningModel('grok-3-mini')).toBe(true);
+-      expect(isGrokReasoningModel('grok-4')).toBe(true);
+-      expect(isGrokReasoningModel('grok-code')).toBe(true);
+-      expect(isGrokReasoningModel('grok-2')).toBe(false);
+-      expect(isGrokReasoningModel('other-model')).toBe(false);
+-    });
+-  });
+-
+-  describe('chat with handlePayload', () => {
+-    it('should handle Grok reasoning models by removing frequency_penalty and presence_penalty', async () => {
+-      await instance.chat({
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'grok-4',
+-        frequency_penalty: 0.5,
+-        presence_penalty: 0.3,
+-        temperature: 0.7,
+-      });
+-
+-      const calledPayload = (instance['client'].chat.completions.create as Mock).mock.calls[0][0];
+-      expect(calledPayload.frequency_penalty).toBeUndefined();
+-      expect(calledPayload.presence_penalty).toBeUndefined();
+-      expect(calledPayload.model).toBe('grok-4');
+-    });
+-
+-    it('should keep frequency_penalty and presence_penalty for non-reasoning models', async () => {
+-      await instance.chat({
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'grok-2',
+-        frequency_penalty: 0.5,
+-        presence_penalty: 0.3,
+-        temperature: 0.7,
+-      });
+-
+-      const calledPayload = (instance['client'].chat.completions.create as Mock).mock.calls[0][0];
+-      expect(calledPayload.frequency_penalty).toBe(0.5);
+-      expect(calledPayload.presence_penalty).toBe(0.3);
+-    });
+-
+-    it('should use responses API when enabledSearch is true', async () => {
+-      await instance.chat({
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'grok-2',
+-        enabledSearch: true,
+-      });
+-
+-      expect(instance['client'].responses.create).toHaveBeenCalled();
+-      expect(instance['client'].chat.completions.create).not.toHaveBeenCalled();
+-    });
+-
+-    it('should not use responses API when enabledSearch is false', async () => {
+-      await instance.chat({
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'grok-2',
+-        enabledSearch: false,
+-      });
+-
+-      expect(instance['client'].chat.completions.create).toHaveBeenCalled();
+-      expect(instance['client'].responses.create).not.toHaveBeenCalled();
+-    });
+-  });
+-
+   describe('responses.handlePayload', () => {
+     it('should add web_search and x_search tools when enabledSearch is true', async () => {
+       await instance.chat({
 diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
-index 83669f0e1e..67e688dc85 100644
+index 83669f0e1ec..83649675490 100644
 --- a/packages/model-runtime/src/providers/xai/index.ts
 +++ b/packages/model-runtime/src/providers/xai/index.ts
 @@ -1,8 +1,6 @@
@@ -39,8 +343,15 @@ index 83669f0e1e..67e688dc85 100644
  import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
  import { createXAIImage } from './createImage';
  
-@@ -17,26 +15,11 @@ export const isGrokReasoningModel = (model: string) =>
+@@ -10,31 +8,12 @@ export interface XAIModelCard {
+   id: string;
+ }
  
+-export const GrokReasoningModels = new Set(['grok-3-mini', 'grok-4', 'grok-code']);
+-
+-export const isGrokReasoningModel = (model: string) =>
+-  Array.from(GrokReasoningModels).some((id) => model.includes(id));
+-
  export const LobeXAI = createOpenAICompatibleRuntime({
    baseURL: 'https://api.x.ai/v1',
 -  createImage: createXAIImage,
@@ -64,26 +375,13 @@ index 83669f0e1e..67e688dc85 100644
    },
 +  createImage: createXAIImage,
    debug: {
--    chatCompletion: () => process.env.DEBUG_XAI_CHAT_COMPLETION === '1',
+     chatCompletion: () => process.env.DEBUG_XAI_CHAT_COMPLETION === '1',
      responses: () => process.env.DEBUG_XAI_RESPONSES === '1',
-   },
-   models: async ({ client }) => {
-@@ -48,7 +31,7 @@ export const LobeXAI = createOpenAICompatibleRuntime({
-   provider: ModelProvider.XAI,
-   responses: {
-     handlePayload: (payload) => {
--      const { enabledSearch, tools, ...rest } = payload;
-+      const { enabledSearch, frequency_penalty, model, presence_penalty, tools, ...rest } = payload;
- 
-       const xaiTools = enabledSearch
-         ? [...(tools || []), { type: 'web_search' }, { type: 'x_search' }]
-@@ -56,6 +39,9 @@ export const LobeXAI = createOpenAICompatibleRuntime({
+@@ -56,7 +35,6 @@ export const LobeXAI = createOpenAICompatibleRuntime({
  
        return {
          ...rest,
-+        frequency_penalty: isGrokReasoningModel(model) ? undefined : frequency_penalty,
-+        model,
-+        presence_penalty: isGrokReasoningModel(model) ? undefined : presence_penalty,
-         stream: payload.stream ?? true,
+-        stream: payload.stream ?? true,
          tools: xaiTools,
          include: ['reasoning.encrypted_content'],
+       } as any;
