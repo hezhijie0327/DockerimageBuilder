@@ -40,6 +40,8 @@ RUN \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
+    && cd "${WORKDIR}/BUILDTMP/VUETORRENT" \
+    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/vuetorrent/*.patch \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${VUETORRENT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/VUETORRENT/package.json"
 
 FROM node:${NODEJS_VERSION}-slim AS build_vuetorrent
