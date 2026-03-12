@@ -49,7 +49,7 @@ WORKDIR /vuetorrent
 COPY --from=get_info /tmp/BUILDTMP/VUETORRENT /vuetorrent
 
 RUN \
-    npm install \
+    npm install --force \
     && npm run build
 
 FROM alpine:latest AS build_qbittorrent
