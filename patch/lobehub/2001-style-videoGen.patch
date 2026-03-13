@@ -82,3 +82,41 @@ index cbc94919bc8..ccb08954b69 100644
 +export const allModels = [...doubaoChatModels, ...volcengineImageModels, ...volcengineVideoModels];
  
  export default allModels;
+diff --git a/packages/model-runtime/package.json b/packages/model-runtime/package.json
+index aa44ef83bb8..faedec9c747 100644
+--- a/packages/model-runtime/package.json
++++ b/packages/model-runtime/package.json
+@@ -4,7 +4,8 @@
+   "private": true,
+   "exports": {
+     ".": "./src/index.ts",
+-    "./vertexai": "./src/providers/vertexai/index.ts"
++    "./vertexai": "./src/providers/vertexai/index.ts",
++    "./volcengine/video": "./src/providers/volcengine/video/handleCreateVideoWebhook.ts"
+   },
+   "scripts": {
+     "test": "vitest",
+diff --git a/src/app/(backend)/api/webhooks/video/[provider]/route.ts b/src/app/(backend)/api/webhooks/video/[provider]/route.ts
+index fec5ea436b6..4fa8c930967 100644
+--- a/src/app/(backend)/api/webhooks/video/[provider]/route.ts
++++ b/src/app/(backend)/api/webhooks/video/[provider]/route.ts
+@@ -51,8 +51,17 @@ export const POST = async (req: Request, { params }: { params: Promise<{ provide
+ 
+   try {
+     // Parse webhook body using provider-specific handler
+-    const runtime = ModelRuntime.initializeWithProvider(provider, {});
+-    const result = await runtime.handleCreateVideoWebhook({ body });
++    let result;
++
++    // Volcengine webhook handler doesn't need API key, so import directly to avoid InvalidProviderAPIKey error
++    if (provider === 'volcengine') {
++      const { handleVolcengineVideoWebhook } =
++        await import('@lobechat/model-runtime/volcengine/video');
++      result = await handleVolcengineVideoWebhook({ body });
++    } else {
++      const runtime = ModelRuntime.initializeWithProvider(provider, {});
++      result = await runtime.handleCreateVideoWebhook({ body });
++    }
+ 
+     if (!result) {
+       return NextResponse.json(
