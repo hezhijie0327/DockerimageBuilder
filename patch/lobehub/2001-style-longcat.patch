@@ -57,7 +57,7 @@ index 29c5ee37cf9..7e7785904d4 100644
    {
 diff --git a/packages/model-runtime/src/core/contextBuilders/longcat.test.ts b/packages/model-runtime/src/core/contextBuilders/longcat.test.ts
 new file mode 100644
-index 00000000000..a2cc5c1f11f
+index 00000000000..a2b189070de
 --- /dev/null
 +++ b/packages/model-runtime/src/core/contextBuilders/longcat.test.ts
 @@ -0,0 +1,482 @@
@@ -68,16 +68,16 @@ index 00000000000..a2cc5c1f11f
 +
 +describe('transformLongCatMessage', () => {
 +  describe('string content', () => {
-+    it('should return string content unchanged', () => {
++    it('should convert string content to text array format', () => {
 +      const content = 'Hello, world!';
 +      const result = transformLongCatMessage(content);
-+      expect(result).toBe('Hello, world!');
++      expect(result).toEqual([{ type: 'text', text: 'Hello, world!' }]);
 +    });
 +
-+    it('should return empty string unchanged', () => {
++    it('should convert empty string to text array format', () => {
 +      const content = '';
 +      const result = transformLongCatMessage(content);
-+      expect(result).toBe('');
++      expect(result).toEqual([{ type: 'text', text: '' }]);
 +    });
 +  });
 +
@@ -106,7 +106,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'https://example.com/image.jpg',
++            data: ['https://example.com/image.jpg'],
 +            type: 'url',
 +          },
 +        },
@@ -125,7 +125,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'data:image/jpeg;base64,abc123',
++            data: ['data:image/jpeg;base64,abc123'],
 +            type: 'base64',
 +          },
 +        },
@@ -144,7 +144,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'data:image/png;base64,xyz789',
++            data: ['data:image/png;base64,xyz789'],
 +            type: 'base64',
 +          },
 +        },
@@ -226,7 +226,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'https://example.com/image.png',
++            data: ['https://example.com/image.png'],
 +            type: 'url',
 +          },
 +        },
@@ -260,21 +260,21 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'https://example.com/image1.jpg',
++            data: ['https://example.com/image1.jpg'],
 +            type: 'url',
 +          },
 +        },
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'https://example.com/image2.jpg',
++            data: ['https://example.com/image2.jpg'],
 +            type: 'url',
 +          },
 +        },
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'data:image/jpeg;base64,base64img',
++            data: ['data:image/jpeg;base64,base64img'],
 +            type: 'base64',
 +          },
 +        },
@@ -368,7 +368,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'https://example.com/photo.jpeg',
++            data: ['https://example.com/photo.jpeg'],
 +            type: 'url',
 +          },
 +        },
@@ -414,7 +414,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'data:image/png;base64,img123',
++            data: ['data:image/png;base64,img123'],
 +            type: 'base64',
 +          },
 +        },
@@ -453,7 +453,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'https://cdn.example.com/img1.jpg',
++            data: ['https://cdn.example.com/img1.jpg'],
 +            type: 'url',
 +          },
 +        },
@@ -469,7 +469,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'data:image/webp;base64,webpdata',
++            data: ['data:image/webp;base64,webpdata'],
 +            type: 'base64',
 +          },
 +        },
@@ -523,7 +523,7 @@ index 00000000000..a2cc5c1f11f
 +        {
 +          type: 'input_image',
 +          input_image: {
-+            data: 'data:application/octet-stream;base64,rawdata',
++            data: ['data:application/octet-stream;base64,rawdata'],
 +            type: 'base64',
 +          },
 +        },
@@ -545,23 +545,27 @@ index 00000000000..a2cc5c1f11f
 +});
 diff --git a/packages/model-runtime/src/core/contextBuilders/longcat.ts b/packages/model-runtime/src/core/contextBuilders/longcat.ts
 new file mode 100644
-index 00000000000..70b58072d9d
+index 00000000000..39b02470026
 --- /dev/null
 +++ b/packages/model-runtime/src/core/contextBuilders/longcat.ts
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,50 @@
 +import type { OpenAIChatMessage } from '../../types';
 +
 +/**
-+ * Transform generic OpenAI format to LongCat specific format
-+ * LongCat requires nested object structure for images/videos:
-+ * - image_url: { url: string } -> input_image: { data: string, type: 'url' | 'base64' }
-+ * - video_url: { url: string } -> input_video: { data: string, type: 'url' | 'base64' }
++ * Transform generic OpenAI format to LongCat Omni specific format
++ * LongCat Omni models require:
++ * 1. All content must be array format: [{type: "text", text: "..."}]
++ * 2. image_url: { url: string } -> input_image: { data: string[], type: 'url' | 'base64' }
++ * 3. video_url: { url: string } -> input_video: { data: string, type: 'url' | 'base64' }
++ *
++ * Note: Only image data is an array, video data is a single string
 + */
 +export const transformLongCatMessage = (
 +  content: string | OpenAIChatMessage['content'],
 +): OpenAIChatMessage['content'] => {
++  // Convert string content to text array format
 +  if (typeof content === 'string') {
-+    return content;
++    return [{ type: 'text', text: content }];
 +  }
 +
 +  return content.map((part) => {
@@ -571,7 +575,7 @@ index 00000000000..70b58072d9d
 +
 +      return {
 +        input_image: {
-+          data: url,
++          data: [url],
 +          type: isBase64 ? 'base64' : 'url',
 +        },
 +        type: 'input_image',
@@ -591,11 +595,12 @@ index 00000000000..70b58072d9d
 +      } as any;
 +    }
 +
++    // Preserve text and other content types as is
 +    return part;
 +  });
 +};
 diff --git a/packages/model-runtime/src/providers/longcat/index.ts b/packages/model-runtime/src/providers/longcat/index.ts
-index 1c03f315350..3fae54315a6 100644
+index 1c03f315350..3390b9798dc 100644
 --- a/packages/model-runtime/src/providers/longcat/index.ts
 +++ b/packages/model-runtime/src/providers/longcat/index.ts
 @@ -1,5 +1,6 @@
@@ -605,19 +610,17 @@ index 1c03f315350..3fae54315a6 100644
  import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
  
  export const LobeLongCatAI = createOpenAICompatibleRuntime({
-@@ -8,9 +9,15 @@ export const LobeLongCatAI = createOpenAICompatibleRuntime({
-     handlePayload: (payload) => {
-       const { frequency_penalty, presence_penalty, ...rest } = payload;
+@@ -10,6 +11,13 @@ export const LobeLongCatAI = createOpenAICompatibleRuntime({
  
-+      const messages = payload.messages.map((message) => ({
-+        ...message,
-+        content: transformLongCatMessage(message.content),
-+      }));
-+
        return {
          ...rest,
++        ...(payload.model.includes('Omni') && {
++          messages: payload.messages.map((message) => ({
++            ...message,
++            content: transformLongCatMessage(message.content),
++          })),
++          output_modalities: ['text'],
++        }),
          frequency_penalty: undefined,
-+        messages,
          presence_penalty: undefined,
          stream: true,
-       } as any;
