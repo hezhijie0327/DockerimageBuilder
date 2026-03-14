@@ -1,0 +1,121 @@
+diff --git a/searx/static/themes/simple/img/logos/144.png b/searx/static/themes/simple/img/logos/144.png
+new file mode 100644
+index 000000000000..46c667776fd3
+Binary files /dev/null and b/searx/static/themes/simple/img/logos/144.png differ
+diff --git a/searx/static/themes/simple/img/logos/192.png b/searx/static/themes/simple/img/logos/192.png
+new file mode 100644
+index 000000000000..02356ddfde09
+Binary files /dev/null and b/searx/static/themes/simple/img/logos/192.png differ
+diff --git a/searx/static/themes/simple/img/logos/36.png b/searx/static/themes/simple/img/logos/36.png
+new file mode 100644
+index 000000000000..6fb7f9a4de4c
+Binary files /dev/null and b/searx/static/themes/simple/img/logos/36.png differ
+diff --git a/searx/static/themes/simple/img/logos/48.png b/searx/static/themes/simple/img/logos/48.png
+new file mode 100644
+index 000000000000..6d6553e0a05f
+Binary files /dev/null and b/searx/static/themes/simple/img/logos/48.png differ
+diff --git a/searx/static/themes/simple/img/logos/512.png b/searx/static/themes/simple/img/logos/512.png
+new file mode 100644
+index 000000000000..d7414986cc13
+Binary files /dev/null and b/searx/static/themes/simple/img/logos/512.png differ
+diff --git a/searx/static/themes/simple/img/logos/72.png b/searx/static/themes/simple/img/logos/72.png
+new file mode 100644
+index 000000000000..189ace405a35
+Binary files /dev/null and b/searx/static/themes/simple/img/logos/72.png differ
+diff --git a/searx/static/themes/simple/img/logos/96.png b/searx/static/themes/simple/img/logos/96.png
+new file mode 100644
+index 000000000000..2e3d61016a98
+Binary files /dev/null and b/searx/static/themes/simple/img/logos/96.png differ
+diff --git a/searx/templates/simple/base.html b/searx/templates/simple/base.html
+index ec2c7bb519d6..9d0acde283b5 100644
+--- a/searx/templates/simple/base.html
++++ b/searx/templates/simple/base.html
+@@ -26,6 +26,7 @@
+   <link rel="icon" href="{{ url_for('static', filename='img/favicon.png') }}" sizes="any">
+   <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+   <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/favicon.png') }}">
++  <link rel="manifest" href="/manifest.json" />
+ </head>
+ <body class="{{ endpoint }}_endpoint" >
+   <main id="main_{{  self._TemplateReference__context.name|replace("simple/", "")|replace(".html", "") }}" class="{{body_class}}">
+diff --git a/searx/templates/simple/manifest.json b/searx/templates/simple/manifest.json
+new file mode 100644
+index 000000000000..5f76fb105544
+--- /dev/null
++++ b/searx/templates/simple/manifest.json
+@@ -0,0 +1,46 @@
++{
++  "name": "SearNGX",
++  "short_name": "SearNGX",
++  "icons": [
++
++    {
++      "src": "/logo/36.png",
++      "sizes": "36x36",
++      "type": "image/png"
++    },
++    {
++      "src": "/logo/48.png",
++      "sizes": "48x48",
++      "type": "image/png"
++    },
++    {
++      "src": "/logo/72.png",
++      "sizes": "72x72",
++      "type": "image/png"
++    },
++    {
++      "src": "/logo/96.png",
++      "sizes": "96x96",
++      "type": "image/png"
++    },
++    {
++      "src": "/logo/144.png",
++      "sizes": "144x144",
++      "type": "image/png"
++    },
++    {
++      "src": "/logo/192.png",
++      "sizes": "192x192",
++      "type": "image/png"
++    },
++    {
++      "src": "/logo/512.png",
++      "sizes": "512x512",
++      "type": "image/png"
++    }
++  ],
++  "start_url": "/",
++  "theme_color": "#3050ff",
++  "background_color": "#fff",
++  "display": "standalone"
++}
+\ No newline at end of file
+diff --git a/searx/webapp.py b/searx/webapp.py
+index 23dd56e668a3..9c322e69fbac 100755
+--- a/searx/webapp.py
++++ b/searx/webapp.py
+@@ -1216,6 +1216,23 @@ def opensearch():
+     return resp
+ 
+ 
++@app.route('/manifest.json', methods=['GET'])
++def manifest():
++    ret = render('manifest.json')
++    resp = Response(response=ret, status=200, mimetype="application/json")
++    return resp
++
++
++@app.route('/logo/<resolution>')
++def manifest_logo(resolution=0):
++    theme = sxng_request.preferences.get_value("theme")
++    return send_from_directory(
++        os.path.join(app.root_path, settings['ui']['static_path'], 'themes', theme, 'img', 'logos'),  # type: ignore
++        resolution,
++        mimetype='image/vnd.microsoft.icon',
++    )
++
++
+ @app.route('/favicon.ico')
+ def favicon():
+     theme = sxng_request.preferences.get_value("theme")
