@@ -1,0 +1,68 @@
+diff --git a/packages/model-bank/src/aiModels/volcengine.ts b/packages/model-bank/src/aiModels/volcengine.ts
+index cbc94919bc8..d2759b994fa 100644
+--- a/packages/model-bank/src/aiModels/volcengine.ts
++++ b/packages/model-bank/src/aiModels/volcengine.ts
+@@ -1,4 +1,9 @@
+-import { type AIChatModelCard, type AIImageModelCard } from '../types/aiModel';
++import {
++  type AIChatModelCard,
++  type AIImageModelCard,
++  type AIVideoModelCard,
++} from '../types/aiModel';
++import { seedance15ProParams } from './lobehub/video';
+ 
+ // https://www.volcengine.com/docs/82379/1330310
+ 
+@@ -1244,6 +1249,35 @@ const volcengineImageModels: AIImageModelCard[] = [
+   },
+ ];
+ 
+-export const allModels = [...doubaoChatModels, ...volcengineImageModels];
++const volcengineVideoModels: AIVideoModelCard[] = [
++  {
++    description:
++      'Seedance 1.5 Pro by ByteDance supports text-to-video, image-to-video (first frame, first+last frame), and audio generation synchronized with visuals.',
++    displayName: 'Seedance 1.5 Pro',
++    enabled: true,
++    id: 'doubao-seedance-1-5-pro-251215',
++    organization: 'ByteDance',
++    parameters: seedance15ProParams,
++    pricing: {
++      approximatePricePerVideo: 0.25,
++      currency: 'CNY',
++      units: [
++        {
++          lookup: {
++            pricingParams: ['generateAudio'],
++            prices: { false: 1.2, true: 2.4 },
++          },
++          name: 'videoGeneration',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2025-12-15',
++    type: 'video',
++  },
++];
++
++export const allModels = [...doubaoChatModels, ...volcengineImageModels, ...volcengineVideoModels];
+ 
+ export default allModels;
+diff --git a/src/app/(backend)/api/webhooks/video/[provider]/route.ts b/src/app/(backend)/api/webhooks/video/[provider]/route.ts
+index fec5ea436b6..2e71332935f 100644
+--- a/src/app/(backend)/api/webhooks/video/[provider]/route.ts
++++ b/src/app/(backend)/api/webhooks/video/[provider]/route.ts
+@@ -50,8 +50,9 @@ export const POST = async (req: Request, { params }: { params: Promise<{ provide
+   let asyncTaskMetadata: VideoGenerationTaskMetadata | undefined;
+ 
+   try {
+-    // Parse webhook body using provider-specific handler
+-    const runtime = ModelRuntime.initializeWithProvider(provider, {});
++    const runtime = ModelRuntime.initializeWithProvider(provider, {
++      apiKey: 'webhook-placeholder',
++    });
+     const result = await runtime.handleCreateVideoWebhook({ body });
+ 
+     if (!result) {
