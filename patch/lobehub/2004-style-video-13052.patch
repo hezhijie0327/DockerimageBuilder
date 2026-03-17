@@ -2526,10 +2526,21 @@ index 6233e479174..40080ad2100 100644
      chatCompletion: () => process.env.DEBUG_ZHIPU_CHAT_COMPLETION === '1',
    },
 diff --git a/packages/model-runtime/src/types/video.ts b/packages/model-runtime/src/types/video.ts
-index d06d312d9c8..1a96c08b02a 100644
+index d06d312d9c8..8ee3e8c3495 100644
 --- a/packages/model-runtime/src/types/video.ts
 +++ b/packages/model-runtime/src/types/video.ts
-@@ -6,9 +6,14 @@ export type CreateVideoPayload = {
+@@ -1,14 +1,25 @@
+ import type { RuntimeVideoGenParams } from 'model-bank';
+ 
++export type CreateVideoErrorPayload = {
++  error: any;
++  errorType: string;
++  provider?: string;
++};
++
+ export type CreateVideoPayload = {
+   callbackUrl?: string;
+   model: string;
    params: RuntimeVideoGenParams;
  };
  
@@ -2547,8 +2558,26 @@ index d06d312d9c8..1a96c08b02a 100644
  
  export type HandleCreateVideoWebhookPayload = {
    body: unknown;
+diff --git a/packages/model-runtime/src/utils/createError.ts b/packages/model-runtime/src/utils/createError.ts
+index c14414fe275..2f4c0f648b4 100644
+--- a/packages/model-runtime/src/utils/createError.ts
++++ b/packages/model-runtime/src/utils/createError.ts
+@@ -2,6 +2,7 @@ import type {
+   AgentInitErrorPayload,
+   ChatCompletionErrorPayload,
+   CreateImageErrorPayload,
++  CreateVideoErrorPayload,
+ } from '../types';
+ import type { ILobeAgentRuntimeErrorType } from '../types/error';
+ 
+@@ -12,4 +13,5 @@ export const AgentRuntimeError = {
+     error?: any,
+   ): AgentInitErrorPayload => ({ error, errorType }),
+   createImage: (error: CreateImageErrorPayload): CreateImageErrorPayload => error,
++  createVideo: (error: CreateVideoErrorPayload): CreateVideoErrorPayload => error,
+ };
 diff --git a/src/locales/default/video.ts b/src/locales/default/video.ts
-index ea4cf1308b3..46b1be17aa5 100644
+index ea4cf1308b3..e6c3636b031 100644
 --- a/src/locales/default/video.ts
 +++ b/src/locales/default/video.ts
 @@ -2,6 +2,7 @@ export default {
@@ -2559,6 +2588,14 @@ index ea4cf1308b3..46b1be17aa5 100644
    'config.endImageUrl.label': 'End Frame',
    'config.generateAudio.label': 'Generate Audio',
    'config.header.title': 'Video',
+@@ -11,6 +12,7 @@ export default {
+   'config.resolution.label': 'Resolution',
+   'config.seed.label': 'Seed',
+   'config.seed.random': 'Random',
++  'config.size.label': 'Size',
+   'generation.actions.copyError': 'Copy Error Message',
+   'generation.actions.errorCopied': 'Error Message Copied to Clipboard',
+   'generation.actions.errorCopyFailed': 'Failed to Copy Error Message',
 diff --git a/src/routes/(main)/video/_layout/ConfigPanel/components/Select/index.tsx b/src/routes/(main)/video/_layout/ConfigPanel/components/Select/index.tsx
 new file mode 100644
 index 00000000000..3a39bc02f86
