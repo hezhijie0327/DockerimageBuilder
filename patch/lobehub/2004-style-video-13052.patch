@@ -1682,7 +1682,7 @@ index 00000000000..97b3a9159cf
 +  return { inferenceId };
 +}
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
-index 46d0a80dcb7..d8e33532b32 100644
+index b1eb49e0a46..7b49437e7e5 100644
 --- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 +++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 @@ -31,6 +31,7 @@ import type {
@@ -1780,10 +1780,10 @@ index 46d0a80dcb7..d8e33532b32 100644
        log('fetching available models');
 diff --git a/packages/model-runtime/src/providers/google/createVideo.ts b/packages/model-runtime/src/providers/google/createVideo.ts
 new file mode 100644
-index 00000000000..32d02b48e8f
+index 00000000000..d65271f1ae2
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/google/createVideo.ts
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,142 @@
 +import type { GenerateVideosConfig, GoogleGenAI } from '@google/genai';
 +import debug from 'debug';
 +
@@ -1793,10 +1793,6 @@ index 00000000000..32d02b48e8f
 +
 +const log = debug('model-runtime:google:video');
 +
-+/**
-+ * Create video using Google AI Veo models
-+ * @see https://ai.google.dev/gemini-api/docs/video-generation
-+ */
 +export async function createGoogleVideo(
 +  client: GoogleGenAI,
 +  provider: string,
@@ -1808,42 +1804,34 @@ index 00000000000..32d02b48e8f
 +
 +    log('Creating video with Google AI - model: %s, params: %O', model, params);
 +
-+    // Build video generation config
 +    const config: GenerateVideosConfig = {
 +      ...(aspectRatio && { aspectRatio }),
 +    };
 +
-+    // Build request parameters
 +    const requestParams: any = {
 +      config,
 +      model,
 +      prompt,
 +    };
 +
-+    // Add image-to-video support if imageUrl is provided
 +    if (imageUrl) {
 +      requestParams.image = imageUrl;
 +    }
 +
-+    // Add last_frame if endImageUrl is provided
 +    if (endImageUrl) {
 +      requestParams.last_frame = endImageUrl;
 +    }
 +
-+    // Add duration if specified
 +    if (duration) {
 +      requestParams.duration = `${duration}s`;
 +    }
 +
 +    log('Google video generation request params: %O', requestParams);
 +
-+    // Start video generation
 +    const operation = await client.models.generateVideos(requestParams);
 +
 +    log('Video generation started, operation name: %s', operation.name);
 +
-+    // Return operation name for polling
-+    // Frontend will poll the operation status using async task polling mechanism
 +    return { inferenceId: operation.name || '' };
 +  } catch (error) {
 +    const err = error as Error;
@@ -1862,10 +1850,6 @@ index 00000000000..32d02b48e8f
 +  }
 +}
 +
-+/**
-+ * Poll video generation operation status
-+ * @see https://ai.google.dev/gemini-api/docs/video-generation#polling
-+ */
 +export async function pollGoogleVideoOperation(
 +  client: GoogleGenAI,
 +  inferenceId: string,
@@ -1882,25 +1866,26 @@ index 00000000000..32d02b48e8f
 +      return { error: 'Invalid operation name', status: 'failed' };
 +    }
 +
-+    // Get operation status
-+    const operation = await client.operations.getVideosOperation({
-+      operation: { name: inferenceId },
-+    });
++    // Create a minimal operation object for polling
++    // The SDK will update it with the latest status
++    const operation: any = { name: inferenceId };
 +
-+    log('Video operation status: %O', operation);
++    const updatedOperation = await client.operations.getVideosOperation({
++      operation,
++    } as any);
 +
-+    // Check if operation is complete
-+    if (operation.done) {
-+      // Check for errors
-+      if (operation.error) {
++    log('Video operation status: %O', updatedOperation);
++
++    if (updatedOperation.done) {
++      if (updatedOperation.error) {
++        const errorMessage = (updatedOperation.error as any)?.message || 'Video generation failed';
 +        return {
-+          error: operation.error.message || 'Video generation failed',
++          error: errorMessage,
 +          status: 'failed',
 +        };
 +      }
 +
-+      // Extract video URL from response
-+      const generatedVideos = operation.response?.generatedVideos;
++      const generatedVideos = updatedOperation.response?.generatedVideos;
 +      if (!generatedVideos || generatedVideos.length === 0) {
 +        return {
 +          error: 'No video generated',
@@ -1908,29 +1893,27 @@ index 00000000000..32d02b48e8f
 +        };
 +      }
 +
-+      // Get the first video's download URI
 +      const video = generatedVideos[0].video;
-+      if (!video?.downloadUri) {
++      if (!video?.uri) {
 +        return {
 +          error: 'No download URI found',
 +          status: 'failed',
 +        };
 +      }
 +
-+      log('Video generation completed, download URI: %s', video.downloadUri);
++      log('Video generation completed, download URI: %s', video.uri);
 +
 +      // Return headers for authenticated download
 +      // Google uses x-goog-api-key header
 +      return {
 +        headers: {
-+          'x-goog-api-key': client.apiKey || '',
++          'x-goog-api-key': (client as any).auth?.apiKey || '',
 +        },
 +        status: 'success',
-+        videoUrl: video.downloadUri,
++        videoUrl: video.uri,
 +      };
 +    }
 +
-+    // Operation still in progress
 +    log('Video generation still in progress');
 +    return { status: 'pending' };
 +  } catch (error) {
