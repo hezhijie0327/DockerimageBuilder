@@ -1474,10 +1474,10 @@ index ea49612f819..8c6c445ce76 100644
  
    // Model management related interface
 diff --git a/packages/model-runtime/src/core/ModelRuntime.ts b/packages/model-runtime/src/core/ModelRuntime.ts
-index 1e6cad62744..1b7de5641db 100644
+index 1d9b28c3c48..36467619fee 100644
 --- a/packages/model-runtime/src/core/ModelRuntime.ts
 +++ b/packages/model-runtime/src/core/ModelRuntime.ts
-@@ -200,6 +200,10 @@ export class ModelRuntime {
+@@ -211,6 +211,10 @@ export class ModelRuntime {
      return this._runtime.handleCreateVideoWebhook?.(payload);
    }
  
@@ -1647,7 +1647,7 @@ index 00000000000..5e31c022b5f
 +  return { inferenceId };
 +}
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
-index 835e279422c..bb66a5a2a04 100644
+index 46d0a80dcb7..bb66a5a2a04 100644
 --- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 +++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 @@ -31,6 +31,7 @@ import type {
@@ -1742,24 +1742,6 @@ index 835e279422c..bb66a5a2a04 100644
      async models() {
        const log = debug(`${this.logPrefix}:models`);
        log('fetching available models');
-@@ -820,6 +859,17 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
-           { headers: options?.headers, signal: options?.signal },
-         );
- 
-+        if (res.usage && options?.onUsage) {
-+          const pricing = await getModelPricing(payload.model, this.id);
-+          await options.onUsage(
-+            convertOpenAIUsage(res.usage as any, {
-+              model: payload.model,
-+              pricing,
-+              provider: this.id,
-+            }),
-+          );
-+        }
-+
-         log('received %d embeddings', res.data.length);
-         return res.data.map((item) => item.embedding);
-       } catch (error) {
 diff --git a/packages/model-runtime/src/providers/google/createVideo.ts b/packages/model-runtime/src/providers/google/createVideo.ts
 new file mode 100644
 index 00000000000..32d02b48e8f
@@ -3066,18 +3048,18 @@ index 00000000000..9c7f99782c4
 +  return { inferenceId: requestId };
 +}
 diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
-index 83649675490..30ebb19a6fe 100644
+index a5363684740..551ebddcfc7 100644
 --- a/packages/model-runtime/src/providers/xai/index.ts
 +++ b/packages/model-runtime/src/providers/xai/index.ts
-@@ -3,6 +3,7 @@ import { ModelProvider } from 'model-bank';
- import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+@@ -4,6 +4,7 @@ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactor
+ import type { ChatStreamPayload } from '../../types';
  import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
  import { createXAIImage } from './createImage';
 +import { createXAIVideo } from './createVideo';
  
  export interface XAIModelCard {
    id: string;
-@@ -14,6 +15,14 @@ export const LobeXAI = createOpenAICompatibleRuntime({
+@@ -44,6 +45,14 @@ export const LobeXAI = createOpenAICompatibleRuntime({
      useResponse: true,
    },
    createImage: createXAIImage,
