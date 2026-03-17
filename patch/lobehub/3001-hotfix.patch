@@ -1,10 +1,12 @@
-From b28eeb676f5d8f9a3509835102df37f224fd3976 Mon Sep 17 00:00:00 2001
+From 0d7046358c0426d078f63f417c44c55ef55811f5 Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Tue, 17 Mar 2026 19:24:00 +0800
 Subject: [PATCH] refactor: use backgound polling
 
+refactor: use backgound polling
 ---
  packages/model-runtime/src/core/BaseAI.ts     |   8 +
+ .../model-runtime/src/core/ModelRuntime.ts    |   4 +
  .../src/core/openaiCompatibleFactory/index.ts |  20 +++
  .../src/providers/minimax/createVideo.ts      | 129 +++++----------
  .../src/providers/minimax/index.ts            |   7 +
@@ -20,7 +22,7 @@ Subject: [PATCH] refactor: use backgound polling
  .../src/providers/zhipu/index.ts              |   7 +
  src/server/routers/lambda/video/index.ts      |  79 ++-------
  .../services/video/backgroundPolling.ts       | 156 ++++++++++++++++++
- 16 files changed, 542 insertions(+), 400 deletions(-)
+ 17 files changed, 546 insertions(+), 400 deletions(-)
  create mode 100644 src/server/services/video/backgroundPolling.ts
 
 diff --git a/packages/model-runtime/src/core/BaseAI.ts b/packages/model-runtime/src/core/BaseAI.ts
@@ -42,6 +44,21 @@ index ea49612..689f20f 100644
    // Model management related interface
    pullModel?: (params: PullModelParams, options?: ModelRequestOptions) => Promise<Response>;
  
+diff --git a/packages/model-runtime/src/core/ModelRuntime.ts b/packages/model-runtime/src/core/ModelRuntime.ts
+index 1e6cad6..260bd3c 100644
+--- a/packages/model-runtime/src/core/ModelRuntime.ts
++++ b/packages/model-runtime/src/core/ModelRuntime.ts
+@@ -200,6 +200,10 @@ export class ModelRuntime {
+     return this._runtime.handleCreateVideoWebhook?.(payload);
+   }
+ 
++  async pollVideoStatus(inferenceId: string) {
++    return this._runtime.pollVideoStatus?.(inferenceId);
++  }
++
+   async models() {
+     return this._runtime.models?.();
+   }
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 index 835e279..773e13c 100644
 --- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
