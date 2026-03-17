@@ -184,6 +184,72 @@ index 3e8d666ff96..fbcd9de5862 100644
 +export const allModels = [...minimaxChatModels, ...minimaxImageModels, ...minimaxVideoModels];
  
  export default allModels;
+diff --git a/packages/model-bank/src/aiModels/openai.ts b/packages/model-bank/src/aiModels/openai.ts
+index b895a8b9af6..9de17d0606a 100644
+--- a/packages/model-bank/src/aiModels/openai.ts
++++ b/packages/model-bank/src/aiModels/openai.ts
+@@ -6,6 +6,7 @@ import {
+   type AIRealtimeModelCard,
+   type AISTTModelCard,
+   type AITTSModelCard,
++  type AIVideoModelCard,
+ } from '../types/aiModel';
+ 
+ export const gptImage1ParamsSchema: ModelParamsSchema = {
+@@ -1630,6 +1631,45 @@ export const openaiRealtimeModels: AIRealtimeModelCard[] = [
+   },
+ ];
+ 
++const openaiVideoModels: AIVideoModelCard[] = [
++  {
++    description:
++      'Sora 2 is our new powerful media generation model, generating videos with synced audio. It can create richly detailed, dynamic clips from natural language or images.',
++    displayName: 'Sora 2',
++    enabled: true,
++    id: 'sora-2',
++    parameters: {
++      duration: { default: 4, enum: [4, 8, 12] },
++      imageUrl: {
++        default: null,
++      },
++      prompt: { default: '' },
++    },
++    pricing: {
++      units: [{ name: 'videoGeneration', rate: 0.1, strategy: 'fixed', unit: 'second' }],
++    },
++    type: 'video',
++  },
++  {
++    description:
++      'Sora 2 Pro is our state-of-the-art, most advanced media generation model, generating videos with synced audio. It can create richly detailed, dynamic clips from natural language or images.',
++    displayName: 'Sora 2 Pro',
++    enabled: true,
++    id: 'sora-2-pro',
++    parameters: {
++      duration: { default: 4, enum: [4, 8, 12] },
++      imageUrl: {
++        default: null,
++      },
++      prompt: { default: '' },
++    },
++    pricing: {
++      units: [{ name: 'videoGeneration', rate: 0.5, strategy: 'fixed', unit: 'second' }],
++    },
++    type: 'video',
++  },
++];
++
+ export const allModels = [
+   ...openaiChatModels,
+   ...openaiEmbeddingModels,
+@@ -1637,6 +1677,7 @@ export const allModels = [
+   ...openaiSTTModels,
+   ...openaiImageModels,
+   ...openaiRealtimeModels,
++  ...openaiVideoModels,
+ ];
+ 
+ export default allModels;
 diff --git a/packages/model-bank/src/aiModels/siliconcloud.ts b/packages/model-bank/src/aiModels/siliconcloud.ts
 index ee2966f1684..d71b9ddc77a 100644
 --- a/packages/model-bank/src/aiModels/siliconcloud.ts
@@ -709,6 +775,211 @@ index b2951e0f006..163c700e8ea 100644
        step: z.number().optional().default(1),
        type: z.literal('number').optional(),
      })
+diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
+new file mode 100644
+index 00000000000..fdbc7ba4f7c
+--- /dev/null
++++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
+@@ -0,0 +1,158 @@
++import createDebug from 'debug';
++import type OpenAI from 'openai';
++
++import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
++import type { TaskResult } from '../../utils/asyncifyPolling';
++import { asyncifyPolling } from '../../utils/asyncifyPolling';
++
++const log = createDebug('lobe-video:openai-compatible');
++
++/**
++ * OpenAI Video API response types
++ * Compatible with OpenAI Sora API format and AiHubMix unified video API
++ */
++interface VideoStatusResponse {
++  completed_at?: number;
++  created_at?: number;
++  error?: {
++    message?: string;
++    type?: string;
++    code?: string;
++  };
++  expires_at?: number;
++  id: string;
++  input_reference?: string | { mime_type: string; data: string } | null;
++  model?: string;
++  object: 'video';
++  progress?: number;
++  prompt?: string;
++  seconds?: string;
++  size?: string;
++  status: 'queued' | 'in_progress' | 'completed' | 'failed';
++  url?: string;
++}
++
++/**
++ * Query the status of a video generation task
++ */
++async function queryVideoStatus(videoId: string, client: OpenAI): Promise<VideoStatusResponse> {
++  const statusUrl = `/videos/${videoId}`;
++
++  log('Querying video status for: %s', videoId);
++
++  // Use OpenAI client's get method
++  const response = await client.get(statusUrl);
++
++  log('Video status response: %O', response);
++
++  return response as VideoStatusResponse;
++}
++
++/**
++ * Create video using OpenAI compatible API
++ * This is a generic implementation that works with any OpenAI-compatible provider
++ * that supports the /videos endpoint (OpenAI Sora, AiHubMix, etc.)
++ *
++ * API docs:
++ * - OpenAI Sora: https://platform.openai.com/docs/guides/sora
++ * - AiHubMix: https://docs.aihubmix.com/llms.txt
++ */
++export async function createOpenAICompatibleVideo(
++  client: OpenAI,
++  payload: CreateVideoPayload,
++  provider: string,
++): Promise<CreateVideoResponse> {
++  const { model, params } = payload;
++  const { prompt, imageUrl, duration } = params;
++
++  log('Creating video with OpenAI compatible API - model: %s, params: %O', model, params);
++
++  // Build request body following OpenAI Sora API format
++  const body: Record<string, unknown> = {
++    model,
++    prompt,
++  };
++
++  // Add duration (seconds) - Sora accepts string values: "4", "8", "12"
++  if (duration !== undefined) {
++    body['seconds'] = String(duration);
++  }
++
++  // Add reference image for image-to-video
++  if (imageUrl) {
++    body['input_reference'] = imageUrl;
++  }
++
++  log('Video API request body: %O', body);
++
++  // Submit video generation task using OpenAI client's post method
++  const response = await client.post('/videos', body);
++
++  log('Video API response: %O', response);
++
++  // Validate response
++  if (!(response as any)?.id) {
++    throw new Error('Invalid response: missing video id');
++  }
++
++  const videoId = (response as any).id;
++  log('Video task created with id: %s, starting polling...', videoId);
++
++  // Use polling mode - wait for completion
++  const result = await asyncifyPolling<VideoStatusResponse, CreateVideoResponse>({
++    checkStatus: (statusResponse: VideoStatusResponse): TaskResult<CreateVideoResponse> => {
++      log(
++        'Task %s status: %s (progress: %s%%)',
++        videoId,
++        statusResponse.status,
++        statusResponse.progress ?? 'N/A',
++      );
++
++      if (statusResponse.status === 'completed') {
++        // Video generation completed successfully
++        const videoUrl = statusResponse.url;
++        if (!videoUrl) {
++          log('Task succeeded but missing video url in response');
++          return {
++            error: new Error('Missing url in success response'),
++            status: 'failed',
++          };
++        }
++        log('Video generation succeeded: %s, videoUrl: %s', videoId, videoUrl);
++
++        return {
++          data: { inferenceId: videoId, videoUrl },
++          status: 'success',
++        };
++      }
++
++      if (statusResponse.status === 'failed') {
++        // Video generation failed
++        const errorMessage = statusResponse.error?.message || 'Video generation failed';
++        log('Video generation failed: %s, error: %s', videoId, errorMessage);
++
++        return {
++          error: new Error(errorMessage),
++          status: 'failed',
++        };
++      }
++
++      // Continue polling for 'queued' or 'in_progress' statuses
++      log('Video generation in progress: %s (status: %s)', videoId, statusResponse.status);
++
++      return { status: 'pending' };
++    },
++    initialInterval: 5000, // Start with 5 second interval
++    logger: {
++      debug: (message: any, ...args: any[]) => log(message, ...args),
++      error: (message: any, ...args: any[]) => log(message, ...args),
++    },
++    maxInterval: 15000, // Max 15 second interval
++    maxRetries: 200, // Allow up to 200 retries (about 50 minutes with backoff)
++    pollingQuery: () => queryVideoStatus(videoId, client),
++  });
++
++  log('Video generation completed, returning result');
++
++  return result;
++}
+diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
+index 835e279422c..3fdb8214eeb 100644
+--- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
++++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
+@@ -50,6 +50,7 @@ import { OpenAIResponsesStream, OpenAIStream } from '../streams';
+ import type { ChatPayloadForTransformStream } from '../streams/protocol';
+ import { convertOpenAIResponseUsage, convertOpenAIUsage } from '../usageConverters/openai';
+ import { createOpenAICompatibleImage } from './createImage';
++import { createOpenAICompatibleVideo } from './createVideo';
+ import { transformResponseAPIToStream, transformResponseToStream } from './nonStreamToStream';
+ 
+ export * from './nonStreamToStream';
+@@ -567,14 +568,21 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+     }
+ 
+     async createVideo(payload: CreateVideoPayload) {
+-      if (!customCreateVideo) {
+-        throw new Error('createVideo is not supported by this provider');
++      const log = debug(`${this.logPrefix}:createVideo`);
++
++      // If custom createVideo implementation is provided, use it
++      if (customCreateVideo) {
++        log('using custom createVideo implementation');
++        return customCreateVideo(payload, {
++          ...this._options,
++          apiKey: this._options.apiKey!,
++          provider,
++        });
+       }
+-      return customCreateVideo(payload, {
+-        ...this._options,
+-        apiKey: this._options.apiKey!,
+-        provider,
+-      });
++
++      log('using default createOpenAICompatibleVideo');
++      // Use the new createOpenAICompatibleVideo function
++      return createOpenAICompatibleVideo(this.client, payload, this.id);
+     }
+ 
+     async handleCreateVideoWebhook(payload: HandleCreateVideoWebhookPayload) {
 diff --git a/packages/model-runtime/src/providers/minimax/createVideo.ts b/packages/model-runtime/src/providers/minimax/createVideo.ts
 new file mode 100644
 index 00000000000..f3be408c119
