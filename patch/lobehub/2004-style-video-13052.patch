@@ -1,3 +1,27 @@
+diff --git a/locales/en-US/video.json b/locales/en-US/video.json
+index dbe93a3ffbf..a1562f0c14e 100644
+--- a/locales/en-US/video.json
++++ b/locales/en-US/video.json
+@@ -11,6 +11,7 @@
+   "config.resolution.label": "Resolution",
+   "config.seed.label": "Seed",
+   "config.seed.random": "Random",
++  "config.size.label": "Size",
+   "generation.actions.copyError": "Copy Error Message",
+   "generation.actions.errorCopied": "Error Message Copied to Clipboard",
+   "generation.actions.errorCopyFailed": "Failed to Copy Error Message",
+diff --git a/locales/zh-CN/video.json b/locales/zh-CN/video.json
+index f7d0f0210a2..844f51850c6 100644
+--- a/locales/zh-CN/video.json
++++ b/locales/zh-CN/video.json
+@@ -11,6 +11,7 @@
+   "config.resolution.label": "分辨率",
+   "config.seed.label": "种子",
+   "config.seed.random": "随机",
++  "config.size.label": "尺寸",
+   "generation.actions.copyError": "复制错误信息",
+   "generation.actions.errorCopied": "错误信息已复制到剪贴板",
+   "generation.actions.errorCopyFailed": "复制错误信息失败",
 diff --git a/packages/model-bank/src/aiModels/minimax.ts b/packages/model-bank/src/aiModels/minimax.ts
 index 3e8d666ff96..fbcd9de5862 100644
 --- a/packages/model-bank/src/aiModels/minimax.ts
@@ -1045,7 +1069,7 @@ index 00000000000..7bc964d8379
 +  return result;
 +}
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
-index 835e279422c..3fdb8214eeb 100644
+index 835e279422c..5492ab94d8b 100644
 --- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 +++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 @@ -50,6 +50,7 @@ import { OpenAIResponsesStream, OpenAIStream } from '../streams';
@@ -1081,7 +1105,7 @@ index 835e279422c..3fdb8214eeb 100644
 +
 +      log('using default createOpenAICompatibleVideo');
 +      // Use the new createOpenAICompatibleVideo function
-+      return createOpenAICompatibleVideo(this.client, payload, this.id);
++      return createOpenAICompatibleVideo(this.client, payload);
      }
  
      async handleCreateVideoWebhook(payload: HandleCreateVideoWebhookPayload) {
@@ -2145,11 +2169,43 @@ index ea4cf1308b3..46b1be17aa5 100644
    'config.endImageUrl.label': 'End Frame',
    'config.generateAudio.label': 'Generate Audio',
    'config.header.title': 'Video',
+diff --git a/src/routes/(main)/video/_layout/ConfigPanel/components/SizeSelect.tsx b/src/routes/(main)/video/_layout/ConfigPanel/components/SizeSelect.tsx
+new file mode 100644
+index 00000000000..36eb7e4004e
+--- /dev/null
++++ b/src/routes/(main)/video/_layout/ConfigPanel/components/SizeSelect.tsx
+@@ -0,0 +1,18 @@
++import { Select } from '@lobehub/ui';
++import { memo } from 'react';
++
++import { useVideoGenerationConfigParam } from '@/store/video/slices/generationConfig/hooks';
++
++const SizeSelect = memo(() => {
++  const { value, setValue, enumValues } = useVideoGenerationConfigParam('size');
++
++  const options =
++    enumValues?.map((size) => ({
++      label: size,
++      value: size,
++    })) ?? [];
++
++  return <Select options={options} style={{ width: '100%' }} value={value} onChange={setValue} />;
++});
++
++export default SizeSelect;
 diff --git a/src/routes/(main)/video/_layout/ConfigPanel/index.tsx b/src/routes/(main)/video/_layout/ConfigPanel/index.tsx
-index 2e9c65b68f0..4ae5ab742df 100644
+index 2e9c65b68f0..a9eb9e7689b 100644
 --- a/src/routes/(main)/video/_layout/ConfigPanel/index.tsx
 +++ b/src/routes/(main)/video/_layout/ConfigPanel/index.tsx
-@@ -74,7 +74,32 @@ const ResolutionItem = memo(() => {
+@@ -25,6 +25,7 @@ import { generateUniqueSeeds } from '@/utils/number';
+ 
+ import FrameUpload from './components/FrameUpload';
+ import ModelSelect from './components/ModelSelect';
++import SizeSelect from './components/SizeSelect';
+ import VideoConfigSkeleton from './VideoConfigSkeleton';
+ 
+ interface ConfigItemLayoutProps {
+@@ -74,7 +75,32 @@ const ResolutionItem = memo(() => {
  });
  
  const DurationItem = memo(() => {
@@ -2183,6 +2239,27 @@ index 2e9c65b68f0..4ae5ab742df 100644
  
    return (
      <SliderWithInput
+@@ -145,6 +171,7 @@ const ConfigPanel = memo(() => {
+   const isSupportEndImageUrl = useVideoStore(isSupportedParamSelector('endImageUrl'));
+   const isSupportAspectRatio = useVideoStore(isSupportedParamSelector('aspectRatio'));
+   const isSupportResolution = useVideoStore(isSupportedParamSelector('resolution'));
++  const isSupportSize = useVideoStore(isSupportedParamSelector('size'));
+   const isSupportDuration = useVideoStore(isSupportedParamSelector('duration'));
+   const isSupportSeed = useVideoStore(isSupportedParamSelector('seed'));
+   const isSupportGenerateAudio = useVideoStore(isSupportedParamSelector('generateAudio'));
+@@ -189,6 +216,12 @@ const ConfigPanel = memo(() => {
+         </ConfigItemLayout>
+       )}
+ 
++      {isSupportSize && (
++        <ConfigItemLayout label={t('config.size.label')}>
++          <SizeSelect />
++        </ConfigItemLayout>
++      )}
++
+       {isSupportDuration && (
+         <ConfigItemLayout label={t('config.duration.label')}>
+           <DurationItem />
 diff --git a/src/server/routers/lambda/video/index.ts b/src/server/routers/lambda/video/index.ts
 index 298eb31b89d..16f11d47916 100644
 --- a/src/server/routers/lambda/video/index.ts
