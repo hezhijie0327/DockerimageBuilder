@@ -1,0 +1,1359 @@
+From b28eeb676f5d8f9a3509835102df37f224fd3976 Mon Sep 17 00:00:00 2001
+From: Zhijie He <hezhijie0327@hotmail.com>
+Date: Tue, 17 Mar 2026 19:24:00 +0800
+Subject: [PATCH] refactor: use backgound polling
+
+---
+ packages/model-runtime/src/core/BaseAI.ts     |   8 +
+ .../src/core/openaiCompatibleFactory/index.ts |  20 +++
+ .../src/providers/minimax/createVideo.ts      | 129 +++++----------
+ .../src/providers/minimax/index.ts            |   7 +
+ .../src/providers/qwen/createVideo.ts         | 136 +++++++++------
+ .../model-runtime/src/providers/qwen/index.ts |   4 +
+ .../src/providers/siliconcloud/createVideo.ts |  95 ++++++-----
+ .../src/providers/siliconcloud/index.ts       |   7 +
+ .../src/providers/wenxin/createVideo.ts       |  90 +++++-----
+ .../src/providers/wenxin/index.ts             |   7 +
+ .../src/providers/xai/createVideo.ts          | 100 ++++++-----
+ .../model-runtime/src/providers/xai/index.ts  |   7 +
+ .../src/providers/zhipu/createVideo.ts        |  90 +++++-----
+ .../src/providers/zhipu/index.ts              |   7 +
+ src/server/routers/lambda/video/index.ts      |  79 ++-------
+ .../services/video/backgroundPolling.ts       | 156 ++++++++++++++++++
+ 16 files changed, 542 insertions(+), 400 deletions(-)
+ create mode 100644 src/server/services/video/backgroundPolling.ts
+
+diff --git a/packages/model-runtime/src/core/BaseAI.ts b/packages/model-runtime/src/core/BaseAI.ts
+index ea49612..689f20f 100644
+--- a/packages/model-runtime/src/core/BaseAI.ts
++++ b/packages/model-runtime/src/core/BaseAI.ts
+@@ -41,6 +41,14 @@ export interface LobeRuntimeAI {
+ 
+   models?: () => Promise<any>;
+ 
++  pollVideoStatus?: (
++    inferenceId: string,
++  ) => Promise<
++    | { status: 'success'; videoUrl: string }
++    | { status: 'failed'; error: string }
++    | { status: 'pending' }
++  >;
++
+   // Model management related interface
+   pullModel?: (params: PullModelParams, options?: ModelRequestOptions) => Promise<Response>;
+ 
+diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
+index 835e279..773e13c 100644
+--- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
++++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
+@@ -170,6 +170,14 @@ export interface OpenAICompatibleFactoryOptions<T extends Record<string, any> =
+     | {
+         transformModel?: (model: OpenAI.Model) => ChatModelCard;
+       };
++  pollVideoStatus?: (
++    inferenceId: string,
++    options: CreateVideoOptions,
++  ) => Promise<
++    | { status: 'success'; videoUrl: string }
++    | { status: 'failed'; error: string }
++    | { status: 'pending' }
++  >;
+   provider: string;
+   responses?: {
+     handlePayload?: (
+@@ -193,6 +201,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+   createImage: customCreateImage,
+   createVideo: customCreateVideo,
+   handleCreateVideoWebhook: customHandleCreateVideoWebhook,
++  pollVideoStatus: customPollVideoStatus,
+   generateObject: generateObjectConfig,
+ }: OpenAICompatibleFactoryOptions<T>) => {
+   const ErrorType = {
+@@ -588,6 +597,17 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+       });
+     }
+ 
++    async pollVideoStatus(inferenceId: string) {
++      if (!customPollVideoStatus) {
++        throw new Error('pollVideoStatus is not supported by this provider');
++      }
++      return customPollVideoStatus(inferenceId, {
++        ...this._options,
++        apiKey: this._options.apiKey!,
++        provider,
++      });
++    }
++
+     async models() {
+       const log = debug(`${this.logPrefix}:models`);
+       log('fetching available models');
+diff --git a/packages/model-runtime/src/providers/minimax/createVideo.ts b/packages/model-runtime/src/providers/minimax/createVideo.ts
+index f3be408..33c58c6 100644
+--- a/packages/model-runtime/src/providers/minimax/createVideo.ts
++++ b/packages/model-runtime/src/providers/minimax/createVideo.ts
+@@ -2,8 +2,6 @@ import createDebug from 'debug';
+ 
+ import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
+ import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
+-import type { TaskResult } from '../../utils/asyncifyPolling';
+-import { asyncifyPolling } from '../../utils/asyncifyPolling';
+ 
+ const log = createDebug('lobe-video:minimax');
+ 
+@@ -43,36 +41,30 @@ interface MiniMaxFileRetrieveResponse {
+   };
+ }
+ 
+-async function queryVideoStatus(
++export async function queryMiniMaxVideoStatus(
+   taskId: string,
+   options: { apiKey: string; baseURL: string },
+ ): Promise<MiniMaxVideoStatusResponse> {
+   const statusUrl = `${options.baseURL}/query/video_generation`;
+-
+-  log('Querying video status for task: %s', taskId);
+-
+   const urlWithParams = new URL(statusUrl);
+   urlWithParams.searchParams.append('task_id', taskId);
+ 
+-  const responseWithParams = await fetch(urlWithParams.toString(), {
++  const response = await fetch(urlWithParams.toString(), {
+     headers: {
+       Authorization: `Bearer ${options.apiKey}`,
+     },
+     method: 'GET',
+   });
+ 
+-  if (!responseWithParams.ok) {
+-    const errorText = await responseWithParams.text();
+-    throw new Error(`MiniMax status API error: ${responseWithParams.status} ${errorText}`);
++  if (!response.ok) {
++    const errorText = await response.text();
++    throw new Error(`MiniMax status API error: ${response.status} ${errorText}`);
+   }
+ 
+-  const data = (await responseWithParams.json()) as MiniMaxVideoStatusResponse;
+-  log('Video status response: %O', data);
+-
+-  return data;
++  return (await response.json()) as MiniMaxVideoStatusResponse;
+ }
+ 
+-async function retrieveVideoFile(
++export async function retrieveMiniMaxVideoFile(
+   fileId: string,
+   options: { apiKey: string; baseURL: string },
+ ): Promise<string> {
+@@ -80,8 +72,6 @@ async function retrieveVideoFile(
+   const urlWithParams = new URL(retrieveUrl);
+   urlWithParams.searchParams.append('file_id', fileId);
+ 
+-  log('Retrieving video file: %s', fileId);
+-
+   const response = await fetch(urlWithParams.toString(), {
+     headers: {
+       Authorization: `Bearer ${options.apiKey}`,
+@@ -95,19 +85,52 @@ async function retrieveVideoFile(
+   }
+ 
+   const data = (await response.json()) as MiniMaxFileRetrieveResponse;
+-  log('File retrieve response: %O', data);
+ 
+-  if (data.base_resp.status_code !== 0) {
+-    throw new Error(`MiniMax file retrieve error: ${data.base_resp.status_msg}`);
++  if (data.base_resp?.status_code !== 0) {
++    throw new Error(`MiniMax file retrieve error: ${data.base_resp?.status_msg}`);
+   }
+ 
+   if (!data.file?.download_url) {
+-    throw new Error('Missing download_url in file retrieve response');
++    throw new Error('Missing download_url in MiniMax file retrieve response');
+   }
+ 
+   return data.file.download_url;
+ }
+ 
++export async function pollMiniMaxVideoStatus(
++  taskId: string,
++  options: { apiKey: string; baseURL: string },
++): Promise<
++  | { status: 'success'; videoUrl: string }
++  | { status: 'failed'; error: string }
++  | { status: 'pending' }
++> {
++  const response = await queryMiniMaxVideoStatus(taskId, options);
++
++  if (response.status === 'Success') {
++    const fileId = response.file_id;
++    if (!fileId) {
++      return { error: 'Task succeeded but no file_id found', status: 'failed' };
++    }
++
++    try {
++      const videoUrl = await retrieveMiniMaxVideoFile(fileId, options);
++      return { status: 'success', videoUrl };
++    } catch (error) {
++      return {
++        error: `Failed to retrieve video file: ${error instanceof Error ? error.message : 'Unknown error'}`,
++        status: 'failed',
++      };
++    }
++  }
++
++  if (response.status === 'Fail') {
++    return { error: response.base_resp?.status_msg || 'Video generation failed', status: 'failed' };
++  }
++
++  return { status: 'pending' };
++}
++
+ export async function createMiniMaxVideo(
+   payload: CreateVideoPayload,
+   options: CreateVideoOptions,
+@@ -115,8 +138,6 @@ export async function createMiniMaxVideo(
+   const { model, params } = payload;
+   const { prompt, imageUrl, endImageUrl, duration } = params;
+ 
+-  log('Creating video with MiniMax API - model: %s, params: %O', model, params);
+-
+   const baseURL = options.baseURL || 'https://api.minimaxi.com/v1';
+ 
+   const body: Record<string, unknown> = {
+@@ -133,8 +154,6 @@ export async function createMiniMaxVideo(
+     body.last_frame_image = endImageUrl;
+   }
+ 
+-  log('MiniMax video API request body: %O', body);
+-
+   const response = await fetch(`${baseURL}/video_generation`, {
+     body: JSON.stringify(body),
+     headers: {
+@@ -146,12 +165,10 @@ export async function createMiniMaxVideo(
+ 
+   if (!response.ok) {
+     const errorText = await response.text();
+-    log('MiniMax video API error: %s %s', response.status, errorText);
+     throw new Error(`MiniMax video API error: ${response.status} ${errorText}`);
+   }
+ 
+   const data = (await response.json()) as MiniMaxVideoCreateResponse;
+-  log('MiniMax video API response: %O', data);
+ 
+   if (data.base_resp.status_code !== 0) {
+     throw new Error(`MiniMax video API error: ${data.base_resp.status_msg}`);
+@@ -161,61 +178,5 @@ export async function createMiniMaxVideo(
+     throw new Error('Invalid response: missing task_id');
+   }
+ 
+-  const taskId = data.task_id;
+-  log('Video task created with id: %s, starting polling...', taskId);
+-
+-  const fileId = await asyncifyPolling<MiniMaxVideoStatusResponse, string>({
+-    checkStatus: (statusResponse: MiniMaxVideoStatusResponse): TaskResult<string> => {
+-      log('Task %s status: %s', taskId, statusResponse.status);
+-
+-      if (statusResponse.status === 'Success') {
+-        if (!statusResponse.file_id) {
+-          log('Task succeeded but missing file_id in response');
+-          return {
+-            error: new Error('Missing file_id in success response'),
+-            status: 'failed',
+-          };
+-        }
+-        log('Video generation succeeded, file_id: %s', statusResponse.file_id);
+-
+-        return {
+-          data: statusResponse.file_id,
+-          status: 'success',
+-        };
+-      }
+-
+-      if (statusResponse.status === 'Fail') {
+-        log('Video generation failed: %s', taskId);
+-        return {
+-          error: new Error('Video generation failed'),
+-          status: 'failed',
+-        };
+-      }
+-
+-      // Continue polling for Processing, Queued, or other statuses
+-      log('Video generation in progress: %s (status: %s)', taskId, statusResponse.status);
+-
+-      return { status: 'pending' };
+-    },
+-    initialInterval: 10000, // MiniMax recommends 10s polling interval
+-    logger: {
+-      debug: (message: any, ...args: any[]) => log(message, ...args),
+-      error: (message: any, ...args: any[]) => log(message, ...args),
+-    },
+-    maxInterval: 15000,
+-    maxRetries: 60, // Max 15 minutes (60 * 15s = 900s)
+-    pollingQuery: () => queryVideoStatus(taskId, { apiKey: options.apiKey, baseURL }),
+-  });
+-
+-  log('Video generation completed, file_id: %s, retrieving download URL...', fileId);
+-
+-  // Step 3: Retrieve the download URL
+-  const videoUrl = await retrieveVideoFile(fileId, { apiKey: options.apiKey, baseURL });
+-
+-  log('Video download URL retrieved successfully: %s', videoUrl);
+-
+-  return {
+-    inferenceId: taskId,
+-    videoUrl,
+-  };
++  return { inferenceId: data.task_id };
+ }
+diff --git a/packages/model-runtime/src/providers/minimax/index.ts b/packages/model-runtime/src/providers/minimax/index.ts
+index a0afb58..784ed6b 100644
+--- a/packages/model-runtime/src/providers/minimax/index.ts
++++ b/packages/model-runtime/src/providers/minimax/index.ts
+@@ -74,6 +74,13 @@ export const LobeMinimaxAI = createOpenAICompatibleRuntime({
+   },
+   createImage: createMiniMaxImage,
+   createVideo: createMiniMaxVideo,
++  pollVideoStatus: async (inferenceId, options) => {
++    const { pollMiniMaxVideoStatus } = await import('./createVideo');
++    return pollMiniMaxVideoStatus(inferenceId, {
++      apiKey: options.apiKey,
++      baseURL: options.baseURL || '',
++    });
++  },
+   debug: {
+     chatCompletion: () => process.env.DEBUG_MINIMAX_CHAT_COMPLETION === '1',
+   },
+diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
+index b338a0c..f867c31 100644
+--- a/packages/model-runtime/src/providers/qwen/createVideo.ts
++++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
+@@ -2,12 +2,92 @@ import createDebug from 'debug';
+ 
+ import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
+ import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
+-import type { TaskResult } from '../../utils/asyncifyPolling';
+-import { asyncifyPolling } from '../../utils/asyncifyPolling';
+ import { AgentRuntimeError } from '../../utils/createError';
+ 
+ const log = createDebug('lobe-video:qwen');
+ 
++interface QwenVideoTaskResponse {
++  output: {
++    error_message?: string;
++    task_id: string;
++    task_status: 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
++    video_url?: string;
++    cover_image_url?: string;
++    // For keyframe models
++    first_frame_url?: string;
++    last_frame_url?: string;
++  };
++  request_id: string;
++  usage?: {
++    duration?: number;
++    size?: string;
++    video_count?: number;
++  };
++}
++
++/**
++ * Query the status of a video generation task
++ */
++export async function queryQwenVideoStatus(
++  taskId: string,
++  apiKey: string,
++  baseUrl: string,
++): Promise<QwenVideoTaskResponse> {
++  const endpoint = `${baseUrl}/api/v1/tasks/${taskId}`;
++
++  log('Querying task status for: %s', taskId);
++
++  const response = await fetch(endpoint, {
++    headers: {
++      Authorization: `Bearer ${apiKey}`,
++    },
++    method: 'GET',
++  });
++
++  if (!response.ok) {
++    let errorData;
++    try {
++      errorData = await response.json();
++    } catch {
++      // Failed to parse JSON error response
++    }
++    throw new Error(
++      `Failed to query task status for ${taskId} (${response.status}): ${errorData?.message || response.statusText}`,
++    );
++  }
++
++  return response.json();
++}
++
++/**
++ * Poll video status and return standardized result
++ */
++export async function pollQwenVideoStatus(
++  taskId: string,
++  apiKey: string,
++  baseUrl: string,
++): Promise<
++  | { status: 'success'; videoUrl: string }
++  | { status: 'failed'; error: string }
++  | { status: 'pending' }
++> {
++  const response = await queryQwenVideoStatus(taskId, apiKey, baseUrl);
++
++  if (response.output.task_status === 'SUCCEEDED') {
++    const videoUrl = response.output.video_url;
++    if (!videoUrl) {
++      return { error: 'Task succeeded but no video URL found', status: 'failed' };
++    }
++    return { status: 'success', videoUrl };
++  }
++
++  if (response.output.task_status === 'FAILED') {
++    return { error: response.output.error_message || 'Video generation failed', status: 'failed' };
++  }
++
++  return { status: 'pending' };
++}
++
+ // Model patterns for different video generation types
+ const image2VideoModels = [/^wan2\.(2|5)-i2v-/, /^wanx2\.(0|1)-i2v-/];
+ const keyframe2VideoModels = [/^wan2\.(2|5)-kf2v-/];
+@@ -176,6 +256,9 @@ async function queryTaskStatus(
+  * - text-to-video (wan2.2-t2v-plus, wanx2.0-t2v-*)
+  * - image-to-video (wan2.2-i2v-plus, wanx2.0-i2v-*)
+  * - keyframe-to-video (wan2.2-kf2v-flash)
++ *
++ * Creates a video generation task and returns immediately with inferenceId.
++ * The frontend polls the task status using async task polling mechanism.
+  */
+ export async function createQwenVideo(
+   payload: CreateVideoPayload,
+@@ -209,51 +292,12 @@ export async function createQwenVideo(
+     // Create the video task
+     const taskId = await createVideoTask(payload, apiKey, taskType, provider, dashscopeURL);
+ 
+-    // Poll for completion using asyncifyPolling
+-    const result = await asyncifyPolling<QwenVideoTaskResponse, CreateVideoResponse>({
+-      checkStatus: (taskStatus: QwenVideoTaskResponse): TaskResult<CreateVideoResponse> => {
+-        log('Task %s status: %s', taskId, taskStatus.output.task_status);
+-
+-        if (taskStatus.output.task_status === 'SUCCEEDED') {
+-          if (!taskStatus.output.video_url) {
+-            return {
+-              error: new Error('Task succeeded but no video URL generated'),
+-              status: 'failed',
+-            };
+-          }
+-
+-          log('Video generation succeeded: %s', taskId);
+-          log('Video URL: %s', taskStatus.output.video_url);
+-
+-          return {
+-            data: { inferenceId: taskId, videoUrl: taskStatus.output.video_url },
+-            status: 'success',
+-          };
+-        }
+-
+-        if (taskStatus.output.task_status === 'FAILED') {
+-          const errorMessage =
+-            taskStatus.output.error_message || 'Video generation failed without error message';
+-          log('Video generation failed: %s, error: %s', taskId, errorMessage);
+-
+-          return {
+-            error: new Error(`Video generation failed for model ${model}: ${errorMessage}`),
+-            status: 'failed',
+-          };
+-        }
+-
+-        log('Video generation in progress: %s (status: %s)', taskId, taskStatus.output.task_status);
+-        return { status: 'pending' };
+-      },
+-      logger: {
+-        debug: (message: any, ...args: any[]) => log(message, ...args),
+-        error: (message: any, ...args: any[]) => log(message, ...args),
+-      },
+-      pollingQuery: () => queryTaskStatus(taskId, apiKey, dashscopeURL),
+-    });
++    log('Video task created with id: %s, returning immediately for frontend polling', taskId);
+ 
+-    log('Video generation completed, returning video URL');
+-    return result;
++    // Return immediately with inferenceId only
++    // Frontend will poll the task status using the async task polling mechanism
++    // This avoids blocking the API response for 30+ seconds during server-side polling
++    return { inferenceId: taskId };
+   } catch (error) {
+     log('Error in createQwenVideo: %O', error);
+ 
+diff --git a/packages/model-runtime/src/providers/qwen/index.ts b/packages/model-runtime/src/providers/qwen/index.ts
+index e1656a9..6225f85 100644
+--- a/packages/model-runtime/src/providers/qwen/index.ts
++++ b/packages/model-runtime/src/providers/qwen/index.ts
+@@ -85,6 +85,10 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
+     chatCompletion: () => process.env.DEBUG_QWEN_CHAT_COMPLETION === '1',
+   },
+   createVideo: createQwenVideo,
++  pollVideoStatus: async (inferenceId, options) => {
++    const { pollQwenVideoStatus } = await import('./createVideo');
++    return pollQwenVideoStatus(inferenceId, options.apiKey || '', options.baseURL || '');
++  },
+   models: async ({ client }) => {
+     const modelsPage = (await client.models.list()) as any;
+     const modelList: QwenModelCard[] = modelsPage.data;
+diff --git a/packages/model-runtime/src/providers/siliconcloud/createVideo.ts b/packages/model-runtime/src/providers/siliconcloud/createVideo.ts
+index 71fe4ab..0257fb0 100644
+--- a/packages/model-runtime/src/providers/siliconcloud/createVideo.ts
++++ b/packages/model-runtime/src/providers/siliconcloud/createVideo.ts
+@@ -2,8 +2,6 @@ import createDebug from 'debug';
+ 
+ import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
+ import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
+-import type { TaskResult } from '../../utils/asyncifyPolling';
+-import { asyncifyPolling } from '../../utils/asyncifyPolling';
+ 
+ const log = createDebug('lobe-video:siliconcloud');
+ 
+@@ -26,7 +24,10 @@ interface SiliconCloudVideoStatusResponse {
+   status?: string;
+ }
+ 
+-async function queryVideoStatus(
++/**
++ * Query the status of a video generation task
++ */
++export async function querySiliconCloudVideoStatus(
+   requestId: string,
+   options: { apiKey: string; baseURL: string },
+ ): Promise<SiliconCloudVideoStatusResponse> {
+@@ -54,6 +55,43 @@ async function queryVideoStatus(
+   return data;
+ }
+ 
++/**
++ * Poll video status and return standardized result
++ */
++export async function pollSiliconCloudVideoStatus(
++  requestId: string,
++  options: { apiKey: string; baseURL: string },
++): Promise<
++  | { status: 'success'; videoUrl: string }
++  | { status: 'failed'; error: string }
++  | { status: 'pending' }
++> {
++  const response = await querySiliconCloudVideoStatus(requestId, options);
++
++  if (response.status === 'Succeed') {
++    const videoUrl = response.results?.videos?.[0]?.url;
++    if (!videoUrl) {
++      return { error: 'Task succeeded but no video URL found', status: 'failed' };
++    }
++    return { status: 'success', videoUrl };
++  }
++
++  if (response.status === 'Failed') {
++    return {
++      error: response.reason || response.error?.message || 'Video generation failed',
++      status: 'failed',
++    };
++  }
++
++  return { status: 'pending' };
++}
++
++/**
++ * SiliconCloud video generation implementation
++ *
++ * Creates a video generation task and returns immediately with inferenceId.
++ * The frontend polls the task status using async task polling mechanism.
++ */
+ export async function createSiliconCloudVideo(
+   payload: CreateVideoPayload,
+   options: CreateVideoOptions,
+@@ -105,51 +143,10 @@ export async function createSiliconCloudVideo(
+   }
+ 
+   const inferenceId = data.requestId;
+-  log('Video task created with id: %s, starting polling...', inferenceId);
+-
+-  const result = await asyncifyPolling<SiliconCloudVideoStatusResponse, CreateVideoResponse>({
+-    checkStatus: (
+-      statusResponse: SiliconCloudVideoStatusResponse,
+-    ): TaskResult<CreateVideoResponse> => {
+-      log('Task %s status: %s', inferenceId, statusResponse.status);
+-
+-      if (statusResponse.status === 'Succeed') {
+-        const videoUrl = statusResponse.results?.videos?.[0]?.url;
+-        if (!videoUrl) {
+-          return {
+-            error: new Error('Missing url in success response'),
+-            status: 'failed',
+-          };
+-        }
+-        log('Video generation succeeded: %s', inferenceId);
+-
+-        return {
+-          data: { inferenceId, videoUrl },
+-          status: 'success',
+-        };
+-      }
+-
+-      if (statusResponse.status === 'Failed') {
+-        const errorMessage =
+-          statusResponse.reason || statusResponse.error?.message || 'Video generation failed';
+-        log('Video generation failed: %s, error: %s', inferenceId, errorMessage);
+-
+-        return {
+-          error: new Error(errorMessage),
+-          status: 'failed',
+-        };
+-      }
+-
+-      return { status: 'pending' };
+-    },
+-    logger: {
+-      debug: (message: any, ...args: any[]) => log(message, ...args),
+-      error: (message: any, ...args: any[]) => log(message, ...args),
+-    },
+-    pollingQuery: () => queryVideoStatus(inferenceId, { apiKey: options.apiKey, baseURL }),
+-  });
+-
+-  log('Video generation completed, returning video URL');
++  log('Video task created with id: %s, returning immediately for frontend polling', inferenceId);
+ 
+-  return result;
++  // Return immediately with inferenceId only
++  // Frontend will poll the task status using the async task polling mechanism
++  // This avoids blocking the API response for 30+ seconds during server-side polling
++  return { inferenceId };
+ }
+diff --git a/packages/model-runtime/src/providers/siliconcloud/index.ts b/packages/model-runtime/src/providers/siliconcloud/index.ts
+index 7b73c06..1a58163 100644
+--- a/packages/model-runtime/src/providers/siliconcloud/index.ts
++++ b/packages/model-runtime/src/providers/siliconcloud/index.ts
+@@ -121,6 +121,13 @@ export const params = {
+   },
+   createImage: createSiliconCloudImage,
+   createVideo: createSiliconCloudVideo,
++  pollVideoStatus: async (inferenceId, options) => {
++    const { pollSiliconCloudVideoStatus } = await import('./createVideo');
++    return pollSiliconCloudVideoStatus(inferenceId, {
++      apiKey: options.apiKey,
++      baseURL: options.baseURL || '',
++    });
++  },
+   debug: {
+     chatCompletion: () => process.env.DEBUG_SILICONCLOUD_CHAT_COMPLETION === '1',
+   },
+diff --git a/packages/model-runtime/src/providers/wenxin/createVideo.ts b/packages/model-runtime/src/providers/wenxin/createVideo.ts
+index 2d04c88..e3274f6 100644
+--- a/packages/model-runtime/src/providers/wenxin/createVideo.ts
++++ b/packages/model-runtime/src/providers/wenxin/createVideo.ts
+@@ -2,8 +2,6 @@ import createDebug from 'debug';
+ 
+ import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
+ import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
+-import type { TaskResult } from '../../utils/asyncifyPolling';
+-import { asyncifyPolling } from '../../utils/asyncifyPolling';
+ 
+ const log = createDebug('lobe-video:wenxin');
+ 
+@@ -26,7 +24,7 @@ interface WenxinVideoStatusResponse {
+  * Query the status of a video generation task
+  * API docs: https://cloud.baidu.com/doc/WENXINWORKSHOP/s/Blf7thw8d
+  */
+-async function queryVideoStatus(
++export async function queryWenxinVideoStatus(
+   task_id: string,
+   options: { apiKey: string; baseURL: string },
+ ): Promise<WenxinVideoStatusResponse> {
+@@ -54,11 +52,39 @@ async function queryVideoStatus(
+ }
+ 
+ /**
+- * Wenxin video generation implementation with polling
++ * Poll video status and return standardized result
++ */
++export async function pollWenxinVideoStatus(
++  task_id: string,
++  options: { apiKey: string; baseURL: string },
++): Promise<
++  | { status: 'success'; videoUrl: string }
++  | { status: 'failed'; error: string }
++  | { status: 'pending' }
++> {
++  const response = await queryWenxinVideoStatus(task_id, options);
++
++  if (response.status === 'succeeded') {
++    const videoUrl = response.content?.video_url;
++    if (!videoUrl) {
++      return { error: 'Task succeeded but no video URL found', status: 'failed' };
++    }
++    return { status: 'success', videoUrl };
++  }
++
++  if (response.status === 'failed') {
++    return { error: 'Video generation failed', status: 'failed' };
++  }
++
++  return { status: 'pending' };
++}
++
++/**
++ * Wenxin video generation implementation
+  * API docs: https://cloud.baidu.com/doc/WENXINWORKSHOP/s/Blf7thw8d
+  *
+- * This function creates a video generation task and polls until completion,
+- * similar to how createImage works (synchronous flow).
++ * Creates a video generation task and returns immediately with inferenceId.
++ * The frontend polls the task status using async task polling mechanism.
+  */
+ export async function createWenxinVideo(
+   payload: CreateVideoPayload,
+@@ -125,52 +151,10 @@ export async function createWenxinVideo(
+   }
+ 
+   const taskId = data.task_id;
+-  log('Video task created with task_id: %s, starting polling...', taskId);
+-
+-  // Poll until video generation completes using asyncifyPolling
+-  const result = await asyncifyPolling<WenxinVideoStatusResponse, CreateVideoResponse>({
+-    checkStatus: (statusResponse: WenxinVideoStatusResponse): TaskResult<CreateVideoResponse> => {
+-      log('Task %s status: %s', taskId, statusResponse.status);
+-
+-      if (statusResponse.status === 'succeeded') {
+-        const videoUrl = statusResponse.content?.video_url;
+-        if (!videoUrl) {
+-          return {
+-            error: new Error('Missing video_url in success response'),
+-            status: 'failed',
+-          };
+-        }
+-        log('Video generation succeeded: %s', taskId);
+-
+-        return {
+-          data: { inferenceId: statusResponse.task_id!, videoUrl },
+-          status: 'success',
+-        };
+-      }
+-
+-      if (statusResponse.status === 'failed') {
+-        const errorMessage = 'Video generation failed';
+-        log('Video generation failed: %s', taskId);
+-
+-        return {
+-          error: new Error(errorMessage),
+-          status: 'failed',
+-        };
+-      }
+-
+-      // Continue polling for other statuses (pending, running, etc.)
+-      log('Video generation in progress: %s (status: %s)', taskId, statusResponse.status);
+-
+-      return { status: 'pending' };
+-    },
+-    logger: {
+-      debug: (message: any, ...args: any[]) => log(message, ...args),
+-      error: (message: any, ...args: any[]) => log(message, ...args),
+-    },
+-    pollingQuery: () => queryVideoStatus(taskId, { apiKey: options.apiKey, baseURL }),
+-  });
+-
+-  log('Video generation completed, returning video URL');
++  log('Video task created with task_id: %s, returning immediately for frontend polling', taskId);
+ 
+-  return result;
++  // Return immediately with inferenceId only
++  // Frontend will poll the task status using the async task polling mechanism
++  // This avoids blocking the API response for 30+ seconds during server-side polling
++  return { inferenceId: taskId };
+ }
+diff --git a/packages/model-runtime/src/providers/wenxin/index.ts b/packages/model-runtime/src/providers/wenxin/index.ts
+index 82eeb8d..531f0d4 100644
+--- a/packages/model-runtime/src/providers/wenxin/index.ts
++++ b/packages/model-runtime/src/providers/wenxin/index.ts
+@@ -37,6 +37,13 @@ export const params = {
+   },
+   createImage: createWenxinImage,
+   createVideo: createWenxinVideo,
++  pollVideoStatus: async (inferenceId, options) => {
++    const { pollWenxinVideoStatus } = await import('./createVideo');
++    return pollWenxinVideoStatus(inferenceId, {
++      apiKey: options.apiKey,
++      baseURL: options.baseURL || '',
++    });
++  },
+   debug: {
+     chatCompletion: () => process.env.DEBUG_WENXIN_CHAT_COMPLETION === '1',
+   },
+diff --git a/packages/model-runtime/src/providers/xai/createVideo.ts b/packages/model-runtime/src/providers/xai/createVideo.ts
+index b29e8ed..9c7f997 100644
+--- a/packages/model-runtime/src/providers/xai/createVideo.ts
++++ b/packages/model-runtime/src/providers/xai/createVideo.ts
+@@ -2,8 +2,6 @@ import createDebug from 'debug';
+ 
+ import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
+ import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
+-import type { TaskResult } from '../../utils/asyncifyPolling';
+-import { asyncifyPolling } from '../../utils/asyncifyPolling';
+ 
+ const log = createDebug('lobe-video:xai');
+ 
+@@ -21,7 +19,10 @@ interface XAIVideoStatusResponse {
+   };
+ }
+ 
+-async function queryVideoStatus(
++/**
++ * Query the status of a video generation task
++ */
++export async function queryXAIVideoStatus(
+   requestId: string,
+   options: { apiKey: string; baseURL: string },
+ ): Promise<XAIVideoStatusResponse> {
+@@ -48,6 +49,40 @@ async function queryVideoStatus(
+   return data;
+ }
+ 
++/**
++ * Poll video status and return standardized result
++ */
++export async function pollXAIVideoStatus(
++  requestId: string,
++  options: { apiKey: string; baseURL: string },
++): Promise<
++  | { status: 'success'; videoUrl: string }
++  | { status: 'failed'; error: string }
++  | { status: 'pending' }
++> {
++  const response = await queryXAIVideoStatus(requestId, options);
++
++  if (response.status === 'done') {
++    const videoUrl = response.video?.url;
++    if (!videoUrl) {
++      return { error: 'Task succeeded but no video URL found', status: 'failed' };
++    }
++    return { status: 'success', videoUrl };
++  }
++
++  if (response.status === 'failed') {
++    return { error: response.error?.message || 'Video generation failed', status: 'failed' };
++  }
++
++  return { status: 'pending' };
++}
++
++/**
++ * XAI video generation implementation
++ *
++ * Creates a video generation task and returns immediately with inferenceId.
++ * The frontend polls the task status using async task polling mechanism.
++ */
+ export async function createXAIVideo(
+   payload: CreateVideoPayload,
+   options: CreateVideoOptions,
+@@ -109,54 +144,13 @@ export async function createXAIVideo(
+   }
+ 
+   const requestId = data.request_id;
+-  log('Video task created with request_id: %s, starting polling...', requestId);
+-
+-  const result = await asyncifyPolling<XAIVideoStatusResponse, CreateVideoResponse>({
+-    checkStatus: (statusResponse: XAIVideoStatusResponse): TaskResult<CreateVideoResponse> => {
+-      log('Task %s status: %s', requestId, statusResponse.status);
+-
+-      if (statusResponse.status === 'done') {
+-        const videoUrl = statusResponse.video?.url;
+-        if (!videoUrl) {
+-          log('Task succeeded but missing video url in response');
+-          return {
+-            error: new Error('Missing url in success response'),
+-            status: 'failed',
+-          };
+-        }
+-        log('Video generation succeeded: %s, videoUrl: %s', requestId, videoUrl);
+-
+-        return {
+-          data: { inferenceId: requestId, videoUrl },
+-          status: 'success',
+-        };
+-      }
+-
+-      if (statusResponse.status === 'failed') {
+-        const errorMessage = statusResponse.error?.message || 'Video generation failed';
+-        log('Video generation failed: %s, error: %s', requestId, errorMessage);
+-
+-        return {
+-          error: new Error(errorMessage),
+-          status: 'failed',
+-        };
+-      }
+-
+-      log('Video generation in progress: %s (status: %s)', requestId, statusResponse.status);
+-
+-      return { status: 'pending' };
+-    },
+-    initialInterval: 5000,
+-    logger: {
+-      debug: (message: any, ...args: any[]) => log(message, ...args),
+-      error: (message: any, ...args: any[]) => log(message, ...args),
+-    },
+-    maxInterval: 10000,
+-    maxRetries: 120,
+-    pollingQuery: () => queryVideoStatus(requestId, { apiKey: options.apiKey, baseURL }),
+-  });
+-
+-  log('Video generation completed, returning video URL');
+-
+-  return result;
++  log(
++    'Video task created with request_id: %s, returning immediately for frontend polling',
++    requestId,
++  );
++
++  // Return immediately with inferenceId only
++  // Frontend will poll the task status using the async task polling mechanism
++  // This avoids blocking the API response for 30+ seconds during server-side polling
++  return { inferenceId: requestId };
+ }
+diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
+index b782a4b..e3cbc4e 100644
+--- a/packages/model-runtime/src/providers/xai/index.ts
++++ b/packages/model-runtime/src/providers/xai/index.ts
+@@ -16,6 +16,13 @@ export const LobeXAI = createOpenAICompatibleRuntime({
+   },
+   createImage: createXAIImage,
+   createVideo: createXAIVideo,
++  pollVideoStatus: async (inferenceId, options) => {
++    const { pollXAIVideoStatus } = await import('./createVideo');
++    return pollXAIVideoStatus(inferenceId, {
++      apiKey: options.apiKey,
++      baseURL: options.baseURL || '',
++    });
++  },
+   debug: {
+     chatCompletion: () => process.env.DEBUG_XAI_CHAT_COMPLETION === '1',
+     responses: () => process.env.DEBUG_XAI_RESPONSES === '1',
+diff --git a/packages/model-runtime/src/providers/zhipu/createVideo.ts b/packages/model-runtime/src/providers/zhipu/createVideo.ts
+index bfbda80..e870dee 100644
+--- a/packages/model-runtime/src/providers/zhipu/createVideo.ts
++++ b/packages/model-runtime/src/providers/zhipu/createVideo.ts
+@@ -2,8 +2,6 @@ import createDebug from 'debug';
+ 
+ import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
+ import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
+-import type { TaskResult } from '../../utils/asyncifyPolling';
+-import { asyncifyPolling } from '../../utils/asyncifyPolling';
+ 
+ const log = createDebug('lobe-video:zhipu');
+ 
+@@ -25,7 +23,7 @@ interface ZhipuVideoStatusResponse {
+ /**
+  * Query the status of a video generation task
+  */
+-async function queryVideoStatus(
++export async function queryZhipuVideoStatus(
+   inferenceId: string,
+   options: { apiKey: string; baseURL: string },
+ ): Promise<ZhipuVideoStatusResponse> {
+@@ -53,11 +51,39 @@ async function queryVideoStatus(
+ }
+ 
+ /**
+- * Zhipu video generation implementation with polling
++ * Poll video status and return standardized result
++ */
++export async function pollZhipuVideoStatus(
++  inferenceId: string,
++  options: { apiKey: string; baseURL: string },
++): Promise<
++  | { status: 'success'; videoUrl: string }
++  | { status: 'failed'; error: string }
++  | { status: 'pending' }
++> {
++  const response = await queryZhipuVideoStatus(inferenceId, options);
++
++  if (response.task_status === 'SUCCESS') {
++    const videoUrl = response.video_result?.[0]?.url;
++    if (!videoUrl) {
++      return { error: 'Task succeeded but no video URL found', status: 'failed' };
++    }
++    return { status: 'success', videoUrl };
++  }
++
++  if (response.task_status === 'FAIL') {
++    return { error: response.error?.message || 'Video generation failed', status: 'failed' };
++  }
++
++  return { status: 'pending' };
++}
++
++/**
++ * Zhipu video generation implementation
+  * API docs: https://docs.bigmodel.cn/cn/guide/paid-recommendation/cogvideox
+  *
+- * This function creates a video generation task and polls until completion,
+- * similar to how createImage works (synchronous flow).
++ * Creates a video generation task and returns immediately with inferenceId.
++ * The frontend polls the task status using async task polling mechanism.
+  */
+ export async function createZhipuVideo(
+   payload: CreateVideoPayload,
+@@ -120,52 +146,10 @@ export async function createZhipuVideo(
+   }
+ 
+   const inferenceId = data.id;
+-  log('Video task created with id: %s, starting polling...', inferenceId);
+-
+-  // Poll until video generation completes using asyncifyPolling (same pattern as qwen createImage)
+-  const result = await asyncifyPolling<ZhipuVideoStatusResponse, CreateVideoResponse>({
+-    checkStatus: (statusResponse: ZhipuVideoStatusResponse): TaskResult<CreateVideoResponse> => {
+-      log('Task %s status: %s', inferenceId, statusResponse.task_status);
+-
+-      if (statusResponse.task_status === 'SUCCESS') {
+-        const videoUrl = statusResponse.video_result?.[0]?.url;
+-        if (!videoUrl) {
+-          return {
+-            error: new Error('Missing url in success response'),
+-            status: 'failed',
+-          };
+-        }
+-        log('Video generation succeeded: %s', inferenceId);
+-
+-        return {
+-          data: { inferenceId, videoUrl },
+-          status: 'success',
+-        };
+-      }
+-
+-      if (statusResponse.task_status === 'FAIL') {
+-        const errorMessage = statusResponse.error?.message || 'Video generation failed';
+-        log('Video generation failed: %s, error: %s', inferenceId, errorMessage);
+-
+-        return {
+-          error: new Error(errorMessage),
+-          status: 'failed',
+-        };
+-      }
+-
+-      // Continue polling for RUNNING, QUEUED, PENDING statuses
+-      log('Video generation in progress: %s (status: %s)', inferenceId, statusResponse.task_status);
+-
+-      return { status: 'pending' };
+-    },
+-    logger: {
+-      debug: (message: any, ...args: any[]) => log(message, ...args),
+-      error: (message: any, ...args: any[]) => log(message, ...args),
+-    },
+-    pollingQuery: () => queryVideoStatus(inferenceId, { apiKey: options.apiKey, baseURL }),
+-  });
+-
+-  log('Video generation completed, returning video URL');
++  log('Video task created with id: %s, returning immediately for frontend polling', inferenceId);
+ 
+-  return result;
++  // Return immediately with inferenceId only
++  // Frontend will poll the task status using the async task polling mechanism
++  // This avoids blocking the API response for 30+ seconds during server-side polling
++  return { inferenceId };
+ }
+diff --git a/packages/model-runtime/src/providers/zhipu/index.ts b/packages/model-runtime/src/providers/zhipu/index.ts
+index 40080ad..5cd4a32 100644
+--- a/packages/model-runtime/src/providers/zhipu/index.ts
++++ b/packages/model-runtime/src/providers/zhipu/index.ts
+@@ -140,6 +140,13 @@ export const params = {
+     },
+   },
+   createVideo: createZhipuVideo,
++  pollVideoStatus: async (inferenceId, options) => {
++    const { pollZhipuVideoStatus } = await import('./createVideo');
++    return pollZhipuVideoStatus(inferenceId, {
++      apiKey: options.apiKey,
++      baseURL: options.baseURL || '',
++    });
++  },
+   debug: {
+     chatCompletion: () => process.env.DEBUG_ZHIPU_CHAT_COMPLETION === '1',
+   },
+diff --git a/src/server/routers/lambda/video/index.ts b/src/server/routers/lambda/video/index.ts
+index 16f11d4..180c17c 100644
+--- a/src/server/routers/lambda/video/index.ts
++++ b/src/server/routers/lambda/video/index.ts
+@@ -8,7 +8,6 @@ import { chargeAfterGenerate } from '@/business/server/video-generation/chargeAf
+ import { chargeBeforeGenerate } from '@/business/server/video-generation/chargeBeforeGenerate';
+ import { getVideoFreeQuota } from '@/business/server/video-generation/getVideoFreeQuota';
+ import { AsyncTaskModel } from '@/database/models/asyncTask';
+-import { GenerationModel } from '@/database/models/generation';
+ import {
+   asyncTasks,
+   generationBatches,
+@@ -21,16 +20,13 @@ import { authedProcedure, router } from '@/libs/trpc/lambda';
+ import { serverDatabase } from '@/libs/trpc/lambda/middleware';
+ import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
+ import { FileService } from '@/server/services/file';
+-import { VideoGenerationService } from '@/server/services/generation/video';
++import { startBackgroundVideoPolling } from '@/server/services/video/backgroundPolling';
+ import {
+   AsyncTaskError,
+   AsyncTaskErrorType,
+   AsyncTaskStatus,
+   AsyncTaskType,
+ } from '@/types/asyncTask';
+-import { FileSource } from '@/types/files';
+-import type { VideoGenerationAsset } from '@/types/generation';
+-import { sanitizeFileName } from '@/utils/sanitizeFileName';
+ 
+ const log = debug('lobe-video:lambda');
+ 
+@@ -222,68 +218,27 @@ export const videoRouter = router({
+ 
+       log('Video task submitted successfully, inferenceId: %s', response?.inferenceId);
+ 
+-      // Check if provider uses polling (returns videoUrl immediately) vs webhook (returns only inferenceId)
+-      if (response && 'videoUrl' in response && response.videoUrl) {
+-        log('Polling-based provider detected (videoUrl present), processing video immediately');
+-
+-        // Process video immediately (same logic as webhook success path)
+-        const videoService = new VideoGenerationService(serverDB, userId);
+-        const processResult = await videoService.processVideoForGeneration(response.videoUrl);
+-
+-        const asset: VideoGenerationAsset = {
+-          coverUrl: processResult.coverKey,
+-          duration: processResult.duration,
+-          height: processResult.height,
+-          originalUrl: response.videoUrl,
+-          thumbnailUrl: processResult.thumbnailKey,
+-          type: 'video',
+-          url: processResult.videoKey,
+-          width: processResult.width,
+-        };
+-
+-        const generationModel = new GenerationModel(serverDB, userId);
+-        await generationModel.createAssetAndFile(
+-          createdGeneration.id,
+-          asset,
+-          {
+-            fileHash: processResult.fileHash,
+-            fileType: processResult.mimeType,
+-            name: `${sanitizeFileName(createdBatch.prompt ?? '', createdGeneration.id)}.mp4`,
+-            size: processResult.fileSize,
+-            url: processResult.videoKey,
+-          },
+-          FileSource.VideoGeneration,
+-        );
++      // Check if provider uses polling (returns only inferenceId, no videoUrl)
++      if (response && !('videoUrl' in response)) {
++        log('Polling-based provider detected (inferenceId only), starting background polling');
+ 
+         await asyncTaskModel.update(asyncTaskId, {
+-          duration: Date.now() - asyncTaskCreatedAt.getTime(),
+           inferenceId: response.inferenceId,
+-          status: AsyncTaskStatus.Success,
++          status: AsyncTaskStatus.Processing,
+         });
+ 
+-        // Charge after successful video generation
+-        try {
+-          await chargeAfterGenerate({
+-            computePriceParams: {
+-              generateAudio: input.params.generateAudio,
+-            },
+-            latency: Date.now() - asyncTaskCreatedAt.getTime(),
+-            metadata: {
+-              asyncTaskId,
+-              generationBatchId: createdBatch.id,
+-              modelId: model,
+-              topicId: generationTopicId,
+-            },
+-            model,
+-            prechargeResult: prechargeResult ?? undefined,
+-            provider,
+-            userId,
+-          });
+-        } catch (chargeError) {
+-          console.error('[video] chargeAfterGenerate failed:', chargeError);
+-        }
+-
+-        log('Polling-based video processing completed successfully');
++        // Start background polling for polling-based providers
++        startBackgroundVideoPolling(serverDB, {
++          asyncTaskCreatedAt,
++          asyncTaskId,
++          generationId: createdGeneration.id,
++          generationTopicId,
++          inferenceId: response.inferenceId,
++          model,
++          prechargeResult,
++          provider,
++          userId,
++        });
+       } else {
+         // Webhook-based provider: update status to Processing and wait for callback
+         log('Webhook-based provider detected, waiting for callback');
+diff --git a/src/server/services/video/backgroundPolling.ts b/src/server/services/video/backgroundPolling.ts
+new file mode 100644
+index 0000000..2634e13
+--- /dev/null
++++ b/src/server/services/video/backgroundPolling.ts
+@@ -0,0 +1,156 @@
++import debug from 'debug';
++
++import { AsyncTaskModel } from '@/database/models/asyncTask';
++import { GenerationModel } from '@/database/models/generation';
++import type { LobeChatDatabase } from '@/database/type';
++import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
++import { VideoGenerationService } from '@/server/services/generation/video';
++import { AsyncTaskError, AsyncTaskErrorType, AsyncTaskStatus } from '@/types/asyncTask';
++import { FileSource } from '@/types/files';
++import type { VideoGenerationAsset } from '@/types/generation';
++import { sanitizeFileName } from '@/utils/sanitizeFileName';
++
++const log = debug('lobe-video:background-polling');
++
++interface BackgroundPollingParams {
++  asyncTaskCreatedAt: Date;
++  asyncTaskId: string;
++  generationId: string;
++  generationTopicId: string;
++  inferenceId: string;
++  model: string;
++  prechargeResult?: any;
++  provider: string;
++  userId: string;
++}
++
++export function startBackgroundVideoPolling(
++  db: LobeChatDatabase,
++  params: BackgroundPollingParams,
++): void {
++  processBackgroundPolling(db, params).catch((error) => {
++    log('Unhandled error in background video polling: %O', error);
++  });
++}
++
++async function processBackgroundPolling(
++  db: LobeChatDatabase,
++  params: BackgroundPollingParams,
++): Promise<void> {
++  const {
++    asyncTaskCreatedAt,
++    asyncTaskId,
++    generationId,
++    generationTopicId,
++    inferenceId,
++    model,
++    prechargeResult,
++    provider,
++    userId,
++  } = params;
++
++  log(
++    '🎬 Starting background video polling for task: %s (provider: %s, inferenceId: %s)',
++    asyncTaskId,
++    provider,
++    inferenceId,
++  );
++
++  try {
++    const asyncTaskModel = new AsyncTaskModel(db, userId);
++    const videoService = new VideoGenerationService(db, userId);
++    const generationModel = new GenerationModel(db, userId);
++
++    const modelRuntime = await initModelRuntimeFromDB(db, userId, provider);
++    const videoUrl = await pollUntilCompletion(modelRuntime, inferenceId);
++
++    if (!videoUrl) {
++      throw new Error('Polling completed but no video URL returned');
++    }
++
++    log('✅ Video polling succeeded for task: %s, processing video...', asyncTaskId);
++
++    const processResult = await videoService.processVideoForGeneration(videoUrl);
++
++    const asset: VideoGenerationAsset = {
++      coverUrl: processResult.coverKey,
++      duration: processResult.duration,
++      height: processResult.height,
++      originalUrl: videoUrl,
++      thumbnailUrl: processResult.thumbnailKey,
++      type: 'video',
++      url: processResult.videoKey,
++      width: processResult.width,
++    };
++
++    await generationModel.createAssetAndFile(
++      generationId,
++      asset,
++      {
++        fileHash: processResult.fileHash,
++        fileType: processResult.mimeType,
++        name: `${sanitizeFileName(generationTopicId, generationId)}.mp4`,
++        size: processResult.fileSize,
++        url: processResult.videoKey,
++      },
++      FileSource.VideoGeneration,
++    );
++
++    await asyncTaskModel.update(asyncTaskId, {
++      duration: Date.now() - asyncTaskCreatedAt.getTime(),
++      status: AsyncTaskStatus.Success,
++    });
++
++    log('✅ Video processing completed successfully for task: %s', asyncTaskId);
++  } catch (error) {
++    log('❌ Background video polling error for task: %s', asyncTaskId, error);
++
++    const asyncTaskModel = new AsyncTaskModel(db, userId);
++    await asyncTaskModel.update(asyncTaskId, {
++      error: new AsyncTaskError(
++        AsyncTaskErrorType.ServerError,
++        'Background polling failed: ' + (error instanceof Error ? error.message : 'Unknown error'),
++      ),
++      status: AsyncTaskStatus.Error,
++    });
++  }
++}
++
++async function pollUntilCompletion(modelRuntime: any, inferenceId: string): Promise<string | null> {
++  const maxRetries = 120;
++  const pollingInterval = 5000;
++
++  for (let attempt = 0; attempt < maxRetries; attempt++) {
++    try {
++      log('📡 Polling attempt %d/%d for task: %s', attempt + 1, maxRetries, inferenceId);
++
++      const result = await modelRuntime.pollVideoStatus(inferenceId);
++
++      if (result.status === 'success') {
++        log('✅ Video generation succeeded for task: %s', inferenceId);
++        return result.videoUrl;
++      }
++
++      if (result.status === 'failed') {
++        throw new Error(`Video generation failed: ${result.error}`);
++      }
++
++      log('⏳ Task %s still in progress', inferenceId);
++      await sleep(pollingInterval);
++    } catch (error) {
++      if (error instanceof Error && error.message.includes('failed')) {
++        throw error;
++      }
++      log('⚠️ Polling attempt %d failed for task: %s: %O', attempt + 1, inferenceId, error);
++      await sleep(pollingInterval);
++    }
++  }
++
++  throw new Error(
++    `Video generation timeout after ${maxRetries} attempts (${(maxRetries * pollingInterval) / 1000}s)`,
++  );
++}
++
++function sleep(ms: number): Promise<void> {
++  return new Promise((resolve) => setTimeout(resolve, ms));
++}
+-- 
+2.53.0
+
