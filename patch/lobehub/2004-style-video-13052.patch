@@ -1780,7 +1780,7 @@ index b1eb49e0a46..7b49437e7e5 100644
        log('fetching available models');
 diff --git a/packages/model-runtime/src/providers/google/createVideo.ts b/packages/model-runtime/src/providers/google/createVideo.ts
 new file mode 100644
-index 00000000000..dad2b0c35ed
+index 00000000000..fddfe04acd0
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/google/createVideo.ts
 @@ -0,0 +1,143 @@
@@ -1886,23 +1886,23 @@ index 00000000000..dad2b0c35ed
 +        };
 +      }
 +
-+      const generatedVideos = updatedOperation.response?.generatedVideos;
-+      if (!generatedVideos || generatedVideos.length === 0) {
++      if (!updatedOperation.response?.generatedVideos?.[0]?.video) {
++        if (updatedOperation?.response?.raiMediaFilteredReasons) {
++          return {
++            error: operation.response.raiMediaFilteredReasons[0],
++            status: 'failed',
++          };
++        }
++
 +        return {
 +          error: 'No video generated',
 +          status: 'failed',
 +        };
 +      }
 +
-+      const video = generatedVideos[0].video;
-+      if (!video?.uri) {
-+        return {
-+          error: 'No download URI found',
-+          status: 'failed',
-+        };
-+      }
++      const videoUrl = updatedOperation.response.generatedVideos[0].video.uri;
 +
-+      log('Video generation completed, download URI: %s', video.uri);
++      log('Video generation completed, download URI: %s', videoUrl);
 +
 +      // Return headers for authenticated download
 +      // Google uses x-goog-api-key header
@@ -1911,7 +1911,7 @@ index 00000000000..dad2b0c35ed
 +          'x-goog-api-key': (client as any).auth?.apiKey || '',
 +        },
 +        status: 'success',
-+        videoUrl: video.uri,
++        videoUrl,
 +      };
 +    }
 +
