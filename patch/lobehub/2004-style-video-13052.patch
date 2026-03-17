@@ -208,80 +208,6 @@ index 3e8d666ff96..fbcd9de5862 100644
 +export const allModels = [...minimaxChatModels, ...minimaxImageModels, ...minimaxVideoModels];
  
  export default allModels;
-diff --git a/packages/model-bank/src/aiModels/openai.ts b/packages/model-bank/src/aiModels/openai.ts
-index b895a8b9af6..0c7967ecb50 100644
---- a/packages/model-bank/src/aiModels/openai.ts
-+++ b/packages/model-bank/src/aiModels/openai.ts
-@@ -6,6 +6,7 @@ import {
-   type AIRealtimeModelCard,
-   type AISTTModelCard,
-   type AITTSModelCard,
-+  type AIVideoModelCard,
- } from '../types/aiModel';
- 
- export const gptImage1ParamsSchema: ModelParamsSchema = {
-@@ -1630,6 +1631,53 @@ export const openaiRealtimeModels: AIRealtimeModelCard[] = [
-   },
- ];
- 
-+const openaiVideoModels: AIVideoModelCard[] = [
-+  {
-+    description:
-+      'Sora 2 is our new powerful media generation model, generating videos with synced audio. It can create richly detailed, dynamic clips from natural language or images.',
-+    displayName: 'Sora 2',
-+    enabled: true,
-+    id: 'sora-2',
-+    parameters: {
-+      duration: { default: 4, enum: [4, 8, 12] },
-+      imageUrl: {
-+        default: null,
-+      },
-+      prompt: { default: '' },
-+      size: {
-+        default: '720x1280',
-+        enum: ['720x1280', '1280x720', '1024x1792', '1792x1024'],
-+      },
-+    },
-+    pricing: {
-+      units: [{ name: 'videoGeneration', rate: 0.1, strategy: 'fixed', unit: 'second' }],
-+    },
-+    type: 'video',
-+  },
-+  {
-+    description:
-+      'Sora 2 Pro is our state-of-the-art, most advanced media generation model, generating videos with synced audio. It can create richly detailed, dynamic clips from natural language or images.',
-+    displayName: 'Sora 2 Pro',
-+    enabled: true,
-+    id: 'sora-2-pro',
-+    parameters: {
-+      duration: { default: 4, enum: [4, 8, 12] },
-+      imageUrl: {
-+        default: null,
-+      },
-+      prompt: { default: '' },
-+      size: {
-+        default: '720x1280',
-+        enum: ['720x1280', '1280x720', '1024x1792', '1792x1024'],
-+      },
-+    },
-+    pricing: {
-+      units: [{ name: 'videoGeneration', rate: 0.5, strategy: 'fixed', unit: 'second' }],
-+    },
-+    type: 'video',
-+  },
-+];
-+
- export const allModels = [
-   ...openaiChatModels,
-   ...openaiEmbeddingModels,
-@@ -1637,6 +1685,7 @@ export const allModels = [
-   ...openaiSTTModels,
-   ...openaiImageModels,
-   ...openaiRealtimeModels,
-+  ...openaiVideoModels,
- ];
- 
- export default allModels;
 diff --git a/packages/model-bank/src/aiModels/siliconcloud.ts b/packages/model-bank/src/aiModels/siliconcloud.ts
 index ee2966f1684..7d3847d3ade 100644
 --- a/packages/model-bank/src/aiModels/siliconcloud.ts
@@ -1147,190 +1073,6 @@ index 7c0f659ac8f..a0afb58ab14 100644
    debug: {
      chatCompletion: () => process.env.DEBUG_MINIMAX_CHAT_COMPLETION === '1',
    },
-diff --git a/packages/model-runtime/src/providers/openai/createVideo.ts b/packages/model-runtime/src/providers/openai/createVideo.ts
-new file mode 100644
-index 00000000000..0bd40d79133
---- /dev/null
-+++ b/packages/model-runtime/src/providers/openai/createVideo.ts
-@@ -0,0 +1,158 @@
-+import createDebug from 'debug';
-+
-+import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
-+import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
-+import type { TaskResult } from '../../utils/asyncifyPolling';
-+import { asyncifyPolling } from '../../utils/asyncifyPolling';
-+
-+const log = createDebug('lobe-video:openai');
-+
-+interface OpenAIVideoStatusResponse {
-+  completed_at?: number;
-+  created_at: number;
-+  error?: {
-+    code?: string;
-+    message?: string;
-+    type?: string;
-+  };
-+  expires_at?: number;
-+  id: string;
-+  model: string;
-+  object: string;
-+  progress?: number;
-+  prompt: string;
-+  seconds?: string;
-+  size?: string;
-+  status: 'queued' | 'in_progress' | 'completed' | 'failed';
-+}
-+
-+async function queryVideoStatus(
-+  videoId: string,
-+  options: { apiKey: string; baseURL: string },
-+): Promise<OpenAIVideoStatusResponse> {
-+  const statusUrl = `${options.baseURL}/videos/${videoId}`;
-+
-+  log('Querying video status for: %s', videoId);
-+
-+  const response = await fetch(statusUrl, {
-+    headers: {
-+      'Authorization': `Bearer ${options.apiKey}`,
-+      'Content-Type': 'application/json',
-+    },
-+    method: 'GET',
-+  });
-+
-+  if (!response.ok) {
-+    const errorText = await response.text();
-+    throw new Error(`OpenAI status API error: ${response.status} ${errorText}`);
-+  }
-+
-+  const data = (await response.json()) as OpenAIVideoStatusResponse;
-+  log('Video status response: %O', data);
-+
-+  return data;
-+}
-+
-+export async function createOpenAIVideo(
-+  payload: CreateVideoPayload,
-+  options: CreateVideoOptions,
-+): Promise<CreateVideoResponse> {
-+  const { model, params } = payload;
-+  const { prompt, imageUrl, duration, size } = params;
-+
-+  log('Creating video with OpenAI API - model: %s, params: %O', model, params);
-+
-+  const baseURL = options.baseURL || 'https://api.openai.com/v1';
-+
-+  const body: Record<string, unknown> = {
-+    model,
-+    prompt,
-+  };
-+
-+  if (imageUrl) {
-+    body['input_reference'] = imageUrl;
-+  }
-+
-+  // Add optional parameters based on model
-+  if (duration) {
-+    body['seconds'] = duration.toString();
-+  }
-+
-+  if (size) {
-+    body['size'] = size;
-+  }
-+
-+  log('OpenAI video API request body: %O', body);
-+
-+  const response = await fetch(`${baseURL}/videos`, {
-+    body: JSON.stringify(body),
-+    headers: {
-+      'Authorization': `Bearer ${options.apiKey}`,
-+      'Content-Type': 'application/json',
-+    },
-+    method: 'POST',
-+  });
-+
-+  if (!response.ok) {
-+    const errorText = await response.text();
-+    log('OpenAI video API error: %s %s', response.status, errorText);
-+    throw new Error(`OpenAI video API error: ${response.status} ${errorText}`);
-+  }
-+
-+  const data = await response.json();
-+  log('OpenAI video API response: %O', data);
-+
-+  if (!data?.id) {
-+    throw new Error('Invalid response: missing id');
-+  }
-+
-+  const videoId = data.id;
-+  log('Video task created with id: %s, starting polling...', videoId);
-+
-+  const result = await asyncifyPolling<OpenAIVideoStatusResponse, CreateVideoResponse>({
-+    checkStatus: (statusResponse: OpenAIVideoStatusResponse): TaskResult<CreateVideoResponse> => {
-+      log('Task %s status: %s', videoId, statusResponse.status);
-+
-+      if (statusResponse.status === 'completed') {
-+        log('Video generation succeeded: %s', videoId);
-+
-+        const contentUrl = `${baseURL}/videos/${videoId}/content`;
-+        log('Video content URL: %s', contentUrl);
-+
-+        return {
-+          data: { inferenceId: videoId, videoUrl: contentUrl },
-+          status: 'success',
-+        };
-+      }
-+
-+      if (statusResponse.status === 'failed') {
-+        const errorMessage = statusResponse.error?.message || 'Video generation failed';
-+        log('Video generation failed: %s, error: %s', videoId, errorMessage);
-+
-+        return {
-+          error: new Error(errorMessage),
-+          status: 'failed',
-+        };
-+      }
-+
-+      const progress = statusResponse.progress !== undefined ? `${statusResponse.progress}%` : '';
-+      log(
-+        'Video generation in progress: %s (status: %s%s)',
-+        videoId,
-+        statusResponse.status,
-+        progress ? ` ${progress}` : '',
-+      );
-+
-+      return { status: 'pending' };
-+    },
-+    logger: {
-+      debug: (message: any, ...args: any[]) => log(message, ...args),
-+      error: (message: any, ...args: any[]) => log(message, ...args),
-+    },
-+    pollingQuery: () => queryVideoStatus(videoId, { apiKey: options.apiKey, baseURL }),
-+  });
-+
-+  log('Video generation completed, returning video ID');
-+
-+  return result;
-+}
-diff --git a/packages/model-runtime/src/providers/openai/index.ts b/packages/model-runtime/src/providers/openai/index.ts
-index e1e19224201..87ed07c761a 100644
---- a/packages/model-runtime/src/providers/openai/index.ts
-+++ b/packages/model-runtime/src/providers/openai/index.ts
-@@ -6,6 +6,7 @@ import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible
- import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
- import type { ChatStreamPayload } from '../../types';
- import { processMultiProviderModelList } from '../../utils/modelParse';
-+import { createOpenAIVideo } from './createVideo';
- 
- export interface OpenAIModelCard {
-   id: string;
-@@ -121,6 +122,7 @@ export const params = {
-       } as any;
-     },
-   },
-+  createVideo: createOpenAIVideo,
- } satisfies OpenAICompatibleFactoryOptions;
- 
- export const LobeOpenAI = createOpenAICompatibleRuntime(params);
 diff --git a/packages/model-runtime/src/providers/siliconcloud/createVideo.ts b/packages/model-runtime/src/providers/siliconcloud/createVideo.ts
 new file mode 100644
 index 00000000000..71fe4ab5969
@@ -2144,16 +1886,138 @@ index ea4cf1308b3..46b1be17aa5 100644
    'config.endImageUrl.label': 'End Frame',
    'config.generateAudio.label': 'Generate Audio',
    'config.header.title': 'Video',
+diff --git a/src/routes/(main)/video/_layout/ConfigPanel/components/Select/index.tsx b/src/routes/(main)/video/_layout/ConfigPanel/components/Select/index.tsx
+new file mode 100644
+index 00000000000..3a39bc02f86
+--- /dev/null
++++ b/src/routes/(main)/video/_layout/ConfigPanel/components/Select/index.tsx
+@@ -0,0 +1,115 @@
++'use client';
++
++import { type GridProps } from '@lobehub/ui';
++import { Block, Center, Grid, Select, Text } from '@lobehub/ui';
++import { cssVar } from 'antd-style';
++import { type ReactNode } from 'react';
++import { memo } from 'react';
++import useMergeState from 'use-merge-value';
++
++import { useIsDark } from '@/hooks/useIsDark';
++
++export interface SizeSelectProps extends Omit<GridProps, 'children' | 'onChange'> {
++  defaultValue?: 'auto' | string;
++  onChange?: (value: string) => void;
++  options?: { label?: string; value: 'auto' | string }[];
++  value?: 'auto' | string;
++}
++
++/**
++ * Check if a size value can be parsed as valid aspect ratio
++ */
++const canParseAsRatio = (value: string): boolean => {
++  if (value === 'auto') return true;
++
++  const parts = value.split('x');
++  if (parts.length !== 2) return false;
++
++  const [width, height] = parts.map(Number);
++  return !isNaN(width) && !isNaN(height) && width > 0 && height > 0;
++};
++
++const SizeSelect = memo<SizeSelectProps>(({ options, onChange, value, defaultValue, ...rest }) => {
++  const isDarkMode = useIsDark();
++  const [active, setActive] = useMergeState('auto', {
++    defaultValue,
++    onChange,
++    value,
++  });
++
++  // Check if all options can be parsed as valid ratios
++  const hasInvalidRatio = options?.some((item) => !canParseAsRatio(item.value));
++
++  // If any option cannot be parsed as ratio, fallback to regular Select
++  if (hasInvalidRatio) {
++    return (
++      <Select options={options} style={{ width: '100%' }} value={active} onChange={onChange} />
++    );
++  }
++  return (
++    <Block padding={4} variant={'filled'} {...rest}>
++      <Grid gap={4} maxItemWidth={72} rows={16}>
++        {options?.map((item) => {
++          const isActive = active === item.value;
++          let content: ReactNode;
++
++          if (item.value === 'auto') {
++            content = (
++              <div
++                style={{
++                  border: `2px dashed ${isActive ? cssVar.colorText : cssVar.colorTextDescription}`,
++                  borderRadius: 3,
++                  height: 16,
++                  width: 16,
++                }}
++              />
++            );
++          } else {
++            const [width, height] = item.value.split('x').map(Number);
++            const isWidthGreater = width > height;
++            content = (
++              <div
++                style={{
++                  aspectRatio: `${width} / ${height}`,
++                  border: `2px solid ${isActive ? cssVar.colorText : cssVar.colorTextDescription}`,
++                  borderRadius: 3,
++                  height: isWidthGreater ? undefined : 16,
++                  width: isWidthGreater ? 16 : undefined,
++                }}
++              />
++            );
++          }
++
++          return (
++            <Block
++              clickable
++              align={'center'}
++              gap={4}
++              justify={'center'}
++              key={item.value}
++              padding={8}
++              shadow={isActive && !isDarkMode}
++              variant={'filled'}
++              style={{
++                backgroundColor: isActive ? cssVar.colorBgElevated : 'transparent',
++              }}
++              onClick={() => {
++                setActive(item.value);
++                onChange?.(item.value);
++              }}
++            >
++              <Center height={16} style={{ marginTop: 4 }} width={16}>
++                {content}
++              </Center>
++              <Text fontSize={12} type={isActive ? undefined : 'secondary'}>
++                {item.label || item.value}
++              </Text>
++            </Block>
++          );
++        })}
++      </Grid>
++    </Block>
++  );
++});
++
++export default SizeSelect;
 diff --git a/src/routes/(main)/video/_layout/ConfigPanel/components/SizeSelect.tsx b/src/routes/(main)/video/_layout/ConfigPanel/components/SizeSelect.tsx
 new file mode 100644
-index 00000000000..36eb7e4004e
+index 00000000000..39db073fd40
 --- /dev/null
 +++ b/src/routes/(main)/video/_layout/ConfigPanel/components/SizeSelect.tsx
-@@ -0,0 +1,18 @@
-+import { Select } from '@lobehub/ui';
+@@ -0,0 +1,19 @@
 +import { memo } from 'react';
 +
 +import { useVideoGenerationConfigParam } from '@/store/video/slices/generationConfig/hooks';
++
++import Select from './Select';
 +
 +const SizeSelect = memo(() => {
 +  const { value, setValue, enumValues } = useVideoGenerationConfigParam('size');
@@ -2164,7 +2028,7 @@ index 00000000000..36eb7e4004e
 +      value: size,
 +    })) ?? [];
 +
-+  return <Select options={options} style={{ width: '100%' }} value={value} onChange={setValue} />;
++  return <Select options={options} value={value} onChange={setValue} />;
 +});
 +
 +export default SizeSelect;
@@ -2236,24 +2100,19 @@ index 2e9c65b68f0..a9eb9e7689b 100644
          <ConfigItemLayout label={t('config.duration.label')}>
            <DurationItem />
 diff --git a/src/server/routers/lambda/video/index.ts b/src/server/routers/lambda/video/index.ts
-index 298eb31b89d..a52c7c72755 100644
+index 298eb31b89d..16f11d47916 100644
 --- a/src/server/routers/lambda/video/index.ts
 +++ b/src/server/routers/lambda/video/index.ts
-@@ -7,7 +7,9 @@ import { z } from 'zod';
- import { chargeAfterGenerate } from '@/business/server/video-generation/chargeAfterGenerate';
+@@ -8,6 +8,7 @@ import { chargeAfterGenerate } from '@/business/server/video-generation/chargeAf
  import { chargeBeforeGenerate } from '@/business/server/video-generation/chargeBeforeGenerate';
  import { getVideoFreeQuota } from '@/business/server/video-generation/getVideoFreeQuota';
-+import { AiProviderModel } from '@/database/models/aiProvider';
  import { AsyncTaskModel } from '@/database/models/asyncTask';
 +import { GenerationModel } from '@/database/models/generation';
  import {
    asyncTasks,
    generationBatches,
-@@ -18,14 +20,19 @@ import {
- import { appEnv } from '@/envs/app';
- import { authedProcedure, router } from '@/libs/trpc/lambda';
+@@ -20,12 +21,16 @@ import { authedProcedure, router } from '@/libs/trpc/lambda';
  import { serverDatabase } from '@/libs/trpc/lambda/middleware';
-+import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
  import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
  import { FileService } from '@/server/services/file';
 +import { VideoGenerationService } from '@/server/services/generation/video';
@@ -2269,7 +2128,7 @@ index 298eb31b89d..a52c7c72755 100644
  
  const log = debug('lobe-video:lambda');
  
-@@ -141,9 +148,10 @@ export const videoRouter = router({
+@@ -141,9 +146,10 @@ export const videoRouter = router({
  
      // Step 1: Atomically create all database records in a transaction
      const {
@@ -2281,7 +2140,7 @@ index 298eb31b89d..a52c7c72755 100644
      } = await serverDB.transaction(async (tx) => {
        log('Starting database transaction for video generation');
  
-@@ -191,6 +199,7 @@ export const videoRouter = router({
+@@ -191,6 +197,7 @@ export const videoRouter = router({
          .where(and(eq(generations.id, generation.id), eq(generations.userId, userId)));
  
        return {
@@ -2289,7 +2148,7 @@ index 298eb31b89d..a52c7c72755 100644
          asyncTaskId: asyncTask.id,
          batch,
          generation,
-@@ -215,11 +224,91 @@ export const videoRouter = router({
+@@ -215,11 +222,77 @@ export const videoRouter = router({
  
        log('Video task submitted successfully, inferenceId: %s', response?.inferenceId);
  
@@ -2302,23 +2161,9 @@ index 298eb31b89d..a52c7c72755 100644
 +      if (response && 'videoUrl' in response && response.videoUrl) {
 +        log('Polling-based provider detected (videoUrl present), processing video immediately');
 +
-+        // Get provider credentials for authenticated download
-+        const aiProviderModel = new AiProviderModel(serverDB, userId);
-+        const providerConfig = await aiProviderModel.getAiProviderById(
-+          provider,
-+          KeyVaultsGateKeeper.getUserKeyVaults,
-+        );
-+        const apiKey = providerConfig?.keyVaults?.apiKey;
-+
-+        log(
-+          'Retrieved provider credentials for download: apiKey=%s',
-+          apiKey ? '***' + apiKey.slice(-4) : 'none',
-+        );
-+
++        // Process video immediately (same logic as webhook success path)
 +        const videoService = new VideoGenerationService(serverDB, userId);
-+        const processResult = await videoService.processVideoForGeneration(response.videoUrl, {
-+          apiKey,
-+        });
++        const processResult = await videoService.processVideoForGeneration(response.videoUrl);
 +
 +        const asset: VideoGenerationAsset = {
 +          coverUrl: processResult.coverKey,
@@ -2386,60 +2231,3 @@ index 298eb31b89d..a52c7c72755 100644
      } catch (e) {
        console.error('Failed to submit video generation task:', e);
  
-diff --git a/src/server/services/generation/video.ts b/src/server/services/generation/video.ts
-index 8d992b98ffc..ca985ffd6f0 100644
---- a/src/server/services/generation/video.ts
-+++ b/src/server/services/generation/video.ts
-@@ -55,14 +55,20 @@ export class VideoGenerationService {
-   /**
-    * Download video, extract metadata, generate cover/thumbnail, upload all to S3
-    */
--  async processVideoForGeneration(videoUrl: string): Promise<VideoProcessResult> {
-+  async processVideoForGeneration(
-+    videoUrl: string,
-+    options?: {
-+      apiKey?: string;
-+      baseURL?: string;
-+    },
-+  ): Promise<VideoProcessResult> {
-     log('Processing video from URL: %s', videoUrl);
- 
-     let tempVideoPath: string | null = null;
-     let tempCoverPath: string | null = null;
- 
-     try {
--      tempVideoPath = await this.downloadVideo(videoUrl);
-+      tempVideoPath = await this.downloadVideo(videoUrl, options);
- 
-       const [metadata, videoBuffer] = await Promise.all([
-         this.getVideoMetadata(tempVideoPath),
-@@ -162,12 +168,28 @@ export class VideoGenerationService {
-   /** Download timeout: 5 minutes */
-   private static DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
- 
--  private async downloadVideo(url: string): Promise<string> {
-+  private async downloadVideo(
-+    url: string,
-+    options?: {
-+      apiKey?: string;
-+    },
-+  ): Promise<string> {
-     const ext = path.extname(new URL(url).pathname).toLowerCase() || '.mp4';
-     const tempVideoPath = path.join(os.tmpdir(), `lobe-video-${nanoid()}${ext}`);
-     log('Downloading video to: %s', tempVideoPath);
- 
-+    // Build request headers
-+    const headers: Record<string, string> = {
-+      'Content-Type': 'application/json',
-+    };
-+
-+    // Add Authorization header if API key is provided
-+    if (options?.apiKey) {
-+      headers['Authorization'] = `Bearer ${options.apiKey}`;
-+    }
-+
-     const response = await fetch(url, {
-+      headers,
-       signal: AbortSignal.timeout(VideoGenerationService.DOWNLOAD_TIMEOUT_MS),
-     });
-     if (!response.ok) {
