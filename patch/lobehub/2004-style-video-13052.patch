@@ -1780,10 +1780,10 @@ index b1eb49e0a46..7b49437e7e5 100644
        log('fetching available models');
 diff --git a/packages/model-runtime/src/providers/google/createVideo.ts b/packages/model-runtime/src/providers/google/createVideo.ts
 new file mode 100644
-index 00000000000..fddfe04acd0
+index 00000000000..fe4d174989e
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/google/createVideo.ts
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,152 @@
 +import type { GenerateVideosConfig, GoogleGenAI } from '@google/genai';
 +import { GenerateVideosOperation } from '@google/genai';
 +import debug from 'debug';
@@ -1855,6 +1855,7 @@ index 00000000000..fddfe04acd0
 +  client: GoogleGenAI,
 +  inferenceId: string,
 +  provider: string,
++  apiKey: string,
 +): Promise<
 +  | { headers?: Record<string, string>; status: 'success'; videoUrl: string }
 +  | { status: 'failed'; error: string }
@@ -1889,7 +1890,7 @@ index 00000000000..fddfe04acd0
 +      if (!updatedOperation.response?.generatedVideos?.[0]?.video) {
 +        if (updatedOperation?.response?.raiMediaFilteredReasons) {
 +          return {
-+            error: operation.response.raiMediaFilteredReasons[0],
++            error: updatedOperation.response.raiMediaFilteredReasons[0],
 +            status: 'failed',
 +          };
 +        }
@@ -1900,7 +1901,15 @@ index 00000000000..fddfe04acd0
 +        };
 +      }
 +
-+      const videoUrl = updatedOperation.response.generatedVideos[0].video.uri;
++      const video = updatedOperation.response.generatedVideos[0].video;
++      const videoUrl = video.uri;
++
++      if (!videoUrl) {
++        return {
++          error: 'Video URL is empty',
++          status: 'failed',
++        };
++      }
 +
 +      log('Video generation completed, download URI: %s', videoUrl);
 +
@@ -1908,7 +1917,7 @@ index 00000000000..fddfe04acd0
 +      // Google uses x-goog-api-key header
 +      return {
 +        headers: {
-+          'x-goog-api-key': (client as any).auth?.apiKey || '',
++          'x-goog-api-key': apiKey,
 +        },
 +        status: 'success',
 +        videoUrl,
@@ -1928,7 +1937,7 @@ index 00000000000..fddfe04acd0
 +  }
 +}
 diff --git a/packages/model-runtime/src/providers/google/index.ts b/packages/model-runtime/src/providers/google/index.ts
-index 18db79acf65..78fdfae3740 100644
+index 18db79acf65..7355479cbbf 100644
 --- a/packages/model-runtime/src/providers/google/index.ts
 +++ b/packages/model-runtime/src/providers/google/index.ts
 @@ -20,12 +20,14 @@ import {
@@ -1955,7 +1964,7 @@ index 18db79acf65..78fdfae3740 100644
 +  }
 +
 +  async handlePollVideoStatus(inferenceId: string) {
-+    return pollGoogleVideoOperation(this.client, inferenceId, this.provider);
++    return pollGoogleVideoOperation(this.client, inferenceId, this.provider, this.apiKey!);
 +  }
 +
    /**
@@ -3702,7 +3711,7 @@ index 8d992b98ffc..f41159d4c14 100644
      if (!response.ok) {
 diff --git a/src/server/services/video/backgroundPolling.ts b/src/server/services/video/backgroundPolling.ts
 new file mode 100644
-index 00000000000..da8f85bfd35
+index 00000000000..28207bd5399
 --- /dev/null
 +++ b/src/server/services/video/backgroundPolling.ts
 @@ -0,0 +1,161 @@
@@ -3758,7 +3767,7 @@ index 00000000000..da8f85bfd35
 +  } = params;
 +
 +  log(
-+    '🎬 Starting background video polling for task: %s (provider: %s, inferenceId: %s)',
++    'Starting background video polling for task: %s (provider: %s, inferenceId: %s)',
 +    asyncTaskId,
 +    provider,
 +    inferenceId,
