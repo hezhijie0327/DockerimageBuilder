@@ -1290,15 +1290,28 @@ index b2951e0f006..c6c4c7002b0 100644
        step: z.number().optional().default(1),
        type: z.literal('number').optional(),
      })
+diff --git a/packages/model-runtime/package.json b/packages/model-runtime/package.json
+index aa44ef83bb8..58923aa871f 100644
+--- a/packages/model-runtime/package.json
++++ b/packages/model-runtime/package.json
+@@ -31,7 +31,7 @@
+     "model-bank": "workspace:*",
+     "nanoid": "^5.1.6",
+     "ollama": "^0.6.2",
+-    "openai": "^4.104.0",
++    "openai": "^6.31.0",
+     "replicate": "^1.4.0",
+     "type-fest": "^5.2.0",
+     "url-join": "^5.0.0"
 diff --git a/packages/model-runtime/src/core/BaseAI.ts b/packages/model-runtime/src/core/BaseAI.ts
-index ea49612f819..689f20f5386 100644
+index ea49612f819..8c6c445ce76 100644
 --- a/packages/model-runtime/src/core/BaseAI.ts
 +++ b/packages/model-runtime/src/core/BaseAI.ts
-@@ -41,6 +41,14 @@ export interface LobeRuntimeAI {
+@@ -39,6 +39,14 @@ export interface LobeRuntimeAI {
+     payload: HandleCreateVideoWebhookPayload,
+   ) => Promise<HandleCreateVideoWebhookResult>;
  
-   models?: () => Promise<any>;
- 
-+  pollVideoStatus?: (
++  handlePollVideoStatus?: (
 +    inferenceId: string,
 +  ) => Promise<
 +    | { status: 'success'; videoUrl: string }
@@ -1306,19 +1319,19 @@ index ea49612f819..689f20f5386 100644
 +    | { status: 'pending' }
 +  >;
 +
-   // Model management related interface
-   pullModel?: (params: PullModelParams, options?: ModelRequestOptions) => Promise<Response>;
+   models?: () => Promise<any>;
  
+   // Model management related interface
 diff --git a/packages/model-runtime/src/core/ModelRuntime.ts b/packages/model-runtime/src/core/ModelRuntime.ts
-index 1e6cad62744..260bd3c664c 100644
+index 1e6cad62744..1b7de5641db 100644
 --- a/packages/model-runtime/src/core/ModelRuntime.ts
 +++ b/packages/model-runtime/src/core/ModelRuntime.ts
 @@ -200,6 +200,10 @@ export class ModelRuntime {
      return this._runtime.handleCreateVideoWebhook?.(payload);
    }
  
-+  async pollVideoStatus(inferenceId: string) {
-+    return this._runtime.pollVideoStatus?.(inferenceId);
++  async handlePollVideoStatus(inferenceId: string) {
++    return this._runtime.handlePollVideoStatus?.(inferenceId);
 +  }
 +
    async models() {
@@ -1326,98 +1339,87 @@ index 1e6cad62744..260bd3c664c 100644
    }
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
 new file mode 100644
-index 00000000000..cc2d3cf431d
+index 00000000000..164a510530f
 --- /dev/null
 +++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,91 @@
 +import createDebug from 'debug';
++import type OpenAI from 'openai';
++import type { Video, VideoCreateParams, VideoSeconds, VideoSize } from 'openai/resources';
 +
 +import type {
 +  CreateVideoPayload,
 +  CreateVideoResponse,
 +  PollVideoStatusResult,
 +} from '../../types/video';
-+import type { CreateVideoOptions } from '../openaiCompatibleFactory';
 +
 +const log = createDebug('lobe-video:openai-compatible');
 +
-+interface OpenAIVideoStatusResponse {
-+  completed_at?: number;
-+  created?: number;
-+  created_at?: number;
-+  duration?: number;
-+  error?: {
-+    code?: string;
-+    message?: string;
++export async function createOpenAICompatibleVideo(
++  client: OpenAI,
++  payload: CreateVideoPayload,
++  provider: string,
++): Promise<CreateVideoResponse> {
++  const { model, params } = payload;
++  const { prompt, imageUrl, size, duration } = params;
++
++  log('Creating video with OpenAI SDK - model: %s, params: %O', model, params);
++
++  const options: VideoCreateParams = {
++    model,
++    prompt,
 +  };
-+  expires_at?: number;
-+  height?: number;
-+  id?: string;
-+  model?: string;
-+  object?: string;
-+  progress?: number;
-+  prompt?: string;
-+  seconds?: string;
-+  size?: string;
-+  status?: string;
-+  url?: string;
-+  width?: number;
-+}
 +
-+/**
-+ * Query the status of a video generation task
-+ * Compatible with OpenAI Sora API
-+ */
-+export async function queryOpenAICompatibleVideoStatus(
-+  inferenceId: string,
-+  options: { apiKey: string; baseURL: string },
-+): Promise<OpenAIVideoStatusResponse> {
-+  const statusUrl = `${options.baseURL}/videos/${inferenceId}`;
-+
-+  log('Querying video status for: %s', inferenceId);
-+
-+  const response = await fetch(statusUrl, {
-+    headers: {
-+      'Authorization': `Bearer ${options.apiKey}`,
-+      'Content-Type': 'application/json',
-+    },
-+    method: 'GET',
-+  });
-+
-+  if (!response.ok) {
-+    const errorText = await response.text();
-+    throw new Error(`OpenAI-compatible video status API error: ${response.status} ${errorText}`);
++  if (duration !== undefined && duration !== null) {
++    options.seconds = duration.toString() as VideoSeconds;
 +  }
 +
-+  const data = (await response.json()) as OpenAIVideoStatusResponse;
-+  log('Video status response: %O', data);
++  if (size) {
++    options.size = size as VideoSize;
++  }
 +
-+  return data;
++  if (imageUrl) {
++    options.input_reference = { image_url: imageUrl };
++  }
++
++  log('OpenAI SDK video create params: %O', options);
++
++  try {
++    const video = await client.videos.create(options);
++
++    log('Video task created with id: %s', video.id);
++
++    return { inferenceId: video.id };
++  } catch (error) {
++    log('Error creating video with OpenAI SDK: %O', error);
++    throw error;
++  }
 +}
 +
-+/**
-+ * Poll video status and return standardized result
-+ * Compatible with OpenAI Sora API
-+ */
-+export async function pollOpenAICompatibleVideoStatus(
++export async function queryOpenAICompatibleVideoStatus(
++  client: OpenAI,
 +  inferenceId: string,
-+  options: { apiKey: string; baseURL: string },
++): Promise<Video> {
++  log('Querying video status for: %s', inferenceId);
++
++  const video = await client.videos.retrieve(inferenceId);
++  log('Video status response: %O', video);
++
++  return video;
++}
++
++export async function handlePollOpenAICompatibleVideoStatus(
++  client: OpenAI,
++  inferenceId: string,
++  provider: string,
 +): Promise<PollVideoStatusResult> {
-+  const response = await queryOpenAICompatibleVideoStatus(inferenceId, options);
++  const response = await queryOpenAICompatibleVideoStatus(client, inferenceId);
 +
 +  if (response.status === 'completed') {
-+    // Some providers return the download URL directly in the url field
-+    // Others require calling /videos/{id}/content endpoint
-+    let videoUrl = response.url;
++    const videoUrl = `${(client as any).baseURL}/videos/${inferenceId}/content`;
 +
-+    if (!videoUrl) {
-+      // If no URL returned, construct the content endpoint URL
-+      videoUrl = `${options.baseURL}/videos/${inferenceId}/content`;
-+    }
-+
-+    // Return API key for providers that require Authorization header
 +    return {
-+      apiKey: options.apiKey,
++      apiKey: (client as any).apiKey,
 +      status: 'success',
 +      videoUrl,
 +    };
@@ -1425,97 +1427,15 @@ index 00000000000..cc2d3cf431d
 +
 +  if (response.status === 'failed') {
 +    return {
-+      error: response.error?.message || 'Video generation failed',
++      error: (response.error as any)?.message || 'Video generation failed',
 +      status: 'failed',
 +    };
 +  }
 +
-+  // queued, in_progress, or any other status means still pending
 +  return { status: 'pending' };
 +}
-+
-+/**
-+ * OpenAI-compatible video generation implementation
-+ * Works with OpenAI Sora, and other OpenAI-compatible providers
-+ *
-+ * API Format:
-+ * POST /v1/videos
-+ * {
-+ *   model: string,
-+ *   prompt: string,
-+ *   seconds?: string,      // OpenAI Sora format (string type)
-+ *   input_reference?: string | object,  // For image-to-video
-+ * }
-+ *
-+ * Creates a video generation task and returns immediately with inferenceId.
-+ * The frontend polls the task status using async task polling mechanism.
-+ */
-+export async function createOpenAICompatibleVideo(
-+  payload: CreateVideoPayload,
-+  options: CreateVideoOptions,
-+): Promise<CreateVideoResponse> {
-+  const { model, params } = payload;
-+  const { prompt, imageUrl, size, duration } = params;
-+
-+  log('Creating video with OpenAI-compatible API - model: %s, params: %O', model, params);
-+
-+  const baseURL = options.baseURL || 'https://api.openai.com/v1';
-+
-+  // Build request body compatible with OpenAI Sora
-+  const body: Record<string, unknown> = {
-+    model,
-+    prompt,
-+  };
-+
-+  // Duration: prefer 'seconds' (string) for OpenAI Sora compatibility
-+  if (duration !== undefined && duration !== null) {
-+    body['seconds'] = duration.toString();
-+  }
-+
-+  // Size/resolution
-+  if (size) {
-+    body['size'] = size;
-+  }
-+
-+  // Image-to-video support
-+  if (imageUrl) {
-+    body['input_reference'] = imageUrl;
-+  }
-+
-+  log('OpenAI-compatible video API request body: %O', body);
-+
-+  const response = await fetch(`${baseURL}/videos`, {
-+    body: JSON.stringify(body),
-+    headers: {
-+      'Authorization': `Bearer ${options.apiKey}`,
-+      'Content-Type': 'application/json',
-+    },
-+    method: 'POST',
-+  });
-+
-+  if (!response.ok) {
-+    const errorText = await response.text();
-+    log('OpenAI-compatible video API error: %s %s', response.status, errorText);
-+    throw new Error(`OpenAI-compatible video API error: ${response.status} ${errorText}`);
-+  }
-+
-+  const data = await response.json();
-+  log('OpenAI-compatible video API response: %O', data);
-+
-+  if (!data?.id) {
-+    throw new Error('Invalid response: missing id');
-+  }
-+
-+  const inferenceId = data.id;
-+  log('Video task created with id: %s, returning immediately for frontend polling', inferenceId);
-+
-+  // Return immediately with inferenceId only
-+  // Frontend will poll the task status using the async task polling mechanism
-+  // This avoids blocking the API response for 30+ seconds during server-side polling
-+  return { inferenceId };
-+}
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
-index 835e279422c..f66dbfafc2d 100644
+index 835e279422c..0523d4cf860 100644
 --- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 +++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
 @@ -31,6 +31,7 @@ import type {
@@ -1530,7 +1450,7 @@ index 835e279422c..f66dbfafc2d 100644
  import type { ChatPayloadForTransformStream } from '../streams/protocol';
  import { convertOpenAIResponseUsage, convertOpenAIUsage } from '../usageConverters/openai';
  import { createOpenAICompatibleImage } from './createImage';
-+import { createOpenAICompatibleVideo, pollOpenAICompatibleVideoStatus } from './createVideo';
++import { createOpenAICompatibleVideo, handlePollOpenAICompatibleVideoStatus } from './createVideo';
  import { transformResponseAPIToStream, transformResponseToStream } from './nonStreamToStream';
  
 +export type { PollVideoStatusResult };
@@ -1538,26 +1458,26 @@ index 835e279422c..f66dbfafc2d 100644
  export * from './nonStreamToStream';
  
  // the model contains the following keywords is not a chat model, so we should filter them out
-@@ -170,6 +174,10 @@ export interface OpenAICompatibleFactoryOptions<T extends Record<string, any> =
-     | {
-         transformModel?: (model: OpenAI.Model) => ChatModelCard;
-       };
-+  pollVideoStatus?: (
+@@ -165,6 +169,10 @@ export interface OpenAICompatibleFactoryOptions<T extends Record<string, any> =
+     payload: HandleCreateVideoWebhookPayload,
+     options: CreateVideoOptions,
+   ) => Promise<HandleCreateVideoWebhookResult>;
++  handlePollVideoStatus?: (
 +    inferenceId: string,
 +    options: CreateVideoOptions,
 +  ) => Promise<PollVideoStatusResult>;
-   provider: string;
-   responses?: {
-     handlePayload?: (
+   models?:
+     | ((params: { client: OpenAI }) => Promise<ChatModelCard[]>)
+     | {
 @@ -193,6 +201,7 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
    createImage: customCreateImage,
    createVideo: customCreateVideo,
    handleCreateVideoWebhook: customHandleCreateVideoWebhook,
-+  pollVideoStatus: customPollVideoStatus,
++  handlePollVideoStatus: customHandlePollVideoStatus,
    generateObject: generateObjectConfig,
  }: OpenAICompatibleFactoryOptions<T>) => {
    const ErrorType = {
-@@ -567,12 +576,22 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+@@ -567,14 +576,23 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
      }
  
      async createVideo(payload: CreateVideoPayload) {
@@ -1574,38 +1494,40 @@ index 835e279422c..f66dbfafc2d 100644
 +        });
        }
 -      return customCreateVideo(payload, {
+-        ...this._options,
 +
 +      log('using default createOpenAICompatibleVideo');
-+      return createOpenAICompatibleVideo(payload, {
-         ...this._options,
++      const videoClient = new OpenAI({
          apiKey: this._options.apiKey!,
-+        baseURL: this._options.baseURL || '',
-         provider,
+-        provider,
++        baseURL: this._options.baseURL || 'https://api.openai.com/v1',
        });
++      return createOpenAICompatibleVideo(videoClient, payload, provider);
      }
-@@ -588,6 +607,27 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
+ 
+     async handleCreateVideoWebhook(payload: HandleCreateVideoWebhookPayload) {
+@@ -588,6 +606,26 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
        });
      }
  
-+    async pollVideoStatus(inferenceId: string): Promise<PollVideoStatusResult> {
-+      const log = debug(`${this.logPrefix}:pollVideoStatus`);
++    async handlePollVideoStatus(inferenceId: string): Promise<PollVideoStatusResult> {
++      const log = debug(`${this.logPrefix}:handlePollVideoStatus`);
 +
-+      if (customPollVideoStatus) {
-+        log('using custom pollVideoStatus implementation');
-+        return customPollVideoStatus(inferenceId, {
++      if (customHandlePollVideoStatus) {
++        log('using custom handlePollVideoStatus implementation');
++        return customHandlePollVideoStatus(inferenceId, {
 +          ...this._options,
 +          apiKey: this._options.apiKey!,
 +          provider,
 +        });
 +      }
 +
-+      log('using default pollOpenAICompatibleVideoStatus');
-+      return pollOpenAICompatibleVideoStatus(inferenceId, {
-+        ...this._options,
++      log('using default handlePollOpenAICompatibleVideoStatus');
++      const videoClient = new OpenAI({
 +        apiKey: this._options.apiKey!,
-+        baseURL: this._options.baseURL || '',
-+        provider,
++        baseURL: this._options.baseURL || 'https://api.openai.com/v1',
 +      });
++      return handlePollOpenAICompatibleVideoStatus(videoClient, inferenceId, provider);
 +    }
 +
      async models() {
@@ -1800,7 +1722,7 @@ index 00000000000..33c58c6e648
 +  return { inferenceId: data.task_id };
 +}
 diff --git a/packages/model-runtime/src/providers/minimax/index.ts b/packages/model-runtime/src/providers/minimax/index.ts
-index 7c0f659ac8f..784ed6b2864 100644
+index 7c0f659ac8f..08841e9b24c 100644
 --- a/packages/model-runtime/src/providers/minimax/index.ts
 +++ b/packages/model-runtime/src/providers/minimax/index.ts
 @@ -4,6 +4,7 @@ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactor
@@ -1816,7 +1738,7 @@ index 7c0f659ac8f..784ed6b2864 100644
    },
    createImage: createMiniMaxImage,
 +  createVideo: createMiniMaxVideo,
-+  pollVideoStatus: async (inferenceId, options) => {
++  handlePollVideoStatus: async (inferenceId, options) => {
 +    const { pollMiniMaxVideoStatus } = await import('./createVideo');
 +    return pollMiniMaxVideoStatus(inferenceId, {
 +      apiKey: options.apiKey,
@@ -2143,7 +2065,7 @@ index 00000000000..f867c312af4
 +  }
 +}
 diff --git a/packages/model-runtime/src/providers/qwen/index.ts b/packages/model-runtime/src/providers/qwen/index.ts
-index 0cae27c2711..6225f858e43 100644
+index 0cae27c2711..e195cf92e29 100644
 --- a/packages/model-runtime/src/providers/qwen/index.ts
 +++ b/packages/model-runtime/src/providers/qwen/index.ts
 @@ -5,6 +5,7 @@ import { resolveParameters } from '../../core/parameterResolver';
@@ -2159,7 +2081,7 @@ index 0cae27c2711..6225f858e43 100644
      chatCompletion: () => process.env.DEBUG_QWEN_CHAT_COMPLETION === '1',
    },
 +  createVideo: createQwenVideo,
-+  pollVideoStatus: async (inferenceId, options) => {
++  handlePollVideoStatus: async (inferenceId, options) => {
 +    const { pollQwenVideoStatus } = await import('./createVideo');
 +    return pollQwenVideoStatus(inferenceId, options.apiKey || '', options.baseURL || '');
 +  },
@@ -2325,7 +2247,7 @@ index 00000000000..0257fb0b1a8
 +  return { inferenceId };
 +}
 diff --git a/packages/model-runtime/src/providers/siliconcloud/index.ts b/packages/model-runtime/src/providers/siliconcloud/index.ts
-index b072daffdb8..1a581633f7d 100644
+index b072daffdb8..feaae02c0ca 100644
 --- a/packages/model-runtime/src/providers/siliconcloud/index.ts
 +++ b/packages/model-runtime/src/providers/siliconcloud/index.ts
 @@ -6,6 +6,7 @@ import type { ChatCompletionErrorPayload } from '../../types';
@@ -2341,7 +2263,7 @@ index b072daffdb8..1a581633f7d 100644
    },
    createImage: createSiliconCloudImage,
 +  createVideo: createSiliconCloudVideo,
-+  pollVideoStatus: async (inferenceId, options) => {
++  handlePollVideoStatus: async (inferenceId, options) => {
 +    const { pollSiliconCloudVideoStatus } = await import('./createVideo');
 +    return pollSiliconCloudVideoStatus(inferenceId, {
 +      apiKey: options.apiKey,
@@ -2518,7 +2440,7 @@ index 00000000000..e3274f63584
 +  return { inferenceId: taskId };
 +}
 diff --git a/packages/model-runtime/src/providers/wenxin/index.ts b/packages/model-runtime/src/providers/wenxin/index.ts
-index 81c8ae86e8c..531f0d4de52 100644
+index 81c8ae86e8c..44e444c5f74 100644
 --- a/packages/model-runtime/src/providers/wenxin/index.ts
 +++ b/packages/model-runtime/src/providers/wenxin/index.ts
 @@ -4,6 +4,7 @@ import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible
@@ -2545,7 +2467,7 @@ index 81c8ae86e8c..531f0d4de52 100644
    },
    createImage: createWenxinImage,
 +  createVideo: createWenxinVideo,
-+  pollVideoStatus: async (inferenceId, options) => {
++  handlePollVideoStatus: async (inferenceId, options) => {
 +    const { pollWenxinVideoStatus } = await import('./createVideo');
 +    return pollWenxinVideoStatus(inferenceId, {
 +      apiKey: options.apiKey,
@@ -2718,7 +2640,7 @@ index 00000000000..9c7f99782c4
 +  return { inferenceId: requestId };
 +}
 diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
-index 83649675490..e3cbc4e5b5b 100644
+index 83649675490..30ebb19a6fe 100644
 --- a/packages/model-runtime/src/providers/xai/index.ts
 +++ b/packages/model-runtime/src/providers/xai/index.ts
 @@ -3,6 +3,7 @@ import { ModelProvider } from 'model-bank';
@@ -2734,7 +2656,7 @@ index 83649675490..e3cbc4e5b5b 100644
    },
    createImage: createXAIImage,
 +  createVideo: createXAIVideo,
-+  pollVideoStatus: async (inferenceId, options) => {
++  handlePollVideoStatus: async (inferenceId, options) => {
 +    const { pollXAIVideoStatus } = await import('./createVideo');
 +    return pollXAIVideoStatus(inferenceId, {
 +      apiKey: options.apiKey,
@@ -2906,7 +2828,7 @@ index 00000000000..9d96d60d4ed
 +  return { inferenceId };
 +}
 diff --git a/packages/model-runtime/src/providers/zhipu/index.ts b/packages/model-runtime/src/providers/zhipu/index.ts
-index 6233e479174..5cd4a328a76 100644
+index 6233e479174..cbffd84f59a 100644
 --- a/packages/model-runtime/src/providers/zhipu/index.ts
 +++ b/packages/model-runtime/src/providers/zhipu/index.ts
 @@ -9,6 +9,7 @@ import { OpenAIStream } from '../../core/streams/openai';
@@ -2922,7 +2844,7 @@ index 6233e479174..5cd4a328a76 100644
      },
    },
 +  createVideo: createZhipuVideo,
-+  pollVideoStatus: async (inferenceId, options) => {
++  handlePollVideoStatus: async (inferenceId, options) => {
 +    const { pollZhipuVideoStatus } = await import('./createVideo');
 +    return pollZhipuVideoStatus(inferenceId, {
 +      apiKey: options.apiKey,
@@ -3358,7 +3280,7 @@ index 8d992b98ffc..43af214a820 100644
      if (!response.ok) {
 diff --git a/src/server/services/video/backgroundPolling.ts b/src/server/services/video/backgroundPolling.ts
 new file mode 100644
-index 00000000000..86dc8bcb6d7
+index 00000000000..6f5b72ab7cc
 --- /dev/null
 +++ b/src/server/services/video/backgroundPolling.ts
 @@ -0,0 +1,161 @@
@@ -3493,7 +3415,7 @@ index 00000000000..86dc8bcb6d7
 +    try {
 +      log('Polling attempt %d/%d for task: %s', attempt + 1, maxRetries, inferenceId);
 +
-+      const result = await modelRuntime.pollVideoStatus(inferenceId);
++      const result = await modelRuntime.handlePollVideoStatus(inferenceId);
 +
 +      if (result.status === 'success') {
 +        log('Video generation succeeded for task: %s', inferenceId);
