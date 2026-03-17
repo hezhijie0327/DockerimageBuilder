@@ -1,13 +1,14 @@
-From 3b385dd6d7861441e625948e657fc29f79b8fcfc Mon Sep 17 00:00:00 2001
+From 1956573aba912eec47ccbae3b50e2d0fb94b2920 Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Tue, 17 Mar 2026 22:14:34 +0800
 Subject: [PATCH] style: add sora support
 
+style: add sora support
 ---
  packages/model-runtime/package.json           |   2 +-
- .../openaiCompatibleFactory/createVideo.ts    | 199 +++++-------------
+ .../openaiCompatibleFactory/createVideo.ts    | 195 +++++-------------
  .../src/core/openaiCompatibleFactory/index.ts |  14 +-
- 3 files changed, 62 insertions(+), 153 deletions(-)
+ 3 files changed, 58 insertions(+), 153 deletions(-)
 
 diff --git a/packages/model-runtime/package.json b/packages/model-runtime/package.json
 index aa44ef8..58923aa 100644
@@ -23,13 +24,13 @@ index aa44ef8..58923aa 100644
      "type-fest": "^5.2.0",
      "url-join": "^5.0.0"
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
-index cc2d3cf..afad614 100644
+index cc2d3cf..e9141b0 100644
 --- a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
 +++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
-@@ -1,91 +1,84 @@
+@@ -1,91 +1,80 @@
  import createDebug from 'debug';
 +import type OpenAI from 'openai';
-+import type { Video, VideoCreateParams } from 'openai/resources';
++import type { Video, VideoCreateParams, VideoSeconds, VideoSize } from 'openai/resources';
  
  import type {
    CreateVideoPayload,
@@ -76,19 +77,15 @@ index cc2d3cf..afad614 100644
 -  width?: number;
 +
 +  if (duration !== undefined && duration !== null) {
-+    (options as any).seconds = duration.toString();
++    options.seconds = duration.toString() as VideoSeconds;
 +  }
 +
 +  if (size) {
-+    (options as any).size = size;
++    options.size = size as VideoSize;
 +  }
 +
 +  if (imageUrl) {
-+    (options as any).input_image = imageUrl;
-+  }
-+
-+  if ((params as any).endImageUrl) {
-+    (options as any).last_frame = (params as any).endImageUrl;
++    options.input_reference = { image_url: imageUrl };
 +  }
 +
 +  log('OpenAI SDK video create params: %O', options);
@@ -131,12 +128,12 @@ index cc2d3cf..afad614 100644
 -    const errorText = await response.text();
 -    throw new Error(`OpenAI-compatible video status API error: ${response.status} ${errorText}`);
 -  }
--
--  const data = (await response.json()) as OpenAIVideoStatusResponse;
--  log('Video status response: %O', data);
 +  const video = await client.videos.retrieve(inferenceId);
 +  log('Video status response: %O', video);
  
+-  const data = (await response.json()) as OpenAIVideoStatusResponse;
+-  log('Video status response: %O', data);
+-
 -  return data;
 +  return video;
  }
@@ -172,7 +169,7 @@ index cc2d3cf..afad614 100644
        status: 'success',
        videoUrl,
      };
-@@ -93,92 +86,10 @@ export async function pollOpenAICompatibleVideoStatus(
+@@ -93,92 +82,10 @@ export async function pollOpenAICompatibleVideoStatus(
  
    if (response.status === 'failed') {
      return {
