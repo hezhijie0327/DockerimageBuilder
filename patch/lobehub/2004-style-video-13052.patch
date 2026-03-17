@@ -900,215 +900,6 @@ index b2951e0f006..c6c4c7002b0 100644
        step: z.number().optional().default(1),
        type: z.literal('number').optional(),
      })
-diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
-new file mode 100644
-index 00000000000..7bc964d8379
---- /dev/null
-+++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
-@@ -0,0 +1,162 @@
-+import createDebug from 'debug';
-+import type OpenAI from 'openai';
-+
-+import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
-+import type { TaskResult } from '../../utils/asyncifyPolling';
-+import { asyncifyPolling } from '../../utils/asyncifyPolling';
-+
-+const log = createDebug('lobe-video:openai-compatible');
-+
-+/**
-+ * OpenAI Video API response types
-+ * Compatible with OpenAI Sora API format and AiHubMix unified video API
-+ */
-+interface VideoStatusResponse {
-+  completed_at?: number;
-+  created_at?: number;
-+  error?: {
-+    message?: string;
-+    type?: string;
-+    code?: string;
-+  };
-+  expires_at?: number;
-+  id: string;
-+  input_reference?: string | { mime_type: string; data: string } | null;
-+  model?: string;
-+  object: 'video';
-+  progress?: number;
-+  prompt?: string;
-+  seconds?: string;
-+  size?: string;
-+  status: 'queued' | 'in_progress' | 'completed' | 'failed';
-+  url?: string;
-+}
-+
-+/**
-+ * Query the status of a video generation task
-+ */
-+async function queryVideoStatus(videoId: string, client: OpenAI): Promise<VideoStatusResponse> {
-+  const statusUrl = `/videos/${videoId}`;
-+
-+  log('Querying video status for: %s', videoId);
-+
-+  // Use OpenAI client's get method
-+  const response = await client.get(statusUrl);
-+
-+  log('Video status response: %O', response);
-+
-+  return response as VideoStatusResponse;
-+}
-+
-+/**
-+ * Create video using OpenAI compatible API
-+ * This is a generic implementation that works with any OpenAI-compatible provider
-+ * that supports the /videos endpoint (OpenAI Sora, AiHubMix, etc.)
-+ *
-+ * API docs:
-+ * - OpenAI Sora: https://platform.openai.com/docs/guides/sora
-+ * - AiHubMix: https://docs.aihubmix.com/llms.txt
-+ */
-+export async function createOpenAICompatibleVideo(
-+  client: OpenAI,
-+  payload: CreateVideoPayload,
-+): Promise<CreateVideoResponse> {
-+  const { model, params } = payload;
-+  const { prompt, imageUrl, duration, size } = params;
-+
-+  log('Creating video with OpenAI compatible API - model: %s, params: %O', model, params);
-+
-+  // Build request body following OpenAI Sora API format
-+  const body: Record<string, unknown> = {
-+    model,
-+    prompt,
-+  };
-+
-+  // Add size parameter
-+  if (size) {
-+    body['size'] = size;
-+  }
-+
-+  // Add duration (seconds)
-+  if (duration !== undefined) {
-+    body['seconds'] = String(duration);
-+  }
-+
-+  // Add reference image for image-to-video
-+  if (imageUrl) {
-+    body['input_reference'] = imageUrl;
-+  }
-+
-+  log('Video API request body: %O', body);
-+
-+  // Submit video generation task using OpenAI client's post method
-+  const response = await client.post('/videos', body);
-+
-+  log('Video API response: %O', response);
-+
-+  // Validate response
-+  if (!(response as any)?.id) {
-+    throw new Error('Invalid response: missing video id');
-+  }
-+
-+  const videoId = (response as any).id;
-+  log('Video task created with id: %s, starting polling...', videoId);
-+
-+  // Use polling mode - wait for completion
-+  const result = await asyncifyPolling<VideoStatusResponse, CreateVideoResponse>({
-+    checkStatus: (statusResponse: VideoStatusResponse): TaskResult<CreateVideoResponse> => {
-+      log(
-+        'Task %s status: %s (progress: %s%%)',
-+        videoId,
-+        statusResponse.status,
-+        statusResponse.progress ?? 'N/A',
-+      );
-+
-+      if (statusResponse.status === 'completed') {
-+        // Video generation completed successfully
-+        const videoUrl = statusResponse.url;
-+        if (!videoUrl) {
-+          log('Task succeeded but missing video url in response');
-+          return {
-+            error: new Error('Missing url in success response'),
-+            status: 'failed',
-+          };
-+        }
-+        log('Video generation succeeded: %s, videoUrl: %s', videoId, videoUrl);
-+
-+        return {
-+          data: { inferenceId: videoId, videoUrl },
-+          status: 'success',
-+        };
-+      }
-+
-+      if (statusResponse.status === 'failed') {
-+        // Video generation failed
-+        const errorMessage = statusResponse.error?.message || 'Video generation failed';
-+        log('Video generation failed: %s, error: %s', videoId, errorMessage);
-+
-+        return {
-+          error: new Error(errorMessage),
-+          status: 'failed',
-+        };
-+      }
-+
-+      // Continue polling for 'queued' or 'in_progress' statuses
-+      log('Video generation in progress: %s (status: %s)', videoId, statusResponse.status);
-+
-+      return { status: 'pending' };
-+    },
-+    initialInterval: 5000, // Start with 5 second interval
-+    logger: {
-+      debug: (message: any, ...args: any[]) => log(message, ...args),
-+      error: (message: any, ...args: any[]) => log(message, ...args),
-+    },
-+    maxInterval: 15000, // Max 15 second interval
-+    maxRetries: 200, // Allow up to 200 retries (about 50 minutes with backoff)
-+    pollingQuery: () => queryVideoStatus(videoId, client),
-+  });
-+
-+  log('Video generation completed, returning result');
-+
-+  return result;
-+}
-diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
-index 835e279422c..5492ab94d8b 100644
---- a/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
-+++ b/packages/model-runtime/src/core/openaiCompatibleFactory/index.ts
-@@ -50,6 +50,7 @@ import { OpenAIResponsesStream, OpenAIStream } from '../streams';
- import type { ChatPayloadForTransformStream } from '../streams/protocol';
- import { convertOpenAIResponseUsage, convertOpenAIUsage } from '../usageConverters/openai';
- import { createOpenAICompatibleImage } from './createImage';
-+import { createOpenAICompatibleVideo } from './createVideo';
- import { transformResponseAPIToStream, transformResponseToStream } from './nonStreamToStream';
- 
- export * from './nonStreamToStream';
-@@ -567,14 +568,21 @@ export const createOpenAICompatibleRuntime = <T extends Record<string, any> = an
-     }
- 
-     async createVideo(payload: CreateVideoPayload) {
--      if (!customCreateVideo) {
--        throw new Error('createVideo is not supported by this provider');
-+      const log = debug(`${this.logPrefix}:createVideo`);
-+
-+      // If custom createVideo implementation is provided, use it
-+      if (customCreateVideo) {
-+        log('using custom createVideo implementation');
-+        return customCreateVideo(payload, {
-+          ...this._options,
-+          apiKey: this._options.apiKey!,
-+          provider,
-+        });
-       }
--      return customCreateVideo(payload, {
--        ...this._options,
--        apiKey: this._options.apiKey!,
--        provider,
--      });
-+
-+      log('using default createOpenAICompatibleVideo');
-+      // Use the new createOpenAICompatibleVideo function
-+      return createOpenAICompatibleVideo(this.client, payload);
-     }
- 
-     async handleCreateVideoWebhook(payload: HandleCreateVideoWebhookPayload) {
 diff --git a/packages/model-runtime/src/providers/minimax/createVideo.ts b/packages/model-runtime/src/providers/minimax/createVideo.ts
 new file mode 100644
 index 00000000000..f3be408c119
@@ -1356,6 +1147,190 @@ index 7c0f659ac8f..a0afb58ab14 100644
    debug: {
      chatCompletion: () => process.env.DEBUG_MINIMAX_CHAT_COMPLETION === '1',
    },
+diff --git a/packages/model-runtime/src/providers/openai/createVideo.ts b/packages/model-runtime/src/providers/openai/createVideo.ts
+new file mode 100644
+index 00000000000..0bd40d79133
+--- /dev/null
++++ b/packages/model-runtime/src/providers/openai/createVideo.ts
+@@ -0,0 +1,158 @@
++import createDebug from 'debug';
++
++import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
++import type { TaskResult } from '../../utils/asyncifyPolling';
++import { asyncifyPolling } from '../../utils/asyncifyPolling';
++
++const log = createDebug('lobe-video:openai');
++
++interface OpenAIVideoStatusResponse {
++  completed_at?: number;
++  created_at: number;
++  error?: {
++    code?: string;
++    message?: string;
++    type?: string;
++  };
++  expires_at?: number;
++  id: string;
++  model: string;
++  object: string;
++  progress?: number;
++  prompt: string;
++  seconds?: string;
++  size?: string;
++  status: 'queued' | 'in_progress' | 'completed' | 'failed';
++}
++
++async function queryVideoStatus(
++  videoId: string,
++  options: { apiKey: string; baseURL: string },
++): Promise<OpenAIVideoStatusResponse> {
++  const statusUrl = `${options.baseURL}/videos/${videoId}`;
++
++  log('Querying video status for: %s', videoId);
++
++  const response = await fetch(statusUrl, {
++    headers: {
++      'Authorization': `Bearer ${options.apiKey}`,
++      'Content-Type': 'application/json',
++    },
++    method: 'GET',
++  });
++
++  if (!response.ok) {
++    const errorText = await response.text();
++    throw new Error(`OpenAI status API error: ${response.status} ${errorText}`);
++  }
++
++  const data = (await response.json()) as OpenAIVideoStatusResponse;
++  log('Video status response: %O', data);
++
++  return data;
++}
++
++export async function createOpenAIVideo(
++  payload: CreateVideoPayload,
++  options: CreateVideoOptions,
++): Promise<CreateVideoResponse> {
++  const { model, params } = payload;
++  const { prompt, imageUrl, duration, size } = params;
++
++  log('Creating video with OpenAI API - model: %s, params: %O', model, params);
++
++  const baseURL = options.baseURL || 'https://api.openai.com/v1';
++
++  const body: Record<string, unknown> = {
++    model,
++    prompt,
++  };
++
++  if (imageUrl) {
++    body['input_reference'] = imageUrl;
++  }
++
++  // Add optional parameters based on model
++  if (duration) {
++    body['seconds'] = duration.toString();
++  }
++
++  if (size) {
++    body['size'] = size;
++  }
++
++  log('OpenAI video API request body: %O', body);
++
++  const response = await fetch(`${baseURL}/videos`, {
++    body: JSON.stringify(body),
++    headers: {
++      'Authorization': `Bearer ${options.apiKey}`,
++      'Content-Type': 'application/json',
++    },
++    method: 'POST',
++  });
++
++  if (!response.ok) {
++    const errorText = await response.text();
++    log('OpenAI video API error: %s %s', response.status, errorText);
++    throw new Error(`OpenAI video API error: ${response.status} ${errorText}`);
++  }
++
++  const data = await response.json();
++  log('OpenAI video API response: %O', data);
++
++  if (!data?.id) {
++    throw new Error('Invalid response: missing id');
++  }
++
++  const videoId = data.id;
++  log('Video task created with id: %s, starting polling...', videoId);
++
++  const result = await asyncifyPolling<OpenAIVideoStatusResponse, CreateVideoResponse>({
++    checkStatus: (statusResponse: OpenAIVideoStatusResponse): TaskResult<CreateVideoResponse> => {
++      log('Task %s status: %s', videoId, statusResponse.status);
++
++      if (statusResponse.status === 'completed') {
++        log('Video generation succeeded: %s', videoId);
++
++        const contentUrl = `${baseURL}/videos/${videoId}/content`;
++        log('Video content URL: %s', contentUrl);
++
++        return {
++          data: { inferenceId: videoId, videoUrl: contentUrl },
++          status: 'success',
++        };
++      }
++
++      if (statusResponse.status === 'failed') {
++        const errorMessage = statusResponse.error?.message || 'Video generation failed';
++        log('Video generation failed: %s, error: %s', videoId, errorMessage);
++
++        return {
++          error: new Error(errorMessage),
++          status: 'failed',
++        };
++      }
++
++      const progress = statusResponse.progress !== undefined ? `${statusResponse.progress}%` : '';
++      log(
++        'Video generation in progress: %s (status: %s%s)',
++        videoId,
++        statusResponse.status,
++        progress ? ` ${progress}` : '',
++      );
++
++      return { status: 'pending' };
++    },
++    logger: {
++      debug: (message: any, ...args: any[]) => log(message, ...args),
++      error: (message: any, ...args: any[]) => log(message, ...args),
++    },
++    pollingQuery: () => queryVideoStatus(videoId, { apiKey: options.apiKey, baseURL }),
++  });
++
++  log('Video generation completed, returning video ID');
++
++  return result;
++}
+diff --git a/packages/model-runtime/src/providers/openai/index.ts b/packages/model-runtime/src/providers/openai/index.ts
+index e1e19224201..87ed07c761a 100644
+--- a/packages/model-runtime/src/providers/openai/index.ts
++++ b/packages/model-runtime/src/providers/openai/index.ts
+@@ -6,6 +6,7 @@ import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatible
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+ import type { ChatStreamPayload } from '../../types';
+ import { processMultiProviderModelList } from '../../utils/modelParse';
++import { createOpenAIVideo } from './createVideo';
+ 
+ export interface OpenAIModelCard {
+   id: string;
+@@ -121,6 +122,7 @@ export const params = {
+       } as any;
+     },
+   },
++  createVideo: createOpenAIVideo,
+ } satisfies OpenAICompatibleFactoryOptions;
+ 
+ export const LobeOpenAI = createOpenAICompatibleRuntime(params);
 diff --git a/packages/model-runtime/src/providers/siliconcloud/createVideo.ts b/packages/model-runtime/src/providers/siliconcloud/createVideo.ts
 new file mode 100644
 index 00000000000..71fe4ab5969
