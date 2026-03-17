@@ -2236,19 +2236,24 @@ index 2e9c65b68f0..a9eb9e7689b 100644
          <ConfigItemLayout label={t('config.duration.label')}>
            <DurationItem />
 diff --git a/src/server/routers/lambda/video/index.ts b/src/server/routers/lambda/video/index.ts
-index 298eb31b89d..16f11d47916 100644
+index 298eb31b89d..a52c7c72755 100644
 --- a/src/server/routers/lambda/video/index.ts
 +++ b/src/server/routers/lambda/video/index.ts
-@@ -8,6 +8,7 @@ import { chargeAfterGenerate } from '@/business/server/video-generation/chargeAf
+@@ -7,7 +7,9 @@ import { z } from 'zod';
+ import { chargeAfterGenerate } from '@/business/server/video-generation/chargeAfterGenerate';
  import { chargeBeforeGenerate } from '@/business/server/video-generation/chargeBeforeGenerate';
  import { getVideoFreeQuota } from '@/business/server/video-generation/getVideoFreeQuota';
++import { AiProviderModel } from '@/database/models/aiProvider';
  import { AsyncTaskModel } from '@/database/models/asyncTask';
 +import { GenerationModel } from '@/database/models/generation';
  import {
    asyncTasks,
    generationBatches,
-@@ -20,12 +21,16 @@ import { authedProcedure, router } from '@/libs/trpc/lambda';
+@@ -18,14 +20,19 @@ import {
+ import { appEnv } from '@/envs/app';
+ import { authedProcedure, router } from '@/libs/trpc/lambda';
  import { serverDatabase } from '@/libs/trpc/lambda/middleware';
++import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
  import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
  import { FileService } from '@/server/services/file';
 +import { VideoGenerationService } from '@/server/services/generation/video';
@@ -2264,7 +2269,7 @@ index 298eb31b89d..16f11d47916 100644
  
  const log = debug('lobe-video:lambda');
  
-@@ -141,9 +146,10 @@ export const videoRouter = router({
+@@ -141,9 +148,10 @@ export const videoRouter = router({
  
      // Step 1: Atomically create all database records in a transaction
      const {
@@ -2276,7 +2281,7 @@ index 298eb31b89d..16f11d47916 100644
      } = await serverDB.transaction(async (tx) => {
        log('Starting database transaction for video generation');
  
-@@ -191,6 +197,7 @@ export const videoRouter = router({
+@@ -191,6 +199,7 @@ export const videoRouter = router({
          .where(and(eq(generations.id, generation.id), eq(generations.userId, userId)));
  
        return {
@@ -2284,7 +2289,7 @@ index 298eb31b89d..16f11d47916 100644
          asyncTaskId: asyncTask.id,
          batch,
          generation,
-@@ -215,11 +222,77 @@ export const videoRouter = router({
+@@ -215,11 +224,91 @@ export const videoRouter = router({
  
        log('Video task submitted successfully, inferenceId: %s', response?.inferenceId);
  
@@ -2297,9 +2302,23 @@ index 298eb31b89d..16f11d47916 100644
 +      if (response && 'videoUrl' in response && response.videoUrl) {
 +        log('Polling-based provider detected (videoUrl present), processing video immediately');
 +
-+        // Process video immediately (same logic as webhook success path)
++        // Get provider credentials for authenticated download
++        const aiProviderModel = new AiProviderModel(serverDB, userId);
++        const providerConfig = await aiProviderModel.getAiProviderById(
++          provider,
++          KeyVaultsGateKeeper.getUserKeyVaults,
++        );
++        const apiKey = providerConfig?.keyVaults?.apiKey;
++
++        log(
++          'Retrieved provider credentials for download: apiKey=%s',
++          apiKey ? '***' + apiKey.slice(-4) : 'none',
++        );
++
 +        const videoService = new VideoGenerationService(serverDB, userId);
-+        const processResult = await videoService.processVideoForGeneration(response.videoUrl);
++        const processResult = await videoService.processVideoForGeneration(response.videoUrl, {
++          apiKey,
++        });
 +
 +        const asset: VideoGenerationAsset = {
 +          coverUrl: processResult.coverKey,
@@ -2367,3 +2386,60 @@ index 298eb31b89d..16f11d47916 100644
      } catch (e) {
        console.error('Failed to submit video generation task:', e);
  
+diff --git a/src/server/services/generation/video.ts b/src/server/services/generation/video.ts
+index 8d992b98ffc..ca985ffd6f0 100644
+--- a/src/server/services/generation/video.ts
++++ b/src/server/services/generation/video.ts
+@@ -55,14 +55,20 @@ export class VideoGenerationService {
+   /**
+    * Download video, extract metadata, generate cover/thumbnail, upload all to S3
+    */
+-  async processVideoForGeneration(videoUrl: string): Promise<VideoProcessResult> {
++  async processVideoForGeneration(
++    videoUrl: string,
++    options?: {
++      apiKey?: string;
++      baseURL?: string;
++    },
++  ): Promise<VideoProcessResult> {
+     log('Processing video from URL: %s', videoUrl);
+ 
+     let tempVideoPath: string | null = null;
+     let tempCoverPath: string | null = null;
+ 
+     try {
+-      tempVideoPath = await this.downloadVideo(videoUrl);
++      tempVideoPath = await this.downloadVideo(videoUrl, options);
+ 
+       const [metadata, videoBuffer] = await Promise.all([
+         this.getVideoMetadata(tempVideoPath),
+@@ -162,12 +168,28 @@ export class VideoGenerationService {
+   /** Download timeout: 5 minutes */
+   private static DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+ 
+-  private async downloadVideo(url: string): Promise<string> {
++  private async downloadVideo(
++    url: string,
++    options?: {
++      apiKey?: string;
++    },
++  ): Promise<string> {
+     const ext = path.extname(new URL(url).pathname).toLowerCase() || '.mp4';
+     const tempVideoPath = path.join(os.tmpdir(), `lobe-video-${nanoid()}${ext}`);
+     log('Downloading video to: %s', tempVideoPath);
+ 
++    // Build request headers
++    const headers: Record<string, string> = {
++      'Content-Type': 'application/json',
++    };
++
++    // Add Authorization header if API key is provided
++    if (options?.apiKey) {
++      headers['Authorization'] = `Bearer ${options.apiKey}`;
++    }
++
+     const response = await fetch(url, {
++      headers,
+       signal: AbortSignal.timeout(VideoGenerationService.DOWNLOAD_TIMEOUT_MS),
+     });
+     if (!response.ok) {
