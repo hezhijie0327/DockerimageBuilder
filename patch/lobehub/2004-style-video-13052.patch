@@ -1488,6 +1488,295 @@ index 1d9b28c3c48..36467619fee 100644
    async models() {
      return this._runtime.models?.();
    }
+diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.test.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.test.ts
+new file mode 100644
+index 00000000000..fb6829b5616
+--- /dev/null
++++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.test.ts
+@@ -0,0 +1,283 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateVideoPayload } from '../../types/video';
++import {
++  createOpenAICompatibleVideo,
++  pollOpenAICompatibleVideoStatus,
++  queryOpenAICompatibleVideoStatus,
++} from './createVideo';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++const mockOptions: CreateVideoOptions = {
++  apiKey: 'test-api-key',
++  baseURL: 'https://api.openai.com/v1',
++  provider: 'openai',
++};
++
++beforeEach(() => {
++  vi.clearAllMocks();
++});
++
++describe('createOpenAICompatibleVideo', () => {
++  describe('Success scenarios', () => {
++    it('should create video task with basic prompt', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({ id: 'video-task-123' }),
++      });
++
++      const payload: CreateVideoPayload = {
++        model: 'sora-2.0',
++        params: {
++          prompt: 'A beautiful sunset over the ocean',
++        },
++      };
++
++      const result = await createOpenAICompatibleVideo(payload, mockOptions);
++
++      expect(fetch).toHaveBeenCalledWith('https://api.openai.com/v1/videos', {
++        method: 'POST',
++        headers: {
++          'Authorization': 'Bearer test-api-key',
++          'Content-Type': 'application/json',
++        },
++        body: JSON.stringify({
++          model: 'sora-2.0',
++          prompt: 'A beautiful sunset over the ocean',
++        }),
++      });
++
++      expect(result).toEqual({ inferenceId: 'video-task-123' });
++    });
++
++    it('should include duration as string', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({ id: 'video-task-456' }),
++      });
++
++      const payload: CreateVideoPayload = {
++        model: 'sora-2.0',
++        params: {
++          prompt: 'A short clip',
++          duration: 10,
++        },
++      };
++
++      await createOpenAICompatibleVideo(payload, mockOptions);
++
++      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++      expect(body.seconds).toBe('10');
++    });
++
++    it('should include size parameter', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({ id: 'video-task-789' }),
++      });
++
++      const payload: CreateVideoPayload = {
++        model: 'sora-2.0',
++        params: {
++          prompt: 'HD video',
++          size: '1920x1080',
++        },
++      };
++
++      await createOpenAICompatibleVideo(payload, mockOptions);
++
++      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++      expect(body.size).toBe('1920x1080');
++    });
++
++    it('should include imageUrl as input_reference', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({ id: 'video-task-img' }),
++      });
++
++      const payload: CreateVideoPayload = {
++        model: 'sora-2.0',
++        params: {
++          prompt: 'Continue this scene',
++          imageUrl: 'https://example.com/image.jpg',
++        },
++      };
++
++      await createOpenAICompatibleVideo(payload, mockOptions);
++
++      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++      expect(body.input_reference).toBe('https://example.com/image.jpg');
++    });
++  });
++
++  describe('Error scenarios', () => {
++    it('should throw on HTTP error', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: false,
++        status: 401,
++        statusText: 'Unauthorized',
++        text: async () => 'Invalid API key',
++      });
++
++      const payload: CreateVideoPayload = {
++        model: 'sora-2.0',
++        params: { prompt: 'Test' },
++      };
++
++      await expect(createOpenAICompatibleVideo(payload, mockOptions)).rejects.toThrow(
++        'OpenAI-compatible video API error: 401 Invalid API key',
++      );
++    });
++
++    it('should throw when response missing id', async () => {
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({}),
++      });
++
++      const payload: CreateVideoPayload = {
++        model: 'sora-2.0',
++        params: { prompt: 'Test' },
++      };
++
++      await expect(createOpenAICompatibleVideo(payload, mockOptions)).rejects.toThrow(
++        'Invalid response: missing id',
++      );
++    });
++  });
++});
++
++describe('pollOpenAICompatibleVideoStatus', () => {
++  it('should return success with videoUrl when completed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'completed',
++        url: 'https://cdn.openai.com/video.mp4',
++      }),
++    });
++
++    const result = await pollOpenAICompatibleVideoStatus('task-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.openai.com/v1',
++    });
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://cdn.openai.com/video.mp4',
++      headers: {
++        Authorization: 'Bearer test-key',
++      },
++    });
++  });
++
++  it('should construct content endpoint URL when no url returned', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'completed',
++      }),
++    });
++
++    const result = await pollOpenAICompatibleVideoStatus('task-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.openai.com/v1',
++    });
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://api.openai.com/v1/videos/task-123/content',
++      headers: {
++        Authorization: 'Bearer test-key',
++      },
++    });
++  });
++
++  it('should return failed status when task failed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'failed',
++        error: { message: 'Content policy violation' },
++      }),
++    });
++
++    const result = await pollOpenAICompatibleVideoStatus('task-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.openai.com/v1',
++    });
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Content policy violation',
++    });
++  });
++
++  it('should return pending status when still processing', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'in_progress',
++        progress: 50,
++      }),
++    });
++
++    const result = await pollOpenAICompatibleVideoStatus('task-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.openai.com/v1',
++    });
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 404,
++      text: async () => 'Task not found',
++    });
++
++    await expect(
++      pollOpenAICompatibleVideoStatus('invalid-task', {
++        apiKey: 'test-key',
++        baseURL: 'https://api.openai.com/v1',
++      }),
++    ).rejects.toThrow('OpenAI-compatible video status API error: 404 Task not found');
++  });
++});
++
++describe('queryOpenAICompatibleVideoStatus', () => {
++  it('should return parsed JSON response', async () => {
++    const mockResponse = {
++      id: 'task-123',
++      status: 'completed',
++      url: 'https://cdn.example.com/video.mp4',
++      created_at: 1234567890,
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await queryOpenAICompatibleVideoStatus('task-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.openai.com/v1',
++    });
++
++    expect(result).toEqual(mockResponse);
++    expect(fetch).toHaveBeenCalledWith('https://api.openai.com/v1/videos/task-123', {
++      method: 'GET',
++      headers: {
++        'Authorization': 'Bearer test-key',
++        'Content-Type': 'application/json',
++      },
++    });
++  });
++});
 diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
 new file mode 100644
 index 00000000000..97b3a9159cf
@@ -1778,6 +2067,288 @@ index b1eb49e0a46..7b49437e7e5 100644
      async models() {
        const log = debug(`${this.logPrefix}:models`);
        log('fetching available models');
+diff --git a/packages/model-runtime/src/providers/google/createVideo.test.ts b/packages/model-runtime/src/providers/google/createVideo.test.ts
+new file mode 100644
+index 00000000000..3e1104839b9
+--- /dev/null
++++ b/packages/model-runtime/src/providers/google/createVideo.test.ts
+@@ -0,0 +1,276 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateVideoPayload } from '../../types/video';
++import { createGoogleVideo, pollGoogleVideoOperation } from './createVideo';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++vi.mock('@google/genai', () => ({
++  GenerateVideosOperation: class {
++    name: string = '';
++  },
++}));
++
++describe('createGoogleVideo', () => {
++  const mockClient = {
++    models: {
++      generateVideos: vi.fn(),
++    },
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should create video with basic prompt', async () => {
++    const mockOperation = { name: 'operations/test-op-123' };
++    mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++    const payload: CreateVideoPayload = {
++      model: 'veo-2.0-generate-001',
++      params: {
++        prompt: 'A cat playing guitar',
++      },
++    };
++
++    const result = await createGoogleVideo(mockClient as any, 'google', payload);
++
++    expect(mockClient.models.generateVideos).toHaveBeenCalledWith({
++      model: 'veo-2.0-generate-001',
++      prompt: 'A cat playing guitar',
++      config: {},
++    });
++
++    expect(result).toEqual({ inferenceId: 'operations/test-op-123' });
++  });
++
++  it('should include aspectRatio in config', async () => {
++    const mockOperation = { name: 'operations/test-op-456' };
++    mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++    const payload: CreateVideoPayload = {
++      model: 'veo-2.0-generate-001',
++      params: {
++        prompt: 'Landscape video',
++        aspectRatio: '16:9',
++      },
++    };
++
++    await createGoogleVideo(mockClient as any, 'google', payload);
++
++    const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++    expect(callArgs.config).toEqual({ aspectRatio: '16:9' });
++  });
++
++  it('should include imageUrl as first frame', async () => {
++    const mockOperation = { name: 'operations/image-to-video' };
++    mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++    const payload: CreateVideoPayload = {
++      model: 'veo-2.0-generate-001',
++      params: {
++        prompt: 'Animate this',
++        imageUrl: 'https://example.com/first.jpg',
++      },
++    };
++
++    await createGoogleVideo(mockClient as any, 'google', payload);
++
++    const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++    expect(callArgs.image).toBe('https://example.com/first.jpg');
++  });
++
++  it('should include endImageUrl as last frame', async () => {
++    const mockOperation = { name: 'operations/transformer' };
++    mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++    const payload: CreateVideoPayload = {
++      model: 'veo-2.0-generate-001',
++      params: {
++        prompt: 'Transform first to last',
++        imageUrl: 'https://example.com/first.jpg',
++        endImageUrl: 'https://example.com/last.jpg',
++      },
++    };
++
++    await createGoogleVideo(mockClient as any, 'google', payload);
++
++    const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++    expect(callArgs.image).toBe('https://example.com/first.jpg');
++    expect(callArgs.last_frame).toBe('https://example.com/last.jpg');
++  });
++
++  it('should include duration with s suffix', async () => {
++    const mockOperation = { name: 'operations/duration-test' };
++    mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++    const payload: CreateVideoPayload = {
++      model: 'veo-2.0-generate-001',
++      params: {
++        prompt: 'Short clip',
++        duration: 5,
++      },
++    };
++
++    await createGoogleVideo(mockClient as any, 'google', payload);
++
++    const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++    expect(callArgs.duration).toBe('5s');
++  });
++
++  it('should handle Google API errors', async () => {
++    mockClient.models.generateVideos.mockRejectedValueOnce(
++      new Error('Invalid value for parameter'),
++    );
++
++    const payload: CreateVideoPayload = {
++      model: 'veo-2.0-generate-001',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createGoogleVideo(mockClient as any, 'google', payload)).rejects.toMatchObject({
++      errorType: expect.any(String),
++      provider: 'google',
++    });
++  });
++});
++
++describe('pollGoogleVideoOperation', () => {
++  const mockClient = {
++    operations: {
++      getVideosOperation: vi.fn(),
++    },
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should return success when operation is done', async () => {
++    const mockOperation = {
++      done: true,
++      response: {
++        generatedVideos: [
++          {
++            video: {
++              uri: 'https://storage.googleapis.com/video.mp4',
++            },
++          },
++        ],
++      },
++    };
++    mockClient.operations.getVideosOperation.mockResolvedValueOnce(mockOperation);
++
++    const result = await pollGoogleVideoOperation(
++      mockClient as any,
++      'operations/test-123',
++      'google',
++      'test-api-key',
++    );
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://storage.googleapis.com/video.mp4',
++      headers: {
++        'x-goog-api-key': 'test-api-key',
++      },
++    });
++  });
++
++  it('should return failed when operation has error', async () => {
++    const mockOperation = {
++      done: true,
++      error: {
++        message: 'Quota exceeded',
++      },
++    };
++    mockClient.operations.getVideosOperation.mockResolvedValueOnce(mockOperation);
++
++    const result = await pollGoogleVideoOperation(
++      mockClient as any,
++      'operations/test-123',
++      'google',
++      'test-api-key',
++    );
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Quota exceeded',
++    });
++  });
++
++  it('should return failed when no video in response', async () => {
++    const mockOperation = {
++      done: true,
++      response: {},
++    };
++    mockClient.operations.getVideosOperation.mockResolvedValueOnce(mockOperation);
++
++    const result = await pollGoogleVideoOperation(
++      mockClient as any,
++      'operations/test-123',
++      'google',
++      'test-api-key',
++    );
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'No video generated',
++    });
++  });
++
++  it('should return failed when raiMediaFilteredReasons present', async () => {
++    const mockOperation = {
++      done: true,
++      response: {
++        raiMediaFilteredReasons: ['Content policy violation'],
++      },
++    };
++    mockClient.operations.getVideosOperation.mockResolvedValueOnce(mockOperation);
++
++    const result = await pollGoogleVideoOperation(
++      mockClient as any,
++      'operations/test-123',
++      'google',
++      'test-api-key',
++    );
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Content policy violation',
++    });
++  });
++
++  it('should return pending when operation not done', async () => {
++    const mockOperation = { done: false };
++    mockClient.operations.getVideosOperation.mockResolvedValueOnce(mockOperation);
++
++    const result = await pollGoogleVideoOperation(
++      mockClient as any,
++      'operations/test-123',
++      'google',
++      'test-api-key',
++    );
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should handle polling errors gracefully', async () => {
++    mockClient.operations.getVideosOperation.mockRejectedValueOnce(new Error('Network error'));
++
++    const result = await pollGoogleVideoOperation(
++      mockClient as any,
++      'operations/test-123',
++      'google',
++      'test-api-key',
++    );
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Network error',
++    });
++  });
++});
 diff --git a/packages/model-runtime/src/providers/google/createVideo.ts b/packages/model-runtime/src/providers/google/createVideo.ts
 new file mode 100644
 index 00000000000..fe4d174989e
@@ -1970,6 +2541,381 @@ index 18db79acf65..7355479cbbf 100644
    /**
     * Generate structured output using Google Gemini API
     * @see https://ai.google.dev/gemini-api/docs/structured-output
+diff --git a/packages/model-runtime/src/providers/minimax/createVideo.test.ts b/packages/model-runtime/src/providers/minimax/createVideo.test.ts
+new file mode 100644
+index 00000000000..f78cd7968f4
+--- /dev/null
++++ b/packages/model-runtime/src/providers/minimax/createVideo.test.ts
+@@ -0,0 +1,369 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateVideoPayload } from '../../types/video';
++import {
++  createMiniMaxVideo,
++  pollMiniMaxVideoStatus,
++  queryMiniMaxVideoStatus,
++  retrieveMiniMaxVideoFile,
++} from './createVideo';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++describe('createMiniMaxVideo', () => {
++  const mockOptions: CreateVideoOptions = {
++    apiKey: 'test-api-key',
++    baseURL: 'https://api.minimaxi.com/v1',
++    provider: 'minimax',
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should create video with basic prompt', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_id: 'minimax-task-123',
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'video-01',
++      params: {
++        prompt: 'A beautiful landscape',
++      },
++    };
++
++    const result = await createMiniMaxVideo(payload, mockOptions);
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://api.minimaxi.com/v1/video_generation',
++      expect.any(Object),
++    );
++    expect(result).toEqual({ inferenceId: 'minimax-task-123' });
++  });
++
++  it('should include default duration of 6', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_id: 'task-default-duration',
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'video-01',
++      params: {
++        prompt: 'Test',
++      },
++    };
++
++    await createMiniMaxVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.duration).toBe(6);
++  });
++
++  it('should include custom duration', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_id: 'task-custom-duration',
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'video-01',
++      params: {
++        prompt: 'Test',
++        duration: 10,
++      },
++    };
++
++    await createMiniMaxVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.duration).toBe(10);
++  });
++
++  it('should include imageUrl as first_frame_image', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_id: 'task-image-input',
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'video-01',
++      params: {
++        prompt: 'Animate this',
++        imageUrl: 'https://example.com/first.jpg',
++      },
++    };
++
++    await createMiniMaxVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.first_frame_image).toBe('https://example.com/first.jpg');
++  });
++
++  it('should include endImageUrl as last_frame_image', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_id: 'task-two-images',
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'video-01',
++      params: {
++        prompt: 'Transform',
++        imageUrl: 'https://example.com/first.jpg',
++        endImageUrl: 'https://example.com/last.jpg',
++      },
++    };
++
++    await createMiniMaxVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.first_frame_image).toBe('https://example.com/first.jpg');
++    expect(body.last_frame_image).toBe('https://example.com/last.jpg');
++  });
++
++  it('should use default resolution of 1080P', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_id: 'task-resolution',
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'video-01',
++      params: { prompt: 'Test' },
++    };
++
++    await createMiniMaxVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.resolution).toBe('1080P');
++  });
++
++  it('should throw on non-zero status_code', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_id: 'task-error',
++        base_resp: { status_code: 4001, status_msg: 'Invalid prompt' },
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'video-01',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createMiniMaxVideo(payload, mockOptions)).rejects.toThrow(
++      'MiniMax video API error: Invalid prompt',
++    );
++  });
++
++  it('should throw when missing task_id', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'video-01',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createMiniMaxVideo(payload, mockOptions)).rejects.toThrow(
++      'Invalid response: missing task_id',
++    );
++  });
++});
++
++describe('pollMiniMaxVideoStatus', () => {
++  const options = {
++    apiKey: 'test-key',
++    baseURL: 'https://api.minimaxi.com/v1',
++  };
++
++  it('should return success when task succeeded', async () => {
++    global.fetch = vi
++      .fn()
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          status: 'Success',
++          file_id: 'file-123',
++          task_id: 'task-123',
++          base_resp: { status_code: 0, status_msg: 'success' },
++        }),
++      })
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          file: { download_url: 'https://cdn.minimax.com/video.mp4' },
++          base_resp: { status_code: 0, status_msg: 'success' },
++        }),
++      });
++
++    const result = await pollMiniMaxVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://cdn.minimax.com/video.mp4',
++    });
++  });
++
++  it('should return failed when task failed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'Fail',
++        base_resp: { status_code: 500, status_msg: 'Processing error' },
++      }),
++    });
++
++    const result = await pollMiniMaxVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Processing error',
++    });
++  });
++
++  it('should return pending when task in progress', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'Processing',
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const result = await pollMiniMaxVideoStatus('task-123', options);
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should return failed when succeeded but no file_id', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'Success',
++        task_id: 'task-123',
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    const result = await pollMiniMaxVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Task succeeded but no file_id found',
++    });
++  });
++});
++
++describe('queryMiniMaxVideoStatus', () => {
++  it('should query status endpoint with task_id param', async () => {
++    const mockResponse = {
++      status: 'Success',
++      task_id: 'task-123',
++      base_resp: { status_code: 0, status_msg: 'success' },
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await queryMiniMaxVideoStatus('task-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.minimaxi.com/v1',
++    });
++
++    expect(fetch).toHaveBeenCalledWith(
++      expect.stringContaining('/query/video_generation?task_id=task-123'),
++      expect.any(Object),
++    );
++    expect(result).toEqual(mockResponse);
++  });
++});
++
++describe('retrieveMiniMaxVideoFile', () => {
++  it('should retrieve file download URL', async () => {
++    const mockResponse = {
++      file: {
++        download_url: 'https://cdn.minimax.com/video.mp4',
++        file_id: 'file-123',
++      },
++      base_resp: { status_code: 0, status_msg: 'success' },
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await retrieveMiniMaxVideoFile('file-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.minimaxi.com/v1',
++    });
++
++    expect(result).toBe('https://cdn.minimax.com/video.mp4');
++  });
++
++  it('should throw on non-zero status_code', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        base_resp: { status_code: 404, status_msg: 'File not found' },
++      }),
++    });
++
++    await expect(
++      retrieveMiniMaxVideoFile('invalid-file', {
++        apiKey: 'test-key',
++        baseURL: 'https://api.minimaxi.com/v1',
++      }),
++    ).rejects.toThrow('MiniMax file retrieve error: File not found');
++  });
++
++  it('should throw when missing download_url', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        file: {},
++        base_resp: { status_code: 0, status_msg: 'success' },
++      }),
++    });
++
++    await expect(
++      retrieveMiniMaxVideoFile('file-123', {
++        apiKey: 'test-key',
++        baseURL: 'https://api.minimaxi.com/v1',
++      }),
++    ).rejects.toThrow('Missing download_url in MiniMax file retrieve response');
++  });
++});
 diff --git a/packages/model-runtime/src/providers/minimax/createVideo.ts b/packages/model-runtime/src/providers/minimax/createVideo.ts
 new file mode 100644
 index 00000000000..33c58c6e648
@@ -2185,6 +3131,317 @@ index 7c0f659ac8f..08841e9b24c 100644
    debug: {
      chatCompletion: () => process.env.DEBUG_MINIMAX_CHAT_COMPLETION === '1',
    },
+diff --git a/packages/model-runtime/src/providers/qwen/createVideo.test.ts b/packages/model-runtime/src/providers/qwen/createVideo.test.ts
+new file mode 100644
+index 00000000000..1da0a3830f1
+--- /dev/null
++++ b/packages/model-runtime/src/providers/qwen/createVideo.test.ts
+@@ -0,0 +1,305 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateVideoPayload } from '../../types/video';
++import { createQwenVideo, pollQwenVideoStatus, queryQwenVideoStatus } from './createVideo';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++describe('createQwenVideo', () => {
++  const mockOptions: CreateVideoOptions = {
++    apiKey: 'test-api-key',
++    baseURL: 'https://dashscope.aliyuncs.com',
++    provider: 'qwen',
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should create text-to-video task', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: { task_id: 'qwen-task-123', task_status: 'PENDING' },
++        request_id: 'req-456',
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'wan2.2-t2v-plus',
++      params: {
++        prompt: 'A beautiful sunset',
++      },
++    };
++
++    const result = await createQwenVideo(payload, mockOptions);
++
++    expect(fetch).toHaveBeenCalledWith(
++      expect.stringContaining('/api/v1/services/aigc/video-generation/video-synthesis'),
++      expect.any(Object),
++    );
++    expect(result).toEqual({ inferenceId: 'qwen-task-123' });
++  });
++
++  it('should create image-to-video task for i2v models', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: { task_id: 'i2v-task-789', task_status: 'PENDING' },
++        request_id: 'req-000',
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'wan2.2-i2v-plus',
++      params: {
++        prompt: 'Animate this image',
++        imageUrl: 'https://example.com/image.jpg',
++      },
++    };
++
++    await createQwenVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.input.img_url).toBe('https://example.com/image.jpg');
++    expect(body.input.prompt).toBe('Animate this image');
++  });
++
++  it('should create keyframe-to-video task for kf2v models', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: { task_id: 'kf2v-task-111', task_status: 'PENDING' },
++        request_id: 'req-222',
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'wan2.2-kf2v-flash',
++      params: {
++        prompt: 'Transform between frames',
++        imageUrl: 'https://example.com/first.jpg',
++        endImageUrl: 'https://example.com/last.jpg',
++      },
++    };
++
++    await createQwenVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.input.first_frame_url).toBe('https://example.com/first.jpg');
++    expect(body.input.last_frame_url).toBe('https://example.com/last.jpg');
++    expect(body.input.prompt).toBe('Transform between frames');
++  });
++
++  it('should include optional parameters', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: { task_id: 'full-params-task', task_status: 'PENDING' },
++        request_id: 'req-333',
++      }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'wan2.2-t2v-plus',
++      params: {
++        prompt: 'Test',
++        size: '1920x1080',
++        duration: 10,
++        generateAudio: true,
++      },
++    };
++
++    await createQwenVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.parameters.size).toBe('1920*1080');
++    expect(body.parameters.duration).toBe(10);
++    expect(body.parameters.audio).toBe(true);
++  });
++
++  it('should remove /compatible-mode/v1 suffix from baseURL', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: { task_id: 'task-suffix-removal', task_status: 'PENDING' },
++        request_id: 'req-444',
++      }),
++    });
++
++    const options: CreateVideoOptions = {
++      ...mockOptions,
++      baseURL: 'https://custom-endpoint.com/compatible-mode/v1',
++    };
++
++    const payload: CreateVideoPayload = {
++      model: 'wan2.2-t2v-plus',
++      params: { prompt: 'Test' },
++    };
++
++    await createQwenVideo(payload, options);
++
++    const url = (global.fetch as any).mock.calls[0][0];
++    expect(url).not.toContain('/compatible-mode/v1');
++    expect(url).toContain('https://custom-endpoint.com');
++  });
++
++  it('should throw error when image required but missing for i2v model', async () => {
++    const payload: CreateVideoPayload = {
++      model: 'wan2.2-i2v-plus',
++      params: {
++        prompt: 'Animate this',
++      },
++    };
++
++    await expect(createQwenVideo(payload, mockOptions)).rejects.toMatchObject({
++      errorType: 'ProviderBizError',
++      provider: 'qwen',
++    });
++  });
++
++  it('should throw error when keyframe images required but missing', async () => {
++    const payload: CreateVideoPayload = {
++      model: 'wan2.2-kf2v-flash',
++      params: {
++        prompt: 'Transform',
++      },
++    };
++
++    await expect(createQwenVideo(payload, mockOptions)).rejects.toMatchObject({
++      errorType: 'ProviderBizError',
++      provider: 'qwen',
++    });
++  });
++});
++
++describe('pollQwenVideoStatus', () => {
++  const apiKey = 'test-key';
++  const baseUrl = 'https://dashscope.aliyuncs.com';
++
++  it('should return success when task succeeded', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: {
++          task_id: 'task-123',
++          task_status: 'SUCCEEDED',
++          video_url: 'https://cdn.qwen.com/video.mp4',
++        },
++        request_id: 'req-555',
++      }),
++    });
++
++    const result = await pollQwenVideoStatus('task-123', apiKey, baseUrl);
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://cdn.qwen.com/video.mp4',
++    });
++  });
++
++  it('should return failed when task failed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: {
++          task_id: 'task-123',
++          task_status: 'FAILED',
++          error_message: 'Content policy violation',
++        },
++        request_id: 'req-666',
++      }),
++    });
++
++    const result = await pollQwenVideoStatus('task-123', apiKey, baseUrl);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Content policy violation',
++    });
++  });
++
++  it('should return pending when task running', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: {
++          task_id: 'task-123',
++          task_status: 'RUNNING',
++        },
++        request_id: 'req-777',
++      }),
++    });
++
++    const result = await pollQwenVideoStatus('task-123', apiKey, baseUrl);
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should return failed when succeeded but no video URL', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        output: {
++          task_id: 'task-123',
++          task_status: 'SUCCEEDED',
++        },
++        request_id: 'req-888',
++      }),
++    });
++
++    const result = await pollQwenVideoStatus('task-123', apiKey, baseUrl);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Task succeeded but no video URL found',
++    });
++  });
++});
++
++describe('queryQwenVideoStatus', () => {
++  it('should query task status endpoint', async () => {
++    const mockResponse = {
++      output: { task_id: 'task-123', task_status: 'RUNNING' },
++      request_id: 'req-999',
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await queryQwenVideoStatus(
++      'task-123',
++      'test-key',
++      'https://dashscope.aliyuncs.com',
++    );
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://dashscope.aliyuncs.com/api/v1/tasks/task-123',
++      expect.objectContaining({
++        method: 'GET',
++        headers: {
++          Authorization: 'Bearer test-key',
++        },
++      }),
++    );
++    expect(result).toEqual(mockResponse);
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 404,
++      statusText: 'Not Found',
++    });
++
++    await expect(
++      queryQwenVideoStatus('invalid-task', 'test-key', 'https://dashscope.aliyuncs.com'),
++    ).rejects.toThrow('Failed to query task status');
++  });
++});
 diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
 new file mode 100644
 index 00000000000..f867c312af4
@@ -2525,6 +3782,276 @@ index 0cae27c2711..e195cf92e29 100644
    models: async ({ client }) => {
      const modelsPage = (await client.models.list()) as any;
      const modelList: QwenModelCard[] = modelsPage.data;
+diff --git a/packages/model-runtime/src/providers/siliconcloud/createVideo.test.ts b/packages/model-runtime/src/providers/siliconcloud/createVideo.test.ts
+new file mode 100644
+index 00000000000..6a410cc60bc
+--- /dev/null
++++ b/packages/model-runtime/src/providers/siliconcloud/createVideo.test.ts
+@@ -0,0 +1,264 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateVideoPayload } from '../../types/video';
++import {
++  createSiliconCloudVideo,
++  pollSiliconCloudVideoStatus,
++  querySiliconCloudVideoStatus,
++} from './createVideo';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++describe('createSiliconCloudVideo', () => {
++  const mockOptions: CreateVideoOptions = {
++    apiKey: 'test-api-key',
++    baseURL: 'https://api.siliconflow.cn/v1',
++    provider: 'siliconcloud',
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should create video with basic prompt', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ requestId: 'sc-request-123' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'stabilityai/stable-video-diffusion',
++      params: {
++        prompt: 'A futuristic city',
++      },
++    };
++
++    const result = await createSiliconCloudVideo(payload, mockOptions);
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://api.siliconflow.cn/v1/video/submit',
++      expect.any(Object),
++    );
++    expect(result).toEqual({ inferenceId: 'sc-request-123' });
++  });
++
++  it('should include image_size parameter', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ requestId: 'sc-size-test' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'stabilityai/stable-video-diffusion',
++      params: {
++        prompt: 'Test',
++        size: '1920x1080',
++      },
++    };
++
++    await createSiliconCloudVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.image_size).toBe('1920x1080');
++  });
++
++  it('should include seed parameter', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ requestId: 'sc-seed-test' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'stabilityai/stable-video-diffusion',
++      params: {
++        prompt: 'Test',
++        seed: 42,
++      },
++    };
++
++    await createSiliconCloudVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.seed).toBe(42);
++  });
++
++  it('should not include seed when null', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ requestId: 'sc-null-seed' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'stabilityai/stable-video-diffusion',
++      params: {
++        prompt: 'Test',
++        seed: null,
++      },
++    };
++
++    await createSiliconCloudVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.seed).toBeUndefined();
++  });
++
++  it('should include imageUrl as image parameter', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ requestId: 'sc-image-test' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'stabilityai/stable-video-diffusion',
++      params: {
++        prompt: 'Animate this',
++        imageUrl: 'https://example.com/image.jpg',
++      },
++    };
++
++    await createSiliconCloudVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.image).toBe('https://example.com/image.jpg');
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 402,
++      text: async () => 'Insufficient balance',
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'stabilityai/stable-video-diffusion',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createSiliconCloudVideo(payload, mockOptions)).rejects.toThrow(
++      'SiliconCloud video API error: 402 Insufficient balance',
++    );
++  });
++
++  it('should throw when response missing requestId', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({}),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'stabilityai/stable-video-diffusion',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createSiliconCloudVideo(payload, mockOptions)).rejects.toThrow(
++      'Invalid response: missing requestId',
++    );
++  });
++});
++
++describe('pollSiliconCloudVideoStatus', () => {
++  const options = {
++    apiKey: 'test-key',
++    baseURL: 'https://api.siliconflow.cn/v1',
++  };
++
++  it('should return success when status is Succeed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'Succeed',
++        results: {
++          videos: [{ url: 'https://cdn.siliconcloud.cn/video.mp4' }],
++        },
++      }),
++    });
++
++    const result = await pollSiliconCloudVideoStatus('request-123', options);
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://cdn.siliconcloud.cn/video.mp4',
++    });
++  });
++
++  it('should return failed when status is Failed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'Failed',
++        reason: 'Content moderation failed',
++      }),
++    });
++
++    const result = await pollSiliconCloudVideoStatus('request-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Content moderation failed',
++    });
++  });
++
++  it('should return pending when status is Processing', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ status: 'Processing' }),
++    });
++
++    const result = await pollSiliconCloudVideoStatus('request-123', options);
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should return failed when succeeded but no video URL', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'Succeed',
++        results: { videos: [] },
++      }),
++    });
++
++    const result = await pollSiliconCloudVideoStatus('request-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Task succeeded but no video URL found',
++    });
++  });
++});
++
++describe('querySiliconCloudVideoStatus', () => {
++  it('should query status with POST request', async () => {
++    const mockResponse = {
++      status: 'Processing',
++      requestId: 'request-123',
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await querySiliconCloudVideoStatus('request-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.siliconflow.cn/v1',
++    });
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://api.siliconflow.cn/v1/video/status',
++      expect.objectContaining({
++        method: 'POST',
++        body: JSON.stringify({ requestId: 'request-123' }),
++        headers: {
++          'Authorization': 'Bearer test-key',
++          'Content-Type': 'application/json',
++        },
++      }),
++    );
++    expect(result).toEqual(mockResponse);
++  });
++});
 diff --git a/packages/model-runtime/src/providers/siliconcloud/createVideo.ts b/packages/model-runtime/src/providers/siliconcloud/createVideo.ts
 new file mode 100644
 index 00000000000..0257fb0b1a8
@@ -2710,6 +4237,287 @@ index b072daffdb8..feaae02c0ca 100644
    debug: {
      chatCompletion: () => process.env.DEBUG_SILICONCLOUD_CHAT_COMPLETION === '1',
    },
+diff --git a/packages/model-runtime/src/providers/wenxin/createVideo.test.ts b/packages/model-runtime/src/providers/wenxin/createVideo.test.ts
+new file mode 100644
+index 00000000000..b96978acb26
+--- /dev/null
++++ b/packages/model-runtime/src/providers/wenxin/createVideo.test.ts
+@@ -0,0 +1,275 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateVideoPayload } from '../../types/video';
++import { createWenxinVideo, pollWenxinVideoStatus, queryWenxinVideoStatus } from './createVideo';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++describe('createWenxinVideo', () => {
++  const mockOptions: CreateVideoOptions = {
++    apiKey: 'test-api-key',
++    baseURL: 'https://qianfan.baidubce.com',
++    provider: 'wenxin',
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should create video with basic prompt', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ task_id: 'wenxin-task-123' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: {
++        prompt: 'A beautiful landscape',
++      },
++    };
++
++    const result = await createWenxinVideo(payload, mockOptions);
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://qianfan.baidubce.com/video/generations',
++      expect.any(Object),
++    );
++    expect(result).toEqual({ inferenceId: 'wenxin-task-123' });
++  });
++
++  it('should build content array with text', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ task_id: 'wenxin-text-only' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: {
++        prompt: 'Test prompt',
++      },
++    };
++
++    await createWenxinVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.content).toEqual([{ type: 'text', text: 'Test prompt' }]);
++  });
++
++  it('should add image_url entry when imageUrl provided', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ task_id: 'wenxin-image2vid' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: {
++        prompt: 'Animate this',
++        imageUrl: 'https://example.com/image.jpg',
++      },
++    };
++
++    await createWenxinVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.content).toHaveLength(2);
++    expect(body.content[1]).toEqual({
++      type: 'image_url',
++      image_url: { url: 'https://example.com/image.jpg' },
++    });
++  });
++
++  it('should include optional parameters', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ task_id: 'wenxin-full' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: {
++        prompt: 'Test',
++        aspectRatio: '16:9',
++        duration: 10,
++        generateAudio: true,
++      },
++    };
++
++    await createWenxinVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.aspect_ratio).toBe('16:9');
++    expect(body.duration).toBe(10);
++    expect(body.generate_audio).toBe(true);
++  });
++
++  it('should remove /v2 suffix from baseURL', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ task_id: 'wenxin-v2-removal' }),
++    });
++
++    const options: CreateVideoOptions = {
++      ...mockOptions,
++      baseURL: 'https://custom.baidubce.com/v2',
++    };
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: { prompt: 'Test' },
++    };
++
++    await createWenxinVideo(payload, options);
++
++    const url = (global.fetch as any).mock.calls[0][0];
++    expect(url).not.toContain('/v2');
++    expect(url).toContain('https://custom.baidubce.com/video/generations');
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 400,
++      text: async () => 'Invalid parameters',
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createWenxinVideo(payload, mockOptions)).rejects.toThrow(
++      'Wenxin video API error: 400 Invalid parameters',
++    );
++  });
++
++  it('should throw when response missing task_id', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({}),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createWenxinVideo(payload, mockOptions)).rejects.toThrow(
++      'Invalid response: missing task_id',
++    );
++  });
++});
++
++describe('pollWenxinVideoStatus', () => {
++  const options = {
++    apiKey: 'test-key',
++    baseURL: 'https://qianfan.baidubce.com',
++  };
++
++  it('should return success when status is succeeded', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'succeeded',
++        content: { video_url: 'https://cdn.wenxin.com/video.mp4' },
++      }),
++    });
++
++    const result = await pollWenxinVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://cdn.wenxin.com/video.mp4',
++    });
++  });
++
++  it('should return failed when status is failed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ status: 'failed' }),
++    });
++
++    const result = await pollWenxinVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Video generation failed',
++    });
++  });
++
++  it('should return pending when status is processing', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ status: 'processing' }),
++    });
++
++    const result = await pollWenxinVideoStatus('task-123', options);
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should return failed when succeeded but no video URL', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'succeeded',
++        content: {},
++      }),
++    });
++
++    const result = await pollWenxinVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Task succeeded but no video URL found',
++    });
++  });
++});
++
++describe('queryWenxinVideoStatus', () => {
++  it('should query status endpoint with task_id query param', async () => {
++    const mockResponse = {
++      status: 'processing',
++      task_id: 'task-123',
++      width: 1920,
++      height: 1080,
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await queryWenxinVideoStatus('task-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://qianfan.baidubce.com',
++    });
++
++    expect(fetch).toHaveBeenCalledWith(
++      expect.stringContaining('/video/generations?task_id=task-123'),
++      expect.any(Object),
++    );
++    expect(result).toEqual(mockResponse);
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 404,
++      text: async () => 'Task not found',
++    });
++
++    await expect(
++      queryWenxinVideoStatus('invalid-task', {
++        apiKey: 'test-key',
++        baseURL: 'https://qianfan.baidubce.com',
++      }),
++    ).rejects.toThrow('Wenxin status API error: 404 Task not found');
++  });
++});
 diff --git a/packages/model-runtime/src/providers/wenxin/createVideo.ts b/packages/model-runtime/src/providers/wenxin/createVideo.ts
 new file mode 100644
 index 00000000000..e3274f63584
@@ -2914,6 +4722,305 @@ index 81c8ae86e8c..44e444c5f74 100644
    debug: {
      chatCompletion: () => process.env.DEBUG_WENXIN_CHAT_COMPLETION === '1',
    },
+diff --git a/packages/model-runtime/src/providers/xai/createVideo.test.ts b/packages/model-runtime/src/providers/xai/createVideo.test.ts
+new file mode 100644
+index 00000000000..7bcb5811cef
+--- /dev/null
++++ b/packages/model-runtime/src/providers/xai/createVideo.test.ts
+@@ -0,0 +1,293 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateVideoPayload } from '../../types/video';
++import { createXAIVideo, pollXAIVideoStatus, queryXAIVideoStatus } from './createVideo';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++describe('createXAIVideo', () => {
++  const mockOptions: CreateVideoOptions = {
++    apiKey: 'test-api-key',
++    baseURL: 'https://api.x.ai/v1',
++    provider: 'xai',
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should create video with basic prompt', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ request_id: 'xai-request-123' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'grok-2.1-video',
++      params: {
++        prompt: 'A cyberpunk city at night',
++      },
++    };
++
++    const result = await createXAIVideo(payload, mockOptions);
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://api.x.ai/v1/videos/generations',
++      expect.any(Object),
++    );
++    expect(result).toEqual({ inferenceId: 'xai-request-123' });
++  });
++
++  it('should include imageUrl as image object', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ request_id: 'xai-image-input' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'grok-2.1-video',
++      params: {
++        prompt: 'Animate this',
++        imageUrl: 'https://example.com/image.jpg',
++      },
++    };
++
++    await createXAIVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.image).toEqual({ url: 'https://example.com/image.jpg' });
++  });
++
++  it('should include aspect_ratio parameter', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ request_id: 'xai-aspect' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'grok-2.1-video',
++      params: {
++        prompt: 'Test',
++        aspectRatio: '21:9',
++      },
++    };
++
++    await createXAIVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.aspect_ratio).toBe('21:9');
++  });
++
++  it('should include duration parameter', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ request_id: 'xai-duration' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'grok-2.1-video',
++      params: {
++        prompt: 'Test',
++        duration: 6,
++      },
++    };
++
++    await createXAIVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.duration).toBe(6);
++  });
++
++  it('should include resolution parameter', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ request_id: 'xai-resolution' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'grok-2.1-video',
++      params: {
++        prompt: 'Test',
++        resolution: '4k',
++      },
++    };
++
++    await createXAIVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.resolution).toBe('4k');
++  });
++
++  it('should include size parameter', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ request_id: 'xai-size' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'grok-2.1-video',
++      params: {
++        prompt: 'Test',
++        size: '1920x1080',
++      },
++    };
++
++    await createXAIVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.size).toBe('1920x1080');
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 403,
++      text: async () => 'Content policy violation',
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'grok-2.1-video',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createXAIVideo(payload, mockOptions)).rejects.toThrow(
++      'XAI video API error: 403 Content policy violation',
++    );
++  });
++
++  it('should throw when response missing request_id', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({}),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'grok-2.1-video',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createXAIVideo(payload, mockOptions)).rejects.toThrow(
++      'Invalid response: missing request_id',
++    );
++  });
++});
++
++describe('pollXAIVideoStatus', () => {
++  const options = {
++    apiKey: 'test-key',
++    baseURL: 'https://api.x.ai/v1',
++  };
++
++  it('should return success when status is done', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'done',
++        video: { url: 'https://cdn.x.ai/video.mp4' },
++      }),
++    });
++
++    const result = await pollXAIVideoStatus('request-123', options);
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://cdn.x.ai/video.mp4',
++    });
++  });
++
++  it('should return failed when status is failed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'failed',
++        error: { message: 'Content moderation failed' },
++      }),
++    });
++
++    const result = await pollXAIVideoStatus('request-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Content moderation failed',
++    });
++  });
++
++  it('should return pending when status is processing', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ status: 'processing' }),
++    });
++
++    const result = await pollXAIVideoStatus('request-123', options);
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should return failed when done but no video URL', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        status: 'done',
++        video: {},
++      }),
++    });
++
++    const result = await pollXAIVideoStatus('request-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Task succeeded but no video URL found',
++    });
++  });
++});
++
++describe('queryXAIVideoStatus', () => {
++  it('should query status endpoint', async () => {
++    const mockResponse = {
++      status: 'processing',
++      model: 'grok-2.1-video',
++      video: { duration: 6 },
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await queryXAIVideoStatus('request-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://api.x.ai/v1',
++    });
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://api.x.ai/v1/videos/request-123',
++      expect.objectContaining({
++        method: 'GET',
++        headers: {
++          'Authorization': 'Bearer test-key',
++          'Content-Type': 'application/json',
++        },
++      }),
++    );
++    expect(result).toEqual(mockResponse);
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 404,
++      text: async () => 'Request not found',
++    });
++
++    await expect(
++      queryXAIVideoStatus('invalid-request', {
++        apiKey: 'test-key',
++        baseURL: 'https://api.x.ai/v1',
++      }),
++    ).rejects.toThrow('XAI status API error: 404 Request not found');
++  });
++});
 diff --git a/packages/model-runtime/src/providers/xai/createVideo.ts b/packages/model-runtime/src/providers/xai/createVideo.ts
 new file mode 100644
 index 00000000000..9c7f99782c4
@@ -3103,6 +5210,257 @@ index a5363684740..551ebddcfc7 100644
    debug: {
      chatCompletion: () => process.env.DEBUG_XAI_CHAT_COMPLETION === '1',
      responses: () => process.env.DEBUG_XAI_RESPONSES === '1',
+diff --git a/packages/model-runtime/src/providers/zhipu/createVideo.test.ts b/packages/model-runtime/src/providers/zhipu/createVideo.test.ts
+new file mode 100644
+index 00000000000..2c8bd67ba5d
+--- /dev/null
++++ b/packages/model-runtime/src/providers/zhipu/createVideo.test.ts
+@@ -0,0 +1,245 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateVideoPayload } from '../../types/video';
++import { createZhipuVideo, pollZhipuVideoStatus, queryZhipuVideoStatus } from './createVideo';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++describe('createZhipuVideo', () => {
++  const mockOptions: CreateVideoOptions = {
++    apiKey: 'test-api-key',
++    baseURL: 'https://open.bigmodel.cn/api/paas/v4',
++    provider: 'zhipu',
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should create video with basic prompt', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ id: 'zhipu-task-123' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: {
++        prompt: 'A robot dancing',
++      },
++    };
++
++    const result = await createZhipuVideo(payload, mockOptions);
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://open.bigmodel.cn/api/paas/v4/videos/generations',
++      expect.any(Object),
++    );
++    expect(result).toEqual({ inferenceId: 'zhipu-task-123' });
++  });
++
++  it('should include image_url array with first frame', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ id: 'task-img2vid' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: {
++        prompt: 'Animate this image',
++        imageUrl: 'https://example.com/first.jpg',
++      },
++    };
++
++    await createZhipuVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.image_url).toEqual(['https://example.com/first.jpg']);
++  });
++
++  it('should include both first and last frame in image_url array', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ id: 'task-transformer' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: {
++        prompt: 'Transform first to last',
++        imageUrl: 'https://example.com/first.jpg',
++        endImageUrl: 'https://example.com/last.jpg',
++      },
++    };
++
++    await createZhipuVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.image_url).toEqual([
++      'https://example.com/first.jpg',
++      'https://example.com/last.jpg',
++    ]);
++  });
++
++  it('should include optional parameters', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ id: 'task-full' }),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: {
++        prompt: 'Full options test',
++        aspectRatio: '16:9',
++        duration: 10,
++        generateAudio: true,
++        size: '1080p',
++      },
++    };
++
++    await createZhipuVideo(payload, mockOptions);
++
++    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
++    expect(body.aspect_ratio).toBe('16:9');
++    expect(body.duration).toBe(10);
++    expect(body.with_audio).toBe(true);
++    expect(body.size).toBe('1080p');
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 402,
++      text: async () => 'Insufficient credits',
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createZhipuVideo(payload, mockOptions)).rejects.toThrow(
++      'Zhipu video API error: 402 Insufficient credits',
++    );
++  });
++
++  it('should throw when response missing id', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({}),
++    });
++
++    const payload: CreateVideoPayload = {
++      model: 'cogvideox',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createZhipuVideo(payload, mockOptions)).rejects.toThrow(
++      'Invalid response: missing task id',
++    );
++  });
++});
++
++describe('pollZhipuVideoStatus', () => {
++  const options = {
++    apiKey: 'test-key',
++    baseURL: 'https://open.bigmodel.cn/api/paas/v4',
++  };
++
++  it('should return success when task succeeded', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_status: 'SUCCESS',
++        video_result: [{ url: 'https://cdn.zhipu.ai/video.mp4' }],
++      }),
++    });
++
++    const result = await pollZhipuVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'success',
++      videoUrl: 'https://cdn.zhipu.ai/video.mp4',
++    });
++  });
++
++  it('should return failed when task failed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_status: 'FAIL',
++        error: { message: 'Content moderation failed' },
++      }),
++    });
++
++    const result = await pollZhipuVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Content moderation failed',
++    });
++  });
++
++  it('should return pending when task in progress', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ task_status: 'RUNNING' }),
++    });
++
++    const result = await pollZhipuVideoStatus('task-123', options);
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should return failed when succeeded but no video URL', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({ task_status: 'SUCCESS', video_result: [] }),
++    });
++
++    const result = await pollZhipuVideoStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Task succeeded but no video URL found',
++    });
++  });
++});
++
++describe('queryZhipuVideoStatus', () => {
++  it('should query status endpoint correctly', async () => {
++    const mockResponse = {
++      task_status: 'SUCCESS',
++      id: 'task-123',
++      request_id: 'req-456',
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await queryZhipuVideoStatus('task-123', {
++      apiKey: 'test-key',
++      baseURL: 'https://open.bigmodel.cn/api/paas/v4',
++    });
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://open.bigmodel.cn/api/paas/v4/async-result/task-123',
++      expect.objectContaining({
++        method: 'GET',
++        headers: {
++          'Authorization': 'Bearer test-key',
++          'Content-Type': 'application/json',
++        },
++      }),
++    );
++    expect(result).toEqual(mockResponse);
++  });
++});
 diff --git a/packages/model-runtime/src/providers/zhipu/createVideo.ts b/packages/model-runtime/src/providers/zhipu/createVideo.ts
 new file mode 100644
 index 00000000000..9d96d60d4ed
@@ -3590,14 +5948,14 @@ index 2e9c65b68f0..a9eb9e7689b 100644
          <ConfigItemLayout label={t('config.duration.label')}>
            <DurationItem />
 diff --git a/src/server/routers/lambda/video/index.ts b/src/server/routers/lambda/video/index.ts
-index 298eb31b89d..180c17c487b 100644
+index 298eb31b89d..acad428dc65 100644
 --- a/src/server/routers/lambda/video/index.ts
 +++ b/src/server/routers/lambda/video/index.ts
 @@ -20,6 +20,7 @@ import { authedProcedure, router } from '@/libs/trpc/lambda';
  import { serverDatabase } from '@/libs/trpc/lambda/middleware';
  import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
  import { FileService } from '@/server/services/file';
-+import { startBackgroundVideoPolling } from '@/server/services/video/backgroundPolling';
++import { startBackgroundVideoPolling } from '@/server/services/generation/videoBackgroundPolling';
  import {
    AsyncTaskError,
    AsyncTaskErrorType,
@@ -3709,11 +6067,351 @@ index 8d992b98ffc..f41159d4c14 100644
        signal: AbortSignal.timeout(VideoGenerationService.DOWNLOAD_TIMEOUT_MS),
      });
      if (!response.ok) {
-diff --git a/src/server/services/video/backgroundPolling.ts b/src/server/services/video/backgroundPolling.ts
+diff --git a/src/server/services/generation/videoBackgroundPolling.test.ts b/src/server/services/generation/videoBackgroundPolling.test.ts
 new file mode 100644
-index 00000000000..28207bd5399
+index 00000000000..dcaeaadbb77
 --- /dev/null
-+++ b/src/server/services/video/backgroundPolling.ts
++++ b/src/server/services/generation/videoBackgroundPolling.test.ts
+@@ -0,0 +1,334 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++import { AsyncTaskModel } from '@/database/models/asyncTask';
++import { GenerationModel } from '@/database/models/generation';
++import type { LobeChatDatabase } from '@/database/type';
++import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
++import { VideoGenerationService } from '@/server/services/generation/video';
++import {
++  processBackgroundPolling,
++  startBackgroundVideoPolling,
++} from '@/server/services/generation/videoBackgroundPolling';
++import { AsyncTaskError, AsyncTaskStatus } from '@/types/asyncTask';
++import { FileSource } from '@/types/files';
++
++vi.mock('@/database/models/asyncTask');
++vi.mock('@/database/models/generation');
++vi.mock('@/server/services/generation/video');
++vi.mock('@/utils/sanitizeFileName', () => ({
++  sanitizeFileName: vi.fn((...args) => args.join('-')),
++}));
++
++vi.mock('debug', () => ({
++  default: () => vi.fn(),
++}));
++
++vi.mock('@/server/modules/ModelRuntime', () => ({
++  initModelRuntimeFromDB: vi.fn(),
++}));
++
++describe('videoBackgroundPolling', () => {
++  const mockDb = {} as LobeChatDatabase;
++  const mockParams = {
++    asyncTaskCreatedAt: new Date('2024-01-01T00:00:00Z'),
++    asyncTaskId: 'task-123',
++    generationId: 'gen-456',
++    generationTopicId: 'topic-789',
++    inferenceId: 'inference-abc',
++    model: 'test-model',
++    prechargeResult: { credits: 10 },
++    provider: 'test-provider',
++    userId: 'user-xyz',
++  };
++
++  const mockAsyncTaskModel = {
++    update: vi.fn(),
++  };
++
++  const mockGenerationModel = {
++    createAssetAndFile: vi.fn(),
++  };
++
++  const mockVideoService = {
++    processVideoForGeneration: vi.fn(),
++  };
++
++  const mockModelRuntime = {
++    handlePollVideoStatus: vi.fn(),
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++    vi.useFakeTimers();
++
++    vi.mocked(AsyncTaskModel).mockImplementation(() => mockAsyncTaskModel as any);
++    vi.mocked(GenerationModel).mockImplementation(() => mockGenerationModel as any);
++    vi.mocked(VideoGenerationService).mockImplementation(() => mockVideoService as any);
++    vi.mocked(initModelRuntimeFromDB).mockResolvedValue(mockModelRuntime as any);
++  });
++
++  afterEach(() => {
++    vi.useRealTimers();
++  });
++
++  describe('startBackgroundVideoPolling', () => {
++    it('should start background polling without throwing', () => {
++      const originalRejectionHandler = process.listeners('unhandledRejection');
++      process.removeAllListeners('unhandledRejection');
++
++      expect(() => {
++        startBackgroundVideoPolling(mockDb, mockParams);
++      }).not.toThrow();
++
++      originalRejectionHandler.forEach((handler) => {
++        process.on('unhandledRejection', handler);
++      });
++    });
++
++    it('should catch and log unhandled errors', async () => {
++      const mockError = new Error('Test error');
++      vi.mocked(initModelRuntimeFromDB).mockRejectedValue(mockError);
++
++      startBackgroundVideoPolling(mockDb, mockParams);
++
++      await vi.advanceTimersByTimeAsync(100);
++    });
++  });
++
++  describe('processBackgroundPolling - success path', () => {
++    it('should complete video generation successfully', async () => {
++      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
++        status: 'success',
++        videoUrl: 'https://example.com/video.mp4',
++        headers: { 'Content-Type': 'video/mp4' },
++      });
++
++      mockVideoService.processVideoForGeneration.mockResolvedValue({
++        coverKey: 'cover-key-123',
++        duration: 10,
++        fileHash: 'hash-abc',
++        fileSize: 1024,
++        height: 1080,
++        mimeType: 'video/mp4',
++        thumbnailKey: 'thumb-key-456',
++        videoKey: 'video-key-789',
++        width: 1920,
++      });
++
++      await processBackgroundPolling(mockDb, mockParams);
++
++      expect(mockModelRuntime.handlePollVideoStatus).toHaveBeenCalledWith('inference-abc');
++
++      expect(mockVideoService.processVideoForGeneration).toHaveBeenCalledWith(
++        'https://example.com/video.mp4',
++        { headers: { 'Content-Type': 'video/mp4' } },
++      );
++
++      expect(mockGenerationModel.createAssetAndFile).toHaveBeenCalledWith(
++        'gen-456',
++        expect.objectContaining({
++          type: 'video',
++          url: 'video-key-789',
++          coverUrl: 'cover-key-123',
++          thumbnailUrl: 'thumb-key-456',
++          duration: 10,
++          width: 1920,
++          height: 1080,
++        }),
++        expect.objectContaining({
++          name: expect.stringContaining('topic-789'),
++          url: 'video-key-789',
++        }),
++        FileSource.VideoGeneration,
++      );
++
++      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
++        duration: expect.any(Number),
++        status: AsyncTaskStatus.Success,
++      });
++    });
++  });
++
++  describe('processBackgroundPolling - polling behavior', () => {
++    it('should retry polling multiple times until success', async () => {
++      mockModelRuntime.handlePollVideoStatus
++        .mockResolvedValueOnce({ status: 'processing' })
++        .mockResolvedValueOnce({ status: 'processing' })
++        .mockResolvedValueOnce({
++          status: 'success',
++          videoUrl: 'https://example.com/video.mp4',
++        });
++
++      mockVideoService.processVideoForGeneration.mockResolvedValue({
++        coverKey: 'cover-key',
++        duration: 10,
++        fileHash: 'hash',
++        fileSize: 1024,
++        height: 1080,
++        mimeType: 'video/mp4',
++        thumbnailKey: 'thumb-key',
++        videoKey: 'video-key',
++        width: 1920,
++      });
++
++      const pollPromise = processBackgroundPolling(mockDb, mockParams);
++
++      await vi.advanceTimersByTimeAsync(10000);
++
++      await pollPromise;
++
++      expect(mockModelRuntime.handlePollVideoStatus).toHaveBeenCalledTimes(3);
++    });
++  });
++
++  describe('processBackgroundPolling - error handling', () => {
++    it('should handle polling failure with error message', async () => {
++      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
++        status: 'failed',
++        error: 'Model API error',
++      });
++
++      await processBackgroundPolling(mockDb, mockParams);
++
++      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
++        error: expect.any(AsyncTaskError),
++        status: AsyncTaskStatus.Error,
++      });
++
++      const errorCall = mockAsyncTaskModel.update.mock.calls[0][1];
++      expect(errorCall.error).toBeInstanceOf(AsyncTaskError);
++      expect(errorCall.error?.name).toBe('ServerError');
++    });
++
++    it('should handle model runtime initialization error', async () => {
++      vi.mocked(initModelRuntimeFromDB).mockRejectedValue(new Error('Runtime init failed'));
++
++      await processBackgroundPolling(mockDb, mockParams);
++
++      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
++        error: expect.any(AsyncTaskError),
++        status: AsyncTaskStatus.Error,
++      });
++    });
++
++    it('should handle video processing error', async () => {
++      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
++        status: 'success',
++        videoUrl: 'https://example.com/video.mp4',
++      });
++
++      mockVideoService.processVideoForGeneration.mockRejectedValue(
++        new Error('Video processing failed'),
++      );
++
++      await processBackgroundPolling(mockDb, mockParams);
++
++      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
++        error: expect.any(AsyncTaskError),
++        status: AsyncTaskStatus.Error,
++      });
++    });
++
++    it('should handle asset creation error', async () => {
++      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
++        status: 'success',
++        videoUrl: 'https://example.com/video.mp4',
++      });
++
++      mockVideoService.processVideoForGeneration.mockResolvedValue({
++        coverKey: 'cover-key',
++        duration: 10,
++        fileHash: 'hash',
++        fileSize: 1024,
++        height: 1080,
++        mimeType: 'video/mp4',
++        thumbnailKey: 'thumb-key',
++        videoKey: 'video-key',
++        width: 1920,
++      });
++
++      mockGenerationModel.createAssetAndFile.mockRejectedValue(new Error('DB error'));
++
++      await processBackgroundPolling(mockDb, mockParams);
++
++      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
++        error: expect.any(AsyncTaskError),
++        status: AsyncTaskStatus.Error,
++      });
++    });
++  });
++
++  describe('polling edge cases', () => {
++    it('should handle network errors during polling gracefully', async () => {
++      mockModelRuntime.handlePollVideoStatus
++        .mockRejectedValueOnce(new Error('Network error'))
++        .mockResolvedValueOnce({ status: 'processing' })
++        .mockResolvedValueOnce({
++          status: 'success',
++          videoUrl: 'https://example.com/video.mp4',
++        });
++
++      mockVideoService.processVideoForGeneration.mockResolvedValue({
++        coverKey: 'cover-key',
++        duration: 10,
++        fileHash: 'hash',
++        fileSize: 1024,
++        height: 1080,
++        mimeType: 'video/mp4',
++        thumbnailKey: 'thumb-key',
++        videoKey: 'video-key',
++        width: 1920,
++      });
++
++      mockGenerationModel.createAssetAndFile.mockResolvedValue(undefined);
++
++      const pollPromise = processBackgroundPolling(mockDb, mockParams);
++      await vi.advanceTimersByTimeAsync(10000);
++      await pollPromise;
++
++      expect(mockModelRuntime.handlePollVideoStatus).toHaveBeenCalledTimes(3);
++      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith(
++        'task-123',
++        expect.objectContaining({ status: AsyncTaskStatus.Success }),
++      );
++    });
++  });
++
++  describe('async task duration calculation', () => {
++    it('should calculate correct duration from start time', async () => {
++      const startTime = new Date('2024-01-01T00:00:00Z');
++      const endTime = new Date('2024-01-01T00:05:00Z');
++
++      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
++        status: 'success',
++        videoUrl: 'https://example.com/video.mp4',
++      });
++
++      mockVideoService.processVideoForGeneration.mockResolvedValue({
++        coverKey: 'cover-key',
++        duration: 10,
++        fileHash: 'hash',
++        fileSize: 1024,
++        height: 1080,
++        mimeType: 'video/mp4',
++        thumbnailKey: 'thumb-key',
++        videoKey: 'video-key',
++        width: 1920,
++      });
++
++      mockGenerationModel.createAssetAndFile.mockResolvedValue(undefined);
++
++      vi.setSystemTime(endTime);
++
++      await processBackgroundPolling(mockDb, { ...mockParams, asyncTaskCreatedAt: startTime });
++
++      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith(
++        'task-123',
++        expect.objectContaining({
++          duration: expect.any(Number),
++          status: AsyncTaskStatus.Success,
++        }),
++      );
++    });
++  });
++});
+diff --git a/src/server/services/generation/videoBackgroundPolling.ts b/src/server/services/generation/videoBackgroundPolling.ts
+new file mode 100644
+index 00000000000..7aac460c2b4
+--- /dev/null
++++ b/src/server/services/generation/videoBackgroundPolling.ts
 @@ -0,0 +1,161 @@
 +import debug from 'debug';
 +
@@ -3750,7 +6448,7 @@ index 00000000000..28207bd5399
 +  });
 +}
 +
-+async function processBackgroundPolling(
++export async function processBackgroundPolling(
 +  db: LobeChatDatabase,
 +  params: BackgroundPollingParams,
 +): Promise<void> {
