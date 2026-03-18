@@ -23,7 +23,7 @@ index f7d0f0210a2..844f51850c6 100644
    "generation.actions.errorCopied": "错误信息已复制到剪贴板",
    "generation.actions.errorCopyFailed": "复制错误信息失败",
 diff --git a/packages/model-bank/src/aiModels/google.ts b/packages/model-bank/src/aiModels/google.ts
-index 973a9e4f7cd..ca5951f0fac 100644
+index 973a9e4f7cd..1a33e251adf 100644
 --- a/packages/model-bank/src/aiModels/google.ts
 +++ b/packages/model-bank/src/aiModels/google.ts
 @@ -1,5 +1,5 @@
@@ -33,7 +33,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
  
  /**
   * gemini implicit caching not extra cost
-@@ -993,6 +993,151 @@ const googleImageModels: AIImageModelCard[] = [
+@@ -993,6 +993,161 @@ const googleImageModels: AIImageModelCard[] = [
      },
    },
  ];
@@ -55,6 +55,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +      endImageUrl: {
 +        default: null,
 +      },
++      generateAudio: { default: true },
 +      imageUrl: {
 +        default: null,
 +      },
@@ -63,6 +64,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +        default: '720p',
 +        enum: ['720p', '1080p', '4k'],
 +      },
++      seed: { default: null },
 +    },
 +    pricing: {
 +      units: [{ name: 'videoGeneration', rate: 0.6, strategy: 'fixed', unit: 'second' }],
@@ -85,6 +87,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +      endImageUrl: {
 +        default: null,
 +      },
++      generateAudio: { default: true },
 +      imageUrl: {
 +        default: null,
 +      },
@@ -93,6 +96,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +        default: '720p',
 +        enum: ['720p', '1080p', '4k'],
 +      },
++      seed: { default: null },
 +    },
 +    pricing: {
 +      units: [{ name: 'videoGeneration', rate: 0.35, strategy: 'fixed', unit: 'second' }],
@@ -112,6 +116,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +        enum: ['16:9', '9:16'],
 +      },
 +      duration: { default: 8, enum: [8] },
++      generateAudio: { default: true },
 +      imageUrl: {
 +        default: null,
 +      },
@@ -120,6 +125,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +        default: '720p',
 +        enum: ['720p', '1080p'],
 +      },
++      seed: { default: null },
 +    },
 +    pricing: {
 +      units: [{ name: 'videoGeneration', rate: 0.4, strategy: 'fixed', unit: 'second' }],
@@ -139,6 +145,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +        enum: ['16:9', '9:16'],
 +      },
 +      duration: { default: 8, enum: [8] },
++      generateAudio: { default: true },
 +      imageUrl: {
 +        default: null,
 +      },
@@ -147,6 +154,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +        default: '720p',
 +        enum: ['720p', '1080p'],
 +      },
++      seed: { default: null },
 +    },
 +    pricing: {
 +      units: [{ name: 'videoGeneration', rate: 0.15, strategy: 'fixed', unit: 'second' }],
@@ -166,6 +174,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +        enum: ['16:9', '9:16'],
 +      },
 +      duration: { default: 8, max: 8, min: 5 },
++      generateAudio: { default: true },
 +      imageUrl: {
 +        default: null,
 +      },
@@ -174,6 +183,7 @@ index 973a9e4f7cd..ca5951f0fac 100644
 +        default: '720p',
 +        enum: ['720p', '1080p'],
 +      },
++      seed: { default: null },
 +    },
 +    pricing: {
 +      units: [{ name: 'videoGeneration', rate: 0.35, strategy: 'fixed', unit: 'second' }],
@@ -2069,10 +2079,10 @@ index b1eb49e0a46..7b49437e7e5 100644
        log('fetching available models');
 diff --git a/packages/model-runtime/src/providers/google/createVideo.test.ts b/packages/model-runtime/src/providers/google/createVideo.test.ts
 new file mode 100644
-index 00000000000..a6d9ebc2066
+index 00000000000..2233018baad
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/google/createVideo.test.ts
-@@ -0,0 +1,803 @@
+@@ -0,0 +1,896 @@
 +// @vitest-environment node
 +import { beforeEach, describe, expect, it, vi } from 'vitest';
 +
@@ -2255,7 +2265,7 @@ index 00000000000..a6d9ebc2066
 +      const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
 +      expect(callArgs.image).toBeDefined();
 +      expect(callArgs.image.mimeType).toBe('image/jpeg');
-+      expect(callArgs.image.bytesBase64Encoded).toBe('mock-base64-data');
++      expect(callArgs.image.imageBytes).toBe('mock-base64-data');
 +    });
 +
 +    it('should include endImageUrl as lastFrame in config', async () => {
@@ -2277,7 +2287,7 @@ index 00000000000..a6d9ebc2066
 +      expect(callArgs.image).toBeDefined();
 +      expect(callArgs.config.lastFrame).toBeDefined();
 +      expect(callArgs.config.lastFrame.mimeType).toBe('image/jpeg');
-+      expect(callArgs.config.lastFrame.bytesBase64Encoded).toBe('mock-base64-data');
++      expect(callArgs.config.lastFrame.imageBytes).toBe('mock-base64-data');
 +    });
 +
 +    it('should include duration as durationSeconds in config', async () => {
@@ -2296,6 +2306,95 @@ index 00000000000..a6d9ebc2066
 +
 +      const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
 +      expect(callArgs.config.durationSeconds).toBe(5);
++    });
++
++    it('should include generateAudio in config when true', async () => {
++      const mockOperation = { name: 'operations/audio-test' };
++      mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++      const payload: CreateVideoPayload = {
++        model: 'veo-2.0-generate-001',
++        params: {
++          prompt: 'Video with audio',
++          generateAudio: true,
++        },
++      };
++
++      await createGoogleVideo(mockClient as any, 'google', payload);
++
++      const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++      expect(callArgs.config.generateAudio).toBe(true);
++    });
++
++    it('should not include generateAudio when undefined or false', async () => {
++      const mockOperation = { name: 'operations/no-audio' };
++      mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++      const payload: CreateVideoPayload = {
++        model: 'veo-2.0-generate-001',
++        params: {
++          prompt: 'Silent video',
++          generateAudio: false,
++        },
++      };
++
++      await createGoogleVideo(mockClient as any, 'google', payload);
++
++      const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++      expect(callArgs.config.generateAudio).toBeUndefined();
++    });
++
++    it('should include seed in config', async () => {
++      const mockOperation = { name: 'operations/seed-test' };
++      mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++      const payload: CreateVideoPayload = {
++        model: 'veo-2.0-generate-001',
++        params: {
++          prompt: 'Reproducible video',
++          seed: 42,
++        },
++      };
++
++      await createGoogleVideo(mockClient as any, 'google', payload);
++
++      const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++      expect(callArgs.config.seed).toBe(42);
++    });
++
++    it('should not include seed when undefined', async () => {
++      const mockOperation = { name: 'operations/no-seed' };
++      mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++      const payload: CreateVideoPayload = {
++        model: 'veo-2.0-generate-001',
++        params: {
++          prompt: 'Random video',
++        },
++      };
++
++      await createGoogleVideo(mockClient as any, 'google', payload);
++
++      const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++      expect(callArgs.config.seed).toBeUndefined();
++    });
++
++    it('should include different seed values', async () => {
++      const mockOperation = { name: 'operations/seed-123' };
++      mockClient.models.generateVideos.mockResolvedValueOnce(mockOperation);
++
++      const payload: CreateVideoPayload = {
++        model: 'veo-2.0-generate-001',
++        params: {
++          prompt: 'Specific seed',
++          seed: 999999,
++        },
++      };
++
++      await createGoogleVideo(mockClient as any, 'google', payload);
++
++      const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
++      expect(callArgs.config.seed).toBe(999999);
 +    });
 +
 +    it('should not include duration when undefined', async () => {
@@ -2328,6 +2427,8 @@ index 00000000000..a6d9ebc2066
 +          aspectRatio: '16:9',
 +          resolution: '4k',
 +          duration: 10,
++          generateAudio: true,
++          seed: 12345,
 +        },
 +      };
 +
@@ -2341,13 +2442,15 @@ index 00000000000..a6d9ebc2066
 +          aspectRatio: '16:9',
 +          resolution: '4k',
 +          lastFrame: {
-+            bytesBase64Encoded: 'mock-base64-data',
++            imageBytes: 'mock-base64-data',
 +            mimeType: 'image/jpeg',
 +          },
 +          durationSeconds: 10,
++          generateAudio: true,
++          seed: 12345,
 +        },
 +        image: {
-+          bytesBase64Encoded: 'mock-base64-data',
++          imageBytes: 'mock-base64-data',
 +          mimeType: 'image/jpeg',
 +        },
 +      });
@@ -2372,7 +2475,7 @@ index 00000000000..a6d9ebc2066
 +
 +      const callArgs = mockClient.models.generateVideos.mock.calls[0][0];
 +      expect(callArgs.image).toEqual({
-+        bytesBase64Encoded:
++        imageBytes:
 +          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
 +        mimeType: 'image/png',
 +      });
@@ -2878,11 +2981,11 @@ index 00000000000..a6d9ebc2066
 +});
 diff --git a/packages/model-runtime/src/providers/google/createVideo.ts b/packages/model-runtime/src/providers/google/createVideo.ts
 new file mode 100644
-index 00000000000..fc595008d85
+index 00000000000..11bdc7409d8
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/google/createVideo.ts
-@@ -0,0 +1,173 @@
-+import type { GenerateVideosConfig, GoogleGenAI } from '@google/genai';
+@@ -0,0 +1,187 @@
++import type { GenerateVideosConfig, GoogleGenAI, Image } from '@google/genai';
 +import { GenerateVideosOperation } from '@google/genai';
 +import { imageUrlToBase64 } from '@lobechat/utils';
 +import debug from 'debug';
@@ -2895,9 +2998,10 @@ index 00000000000..fc595008d85
 +const log = debug('model-runtime:google:video');
 +
 +/**
-+ * Convert image URL to Google Image format with base64 and mimeType
++ * Convert image URL to Google Image format
++ * Supports: data URI, HTTP URL, and file paths
 + */
-+async function imageToGoogleImageFormat(imageUrl: string): Promise<Part> {
++async function imageToGoogleImageFormat(imageUrl: string): Promise<Image> {
 +  const { mimeType, base64, type } = parseDataUri(imageUrl);
 +
 +  if (type === 'base64') {
@@ -2906,14 +3010,15 @@ index 00000000000..fc595008d85
 +    }
 +
 +    return {
-+      bytesBase64Encoded: base64,
++      imageBytes: base64,
 +      mimeType: mimeType || 'image/png',
 +    };
 +  } else if (type === 'url') {
++    // Handle both HTTP URLs and file paths (files/...)
 +    const { base64: urlBase64, mimeType: urlMimeType } = await imageUrlToBase64(imageUrl);
 +
 +    return {
-+      bytesBase64Encoded: urlBase64,
++      imageBytes: urlBase64,
 +      mimeType: urlMimeType,
 +    };
 +  } else {
@@ -2928,15 +3033,27 @@ index 00000000000..fc595008d85
 +): Promise<CreateVideoResponse> {
 +  try {
 +    const { model, params } = payload;
-+    const { prompt, imageUrl, endImageUrl, aspectRatio, duration, resolution } = params;
++    const {
++      prompt,
++      imageUrl,
++      endImageUrl,
++      aspectRatio,
++      duration,
++      resolution,
++      seed,
++      generateAudio,
++    } = params;
 +
 +    log('Creating video with Google AI - model: %s, params: %O', model, params);
 +
++    // https://github.com/googleapis/js-genai/blob/main/src/types.ts
 +    const config: GenerateVideosConfig = {
 +      ...(aspectRatio && { aspectRatio }),
 +      ...(duration && { durationSeconds: duration }),
 +      ...(endImageUrl && { lastFrame: await imageToGoogleImageFormat(endImageUrl) }),
++      ...(generateAudio && { generateAudio }),
 +      ...(resolution && { resolution }),
++      ...(seed && { seed }),
 +    };
 +
 +    const requestParams: any = {
