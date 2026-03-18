@@ -1,0 +1,907 @@
+From 4d42f0b047f48681f8d1b60fe537ec7f3c678539 Mon Sep 17 00:00:00 2001
+From: Zhijie He <hezhijie0327@hotmail.com>
+Date: Wed, 18 Mar 2026 12:11:05 +0800
+Subject: [PATCH] chore: add video async route
+
+---
+ src/server/routers/async/index.ts             |   4 +-
+ src/server/routers/async/video.ts             | 291 +++++++++++++++
+ src/server/routers/lambda/video/index.ts      |  35 +-
+ .../generation/videoBackgroundPolling.test.ts | 334 ------------------
+ .../generation/videoBackgroundPolling.ts      | 161 ---------
+ 5 files changed, 317 insertions(+), 508 deletions(-)
+ create mode 100644 src/server/routers/async/video.ts
+ delete mode 100644 src/server/services/generation/videoBackgroundPolling.test.ts
+ delete mode 100644 src/server/services/generation/videoBackgroundPolling.ts
+
+diff --git a/src/server/routers/async/index.ts b/src/server/routers/async/index.ts
+index 9a10e0c4b..d32e40965 100644
+--- a/src/server/routers/async/index.ts
++++ b/src/server/routers/async/index.ts
+@@ -1,14 +1,16 @@
+-import { asyncRouter as router,publicProcedure } from '@/libs/trpc/async';
++import { asyncRouter as router, publicProcedure } from '@/libs/trpc/async';
+ 
+ import { fileRouter } from './file';
+ import { imageRouter } from './image';
+ import { ragEvalRouter } from './ragEval';
++import { videoRouter } from './video';
+ 
+ export const asyncRouter = router({
+   file: fileRouter,
+   healthcheck: publicProcedure.query(() => "i'm live!"),
+   image: imageRouter,
+   ragEval: ragEvalRouter,
++  video: videoRouter,
+ });
+ 
+ export type AsyncRouter = typeof asyncRouter;
+diff --git a/src/server/routers/async/video.ts b/src/server/routers/async/video.ts
+new file mode 100644
+index 000000000..e41a53710
+--- /dev/null
++++ b/src/server/routers/async/video.ts
+@@ -0,0 +1,291 @@
++import { ASYNC_TASK_TIMEOUT } from '@lobechat/business-config/server';
++import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
++import { AsyncTaskError, AsyncTaskErrorType, AsyncTaskStatus } from '@lobechat/types';
++import debug from 'debug';
++import { z } from 'zod';
++
++import { chargeAfterGenerate } from '@/business/server/video-generation/chargeAfterGenerate';
++import { AsyncTaskModel } from '@/database/models/asyncTask';
++import { GenerationModel } from '@/database/models/generation';
++import { asyncAuthedProcedure, asyncRouter as router } from '@/libs/trpc/async';
++import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
++import { VideoGenerationService } from '@/server/services/generation/video';
++import { sanitizeFileName } from '@/utils/sanitizeFileName';
++
++const log = debug('lobe-video:async');
++
++const videoProcedure = asyncAuthedProcedure.use(async (opts) => {
++  const { ctx } = opts;
++
++  return opts.next({
++    ctx: {
++      asyncTaskModel: new AsyncTaskModel(ctx.serverDB, ctx.userId),
++      generationModel: new GenerationModel(ctx.serverDB, ctx.userId),
++      videoService: new VideoGenerationService(ctx.serverDB, ctx.userId),
++    },
++  });
++});
++
++const createVideoInputSchema = z.object({
++  asyncTaskCreatedAt: z.date(),
++  asyncTaskId: z.string(),
++  generationBatchId: z.string(),
++  generationId: z.string(),
++  generationTopicId: z.string(),
++  inferenceId: z.string(),
++  model: z.string(),
++  prechargeResult: z.any().optional(),
++  provider: z.string(),
++});
++
++const checkAbortSignal = (signal: AbortSignal) => {
++  if (signal.aborted) {
++    throw new Error('Operation was aborted');
++  }
++};
++
++async function pollUntilCompletion(
++  modelRuntime: any,
++  inferenceId: string,
++  signal: AbortSignal,
++): Promise<{ headers?: Record<string, string>; videoUrl: string } | null> {
++  const maxRetries = 120;
++  const pollingInterval = 5000;
++
++  for (let attempt = 0; attempt < maxRetries; attempt++) {
++    checkAbortSignal(signal);
++
++    try {
++      log('Polling attempt %d/%d for inferenceId: %s', attempt + 1, maxRetries, inferenceId);
++
++      const result = await modelRuntime.handlePollVideoStatus(inferenceId);
++
++      if (result.status === 'success') {
++        log('Video generation succeeded for inferenceId: %s', inferenceId);
++        return { headers: result.headers, videoUrl: result.videoUrl };
++      }
++
++      if (result.status === 'failed') {
++        throw new Error(`Video generation failed: ${result.error}`);
++      }
++
++      log('Task %s still in progress, waiting...', inferenceId);
++
++      await new Promise<void>((resolve, reject) => {
++        const timeoutId = setTimeout(resolve, pollingInterval);
++        signal.addEventListener(
++          'abort',
++          () => {
++            clearTimeout(timeoutId);
++            reject(new Error('Operation was aborted'));
++          },
++          { once: true },
++        );
++      });
++    } catch (error) {
++      checkAbortSignal(signal);
++
++      if (error instanceof Error && error.message.includes('failed')) {
++        throw error;
++      }
++
++      log('Polling attempt %d failed for inferenceId: %s: %O', attempt + 1, inferenceId, error);
++
++      await new Promise<void>((resolve, reject) => {
++        const timeoutId = setTimeout(resolve, pollingInterval);
++        signal.addEventListener(
++          'abort',
++          () => {
++            clearTimeout(timeoutId);
++            reject(new Error('Operation was aborted'));
++          },
++          { once: true },
++        );
++      });
++    }
++  }
++
++  throw new Error(
++    `Video generation timeout after ${maxRetries} attempts (${(maxRetries * pollingInterval) / 1000}s)`,
++  );
++}
++
++export const videoRouter = router({
++  createVideo: videoProcedure.input(createVideoInputSchema).mutation(async ({ input, ctx }) => {
++    const {
++      asyncTaskCreatedAt,
++      asyncTaskId,
++      generationBatchId,
++      generationId,
++      generationTopicId,
++      inferenceId,
++      model,
++      prechargeResult,
++      provider,
++    } = input;
++
++    log('Starting async video polling: %O', {
++      asyncTaskId,
++      generationId,
++      inferenceId,
++      model,
++      provider,
++    });
++
++    const abortController = new AbortController();
++    let timeoutId: ReturnType<typeof setTimeout> | null = null;
++
++    try {
++      const pollingPromise = async (signal: AbortSignal) => {
++        const asyncTaskModel = ctx.asyncTaskModel;
++        const generationModel = ctx.generationModel;
++        const videoService = ctx.videoService;
++
++        log('Initializing agent runtime for provider: %s', provider);
++        const modelRuntime = await initModelRuntimeFromDB(ctx.serverDB, ctx.userId, provider);
++
++        checkAbortSignal(signal);
++
++        const pollResult = await pollUntilCompletion(modelRuntime, inferenceId, signal);
++
++        if (!pollResult) {
++          log('Polling completed but no video URL returned for inferenceId: %s', inferenceId);
++          throw new Error('Polling completed but no video URL returned');
++        }
++
++        log('Video polling succeeded for task: %s, processing video...', asyncTaskId);
++
++        const processResult = await videoService.processVideoForGeneration(pollResult.videoUrl, {
++          headers: pollResult.headers,
++        });
++
++        log('Video processed successfully, creating asset and file');
++
++        const batch = await ctx.serverDB.query.generationBatches.findFirst({
++          where: (batches, { eq }) => eq(batches.id, generationBatchId),
++        });
++
++        await generationModel.createAssetAndFile(
++          generationId,
++          {
++            coverUrl: processResult.coverKey,
++            duration: processResult.duration,
++            height: processResult.height,
++            originalUrl: pollResult.videoUrl,
++            thumbnailUrl: processResult.thumbnailKey,
++            type: 'video',
++            url: processResult.videoKey,
++            width: processResult.width,
++          },
++          {
++            fileHash: processResult.fileHash,
++            fileType: processResult.mimeType,
++            name: `${sanitizeFileName(batch?.prompt ?? '', generationId)}.mp4`,
++            size: processResult.fileSize,
++            url: processResult.videoKey,
++          },
++        );
++
++        log('Asset and file created successfully for generation: %s', generationId);
++
++        const duration = Date.now() - asyncTaskCreatedAt.getTime();
++
++        log('Updating task status to Success: %s, duration: %dms', asyncTaskId, duration);
++        await asyncTaskModel.update(asyncTaskId, {
++          duration,
++          status: AsyncTaskStatus.Success,
++        });
++
++        if (ENABLE_BUSINESS_FEATURES && prechargeResult) {
++          try {
++            await chargeAfterGenerate({
++              computePriceParams: {
++                generateAudio: (batch?.config as any)?.generateAudio,
++              },
++              latency: duration,
++              metadata: {
++                asyncTaskId,
++                generationBatchId,
++                modelId: model,
++                topicId: generationTopicId,
++              },
++              model,
++              prechargeResult,
++              provider,
++              usage: undefined,
++              userId: ctx.userId,
++            });
++            log('Charge completed successfully for asyncTask: %s', asyncTaskId);
++          } catch (chargeError) {
++            console.error('[video-async] Failed to charge after generate:', chargeError);
++          }
++        }
++
++        log('Async video generation completed successfully: %s', asyncTaskId);
++        return { success: true };
++      };
++
++      timeoutId = setTimeout(() => {
++        log('Video generation timeout, aborting operation: %s', asyncTaskId);
++        abortController.abort();
++      }, ASYNC_TASK_TIMEOUT);
++
++      const result = await pollingPromise(abortController.signal);
++
++      if (timeoutId) {
++        clearTimeout(timeoutId);
++        timeoutId = null;
++      }
++
++      return result;
++    } catch (error: any) {
++      if (timeoutId) {
++        clearTimeout(timeoutId);
++      }
++
++      log('Async video generation failed: %O', {
++        asyncTaskId,
++        error: error.message || error,
++        generationId,
++        inferenceId,
++      });
++
++      await ctx.asyncTaskModel.update(asyncTaskId, {
++        error: new AsyncTaskError(
++          AsyncTaskErrorType.ServerError,
++          'Background polling failed: ' +
++            (error instanceof Error ? error.message : 'Unknown error'),
++        ),
++        status: AsyncTaskStatus.Error,
++      });
++
++      log('Task status updated to Error: %s', asyncTaskId);
++
++      if (prechargeResult && ENABLE_BUSINESS_FEATURES) {
++        try {
++          await chargeAfterGenerate({
++            isError: true,
++            metadata: {
++              asyncTaskId,
++              generationBatchId,
++              modelId: model,
++              topicId: generationTopicId,
++            },
++            model,
++            prechargeResult,
++            provider,
++            userId: ctx.userId,
++          });
++          log('Precharge refunded successfully for asyncTask: %s', asyncTaskId);
++        } catch (refundError) {
++          console.error('[video-async] Failed to refund precharge on error:', refundError);
++        }
++      }
++
++      return {
++        message: `Video generation ${asyncTaskId} failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
++        success: false,
++      };
++    }
++  }),
++});
+diff --git a/src/server/routers/lambda/video/index.ts b/src/server/routers/lambda/video/index.ts
+index acad428dc..eda51b0c3 100644
+--- a/src/server/routers/lambda/video/index.ts
++++ b/src/server/routers/lambda/video/index.ts
+@@ -19,8 +19,8 @@ import { appEnv } from '@/envs/app';
+ import { authedProcedure, router } from '@/libs/trpc/lambda';
+ import { serverDatabase } from '@/libs/trpc/lambda/middleware';
+ import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
++import { createAsyncCaller } from '@/server/routers/async/caller';
+ import { FileService } from '@/server/services/file';
+-import { startBackgroundVideoPolling } from '@/server/services/generation/videoBackgroundPolling';
+ import {
+   AsyncTaskError,
+   AsyncTaskErrorType,
+@@ -220,25 +220,36 @@ export const videoRouter = router({
+ 
+       // Check if provider uses polling (returns only inferenceId, no videoUrl)
+       if (response && !('videoUrl' in response)) {
+-        log('Polling-based provider detected (inferenceId only), starting background polling');
++        log('Polling-based provider detected (inferenceId only), starting async router');
+ 
+         await asyncTaskModel.update(asyncTaskId, {
+           inferenceId: response.inferenceId,
+           status: AsyncTaskStatus.Processing,
+         });
+ 
+-        // Start background polling for polling-based providers
+-        startBackgroundVideoPolling(serverDB, {
+-          asyncTaskCreatedAt,
+-          asyncTaskId,
+-          generationId: createdGeneration.id,
+-          generationTopicId,
+-          inferenceId: response.inferenceId,
+-          model,
+-          prechargeResult,
+-          provider,
++        const asyncCaller = await createAsyncCaller({
+           userId,
+         });
++
++        log('Async caller created, starting background video polling for task: %s', asyncTaskId);
++
++        asyncCaller.video
++          .createVideo({
++            asyncTaskCreatedAt,
++            asyncTaskId,
++            generationBatchId: createdBatch.id,
++            generationId: createdGeneration.id,
++            generationTopicId,
++            inferenceId: response.inferenceId,
++            model,
++            prechargeResult,
++            provider,
++          })
++          .catch((error) => {
++            console.error('[video] Async video polling failed:', error);
++          });
++
++        log('Background video polling started successfully for task: %s', asyncTaskId);
+       } else {
+         // Webhook-based provider: update status to Processing and wait for callback
+         log('Webhook-based provider detected, waiting for callback');
+diff --git a/src/server/services/generation/videoBackgroundPolling.test.ts b/src/server/services/generation/videoBackgroundPolling.test.ts
+deleted file mode 100644
+index dcaeaadbb..000000000
+--- a/src/server/services/generation/videoBackgroundPolling.test.ts
++++ /dev/null
+@@ -1,334 +0,0 @@
+-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+-
+-import { AsyncTaskModel } from '@/database/models/asyncTask';
+-import { GenerationModel } from '@/database/models/generation';
+-import type { LobeChatDatabase } from '@/database/type';
+-import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
+-import { VideoGenerationService } from '@/server/services/generation/video';
+-import {
+-  processBackgroundPolling,
+-  startBackgroundVideoPolling,
+-} from '@/server/services/generation/videoBackgroundPolling';
+-import { AsyncTaskError, AsyncTaskStatus } from '@/types/asyncTask';
+-import { FileSource } from '@/types/files';
+-
+-vi.mock('@/database/models/asyncTask');
+-vi.mock('@/database/models/generation');
+-vi.mock('@/server/services/generation/video');
+-vi.mock('@/utils/sanitizeFileName', () => ({
+-  sanitizeFileName: vi.fn((...args) => args.join('-')),
+-}));
+-
+-vi.mock('debug', () => ({
+-  default: () => vi.fn(),
+-}));
+-
+-vi.mock('@/server/modules/ModelRuntime', () => ({
+-  initModelRuntimeFromDB: vi.fn(),
+-}));
+-
+-describe('videoBackgroundPolling', () => {
+-  const mockDb = {} as LobeChatDatabase;
+-  const mockParams = {
+-    asyncTaskCreatedAt: new Date('2024-01-01T00:00:00Z'),
+-    asyncTaskId: 'task-123',
+-    generationId: 'gen-456',
+-    generationTopicId: 'topic-789',
+-    inferenceId: 'inference-abc',
+-    model: 'test-model',
+-    prechargeResult: { credits: 10 },
+-    provider: 'test-provider',
+-    userId: 'user-xyz',
+-  };
+-
+-  const mockAsyncTaskModel = {
+-    update: vi.fn(),
+-  };
+-
+-  const mockGenerationModel = {
+-    createAssetAndFile: vi.fn(),
+-  };
+-
+-  const mockVideoService = {
+-    processVideoForGeneration: vi.fn(),
+-  };
+-
+-  const mockModelRuntime = {
+-    handlePollVideoStatus: vi.fn(),
+-  };
+-
+-  beforeEach(() => {
+-    vi.clearAllMocks();
+-    vi.useFakeTimers();
+-
+-    vi.mocked(AsyncTaskModel).mockImplementation(() => mockAsyncTaskModel as any);
+-    vi.mocked(GenerationModel).mockImplementation(() => mockGenerationModel as any);
+-    vi.mocked(VideoGenerationService).mockImplementation(() => mockVideoService as any);
+-    vi.mocked(initModelRuntimeFromDB).mockResolvedValue(mockModelRuntime as any);
+-  });
+-
+-  afterEach(() => {
+-    vi.useRealTimers();
+-  });
+-
+-  describe('startBackgroundVideoPolling', () => {
+-    it('should start background polling without throwing', () => {
+-      const originalRejectionHandler = process.listeners('unhandledRejection');
+-      process.removeAllListeners('unhandledRejection');
+-
+-      expect(() => {
+-        startBackgroundVideoPolling(mockDb, mockParams);
+-      }).not.toThrow();
+-
+-      originalRejectionHandler.forEach((handler) => {
+-        process.on('unhandledRejection', handler);
+-      });
+-    });
+-
+-    it('should catch and log unhandled errors', async () => {
+-      const mockError = new Error('Test error');
+-      vi.mocked(initModelRuntimeFromDB).mockRejectedValue(mockError);
+-
+-      startBackgroundVideoPolling(mockDb, mockParams);
+-
+-      await vi.advanceTimersByTimeAsync(100);
+-    });
+-  });
+-
+-  describe('processBackgroundPolling - success path', () => {
+-    it('should complete video generation successfully', async () => {
+-      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
+-        status: 'success',
+-        videoUrl: 'https://example.com/video.mp4',
+-        headers: { 'Content-Type': 'video/mp4' },
+-      });
+-
+-      mockVideoService.processVideoForGeneration.mockResolvedValue({
+-        coverKey: 'cover-key-123',
+-        duration: 10,
+-        fileHash: 'hash-abc',
+-        fileSize: 1024,
+-        height: 1080,
+-        mimeType: 'video/mp4',
+-        thumbnailKey: 'thumb-key-456',
+-        videoKey: 'video-key-789',
+-        width: 1920,
+-      });
+-
+-      await processBackgroundPolling(mockDb, mockParams);
+-
+-      expect(mockModelRuntime.handlePollVideoStatus).toHaveBeenCalledWith('inference-abc');
+-
+-      expect(mockVideoService.processVideoForGeneration).toHaveBeenCalledWith(
+-        'https://example.com/video.mp4',
+-        { headers: { 'Content-Type': 'video/mp4' } },
+-      );
+-
+-      expect(mockGenerationModel.createAssetAndFile).toHaveBeenCalledWith(
+-        'gen-456',
+-        expect.objectContaining({
+-          type: 'video',
+-          url: 'video-key-789',
+-          coverUrl: 'cover-key-123',
+-          thumbnailUrl: 'thumb-key-456',
+-          duration: 10,
+-          width: 1920,
+-          height: 1080,
+-        }),
+-        expect.objectContaining({
+-          name: expect.stringContaining('topic-789'),
+-          url: 'video-key-789',
+-        }),
+-        FileSource.VideoGeneration,
+-      );
+-
+-      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
+-        duration: expect.any(Number),
+-        status: AsyncTaskStatus.Success,
+-      });
+-    });
+-  });
+-
+-  describe('processBackgroundPolling - polling behavior', () => {
+-    it('should retry polling multiple times until success', async () => {
+-      mockModelRuntime.handlePollVideoStatus
+-        .mockResolvedValueOnce({ status: 'processing' })
+-        .mockResolvedValueOnce({ status: 'processing' })
+-        .mockResolvedValueOnce({
+-          status: 'success',
+-          videoUrl: 'https://example.com/video.mp4',
+-        });
+-
+-      mockVideoService.processVideoForGeneration.mockResolvedValue({
+-        coverKey: 'cover-key',
+-        duration: 10,
+-        fileHash: 'hash',
+-        fileSize: 1024,
+-        height: 1080,
+-        mimeType: 'video/mp4',
+-        thumbnailKey: 'thumb-key',
+-        videoKey: 'video-key',
+-        width: 1920,
+-      });
+-
+-      const pollPromise = processBackgroundPolling(mockDb, mockParams);
+-
+-      await vi.advanceTimersByTimeAsync(10000);
+-
+-      await pollPromise;
+-
+-      expect(mockModelRuntime.handlePollVideoStatus).toHaveBeenCalledTimes(3);
+-    });
+-  });
+-
+-  describe('processBackgroundPolling - error handling', () => {
+-    it('should handle polling failure with error message', async () => {
+-      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
+-        status: 'failed',
+-        error: 'Model API error',
+-      });
+-
+-      await processBackgroundPolling(mockDb, mockParams);
+-
+-      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
+-        error: expect.any(AsyncTaskError),
+-        status: AsyncTaskStatus.Error,
+-      });
+-
+-      const errorCall = mockAsyncTaskModel.update.mock.calls[0][1];
+-      expect(errorCall.error).toBeInstanceOf(AsyncTaskError);
+-      expect(errorCall.error?.name).toBe('ServerError');
+-    });
+-
+-    it('should handle model runtime initialization error', async () => {
+-      vi.mocked(initModelRuntimeFromDB).mockRejectedValue(new Error('Runtime init failed'));
+-
+-      await processBackgroundPolling(mockDb, mockParams);
+-
+-      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
+-        error: expect.any(AsyncTaskError),
+-        status: AsyncTaskStatus.Error,
+-      });
+-    });
+-
+-    it('should handle video processing error', async () => {
+-      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
+-        status: 'success',
+-        videoUrl: 'https://example.com/video.mp4',
+-      });
+-
+-      mockVideoService.processVideoForGeneration.mockRejectedValue(
+-        new Error('Video processing failed'),
+-      );
+-
+-      await processBackgroundPolling(mockDb, mockParams);
+-
+-      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
+-        error: expect.any(AsyncTaskError),
+-        status: AsyncTaskStatus.Error,
+-      });
+-    });
+-
+-    it('should handle asset creation error', async () => {
+-      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
+-        status: 'success',
+-        videoUrl: 'https://example.com/video.mp4',
+-      });
+-
+-      mockVideoService.processVideoForGeneration.mockResolvedValue({
+-        coverKey: 'cover-key',
+-        duration: 10,
+-        fileHash: 'hash',
+-        fileSize: 1024,
+-        height: 1080,
+-        mimeType: 'video/mp4',
+-        thumbnailKey: 'thumb-key',
+-        videoKey: 'video-key',
+-        width: 1920,
+-      });
+-
+-      mockGenerationModel.createAssetAndFile.mockRejectedValue(new Error('DB error'));
+-
+-      await processBackgroundPolling(mockDb, mockParams);
+-
+-      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith('task-123', {
+-        error: expect.any(AsyncTaskError),
+-        status: AsyncTaskStatus.Error,
+-      });
+-    });
+-  });
+-
+-  describe('polling edge cases', () => {
+-    it('should handle network errors during polling gracefully', async () => {
+-      mockModelRuntime.handlePollVideoStatus
+-        .mockRejectedValueOnce(new Error('Network error'))
+-        .mockResolvedValueOnce({ status: 'processing' })
+-        .mockResolvedValueOnce({
+-          status: 'success',
+-          videoUrl: 'https://example.com/video.mp4',
+-        });
+-
+-      mockVideoService.processVideoForGeneration.mockResolvedValue({
+-        coverKey: 'cover-key',
+-        duration: 10,
+-        fileHash: 'hash',
+-        fileSize: 1024,
+-        height: 1080,
+-        mimeType: 'video/mp4',
+-        thumbnailKey: 'thumb-key',
+-        videoKey: 'video-key',
+-        width: 1920,
+-      });
+-
+-      mockGenerationModel.createAssetAndFile.mockResolvedValue(undefined);
+-
+-      const pollPromise = processBackgroundPolling(mockDb, mockParams);
+-      await vi.advanceTimersByTimeAsync(10000);
+-      await pollPromise;
+-
+-      expect(mockModelRuntime.handlePollVideoStatus).toHaveBeenCalledTimes(3);
+-      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith(
+-        'task-123',
+-        expect.objectContaining({ status: AsyncTaskStatus.Success }),
+-      );
+-    });
+-  });
+-
+-  describe('async task duration calculation', () => {
+-    it('should calculate correct duration from start time', async () => {
+-      const startTime = new Date('2024-01-01T00:00:00Z');
+-      const endTime = new Date('2024-01-01T00:05:00Z');
+-
+-      mockModelRuntime.handlePollVideoStatus.mockResolvedValue({
+-        status: 'success',
+-        videoUrl: 'https://example.com/video.mp4',
+-      });
+-
+-      mockVideoService.processVideoForGeneration.mockResolvedValue({
+-        coverKey: 'cover-key',
+-        duration: 10,
+-        fileHash: 'hash',
+-        fileSize: 1024,
+-        height: 1080,
+-        mimeType: 'video/mp4',
+-        thumbnailKey: 'thumb-key',
+-        videoKey: 'video-key',
+-        width: 1920,
+-      });
+-
+-      mockGenerationModel.createAssetAndFile.mockResolvedValue(undefined);
+-
+-      vi.setSystemTime(endTime);
+-
+-      await processBackgroundPolling(mockDb, { ...mockParams, asyncTaskCreatedAt: startTime });
+-
+-      expect(mockAsyncTaskModel.update).toHaveBeenCalledWith(
+-        'task-123',
+-        expect.objectContaining({
+-          duration: expect.any(Number),
+-          status: AsyncTaskStatus.Success,
+-        }),
+-      );
+-    });
+-  });
+-});
+diff --git a/src/server/services/generation/videoBackgroundPolling.ts b/src/server/services/generation/videoBackgroundPolling.ts
+deleted file mode 100644
+index 7aac460c2..000000000
+--- a/src/server/services/generation/videoBackgroundPolling.ts
++++ /dev/null
+@@ -1,161 +0,0 @@
+-import debug from 'debug';
+-
+-import { AsyncTaskModel } from '@/database/models/asyncTask';
+-import { GenerationModel } from '@/database/models/generation';
+-import type { LobeChatDatabase } from '@/database/type';
+-import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
+-import { VideoGenerationService } from '@/server/services/generation/video';
+-import { AsyncTaskError, AsyncTaskErrorType, AsyncTaskStatus } from '@/types/asyncTask';
+-import { FileSource } from '@/types/files';
+-import type { VideoGenerationAsset } from '@/types/generation';
+-import { sanitizeFileName } from '@/utils/sanitizeFileName';
+-
+-const log = debug('lobe-video:background-polling');
+-
+-interface BackgroundPollingParams {
+-  asyncTaskCreatedAt: Date;
+-  asyncTaskId: string;
+-  generationId: string;
+-  generationTopicId: string;
+-  inferenceId: string;
+-  model: string;
+-  prechargeResult?: any;
+-  provider: string;
+-  userId: string;
+-}
+-
+-export function startBackgroundVideoPolling(
+-  db: LobeChatDatabase,
+-  params: BackgroundPollingParams,
+-): void {
+-  processBackgroundPolling(db, params).catch((error) => {
+-    log('Unhandled error in background video polling: %O', error);
+-  });
+-}
+-
+-export async function processBackgroundPolling(
+-  db: LobeChatDatabase,
+-  params: BackgroundPollingParams,
+-): Promise<void> {
+-  const {
+-    asyncTaskCreatedAt,
+-    asyncTaskId,
+-    generationId,
+-    generationTopicId,
+-    inferenceId,
+-    model,
+-    prechargeResult,
+-    provider,
+-    userId,
+-  } = params;
+-
+-  log(
+-    'Starting background video polling for task: %s (provider: %s, inferenceId: %s)',
+-    asyncTaskId,
+-    provider,
+-    inferenceId,
+-  );
+-
+-  try {
+-    const asyncTaskModel = new AsyncTaskModel(db, userId);
+-    const videoService = new VideoGenerationService(db, userId);
+-    const generationModel = new GenerationModel(db, userId);
+-
+-    const modelRuntime = await initModelRuntimeFromDB(db, userId, provider);
+-    const pollResult = await pollUntilCompletion(modelRuntime, inferenceId);
+-
+-    if (!pollResult) {
+-      throw new Error('Polling completed but no video URL returned');
+-    }
+-
+-    log('Video polling succeeded for task: %s, processing video...', asyncTaskId);
+-
+-    const processResult = await videoService.processVideoForGeneration(pollResult.videoUrl, {
+-      headers: pollResult.headers,
+-    });
+-
+-    const asset: VideoGenerationAsset = {
+-      coverUrl: processResult.coverKey,
+-      duration: processResult.duration,
+-      height: processResult.height,
+-      originalUrl: pollResult.videoUrl,
+-      thumbnailUrl: processResult.thumbnailKey,
+-      type: 'video',
+-      url: processResult.videoKey,
+-      width: processResult.width,
+-    };
+-
+-    await generationModel.createAssetAndFile(
+-      generationId,
+-      asset,
+-      {
+-        fileHash: processResult.fileHash,
+-        fileType: processResult.mimeType,
+-        name: `${sanitizeFileName(generationTopicId, generationId)}.mp4`,
+-        size: processResult.fileSize,
+-        url: processResult.videoKey,
+-      },
+-      FileSource.VideoGeneration,
+-    );
+-
+-    await asyncTaskModel.update(asyncTaskId, {
+-      duration: Date.now() - asyncTaskCreatedAt.getTime(),
+-      status: AsyncTaskStatus.Success,
+-    });
+-
+-    log('Video processing completed successfully for task: %s', asyncTaskId);
+-  } catch (error) {
+-    log('Background video polling error for task: %s', asyncTaskId, error);
+-
+-    const asyncTaskModel = new AsyncTaskModel(db, userId);
+-    await asyncTaskModel.update(asyncTaskId, {
+-      error: new AsyncTaskError(
+-        AsyncTaskErrorType.ServerError,
+-        'Background polling failed: ' + (error instanceof Error ? error.message : 'Unknown error'),
+-      ),
+-      status: AsyncTaskStatus.Error,
+-    });
+-  }
+-}
+-
+-async function pollUntilCompletion(
+-  modelRuntime: any,
+-  inferenceId: string,
+-): Promise<{ headers?: Record<string, string>; videoUrl: string } | null> {
+-  const maxRetries = 120;
+-  const pollingInterval = 5000;
+-
+-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+-    try {
+-      log('Polling attempt %d/%d for task: %s', attempt + 1, maxRetries, inferenceId);
+-
+-      const result = await modelRuntime.handlePollVideoStatus(inferenceId);
+-
+-      if (result.status === 'success') {
+-        log('Video generation succeeded for task: %s', inferenceId);
+-        return { headers: result.headers, videoUrl: result.videoUrl };
+-      }
+-
+-      if (result.status === 'failed') {
+-        throw new Error(`Video generation failed: ${result.error}`);
+-      }
+-
+-      log('Task %s still in progress', inferenceId);
+-      await sleep(pollingInterval);
+-    } catch (error) {
+-      if (error instanceof Error && error.message.includes('failed')) {
+-        throw error;
+-      }
+-      log('Polling attempt %d failed for task: %s: %O', attempt + 1, inferenceId, error);
+-      await sleep(pollingInterval);
+-    }
+-  }
+-
+-  throw new Error(
+-    `Video generation timeout after ${maxRetries} attempts (${(maxRetries * pollingInterval) / 1000}s)`,
+-  );
+-}
+-
+-function sleep(ms: number): Promise<void> {
+-  return new Promise((resolve) => setTimeout(resolve, ms));
+-}
+-- 
+2.53.0
+
