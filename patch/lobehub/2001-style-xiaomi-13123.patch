@@ -123,6 +123,85 @@ index 42ad3dac410..49cdb1468a7 100644
      },
      type: 'chat',
    },
+diff --git a/packages/model-runtime/src/core/streams/openai/openai.test.ts b/packages/model-runtime/src/core/streams/openai/openai.test.ts
+index c91f5db212c..a8d1bf24bcb 100644
+--- a/packages/model-runtime/src/core/streams/openai/openai.test.ts
++++ b/packages/model-runtime/src/core/streams/openai/openai.test.ts
+@@ -3312,6 +3312,56 @@ describe('OpenAIStream', () => {
+     ]);
+   });
+ 
++  it('should handle OpenAI Search Preview annotations with flat structure (XiaomiMiMo)', async () => {
++    const mockOpenAIStream = new ReadableStream({
++      start(controller) {
++        controller.enqueue({
++          id: 'openai-search-flat',
++          choices: [
++            {
++              index: 0,
++              delta: {
++                annotations: [
++                  {
++                    type: 'url_citation',
++                    url: 'https://example.com',
++                    title: 'Example Site',
++                    site_name: 'example.com',
++                    summary: 'Example summary',
++                  },
++                  {
++                    type: 'url_citation',
++                    url: 'https://another.com',
++                    title: 'Another Site',
++                  },
++                ],
++              },
++              finish_reason: 'stop',
++            },
++          ],
++        });
++
++        controller.close();
++      },
++    });
++
++    const protocolStream = OpenAIStream(mockOpenAIStream);
++
++    const decoder = new TextDecoder();
++    const chunks = [];
++
++    // @ts-ignore
++    for await (const chunk of protocolStream) {
++      chunks.push(decoder.decode(chunk, { stream: true }));
++    }
++
++    expect(chunks).toEqual([
++      'id: openai-search-flat\n',
++      'event: grounding\n',
++      `data: {"citations":[{"title":"Example Site","url":"https://example.com"},{"title":"Another Site","url":"https://another.com"}]}\n\n`,
++    ]);
++  });
++
+   it('should handle MiniMax messages with annotations in finish_reason', async () => {
+     const mockOpenAIStream = new ReadableStream({
+       start(controller) {
+diff --git a/packages/model-runtime/src/core/streams/openai/openai.ts b/packages/model-runtime/src/core/streams/openai/openai.ts
+index b203c1f5770..0e8e84c3f74 100644
+--- a/packages/model-runtime/src/core/streams/openai/openai.ts
++++ b/packages/model-runtime/src/core/streams/openai/openai.ts
+@@ -299,8 +299,11 @@ const transformOpenAIStream = (
+               citations: citations.map(
+                 (item: any) =>
+                   ({
+-                    title: item.url_citation.title,
+-                    url: item.url_citation.url,
++                    // OpenAI: { type: 'url_citation', url_citation: { title, url } }
++                    // XiaomiMiMo: { type: 'url_citation', title, url, site_name, summary }
++                    // {"id":"65b10aeecba14877b4cd282d4e32f203","object":"chat.completion.chunk","created":1773907177,"model":"mimo-v2-omni","choices":[{"index":0,"delta":{"annotations":[{"site_name":"biz.finance.sina.com.cn","summary":"(ZNH) · 格隆汇APP | 2026年03月19日11:09港股异动丨航空股跌势不止成本压力巨大国内航司集体上调燃油附加费 · 每日经济新闻| 2026年03月19日09:55港股航空股再度走低南方 ...","title":"南方航空相关新闻_美股 - 新浪财经","type":"url_citation","url":"https://biz.finance.sina.com.cn/usstock/usstock_news.php?symbol=ZNH"}],"role":"assistant","content":""}}],"usage":{"web_search_usage":{"tool_usage":5,"page_usage":20}}}
++                    title: item.url_citation?.title ?? item.title,
++                    url: item.url_citation?.url ?? item.url,
+                   }) as ChatCitationItem,
+               ),
+             },
 diff --git a/packages/model-runtime/src/providers/xiaomimimo/index.ts b/packages/model-runtime/src/providers/xiaomimimo/index.ts
 index 2a2cdb9de96..81b855a6a5f 100644
 --- a/packages/model-runtime/src/providers/xiaomimimo/index.ts
