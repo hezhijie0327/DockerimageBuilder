@@ -124,10 +124,10 @@ index 42ad3dac410..49cdb1468a7 100644
      type: 'chat',
    },
 diff --git a/packages/model-runtime/src/providers/xiaomimimo/index.ts b/packages/model-runtime/src/providers/xiaomimimo/index.ts
-index 2a2cdb9de96..27e0eaffe3f 100644
+index 2a2cdb9de96..81b855a6a5f 100644
 --- a/packages/model-runtime/src/providers/xiaomimimo/index.ts
 +++ b/packages/model-runtime/src/providers/xiaomimimo/index.ts
-@@ -14,13 +14,23 @@ export const params = {
+@@ -14,13 +14,52 @@ export const params = {
    baseURL: 'https://api.xiaomimimo.com/v1',
    chatCompletion: {
      handlePayload: (payload) => {
@@ -144,9 +144,38 @@ index 2a2cdb9de96..27e0eaffe3f 100644
 +          ]
 +        : tools;
 +
++      const messages = payload.messages.map((message: any) => {
++        const { reasoning, ...rest } = message;
++
++        const reasoningContent =
++          typeof rest.reasoning_content === 'string'
++            ? rest.reasoning_content
++            : typeof reasoning?.content === 'string'
++              ? reasoning.content
++              : undefined;
++
++        // Thinking Mode with tool calls requires assistant history messages to carry reasoning_content
++        if (message.role === 'assistant' && thinkingType === 'enabled') {
++          return {
++            ...rest,
++            reasoning_content: reasoningContent ?? '',
++          };
++        }
++
++        if (reasoningContent !== undefined) {
++          return {
++            ...rest,
++            reasoning_content: reasoningContent,
++          };
++        }
++
++        return rest;
++      });
++
        return {
          ...rest,
          max_completion_tokens: max_tokens,
++        messages,
          stream: stream ?? true,
 +        tools: xiaomiTools,
          ...(typeof temperature === 'number'
