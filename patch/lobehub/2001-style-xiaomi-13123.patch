@@ -124,10 +124,10 @@ index 42ad3dac410..49cdb1468a7 100644
      type: 'chat',
    },
 diff --git a/packages/model-runtime/src/core/streams/openai/openai.test.ts b/packages/model-runtime/src/core/streams/openai/openai.test.ts
-index c91f5db212c..cab9fd1e952 100644
+index c91f5db212c..b64e72bd90f 100644
 --- a/packages/model-runtime/src/core/streams/openai/openai.test.ts
 +++ b/packages/model-runtime/src/core/streams/openai/openai.test.ts
-@@ -3312,6 +3312,71 @@ describe('OpenAIStream', () => {
+@@ -3312,6 +3312,98 @@ describe('OpenAIStream', () => {
      ]);
    });
  
@@ -164,6 +164,30 @@ index c91f5db212c..cab9fd1e952 100644
 +            {
 +              index: 0,
 +              delta: {
++                role: 'assistant',
++                content: 'Some response text with annotations, should has no annotations',
++                annotations: [
++                  {
++                    type: 'url_citation',
++                    url: 'https://biz.finance.sina.com.cn/usstock/usstock_news.php?symbol=ZNH',
++                    title: '南方航空相关新闻_美股 - 新浪财经',
++                    site_name: 'biz.finance.sina.com.cn',
++                    summary:
++                      '(ZNH) · 格隆汇 APP | 2026 年 03 月 19 日 11:09 港股异动丨航空股跌势不止成本压力巨大国内航司集体上调燃油附加费',
++                  },
++                ],
++              },
++            },
++          ],
++        });
++
++        // Third chunk with finish_reason
++        controller.enqueue({
++          id: 'mimo-v2-omni',
++          choices: [
++            {
++              index: 0,
++              delta: {
 +                content: 'Some response text',
 +              },
 +              finish_reason: 'stop',
@@ -192,7 +216,10 @@ index c91f5db212c..cab9fd1e952 100644
 +      `data: {"citations":[{"title":"南方航空相关新闻_美股 - 新浪财经","url":"https://biz.finance.sina.com.cn/usstock/usstock_news.php?symbol=ZNH"}]}\n\n`,
 +      'id: mimo-v2-omni\n',
 +      'event: text\n',
-+      `data: Some response text\n\n`,
++      `data: "Some response text with annotations, should has no annotations"\n\n`,
++      'id: mimo-v2-omni\n',
++      'event: text\n',
++      `data: "Some response text"\n\n`,
 +    ]);
 +  });
 +
@@ -200,7 +227,7 @@ index c91f5db212c..cab9fd1e952 100644
      const mockOpenAIStream = new ReadableStream({
        start(controller) {
 diff --git a/packages/model-runtime/src/core/streams/openai/openai.ts b/packages/model-runtime/src/core/streams/openai/openai.ts
-index b203c1f5770..5678b46e53b 100644
+index b203c1f5770..6b5908f5763 100644
 --- a/packages/model-runtime/src/core/streams/openai/openai.ts
 +++ b/packages/model-runtime/src/core/streams/openai/openai.ts
 @@ -46,7 +46,6 @@ const processMarkdownBase64Images = (text: string): { cleanedText: string; urls:
@@ -220,16 +247,31 @@ index b203c1f5770..5678b46e53b 100644
  
    return { cleanedText, urls };
  };
-@@ -259,6 +258,32 @@ const transformOpenAIStream = (
+@@ -67,6 +66,12 @@ const transformOpenAIStream = (
+   streamContext: StreamContext,
+   payload?: ChatPayloadForTransformStream,
+ ): StreamProtocolChunk | StreamProtocolChunk[] => {
++  if (streamContext.chunkIndex === undefined) {
++    streamContext.chunkIndex = 0;
++  } else {
++    streamContext.chunkIndex++;
++  }
++
+   // handle the first chunk error
+   if (FIRST_CHUNK_ERROR_KEY in chunk) {
+     delete chunk[FIRST_CHUNK_ERROR_KEY];
+@@ -259,6 +264,34 @@ const transformOpenAIStream = (
          .filter(Boolean) as StreamProtocolChunk[];
      }
  
-+    // XiaomiMiMo annotations will return in the first chunk
++    // XiaomiMiMo will return full annotations in the first chunk
 +    // {"id":"65b10aeecba14877b4cd282d4e32f203","object":"chat.completion.chunk","created":1773907177,"model":"mimo-v2-omni","choices":[{"index":0,"delta":{"annotations":[{"site_name":"biz.finance.sina.com.cn","summary":"(ZNH) · 格隆汇 APP | 2026 年 03 月 19 日 11:09 港股异动丨航空股跌势不止成本压力巨大国内航司集体上调燃油附加费 · 每日经济新闻 | 2026 年 03 月 19 日 09:55 港股航空股再度走低南方 ...","title":"南方航空相关新闻_美股 - 新浪财经","type":"url_citation","url":"https://biz.finance.sina.com.cn/usstock/usstock_news.php?symbol=ZNH"}],"role":"assistant","content":""}}],"usage":{"web_search_usage":{"tool_usage":5,"page_usage":20}}}
 +    if (
++      streamContext.chunkIndex === 0 &&
 +      (item as any).delta &&
 +      Array.isArray((item as any).delta.annotations) &&
-+      (item as any).delta.annotations.length > 0
++      (item as any).delta.annotations.length > 0 &&
++      !item.finish_reason
 +    ) {
 +      const citations = (item as any).delta.annotations;
 +
@@ -253,6 +295,18 @@ index b203c1f5770..5678b46e53b 100644
      // Handle finish reason
      if (item.finish_reason) {
        // one-api's streaming interface can have both finish_reason and content
+diff --git a/packages/model-runtime/src/core/streams/protocol.ts b/packages/model-runtime/src/core/streams/protocol.ts
+index 40e8a9f7cb8..8b8ed328163 100644
+--- a/packages/model-runtime/src/core/streams/protocol.ts
++++ b/packages/model-runtime/src/core/streams/protocol.ts
+@@ -19,6 +19,7 @@ export type ChatPayloadForTransformStream = {
+  * context in the stream to save temporarily data
+  */
+ export interface StreamContext {
++  chunkIndex?: number;
+   id: string;
+   /**
+    * As pplx citations is in every chunk, but we only need to return it once
 diff --git a/packages/model-runtime/src/providers/xiaomimimo/index.test.ts b/packages/model-runtime/src/providers/xiaomimimo/index.test.ts
 index 01ed63748d0..b3587cb948c 100644
 --- a/packages/model-runtime/src/providers/xiaomimimo/index.test.ts
