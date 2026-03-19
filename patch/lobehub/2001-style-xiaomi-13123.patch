@@ -227,7 +227,7 @@ index c91f5db212c..b64e72bd90f 100644
      const mockOpenAIStream = new ReadableStream({
        start(controller) {
 diff --git a/packages/model-runtime/src/core/streams/openai/openai.ts b/packages/model-runtime/src/core/streams/openai/openai.ts
-index b203c1f5770..6b5908f5763 100644
+index b203c1f5770..0d77a9e3524 100644
 --- a/packages/model-runtime/src/core/streams/openai/openai.ts
 +++ b/packages/model-runtime/src/core/streams/openai/openai.ts
 @@ -46,7 +46,6 @@ const processMarkdownBase64Images = (text: string): { cleanedText: string; urls:
@@ -260,8 +260,8 @@ index b203c1f5770..6b5908f5763 100644
    // handle the first chunk error
    if (FIRST_CHUNK_ERROR_KEY in chunk) {
      delete chunk[FIRST_CHUNK_ERROR_KEY];
-@@ -259,6 +264,34 @@ const transformOpenAIStream = (
-         .filter(Boolean) as StreamProtocolChunk[];
+@@ -362,6 +367,33 @@ const transformOpenAIStream = (
+       return { data: item.finish_reason, id: chunk.id, type: 'stop' };
      }
  
 +    // XiaomiMiMo will return full annotations in the first chunk
@@ -270,8 +270,7 @@ index b203c1f5770..6b5908f5763 100644
 +      streamContext.chunkIndex === 0 &&
 +      (item as any).delta &&
 +      Array.isArray((item as any).delta.annotations) &&
-+      (item as any).delta.annotations.length > 0 &&
-+      !item.finish_reason
++      (item as any).delta.annotations.length > 0
 +    ) {
 +      const citations = (item as any).delta.annotations;
 +
@@ -292,9 +291,9 @@ index b203c1f5770..6b5908f5763 100644
 +      ];
 +    }
 +
-     // Handle finish reason
-     if (item.finish_reason) {
-       // one-api's streaming interface can have both finish_reason and content
+     if (item.delta) {
+       let reasoning_content = (() => {
+         if ('reasoning_content' in item.delta) return item.delta.reasoning_content;
 diff --git a/packages/model-runtime/src/core/streams/protocol.ts b/packages/model-runtime/src/core/streams/protocol.ts
 index 40e8a9f7cb8..8b8ed328163 100644
 --- a/packages/model-runtime/src/core/streams/protocol.ts
