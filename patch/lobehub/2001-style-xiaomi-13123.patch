@@ -124,18 +124,18 @@ index 42ad3dac410..49cdb1468a7 100644
      type: 'chat',
    },
 diff --git a/packages/model-runtime/src/core/streams/openai/openai.test.ts b/packages/model-runtime/src/core/streams/openai/openai.test.ts
-index c91f5db212c..a8d1bf24bcb 100644
+index c91f5db212c..0a30136f657 100644
 --- a/packages/model-runtime/src/core/streams/openai/openai.test.ts
 +++ b/packages/model-runtime/src/core/streams/openai/openai.test.ts
 @@ -3312,6 +3312,56 @@ describe('OpenAIStream', () => {
      ]);
    });
  
-+  it('should handle OpenAI Search Preview annotations with flat structure (XiaomiMiMo)', async () => {
++  it('should handle XiaomiMiMo annotations', async () => {
 +    const mockOpenAIStream = new ReadableStream({
 +      start(controller) {
 +        controller.enqueue({
-+          id: 'openai-search-flat',
++          id: 'mimo-v2-omni',
 +          choices: [
 +            {
 +              index: 0,
@@ -185,7 +185,7 @@ index c91f5db212c..a8d1bf24bcb 100644
      const mockOpenAIStream = new ReadableStream({
        start(controller) {
 diff --git a/packages/model-runtime/src/core/streams/openai/openai.ts b/packages/model-runtime/src/core/streams/openai/openai.ts
-index b203c1f5770..0e8e84c3f74 100644
+index b203c1f5770..721e2d86db2 100644
 --- a/packages/model-runtime/src/core/streams/openai/openai.ts
 +++ b/packages/model-runtime/src/core/streams/openai/openai.ts
 @@ -299,8 +299,11 @@ const transformOpenAIStream = (
@@ -197,11 +197,212 @@ index b203c1f5770..0e8e84c3f74 100644
 +                    // OpenAI: { type: 'url_citation', url_citation: { title, url } }
 +                    // XiaomiMiMo: { type: 'url_citation', title, url, site_name, summary }
 +                    // {"id":"65b10aeecba14877b4cd282d4e32f203","object":"chat.completion.chunk","created":1773907177,"model":"mimo-v2-omni","choices":[{"index":0,"delta":{"annotations":[{"site_name":"biz.finance.sina.com.cn","summary":"(ZNH) · 格隆汇APP | 2026年03月19日11:09港股异动丨航空股跌势不止成本压力巨大国内航司集体上调燃油附加费 · 每日经济新闻| 2026年03月19日09:55港股航空股再度走低南方 ...","title":"南方航空相关新闻_美股 - 新浪财经","type":"url_citation","url":"https://biz.finance.sina.com.cn/usstock/usstock_news.php?symbol=ZNH"}],"role":"assistant","content":""}}],"usage":{"web_search_usage":{"tool_usage":5,"page_usage":20}}}
-+                    title: item.url_citation?.title ?? item.title,
-+                    url: item.url_citation?.url ?? item.url,
++                    title: item.title ?? item.url_citation?.title,
++                    url: item.url ?? item.url_citation?.url,
                    }) as ChatCitationItem,
                ),
              },
+diff --git a/packages/model-runtime/src/providers/xiaomimimo/index.test.ts b/packages/model-runtime/src/providers/xiaomimimo/index.test.ts
+index 01ed63748d0..13dc2f69132 100644
+--- a/packages/model-runtime/src/providers/xiaomimimo/index.test.ts
++++ b/packages/model-runtime/src/providers/xiaomimimo/index.test.ts
+@@ -1,6 +1,6 @@
+ // @vitest-environment node
+ import { ModelProvider } from 'model-bank';
+-import { describe, expect, it, vi } from 'vitest';
++import { beforeEach, describe, expect, it, vi } from 'vitest';
+ 
+ import { testProvider } from '../../providerTestUtils';
+ import { LobeXiaomiMiMoAI, params } from './index';
+@@ -122,26 +122,173 @@ describe('LobeXiaomiMiMoAI - custom features', () => {
+       const resultOther = params.chatCompletion!.handlePayload!(payloadOther as any);
+       expect(resultOther.thinking).toBeUndefined();
+     });
+-  });
+ 
+-  describe('models', () => {
+-    it('should fetch and process model list', async () => {
+-      const mockModels = [{ id: 'model-1' }, { id: 'model-2' }];
+-      const client = {
+-        models: {
+-          list: vi.fn().mockResolvedValue({ data: mockModels }),
++    it('should transform reasoning object to reasoning_content string', () => {
++      const payload = {
++        messages: [
++          { role: 'user', content: 'Hello' },
++          {
++            role: 'assistant',
++            content: 'Hi there',
++            reasoning: { content: 'Let me think...', duration: 1000 },
++          },
++          { role: 'user', content: 'How are you?' },
++        ],
++        model: 'gpt-4o',
++        thinking: { type: 'enabled' },
++      };
++
++      const result = params.chatCompletion!.handlePayload!(payload as any);
++
++      expect(result.messages).toEqual([
++        { role: 'user', content: 'Hello' },
++        {
++          role: 'assistant',
++          content: 'Hi there',
++          reasoning_content: 'Let me think...',
+         },
++        { role: 'user', content: 'How are you?' },
++      ]);
++    });
++
++    it('should not modify messages without reasoning field', () => {
++      const payload = {
++        messages: [
++          { role: 'user', content: 'Hello' },
++          { role: 'assistant', content: 'Hi there' },
++        ],
++        model: 'gpt-4o',
+       };
+ 
+-      const result = await params.models!({ client: client as any });
++      const result = params.chatCompletion!.handlePayload!(payload as any);
++
++      expect(result.messages).toEqual(payload.messages);
++    });
++
++    it('should handle empty reasoning content', () => {
++      const payload = {
++        messages: [
++          {
++            role: 'assistant',
++            content: 'Response',
++            reasoning: { duration: 1000 },
++          },
++        ],
++        model: 'gpt-4o',
++        thinking: { type: 'enabled' },
++      };
++
++      const result = params.chatCompletion!.handlePayload!(payload as any);
++
++      expect(result.messages[0]).toEqual({
++        role: 'assistant',
++        content: 'Response',
++      });
++    });
++  });
++
++  describe('Debug Configuration', () => {
++    it('should disable debug by default', () => {
++      delete process.env.DEBUG_XIAOMIMIMO_CHAT_COMPLETION;
++      const result = params.debug.chatCompletion();
++      expect(result).toBe(false);
++    });
++
++    it('should enable debug when env is set', () => {
++      process.env.DEBUG_XIAOMIMIMO_CHAT_COMPLETION = '1';
++      const result = params.debug.chatCompletion();
++      expect(result).toBe(true);
++      delete process.env.DEBUG_XIAOMIMIMO_CHAT_COMPLETION;
++    });
++  });
++
++  describe('models', () => {
++    const mockClient = {
++      models: {
++        list: vi.fn(),
++      },
++    };
++
++    beforeEach(() => {
++      vi.clearAllMocks();
++    });
++
++    it('should fetch and process models successfully', async () => {
++      mockClient.models.list.mockResolvedValue({
++        data: [{ id: 'xiaomimimo-chat' }, { id: 'xiaomimimo-coder' }, { id: 'xiaomimimo-r1' }],
++      });
++
++      const models = await params.models({ client: mockClient as any });
++
++      expect(mockClient.models.list).toHaveBeenCalledTimes(1);
++      expect(models).toHaveLength(3);
++      expect(models[0].id).toBe('xiaomimimo-chat');
++      expect(models[1].id).toBe('xiaomimimo-coder');
++      expect(models[2].id).toBe('xiaomimimo-r1');
++    });
++
++    it('should handle single model', async () => {
++      mockClient.models.list.mockResolvedValue({
++        data: [{ id: 'xiaomimimo-chat' }],
++      });
++
++      const models = await params.models({ client: mockClient as any });
++
++      expect(models).toHaveLength(1);
++      expect(models[0].id).toBe('xiaomimimo-chat');
++    });
++
++    it('should handle empty model list', async () => {
++      mockClient.models.list.mockResolvedValue({
++        data: [],
++      });
++
++      const models = await params.models({ client: mockClient as any });
++
++      expect(models).toEqual([]);
++    });
++
++    it('should process models with MODEL_LIST_CONFIGS', async () => {
++      mockClient.models.list.mockResolvedValue({
++        data: [{ id: 'xiaomimimo-chat' }],
++      });
++
++      const models = await params.models({ client: mockClient as any });
++
++      // The processModelList function should merge with known model list
++      expect(models[0]).toHaveProperty('id');
++      expect(models[0].id).toBe('xiaomimimo-chat');
++    });
++
++    it('should preserve model properties from API response', async () => {
++      mockClient.models.list.mockResolvedValue({
++        data: [
++          { id: 'xiaomimimo-chat', extra_field: 'value' },
++          { id: 'xiaomimimo-coder', another_field: 123 },
++        ],
++      });
++
++      const models = await params.models({ client: mockClient as any });
++
++      expect(models).toHaveLength(2);
++      expect(models[0].id).toBe('xiaomimimo-chat');
++      expect(models[1].id).toBe('xiaomimimo-coder');
++    });
++
++    it('should handle models with different id patterns', async () => {
++      mockClient.models.list.mockResolvedValue({
++        data: [
++          { id: 'xiaomimimo-chat' },
++          { id: 'xiaomimimo-r1' },
++          { id: 'xiaomimimo-reasoner' },
++          { id: 'xiaomimimo-v3' },
++        ],
++      });
++
++      const models = await params.models({ client: mockClient as any });
+ 
+-      expect(client.models.list).toHaveBeenCalled();
+-      expect(result).toEqual(
+-        expect.arrayContaining([
+-          expect.objectContaining({ id: 'model-1' }),
+-          expect.objectContaining({ id: 'model-2' }),
+-        ]),
+-      );
++      expect(models).toHaveLength(4);
++      expect(models.every((m) => typeof m.id === 'string')).toBe(true);
+     });
+   });
+ });
 diff --git a/packages/model-runtime/src/providers/xiaomimimo/index.ts b/packages/model-runtime/src/providers/xiaomimimo/index.ts
 index 2a2cdb9de96..81b855a6a5f 100644
 --- a/packages/model-runtime/src/providers/xiaomimimo/index.ts
