@@ -44,10 +44,10 @@ index cb6be1f9145..e443b5ffb55 100644
  export default allModels;
 diff --git a/packages/model-runtime/src/providers/hunyuan/createImage.ts b/packages/model-runtime/src/providers/hunyuan/createImage.ts
 new file mode 100644
-index 00000000000..db29783fa3a
+index 00000000000..2a8309f48f4
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/hunyuan/createImage.ts
-@@ -0,0 +1,218 @@
+@@ -0,0 +1,228 @@
 +import createDebug from 'debug';
 +
 +import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
@@ -66,16 +66,17 @@ index 00000000000..db29783fa3a
 +
 +interface HunyuanImageQueryResponse {
 +  code?: number;
-+  data?: {
++  data?: Array<{
 +    job_id: string;
 +    status: string;
 +    result?: number;
 +    images?: Array<{
 +      url: string;
 +    }>;
-+  }[];
++  }> | null;
 +  message?: string;
 +  request_id?: string;
++  status?: string;
 +}
 +
 +// Hunyuan3.0 ImageGen Status Code
@@ -163,19 +164,26 @@ index 00000000000..db29783fa3a
 +      checkStatus: (taskStatus: HunyuanImageQueryResponse): any => {
 +        log('Checking task status: %O', taskStatus);
 +
-+        if (!taskStatus.data || !Array.isArray(taskStatus.data) || taskStatus.data.length === 0) {
++        const status = taskStatus.status;
++
++        if (!status) {
 +          return {
-+            error: new Error('Invalid query response: no data array'),
++            error: new Error('Invalid query response: missing status'),
 +            status: 'failed',
 +          };
 +        }
 +
-+        const taskData = taskStatus.data[0];
-+        const status = taskData.status;
-+
 +        log('Task status: %s', status);
 +
 +        if (status === HUNYUAN_IMAGE_STATUS.COMPLETED) {
++          if (!taskStatus.data || !Array.isArray(taskStatus.data) || taskStatus.data.length === 0) {
++            return {
++              error: new Error('Task completed but no images generated'),
++              status: 'failed',
++            };
++          }
++
++          const taskData = taskStatus.data[0];
 +          if (!taskData.images || taskData.images.length === 0) {
 +            return {
 +              error: new Error('Task completed but no images generated'),
@@ -200,7 +208,9 @@ index 00000000000..db29783fa3a
 +
 +        if (status === HUNYUAN_IMAGE_STATUS.FAILED) {
 +          const errorMessage =
-+            taskData.result === 1 ? 'Task failed' : `Task failed with result: ${taskData.result}`;
++            taskStatus.data && taskStatus.data.length > 0 && taskStatus.data[0].result
++              ? `Task failed with result: ${taskStatus.data[0].result}`
++              : 'Task failed';
 +          return {
 +            error: new Error(errorMessage),
 +            status: 'failed',
