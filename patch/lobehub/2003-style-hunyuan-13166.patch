@@ -44,10 +44,10 @@ index cb6be1f9145..e443b5ffb55 100644
  export default allModels;
 diff --git a/packages/model-runtime/src/providers/hunyuan/createImage.ts b/packages/model-runtime/src/providers/hunyuan/createImage.ts
 new file mode 100644
-index 00000000000..2a8309f48f4
+index 00000000000..5cfa11a4709
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/hunyuan/createImage.ts
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,224 @@
 +import createDebug from 'debug';
 +
 +import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
@@ -67,13 +67,13 @@ index 00000000000..2a8309f48f4
 +interface HunyuanImageQueryResponse {
 +  code?: number;
 +  data?: Array<{
-+    job_id: string;
-+    status: string;
-+    result?: number;
-+    images?: Array<{
-+      url: string;
-+    }>;
++    url: string;
 +  }> | null;
++  error?: {
++    code?: string;
++    message?: string;
++    type?: string;
++  };
 +  message?: string;
 +  request_id?: string;
 +  status?: string;
@@ -164,6 +164,14 @@ index 00000000000..2a8309f48f4
 +      checkStatus: (taskStatus: HunyuanImageQueryResponse): any => {
 +        log('Checking task status: %O', taskStatus);
 +
++        if (taskStatus.error?.message) {
++          log('API error response: %s', taskStatus.error.message);
++          return {
++            error: new Error(`Hunyuan API error: ${taskStatus.error.message}`),
++            status: 'failed',
++          };
++        }
++
 +        const status = taskStatus.status;
 +
 +        if (!status) {
@@ -183,15 +191,7 @@ index 00000000000..2a8309f48f4
 +            };
 +          }
 +
-+          const taskData = taskStatus.data[0];
-+          if (!taskData.images || taskData.images.length === 0) {
-+            return {
-+              error: new Error('Task completed but no images generated'),
-+              status: 'failed',
-+            };
-+          }
-+
-+          const imageUrl = taskData.images[0].url;
++          const imageUrl = taskStatus.data[0].url;
 +          if (!imageUrl) {
 +            return {
 +              error: new Error('No valid image URL in response'),
@@ -207,12 +207,8 @@ index 00000000000..2a8309f48f4
 +        }
 +
 +        if (status === HUNYUAN_IMAGE_STATUS.FAILED) {
-+          const errorMessage =
-+            taskStatus.data && taskStatus.data.length > 0 && taskStatus.data[0].result
-+              ? `Task failed with result: ${taskStatus.data[0].result}`
-+              : 'Task failed';
 +          return {
-+            error: new Error(errorMessage),
++            error: new Error('Task failed'),
 +            status: 'failed',
 +          };
 +        }
