@@ -1,0 +1,290 @@
+diff --git a/packages/model-bank/src/aiModels/hunyuan.ts b/packages/model-bank/src/aiModels/hunyuan.ts
+index cb6be1f9145..e443b5ffb55 100644
+--- a/packages/model-bank/src/aiModels/hunyuan.ts
++++ b/packages/model-bank/src/aiModels/hunyuan.ts
+@@ -1,4 +1,4 @@
+-import type { AIChatModelCard } from '../types/aiModel';
++import type { AIChatModelCard, AIImageModelCard } from '../types/aiModel';
+ 
+ // https://cloud.tencent.com/document/product/1729/104753
+ const hunyuanChatModels: AIChatModelCard[] = [
+@@ -513,6 +513,32 @@ const hunyuanChatModels: AIChatModelCard[] = [
+   },
+ ];
+ 
+-export const allModels = [...hunyuanChatModels];
++const hunyuanImageModels: AIImageModelCard[] = [
++  {
++    description:
++      'A Powerful Native Multimodal Model for Image Generation. Based on the Hunyuan large model, it can analyze image layout, composition, and brushwork, and leverage world knowledge to reason about common-sense visual scenes.',
++    displayName: 'HY-Image-V3.0',
++    enabled: true,
++    id: 'HY-Image-V3.0',
++    parameters: {
++      height: { default: 1024, max: 2048, min: 512, step: 1 },
++      imageUrls: {
++        default: [],
++      },
++      prompt: {
++        default: '',
++      },
++      seed: { default: null },
++      width: { default: 1024, max: 2048, min: 512, step: 1 },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.2, strategy: 'fixed', unit: 'image' }],
++    },
++    type: 'image',
++  },
++];
++
++export const allModels = [...hunyuanChatModels, ...hunyuanImageModels];
+ 
+ export default allModels;
+diff --git a/packages/model-runtime/src/providers/hunyuan/createImage.ts b/packages/model-runtime/src/providers/hunyuan/createImage.ts
+new file mode 100644
+index 00000000000..29952d945a5
+--- /dev/null
++++ b/packages/model-runtime/src/providers/hunyuan/createImage.ts
+@@ -0,0 +1,220 @@
++import createDebug from 'debug';
++
++import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateImagePayload, CreateImageResponse } from '../../types/image';
++import { asyncifyPolling } from '../../utils/asyncifyPolling';
++import { AgentRuntimeError } from '../../utils/createError';
++
++const log = createDebug('lobe-image:hunyuan');
++
++interface HunyuanImageSubmitResponse {
++  code?: number;
++  data?: {
++    job_id: string;
++  };
++  message?: string;
++  request_id?: string;
++}
++
++interface HunyuanImageQueryResponse {
++  code?: number;
++  data?: {
++    job_id: string;
++    status: string;
++    result?: number;
++    images?: Array<{
++      url: string;
++    }>;
++  }[];
++  message?: string;
++  request_id?: string;
++}
++
++// Hunyuan3.0 ImageGen Status Code
++// https://cloud.tencent.com/document/product/1668/124633
++const HUNYUAN_IMAGE_STATUS = {
++  COMPLETED: '5',
++  FAILED: '4',
++  PENDING: '1',
++  PROCESSING: '2',
++} as const;
++
++// Hunyuan3.0 ImageGen BaseURL
++// https://cloud.tencent.com/document/product/1668/129429
++const baseURL = 'https://api.cloudai.tencent.com/v1';
++
++export async function createHunyuanImage(
++  payload: CreateImagePayload,
++  options: CreateImageOptions,
++): Promise<CreateImageResponse> {
++  const { apiKey, provider } = options;
++  const { model, params } = payload;
++
++  try {
++    log('Starting Hunyuan image generation with model: %s and params: %O', model, params);
++
++    const submitUrl = `${baseURL}/aiart/submit`;
++    const submitBody: Record<string, any> = {
++      model,
++      prompt: params.prompt,
++      ...(params.width && params.height
++        ? { size: `${params.width}:${params.height}` }
++        : params.size
++          ? { size: params.size.replace('x', ':') }
++          : { size: '1024:1024' }),
++      ...(params.imageUrls && params.imageUrls.length > 0
++        ? { images: params.imageUrls }
++        : params.imageUrl
++          ? { images: [params.imageUrl] }
++          : {}),
++      extra_body: {
++        logo_add: 0, // Add Watermark: 0 disabled, 1 enabled
++        ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
++      },
++    };
++
++    log('Submitting task to: %s', submitUrl);
++    log('Submit body: %O', submitBody);
++
++    const submitResponse = await fetch(submitUrl, {
++      body: JSON.stringify(submitBody),
++      headers: {
++        'Authorization': `Bearer ${apiKey}`,
++        'Content-Type': 'application/json',
++      },
++      method: 'POST',
++    });
++
++    if (!submitResponse.ok) {
++      let errorData;
++      try {
++        errorData = await submitResponse.json();
++      } catch {}
++
++      const errorMessage =
++        typeof errorData?.message === 'string'
++          ? errorData.message
++          : JSON.stringify(errorData || submitResponse.statusText);
++
++      throw new Error(`Hunyuan API submit error (${submitResponse.status}): ${errorMessage}`);
++    }
++
++    const submitData: HunyuanImageSubmitResponse = await submitResponse.json();
++    log('Submit response: %O', submitData);
++
++    if (!submitData.data?.job_id) {
++      throw new Error('No job_id returned from submit endpoint');
++    }
++
++    const jobId = submitData.data.job_id;
++    log('Task submitted successfully, job_id: %s', jobId);
++
++    const queryUrl = `${baseURL}/aiart/query`;
++
++    const result = await asyncifyPolling<HunyuanImageQueryResponse, CreateImageResponse>({
++      checkStatus: (taskStatus: HunyuanImageQueryResponse): any => {
++        log('Checking task status: %O', taskStatus);
++
++        if (!taskStatus.data || !Array.isArray(taskStatus.data) || taskStatus.data.length === 0) {
++          return {
++            error: new Error('Invalid query response: no data array'),
++            status: 'failed',
++          };
++        }
++
++        const taskData = taskStatus.data[0];
++        const status = taskData.status;
++
++        log('Task status: %s', status);
++
++        if (status === HUNYUAN_IMAGE_STATUS.COMPLETED) {
++          if (!taskData.images || taskData.images.length === 0) {
++            return {
++              error: new Error('Task completed but no images generated'),
++              status: 'failed',
++            };
++          }
++
++          const imageUrl = taskData.images[0].url;
++          if (!imageUrl) {
++            return {
++              error: new Error('No valid image URL in response'),
++              status: 'failed',
++            };
++          }
++
++          log('Image generation completed successfully: %s', imageUrl);
++          return {
++            data: { imageUrl },
++            status: 'success',
++          };
++        }
++
++        if (status === HUNYUAN_IMAGE_STATUS.FAILED) {
++          const errorMessage =
++            taskData.result === 1 ? 'Task failed' : `Task failed with result: ${taskData.result}`;
++          return {
++            error: new Error(errorMessage),
++            status: 'failed',
++          };
++        }
++
++        return { status: 'pending' };
++      },
++      logger: {
++        debug: (message: any, ...args: any[]) => log(message, ...args),
++        error: (message: any, ...args: any[]) => log(message, ...args),
++      },
++      maxConsecutiveFailures: 5,
++      maxRetries: 60,
++      pollingQuery: async () => {
++        log('Polling task status for job_id: %s', jobId);
++
++        const queryResponse = await fetch(queryUrl, {
++          body: JSON.stringify({ job_id: jobId }),
++          headers: {
++            'Authorization': `Bearer ${apiKey}`,
++            'Content-Type': 'application/json',
++          },
++          method: 'POST',
++        });
++
++        if (!queryResponse.ok) {
++          let errorData;
++          try {
++            errorData = await queryResponse.json();
++          } catch {}
++
++          const errorMessage =
++            typeof errorData?.message === 'string'
++              ? errorData.message
++              : JSON.stringify(errorData || queryResponse.statusText);
++
++          throw new Error(`Hunyuan API query error (${queryResponse.status}): ${errorMessage}`);
++        }
++
++        return await queryResponse.json();
++      },
++    });
++
++    log('Image generation completed: %O', result);
++    return result;
++  } catch (error) {
++    log('Error in createHunyuanImage: %O', error);
++
++    if (error instanceof Error && error.message.includes('timeout')) {
++      const timeoutError = new Error('Image generation timeout after maximum retries');
++      throw AgentRuntimeError.createImage({
++        error: timeoutError,
++        errorType: 'ProviderBizError',
++        provider,
++      });
++    }
++
++    throw AgentRuntimeError.createImage({
++      error: error as any,
++      errorType: 'ProviderBizError',
++      provider,
++    });
++  }
++}
+diff --git a/packages/model-runtime/src/providers/hunyuan/index.ts b/packages/model-runtime/src/providers/hunyuan/index.ts
+index 80c2e2e4d38..20658476477 100644
+--- a/packages/model-runtime/src/providers/hunyuan/index.ts
++++ b/packages/model-runtime/src/providers/hunyuan/index.ts
+@@ -3,6 +3,7 @@ import { ModelProvider } from 'model-bank';
+ 
+ import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
++import { createHunyuanImage } from './createImage';
+ 
+ export interface HunyuanModelCard {
+   id: string;
+@@ -38,6 +39,7 @@ export const params = {
+       } as any;
+     },
+   },
++  createImage: createHunyuanImage,
+   debug: {
+     chatCompletion: () => process.env.DEBUG_HUNYUAN_CHAT_COMPLETION === '1',
+   },
