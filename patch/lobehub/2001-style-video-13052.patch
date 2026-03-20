@@ -6386,165 +6386,43 @@ index 172c92fe41c..5a99dedcf45 100644
    'generation.actions.copyError': 'Copy Error Message',
    'generation.actions.errorCopied': 'Error Message Copied to Clipboard',
    'generation.actions.errorCopyFailed': 'Failed to Copy Error Message',
-diff --git a/src/routes/(main)/(create)/video/features/ConfigPanel/components/Select/index.tsx b/src/routes/(main)/(create)/video/features/ConfigPanel/components/Select/index.tsx
-new file mode 100644
-index 00000000000..3a39bc02f86
---- /dev/null
-+++ b/src/routes/(main)/(create)/video/features/ConfigPanel/components/Select/index.tsx
-@@ -0,0 +1,115 @@
-+'use client';
-+
-+import { type GridProps } from '@lobehub/ui';
-+import { Block, Center, Grid, Select, Text } from '@lobehub/ui';
-+import { cssVar } from 'antd-style';
-+import { type ReactNode } from 'react';
-+import { memo } from 'react';
-+import useMergeState from 'use-merge-value';
-+
-+import { useIsDark } from '@/hooks/useIsDark';
-+
-+export interface SizeSelectProps extends Omit<GridProps, 'children' | 'onChange'> {
-+  defaultValue?: 'auto' | string;
-+  onChange?: (value: string) => void;
-+  options?: { label?: string; value: 'auto' | string }[];
-+  value?: 'auto' | string;
-+}
-+
-+/**
-+ * Check if a size value can be parsed as valid aspect ratio
-+ */
-+const canParseAsRatio = (value: string): boolean => {
-+  if (value === 'auto') return true;
-+
-+  const parts = value.split('x');
-+  if (parts.length !== 2) return false;
-+
-+  const [width, height] = parts.map(Number);
-+  return !isNaN(width) && !isNaN(height) && width > 0 && height > 0;
-+};
-+
-+const SizeSelect = memo<SizeSelectProps>(({ options, onChange, value, defaultValue, ...rest }) => {
-+  const isDarkMode = useIsDark();
-+  const [active, setActive] = useMergeState('auto', {
-+    defaultValue,
-+    onChange,
-+    value,
-+  });
-+
-+  // Check if all options can be parsed as valid ratios
-+  const hasInvalidRatio = options?.some((item) => !canParseAsRatio(item.value));
-+
-+  // If any option cannot be parsed as ratio, fallback to regular Select
-+  if (hasInvalidRatio) {
-+    return (
-+      <Select options={options} style={{ width: '100%' }} value={active} onChange={onChange} />
-+    );
-+  }
-+  return (
-+    <Block padding={4} variant={'filled'} {...rest}>
-+      <Grid gap={4} maxItemWidth={72} rows={16}>
-+        {options?.map((item) => {
-+          const isActive = active === item.value;
-+          let content: ReactNode;
-+
-+          if (item.value === 'auto') {
-+            content = (
-+              <div
-+                style={{
-+                  border: `2px dashed ${isActive ? cssVar.colorText : cssVar.colorTextDescription}`,
-+                  borderRadius: 3,
-+                  height: 16,
-+                  width: 16,
-+                }}
-+              />
-+            );
-+          } else {
-+            const [width, height] = item.value.split('x').map(Number);
-+            const isWidthGreater = width > height;
-+            content = (
-+              <div
-+                style={{
-+                  aspectRatio: `${width} / ${height}`,
-+                  border: `2px solid ${isActive ? cssVar.colorText : cssVar.colorTextDescription}`,
-+                  borderRadius: 3,
-+                  height: isWidthGreater ? undefined : 16,
-+                  width: isWidthGreater ? 16 : undefined,
-+                }}
-+              />
-+            );
-+          }
-+
-+          return (
-+            <Block
-+              clickable
-+              align={'center'}
-+              gap={4}
-+              justify={'center'}
-+              key={item.value}
-+              padding={8}
-+              shadow={isActive && !isDarkMode}
-+              variant={'filled'}
-+              style={{
-+                backgroundColor: isActive ? cssVar.colorBgElevated : 'transparent',
-+              }}
-+              onClick={() => {
-+                setActive(item.value);
-+                onChange?.(item.value);
-+              }}
-+            >
-+              <Center height={16} style={{ marginTop: 4 }} width={16}>
-+                {content}
-+              </Center>
-+              <Text fontSize={12} type={isActive ? undefined : 'secondary'}>
-+                {item.label || item.value}
-+              </Text>
-+            </Block>
-+          );
-+        })}
-+      </Grid>
-+    </Block>
-+  );
-+});
-+
-+export default SizeSelect;
-diff --git a/src/routes/(main)/(create)/video/features/ConfigPanel/components/SizeSelect.tsx b/src/routes/(main)/(create)/video/features/ConfigPanel/components/SizeSelect.tsx
-new file mode 100644
-index 00000000000..39db073fd40
---- /dev/null
-+++ b/src/routes/(main)/(create)/video/features/ConfigPanel/components/SizeSelect.tsx
-@@ -0,0 +1,19 @@
-+import { memo } from 'react';
-+
-+import { useVideoGenerationConfigParam } from '@/store/video/slices/generationConfig/hooks';
-+
-+import Select from './Select';
-+
-+const SizeSelect = memo(() => {
+diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
+index c89237cf793..f469459528d 100644
+--- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
++++ b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
+@@ -21,6 +21,7 @@ import {
+   InlineVideoFrames,
+ } from '@/routes/(main)/(create)/features/GenerationInput';
+ import { AspectRatioSelect } from '@/routes/(main)/(create)/image/features/ConfigPanel';
++import Select from '@/routes/(main)/(create)/image/features/ConfigPanel/components/Select';
+ import VideoModelItem from '@/routes/(main)/(create)/video/features/ConfigPanel/components/ModelSelect/VideoModelItem';
+ import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
+ import { useUserStore } from '@/store/user';
+@@ -51,6 +52,23 @@ const AspectRatioItem = memo(() => {
+   return <AspectRatioSelect options={options} value={value} onChange={(v) => setValue(v as any)} />;
+ });
+ 
++const SizeItem = memo(() => {
 +  const { value, setValue, enumValues } = useVideoGenerationConfigParam('size');
 +
-+  const options =
-+    enumValues?.map((size) => ({
-+      label: size,
-+      value: size,
-+    })) ?? [];
++  const options = useMemo(
++    () =>
++      enumValues?.map((size) => ({
++        label: size,
++        value: size,
++      })) ?? [],
++    [enumValues],
++  );
++
++  if (options.length === 0) return null;
 +
 +  return <Select options={options} value={value} onChange={setValue} />;
 +});
 +
-+export default SizeSelect;
-diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
-index c89237cf793..bd5bc38ced3 100644
---- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
-+++ b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
-@@ -22,6 +22,7 @@ import {
- } from '@/routes/(main)/(create)/features/GenerationInput';
- import { AspectRatioSelect } from '@/routes/(main)/(create)/image/features/ConfigPanel';
- import VideoModelItem from '@/routes/(main)/(create)/video/features/ConfigPanel/components/ModelSelect/VideoModelItem';
-+import SizeSelect from '@/routes/(main)/(create)/video/features/ConfigPanel/components/SizeSelect';
- import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
- import { useUserStore } from '@/store/user';
- import { authSelectors } from '@/store/user/slices/auth/selectors';
-@@ -73,7 +74,31 @@ const ResolutionItem = memo(() => {
+ const ResolutionItem = memo(() => {
+   const { value, setValue, enumValues } = useVideoGenerationConfigParam('resolution');
+   const options = useMemo(
+@@ -73,7 +91,31 @@ const ResolutionItem = memo(() => {
  });
  
  const DurationItem = memo(() => {
@@ -6577,7 +6455,7 @@ index c89237cf793..bd5bc38ced3 100644
  
    return (
      <SliderWithInput
-@@ -143,6 +168,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+@@ -143,6 +185,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
    const isSupportEndImageUrl = useVideoStore(isSupportedParamSelector('endImageUrl'));
    const isSupportAspectRatio = useVideoStore(isSupportedParamSelector('aspectRatio'));
    const isSupportResolution = useVideoStore(isSupportedParamSelector('resolution'));
@@ -6585,14 +6463,14 @@ index c89237cf793..bd5bc38ced3 100644
    const isSupportDuration = useVideoStore(isSupportedParamSelector('duration'));
    const isSupportSeed = useVideoStore(isSupportedParamSelector('seed'));
    const isSupportGenerateAudio = useVideoStore(isSupportedParamSelector('generateAudio'));
-@@ -269,6 +295,12 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+@@ -269,6 +312,12 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
                          <ResolutionItem />
                        </Flexbox>
                      )}
 +                    {isSupportSize && (
 +                      <Flexbox gap={6}>
 +                        <Text fontSize={12}>{t('config.size.label')}</Text>
-+                        <SizeSelect />
++                        <SizeItem />
 +                      </Flexbox>
 +                    )}
                      {isSupportSeed && (
