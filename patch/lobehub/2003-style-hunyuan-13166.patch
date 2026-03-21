@@ -44,10 +44,10 @@ index cb6be1f9145..e443b5ffb55 100644
  export default allModels;
 diff --git a/packages/model-runtime/src/providers/hunyuan/createImage.ts b/packages/model-runtime/src/providers/hunyuan/createImage.ts
 new file mode 100644
-index 00000000000..5cfa11a4709
+index 00000000000..75a9b443cd1
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/hunyuan/createImage.ts
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,230 @@
 +import createDebug from 'debug';
 +
 +import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
@@ -58,14 +58,16 @@ index 00000000000..5cfa11a4709
 +const log = createDebug('lobe-image:hunyuan');
 +
 +interface HunyuanImageSubmitResponse {
-+  code?: number;
++  error?: {
++    code?: string;
++    message?: string;
++    type?: string;
++  };
 +  job_id?: string;
-+  message?: string;
 +  request_id?: string;
 +}
 +
 +interface HunyuanImageQueryResponse {
-+  code?: number;
 +  data?: Array<{
 +    url: string;
 +  }> | null;
@@ -74,19 +76,21 @@ index 00000000000..5cfa11a4709
 +    message?: string;
 +    type?: string;
 +  };
-+  message?: string;
 +  request_id?: string;
 +  status?: string;
 +}
 +
 +// Hunyuan3.0 ImageGen Status Code
 +// https://cloud.tencent.com/document/product/1668/124633
-+const HUNYUAN_IMAGE_STATUS = {
-+  COMPLETED: '5',
-+  FAILED: '4',
-+  PENDING: '1',
-+  PROCESSING: '2',
-+} as const;
++const getStatusName = (status: string): string => {
++  const statusMap: Record<string, string> = {
++    '1': 'PENDING',
++    '2': 'PROCESSING',
++    '4': 'FAILED',
++    '5': 'COMPLETED',
++  };
++  return statusMap[status] || `UNKNOWN(${status})`;
++};
 +
 +// Hunyuan3.0 ImageGen BaseURL
 +// https://cloud.tencent.com/document/product/1668/129429
@@ -141,9 +145,11 @@ index 00000000000..5cfa11a4709
 +      } catch {}
 +
 +      const errorMessage =
-+        typeof errorData?.message === 'string'
-+          ? errorData.message
-+          : JSON.stringify(errorData || submitResponse.statusText);
++        typeof errorData?.error?.message === 'string'
++          ? errorData.error.message
++          : typeof errorData?.message === 'string'
++            ? errorData.message
++            : JSON.stringify(errorData || submitResponse.statusText);
 +
 +      throw new Error(`Hunyuan API submit error (${submitResponse.status}): ${errorMessage}`);
 +    }
@@ -151,8 +157,14 @@ index 00000000000..5cfa11a4709
 +    const submitData: HunyuanImageSubmitResponse = await submitResponse.json();
 +    log('Submit response: %O', submitData);
 +
++    if (submitData.error?.message) {
++      throw new Error(`Hunyuan API error: ${submitData.error.message}`);
++    }
++
 +    if (!submitData.job_id) {
-+      throw new Error('No job_id returned from submit endpoint');
++      throw new Error(
++        `No job_id returned from submit endpoint. Response: ${JSON.stringify(submitData)}`,
++      );
 +    }
 +
 +    const jobId = submitData.job_id;
@@ -174,6 +186,7 @@ index 00000000000..5cfa11a4709
 +
 +        const status = taskStatus.status;
 +
++        // Status return an empty string if query got an error
 +        if (!status) {
 +          return {
 +            error: new Error('Invalid query response: missing status'),
@@ -181,9 +194,10 @@ index 00000000000..5cfa11a4709
 +          };
 +        }
 +
-+        log('Task status: %s', status);
++        log('Task status: %s', getStatusName(status));
 +
-+        if (status === HUNYUAN_IMAGE_STATUS.COMPLETED) {
++        // Task completed
++        if (status === '5') {
 +          if (!taskStatus.data || !Array.isArray(taskStatus.data) || taskStatus.data.length === 0) {
 +            return {
 +              error: new Error('Task completed but no images generated'),
@@ -206,7 +220,8 @@ index 00000000000..5cfa11a4709
 +          };
 +        }
 +
-+        if (status === HUNYUAN_IMAGE_STATUS.FAILED) {
++        // Task failed
++        if (status === '4') {
 +          return {
 +            error: new Error('Task failed'),
 +            status: 'failed',
@@ -255,15 +270,6 @@ index 00000000000..5cfa11a4709
 +    return result;
 +  } catch (error) {
 +    log('Error in createHunyuanImage: %O', error);
-+
-+    if (error instanceof Error && error.message.includes('timeout')) {
-+      const timeoutError = new Error('Image generation timeout after maximum retries');
-+      throw AgentRuntimeError.createImage({
-+        error: timeoutError,
-+        errorType: 'ProviderBizError',
-+        provider,
-+      });
-+    }
 +
 +    throw AgentRuntimeError.createImage({
 +      error: error as any,
