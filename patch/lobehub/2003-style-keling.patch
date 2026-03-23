@@ -802,6 +802,38 @@ index d7ce683653f..2f7615f4b8d 100644
    lmstudio: LobeLMStudioAI,
    lobehub: LobeHubAI,
    longcat: LobeLongCatAI,
+diff --git a/packages/types/src/auth.ts b/packages/types/src/auth.ts
+index 45ae126830a..0292f001a2a 100644
+--- a/packages/types/src/auth.ts
++++ b/packages/types/src/auth.ts
+@@ -34,8 +34,12 @@ export interface ClientSecretPayload {
+    */
+   oauthAccessToken?: string;
+   password?: string;
+-
+   runtimeProvider?: string;
++
++  /**
++   * Keling specific authentication fields
++   */
++  secretKey?: string;
+   /**
+    * user id
+    * in client db mode it's a uuid
+diff --git a/packages/types/src/user/settings/keyVaults.ts b/packages/types/src/user/settings/keyVaults.ts
+index b691361e94a..41dce1a92e2 100644
+--- a/packages/types/src/user/settings/keyVaults.ts
++++ b/packages/types/src/user/settings/keyVaults.ts
+@@ -72,3 +72,9 @@ export interface SearchEngineKeyVaults {
+ export interface UserKeyVaults extends SearchEngineKeyVaults {
+   search1api?: OpenAICompatibleKeyVault;
+ }
++
++export interface KelingKeyVault {
++  apiKey?: string;
++  baseURL?: string;
++  secretKey?: string;
++}
 diff --git a/src/envs/llm.ts b/src/envs/llm.ts
 index 8798501f58a..14ba64c4d98 100644
 --- a/src/envs/llm.ts
@@ -963,10 +995,42 @@ index ae6c2c553cd..609188adcc1 100644
          enabledKey: 'ENABLED_GITEE_AI',
          modelListKey: 'GITEE_AI_MODEL_LIST',
 diff --git a/src/server/modules/ModelRuntime/index.ts b/src/server/modules/ModelRuntime/index.ts
-index e3686f83e3a..cb788b93664 100644
+index e3686f83e3a..c9884364bdf 100644
 --- a/src/server/modules/ModelRuntime/index.ts
 +++ b/src/server/modules/ModelRuntime/index.ts
-@@ -208,6 +208,21 @@ const getParamsFromPayload = (provider: string, payload: ClientSecretPayload) =>
+@@ -8,6 +8,7 @@ import {
+   type CloudflareKeyVault,
+   type ComfyUIKeyVault,
+   type GithubCopilotKeyVault,
++  type KelingKeyVault,
+   type OpenAICompatibleKeyVault,
+   type VertexAIKeyVault,
+ } from '@lobechat/types';
+@@ -33,6 +34,7 @@ type ProviderKeyVaults = OpenAICompatibleKeyVault &
+   CloudflareKeyVault &
+   ComfyUIKeyVault &
+   GithubCopilotKeyVault &
++  KelingKeyVault &
+   VertexAIKeyVault;
+ 
+ /**
+@@ -144,6 +146,15 @@ export const buildPayloadFromKeyVaults = (
+       };
+     }
+ 
++    case ModelProvider.Keling: {
++      return {
++        apiKey: keyVaults.apiKey,
++        baseURL: keyVaults.baseURL,
++        runtimeProvider,
++        secretKey: keyVaults.secretKey,
++      };
++    }
++
+     default: {
+       return {
+         apiKey: keyVaults.apiKey,
+@@ -208,6 +219,21 @@ const getParamsFromPayload = (provider: string, payload: ClientSecretPayload) =>
        return { apiKey, baseURL };
      }
  
