@@ -856,58 +856,98 @@ index b58e2b4e13d..c0d45ea207f 100644
    'cloudflare.apiKey.desc': 'Please enter Cloudflare API Key',
    'cloudflare.apiKey.placeholder': 'Cloudflare API Key',
    'cloudflare.apiKey.title': 'Cloudflare API Key',
+diff --git a/src/routes/(main)/settings/provider/detail/index.tsx b/src/routes/(main)/settings/provider/detail/index.tsx
+index b71a5893a88..bcb53a74435 100644
+--- a/src/routes/(main)/settings/provider/detail/index.tsx
++++ b/src/routes/(main)/settings/provider/detail/index.tsx
+@@ -41,6 +41,10 @@ const Azure = dynamic(() => import('./azure'), {
+   loading: () => <Loading debugId="Provider > Azure" />,
+   ssr: false,
+ });
++const Keling = dynamic(() => import('./keling'), {
++  loading: () => <Loading debugId="Provider > Keling" />,
++  ssr: false,
++});
+ const ProviderGrid = dynamic(() => import('../(list)/ProviderGrid'), {
+   loading: () => <Loading debugId="Provider > Grid" />,
+   ssr: false,
+@@ -92,6 +96,9 @@ const ProviderDetailPage = (props: ProviderDetailPageProps) => {
+     case 'vertexai': {
+       return <VertexAI />;
+     }
++    case 'keling': {
++      return <Keling />;
++    }
+     default: {
+       return <DefaultPage id={id} />;
+     }
 diff --git a/src/routes/(main)/settings/provider/detail/keling/index.tsx b/src/routes/(main)/settings/provider/detail/keling/index.tsx
 new file mode 100644
-index 00000000000..4938d84af0c
+index 00000000000..93c39209451
 --- /dev/null
 +++ b/src/routes/(main)/settings/provider/detail/keling/index.tsx
-@@ -0,0 +1,46 @@
-+import { InputPassword } from '@lobehub/ui';
-+import { cssVar } from 'antd-style';
-+import { Image } from 'lucide-react';
-+import { ModelProvider } from 'model-bank';
-+import { memo } from 'react';
+@@ -0,0 +1,61 @@
++'use client';
++
++import { KelingProviderCard } from 'model-bank/modelProviders';
 +import { useTranslation } from 'react-i18next';
 +
-+import { FormAction } from '@/features/Conversation/Error/style';
++import { FormPassword } from '@/components/FormInput';
++import { SkeletonInput } from '@/components/Skeleton';
 +import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
++import { type GlobalLLMProviderKey } from '@/types/user/settings';
 +
-+const KelingForm = memo<{ description: string }>(({ description }) => {
++import { KeyVaultsConfigKey } from '../../const';
++import { type ProviderItem } from '../../type';
++import ProviderDetail from '../default';
++
++const providerKey: GlobalLLMProviderKey = 'keling';
++
++const useKelingCard = (): ProviderItem => {
 +  const { t } = useTranslation('modelProvider');
 +
-+  const config = useAiInfraStore(aiProviderSelectors.providerKeyVaults(ModelProvider.Keling));
-+  const setConfig = useAiInfraStore((s) => s.updateAiProviderConfig);
-+  const { accessKey, secretKey } = config || {};
++  const isLoading = useAiInfraStore(aiProviderSelectors.isAiProviderConfigLoading(providerKey));
 +
-+  return (
-+    <FormAction
-+      avatar={<Image color={cssVar.colorText} size={56} />}
-+      description={description}
-+      title={t('keling.unlock.title')}
-+    >
-+      <InputPassword
-+        autoComplete={'new-password'}
-+        placeholder={t('keling.unlock.accessKey.placeholder')}
-+        value={accessKey}
-+        variant={'filled'}
-+        onChange={(e) => {
-+          setConfig(ModelProvider.Keling, { keyVaults: { accessKey: e.target.value } });
-+        }}
-+      />
-+      <InputPassword
-+        autoComplete={'new-password'}
-+        placeholder={t('keling.unlock.secretKey.placeholder')}
-+        value={secretKey}
-+        variant={'filled'}
-+        onChange={(e) => {
-+          setConfig(ModelProvider.Keling, { keyVaults: { secretKey: e.target.value } });
-+        }}
-+      />
-+    </FormAction>
-+  );
-+});
++  return {
++    ...KelingProviderCard,
++    apiKeyItems: [
++      {
++        children: isLoading ? (
++          <SkeletonInput />
++        ) : (
++          <FormPassword
++            autoComplete={'new-password'}
++            placeholder={t(`${providerKey}.unlock.accessKey.placeholder`)}
++          />
++        ),
++        desc: t(`${providerKey}.accessKey.desc`),
++        label: t(`${providerKey}.accessKey.title`),
++        name: [KeyVaultsConfigKey, 'apiKey'],
++      },
++      {
++        children: isLoading ? (
++          <SkeletonInput />
++        ) : (
++          <FormPassword
++            autoComplete={'new-password'}
++            placeholder={t(`${providerKey}.unlock.secretKey.placeholder`)}
++          />
++        ),
++        desc: t(`${providerKey}.secretKey.desc`),
++        label: t(`${providerKey}.secretKey.title`),
++        name: [KeyVaultsConfigKey, 'secretKey'],
++      },
++    ],
++  };
++};
 +
-+export default KelingForm;
++const Page = () => {
++  const card = useKelingCard();
++
++  return <ProviderDetail {...card} />;
++};
++
++export default Page;
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
 index ae6c2c553cd..609188adcc1 100644
 --- a/src/server/globalConfig/index.ts
