@@ -159,10 +159,10 @@ index 00000000000..4a0a38a5d1f
 +export default Keling;
 diff --git a/packages/model-runtime/src/providers/keling/createImage.ts b/packages/model-runtime/src/providers/keling/createImage.ts
 new file mode 100644
-index 00000000000..5ba383adbb6
+index 00000000000..0da56ff6868
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/keling/createImage.ts
-@@ -0,0 +1,366 @@
+@@ -0,0 +1,365 @@
 +import { imageUrlToBase64 } from '@lobechat/utils';
 +import createDebug from 'debug';
 +
@@ -342,15 +342,14 @@ index 00000000000..5ba383adbb6
 +    case KELING_MULTI_IMAGE_ENDPOINT: {
 +      return buildMultiImage2ImageRequest(model, params);
 +    }
-+    case KELING_ENDPOINTS['kling-v2-1']:
 +    default: {
 +      return buildGenerationsRequest(model, params);
 +    }
 +  }
 +}
 +
-+function generateAuthToken(apiKey: string, secretKey: string): string {
-+  const token = createJWT(apiKey, secretKey, 1800);
++async function generateAuthToken(apiKey: string, secretKey: string): Promise<string> {
++  const token = await createJWT(apiKey, secretKey, 1800);
 +  return `Bearer ${token}`;
 +}
 +
@@ -360,7 +359,7 @@ index 00000000000..5ba383adbb6
 +  options: KelingCreateImageOptions,
 +): Promise<KelingSubmitResponse> {
 +  const url = `${options.baseURL || BASE_URL}${endpoint}`;
-+  const authToken = generateAuthToken(options.apiKey, options.secretKey);
++  const authToken = await generateAuthToken(options.apiKey, options.secretKey);
 +
 +  log('Submitting task to: %s', url);
 +
@@ -398,7 +397,7 @@ index 00000000000..5ba383adbb6
 +  options: KelingCreateImageOptions,
 +): Promise<KelingQueryResponse> {
 +  const url = `${options.baseURL || BASE_URL}${endpoint}/${taskId}`;
-+  const authToken = generateAuthToken(options.apiKey, options.secretKey);
++  const authToken = await generateAuthToken(options.apiKey, options.secretKey);
 +
 +  log('Querying task status for ID: %s', taskId);
 +
@@ -603,22 +602,47 @@ index 00000000000..53d86ce0205
 +export default LobeKelingAI;
 diff --git a/packages/model-runtime/src/providers/keling/jwt.ts b/packages/model-runtime/src/providers/keling/jwt.ts
 new file mode 100644
-index 00000000000..8ab8885f96f
+index 00000000000..6f28a9c129f
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/keling/jwt.ts
-@@ -0,0 +1,66 @@
-+import { createHmac, randomUUID } from 'node:crypto';
+@@ -0,0 +1,60 @@
++import { nanoid } from 'nanoid';
 +
-+function base64UrlEncode(buffer: Buffer): string {
-+  return buffer.toString('base64url').replaceAll('=', '');
++function base64UrlEncode(buffer: ArrayBuffer): string {
++  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
++    .replaceAll('=', '')
++    .replaceAll('+', '-')
++    .replaceAll('/', '_');
 +}
 +
 +function base64UrlJsonEncode(obj: Record<string, any>): string {
 +  const json = JSON.stringify(obj);
-+  return base64UrlEncode(Buffer.from(json, 'utf-8'));
++  const encoder = new TextEncoder();
++  const data = encoder.encode(json);
++  return base64UrlEncode(data.buffer);
 +}
 +
-+export function createJWT(accessKey: string, secretKey: string, expiresIn: number = 1800): string {
++async function signJWT(data: string, secretKey: string): Promise<string> {
++  const encoder = new TextEncoder();
++  const keyData = encoder.encode(secretKey);
++
++  const key = await crypto.subtle.importKey(
++    'raw',
++    keyData,
++    { name: 'HMAC', hash: 'SHA-256' },
++    false,
++    ['sign'],
++  );
++
++  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
++  return base64UrlEncode(signature);
++}
++
++export async function createJWT(
++  accessKey: string,
++  secretKey: string,
++  expiresIn: number = 1800,
++): Promise<string> {
 +  const now = Math.floor(Date.now() / 1000);
 +
 +  const header = {
@@ -630,7 +654,7 @@ index 00000000000..8ab8885f96f
 +    exp: now + expiresIn,
 +    iat: now,
 +    iss: accessKey,
-+    jti: randomUUID(),
++    jti: nanoid(),
 +    nbf: now - 5,
 +  };
 +
@@ -638,40 +662,9 @@ index 00000000000..8ab8885f96f
 +  const encodedPayload = base64UrlJsonEncode(payload);
 +
 +  const signatureInput = `${encodedHeader}.${encodedPayload}`;
-+  const signature = createHmac('sha256', secretKey).update(signatureInput).digest('base64url');
++  const signature = await signJWT(signatureInput, secretKey);
 +
 +  return `${encodedHeader}.${encodedPayload}.${signature}`;
-+}
-+
-+export function verifyJWT(token: string, secretKey: string): { valid: boolean; payload?: any } {
-+  try {
-+    const parts = token.split('.');
-+    if (parts.length !== 3) {
-+      return { valid: false };
-+    }
-+
-+    const [encodedHeader, encodedPayload, signature] = parts;
-+
-+    const signatureInput = `${encodedHeader}.${encodedPayload}`;
-+    const expectedSignature = createHmac('sha256', secretKey)
-+      .update(signatureInput)
-+      .digest('base64url');
-+
-+    if (signature !== expectedSignature) {
-+      return { valid: false };
-+    }
-+
-+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf-8'));
-+
-+    const now = Math.floor(Date.now() / 1000);
-+    if (payload.exp < now) {
-+      return { valid: false, payload };
-+    }
-+
-+    return { valid: true, payload };
-+  } catch {
-+    return { valid: false };
-+  }
 +}
 diff --git a/packages/model-runtime/src/providers/keling/types.ts b/packages/model-runtime/src/providers/keling/types.ts
 new file mode 100644
