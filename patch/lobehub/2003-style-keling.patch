@@ -45,13 +45,15 @@ index c152a839618..cfb3083378c 100644
  export { default as longcat } from './longcat';
 diff --git a/packages/model-bank/src/aiModels/keling.ts b/packages/model-bank/src/aiModels/keling.ts
 new file mode 100644
-index 00000000000..324b806feeb
+index 00000000000..fa20455ffd6
 --- /dev/null
 +++ b/packages/model-bank/src/aiModels/keling.ts
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,167 @@
 +import type { ModelParamsSchema } from '../standard-parameters';
 +import { PRESET_ASPECT_RATIOS } from '../standard-parameters';
-+import type { AIImageModelCard } from '../types';
++import type { VideoModelParamsSchema } from '../standard-parameters/video';
++import { PRESET_VIDEO_ASPECT_RATIOS } from '../standard-parameters/video';
++import type { AIImageModelCard, AIVideoModelCard } from '../types';
 +
 +const kelingImageParamsSchema: ModelParamsSchema = {
 +  aspectRatio: {
@@ -105,7 +107,113 @@ index 00000000000..324b806feeb
 +  },
 +];
 +
-+export const allModels = [...imageModels];
++const klingVideoV26ParamsSchema: VideoModelParamsSchema = {
++  aspectRatio: {
++    default: '16:9',
++    enum: PRESET_VIDEO_ASPECT_RATIOS,
++  },
++  duration: {
++    default: 5,
++    max: 10,
++    min: 3,
++    step: 1,
++  },
++  endImageUrl: {
++    default: null,
++    requiresImageUrl: true,
++  },
++  imageUrl: {
++    default: null,
++  },
++  prompt: {
++    default: '',
++  },
++};
++
++const klingVideoO1ParamsSchema: VideoModelParamsSchema = {
++  aspectRatio: {
++    default: '16:9',
++    enum: PRESET_VIDEO_ASPECT_RATIOS,
++  },
++  duration: {
++    default: 5,
++    max: 10,
++    min: 3,
++    step: 1,
++  },
++  endImageUrl: {
++    default: null,
++  },
++  imageUrl: {
++    default: null,
++  },
++  prompt: {
++    default: '',
++  },
++};
++
++const klingV3OmniParamsSchema: VideoModelParamsSchema = {
++  aspectRatio: {
++    default: '16:9',
++    enum: PRESET_VIDEO_ASPECT_RATIOS,
++  },
++  duration: {
++    default: 5,
++    max: 15,
++    min: 3,
++    step: 1,
++  },
++  endImageUrl: {
++    default: null,
++  },
++  imageUrl: {
++    default: null,
++  },
++  prompt: {
++    default: '',
++  },
++};
++
++const videoModels: AIVideoModelCard[] = [
++  {
++    description:
++      'Advanced video generation model supporting text-to-video, image-to-video, and first-last frame generation. Supports sound control.',
++    displayName: 'Keling V2.6',
++    enabled: true,
++    id: 'kling-v2-6',
++    parameters: klingVideoV26ParamsSchema,
++    type: 'video',
++  },
++  {
++    description:
++      'Professional video generation model supporting text-to-video and image-to-video. Standard and Pro modes with 3-10s duration.',
++    displayName: 'Keling Video O1',
++    enabled: true,
++    id: 'kling-video-o1',
++    parameters: klingVideoO1ParamsSchema,
++    type: 'video',
++  },
++  {
++    description:
++      'Advanced omni video generation model with multi-shot support. Standard and Pro modes with 3-15s duration.',
++    displayName: 'Keling V3 Omni',
++    enabled: true,
++    id: 'kling-v3-omni',
++    parameters: klingV3OmniParamsSchema,
++    type: 'video',
++  },
++  {
++    description:
++      'Multi-image video generation model. Supports subject control with multiple reference images.',
++    displayName: 'Keling V1.6',
++    enabled: true,
++    id: 'kling-v1-6',
++    parameters: klingVideoV26ParamsSchema,
++    type: 'video',
++  },
++];
++
++export const allModels = [...imageModels, ...videoModels];
 +
 +export default allModels;
 diff --git a/packages/model-bank/src/const/modelProvider.ts b/packages/model-bank/src/const/modelProvider.ts
@@ -530,20 +638,23 @@ index 00000000000..0da56ff6868
 +}
 diff --git a/packages/model-runtime/src/providers/keling/index.ts b/packages/model-runtime/src/providers/keling/index.ts
 new file mode 100644
-index 00000000000..53d86ce0205
+index 00000000000..fd1cfadb826
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/keling/index.ts
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,93 @@
 +import createDebug from 'debug';
 +import type { ClientOptions } from 'openai';
 +
 +import type { LobeRuntimeAI } from '../../core/BaseAI';
 +import { AgentRuntimeErrorType } from '../../types/error';
 +import type { CreateImagePayload, CreateImageResponse } from '../../types/image';
++import type { CreateVideoPayload, CreateVideoResponse } from '../../types/video';
 +import { AgentRuntimeError } from '../../utils/createError';
 +import { createKelingImage } from './createImage';
++import { createKelingVideo } from './video/createVideo';
 +
 +const log = createDebug('lobe-image:keling');
++const videoLog = createDebug('lobe-video:keling');
 +
 +export class LobeKelingAI implements LobeRuntimeAI {
 +  baseURL?: string;
@@ -589,6 +700,30 @@ index 00000000000..53d86ce0205
 +      }
 +
 +      if (error instanceof Error && error.message.includes('secretKey')) {
++        throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidProviderAPIKey, {
++          error,
++        });
++      }
++
++      throw AgentRuntimeError.createError(AgentRuntimeErrorType.ProviderBizError, { error });
++    }
++  }
++
++  async createVideo(payload: CreateVideoPayload): Promise<CreateVideoResponse> {
++    const { model, params } = payload;
++    videoLog('Creating video with model: %s and params: %O', model, params);
++
++    try {
++      return await createKelingVideo(payload, {
++        apiKey: this.apiKey,
++        baseURL: this.baseURL,
++        provider: 'keling',
++        secretKey: this.secretKey,
++      });
++    } catch (error) {
++      videoLog('Error in createVideo: %O', error);
++
++      if (error instanceof Error && 'status' in error && (error as any).status === 401) {
 +        throw AgentRuntimeError.createError(AgentRuntimeErrorType.InvalidProviderAPIKey, {
 +          error,
 +        });
@@ -782,6 +917,295 @@ index 00000000000..5796ae9efa9
 +
 +// Multi-image2image endpoint (special case, uses kling-v2-1 but different endpoint)
 +export const KELING_MULTI_IMAGE_ENDPOINT = '/v1/images/multi-image2image';
+diff --git a/packages/model-runtime/src/providers/keling/video/createVideo.ts b/packages/model-runtime/src/providers/keling/video/createVideo.ts
+new file mode 100644
+index 00000000000..8b7e31871ad
+--- /dev/null
++++ b/packages/model-runtime/src/providers/keling/video/createVideo.ts
+@@ -0,0 +1,192 @@
++import createDebug from 'debug';
++
++import type { CreateVideoPayload, CreateVideoResponse } from '../../../types/video';
++
++const log = createDebug('lobe-video:keling');
++
++const BASE_URL = 'https://api-beijing.klingai.com';
++
++interface KelingCreateVideoOptions {
++  apiKey: string;
++  baseURL?: string;
++  provider: string;
++  secretKey: string;
++}
++
++/**
++ * Keling video generation implementation
++ * Supports three API endpoints:
++ * - /v1/videos/text2video: Text to video
++ * - /v1/videos/image2video: Image to video (first-last frame)
++ * - /v1/videos/multi-image2video: Multi-image to video
++ * API docs: https://klingai.com/
++ */
++export async function createKelingVideo(
++  payload: CreateVideoPayload,
++  options: KelingCreateVideoOptions,
++): Promise<CreateVideoResponse> {
++  const { model, params } = payload;
++  const { prompt, imageUrl, endImageUrl, aspectRatio, duration } = params;
++
++  log('Creating video with Keling API - model: %s, params: %O', model, params);
++
++  const baseURL = options.baseURL || BASE_URL;
++
++  // Determine API endpoint based on input images
++  const endpoint = determineEndpoint(model, { imageUrl, endImageUrl, params });
++
++  // Build request body based on endpoint
++  const body = buildRequestBody(model, {
++    prompt,
++    imageUrl,
++    endImageUrl,
++    aspectRatio,
++    duration,
++    params,
++  });
++
++  log('Keling video API endpoint: %s', endpoint);
++  log('Keling video API request body: %s', JSON.stringify(body, null, 2));
++
++  const authToken = `Bearer ${options.apiKey}:${options.secretKey}`;
++
++  const response = await fetch(`${baseURL}${endpoint}`, {
++    body: JSON.stringify(body),
++    headers: {
++      'Authorization': `Bearer ${authToken}`,
++      'Content-Type': 'application/json',
++    },
++    method: 'POST',
++  });
++
++  if (!response.ok) {
++    const errorText = await response.text();
++    log('Keling video API error: %s %s', response.status, errorText);
++    throw new Error(`Keling video API error: ${response.status} ${errorText}`);
++  }
++
++  const data = await response.json();
++
++  log('Keling video API response: %O', data);
++
++  if (data.code !== 0) {
++    throw new Error(`Keling API error: ${data.message || 'Unknown error'}`);
++  }
++
++  if (!data?.data?.task_id) {
++    throw new Error('Invalid response: missing task id');
++  }
++
++  return { inferenceId: data.data.task_id };
++}
++
++/**
++ * Determine which API endpoint to use based on model and input
++ */
++function determineEndpoint(
++  model: string,
++  options: { imageUrl?: string | null; endImageUrl?: string | null; params: any },
++): string {
++  const { imageUrl, endImageUrl, params } = options;
++  const p = params as any;
++
++  // Multi-image to video (kling-v1-6 or multiple images)
++  if (p.imageUrls && Array.isArray(p.imageUrls) && p.imageUrls.length > 1) {
++    return '/v1/videos/multi-image2video';
++  }
++
++  // Image to video with first-last frame
++  if (imageUrl && endImageUrl) {
++    return '/v1/videos/image2video';
++  }
++
++  // Image to video with single image
++  if (imageUrl && !endImageUrl) {
++    // kling-v2-6 and later support image2video endpoint
++    if (model.includes('v2') || model.includes('v3')) {
++      return '/v1/videos/image2video';
++    }
++    // Fallback to multi-image2video for single image
++    return '/v1/videos/multi-image2video';
++  }
++
++  // Default: text to video
++  return '/v1/videos/text2video';
++}
++
++/**
++ * Build request body based on endpoint type
++ */
++function buildRequestBody(
++  model: string,
++  options: {
++    prompt: string;
++    imageUrl?: string | null;
++    endImageUrl?: string | null;
++    aspectRatio?: string;
++    duration?: number;
++    params: any;
++  },
++): Record<string, unknown> {
++  const { prompt, imageUrl, endImageUrl, aspectRatio, duration, params } = options;
++  const p = params as any;
++
++  const endpoint = determineEndpoint(model, { imageUrl, endImageUrl, params });
++
++  // Common fields for all endpoints
++  const commonBody: Record<string, unknown> = {
++    model_name: model || 'kling-v2-6',
++    prompt,
++  };
++
++  // Add mode and duration if provided
++  if (p.mode) commonBody.mode = p.mode;
++  if (duration !== undefined) commonBody.duration = String(duration);
++  if (aspectRatio !== undefined) commonBody.aspect_ratio = aspectRatio;
++  if (p.negativePrompt) commonBody.negative_prompt = p.negativePrompt;
++  if (p.sound !== undefined) commonBody.sound = p.sound;
++
++  // Endpoint-specific fields
++  switch (endpoint) {
++    case '/v1/videos/text2video': {
++      // Text to video: no image fields needed
++      return commonBody;
++    }
++
++    case '/v1/videos/image2video': {
++      // Image to video (first-last frame)
++      return {
++        ...commonBody,
++        image: imageUrl,
++        ...(endImageUrl && { image_tail: endImageUrl }),
++      };
++    }
++
++    case '/v1/videos/multi-image2video': {
++      // Multi-image to video
++      const imageList: Array<{ image: string }> = [];
++
++      // Handle imageUrls array if provided
++      if (p.imageUrls && Array.isArray(p.imageUrls)) {
++        for (const url of p.imageUrls) {
++          if (url) imageList.push({ image: url });
++        }
++      } else if (imageUrl) {
++        // Fallback to single image
++        imageList.push({ image: imageUrl });
++        if (endImageUrl) {
++          imageList.push({ image: endImageUrl });
++        }
++      }
++
++      return {
++        ...commonBody,
++        image_list: imageList,
++      };
++    }
++
++    default: {
++      return commonBody;
++    }
++  }
++}
+diff --git a/packages/model-runtime/src/providers/keling/video/handleCreateVideoWebhook.ts b/packages/model-runtime/src/providers/keling/video/handleCreateVideoWebhook.ts
+new file mode 100644
+index 00000000000..b64c52e8ac2
+--- /dev/null
++++ b/packages/model-runtime/src/providers/keling/video/handleCreateVideoWebhook.ts
+@@ -0,0 +1,85 @@
++import createDebug from 'debug';
++
++import type {
++  HandleCreateVideoWebhookPayload,
++  HandleCreateVideoWebhookResult,
++} from '../../../types/video';
++
++const log = createDebug('lobe-video:keling:webhook');
++
++interface KelingVideoWebhookBody {
++  code?: number;
++  data?: {
++    task_id?: string;
++    task_status?: string;
++    task_status_msg?: string;
++    task_result?: {
++      videos?: Array<{
++        id?: string;
++        url?: string;
++        duration?: string;
++      }>;
++      images?: Array<{
++        index?: number;
++        url?: string;
++      }>;
++    };
++    final_unit_deduction?: string;
++    watermark_info?: {
++      enabled?: boolean;
++    };
++    task_info?: {
++      external_task_id?: string;
++    };
++    created_at?: number;
++    updated_at?: number;
++  };
++  message?: string;
++  request_id?: string;
++}
++
++export async function handleKelingVideoWebhook(
++  payload: HandleCreateVideoWebhookPayload,
++): Promise<HandleCreateVideoWebhookResult> {
++  const body = payload.body as KelingVideoWebhookBody;
++
++  log('Received Keling video webhook: %O', body);
++
++  const taskStatus = body.data?.task_status;
++
++  if (taskStatus === 'submitted' || taskStatus === 'processing') {
++    log('Skipping intermediate status: %s', taskStatus);
++    return { status: 'pending' };
++  }
++
++  const inferenceId = body.data?.task_id;
++  if (!inferenceId) {
++    throw new Error('Missing task_id in webhook body');
++  }
++
++  if (taskStatus === 'succeed') {
++    const videos = body.data?.task_result?.videos;
++    if (!videos || videos.length === 0) {
++      throw new Error('Missing videos in succeeded webhook body');
++    }
++
++    const videoUrl = videos[0].url;
++    if (!videoUrl) {
++      throw new Error('Missing video_url in succeeded webhook body');
++    }
++
++    log('Video generation succeeded: %s, videoUrl: %s', inferenceId, videoUrl);
++
++    return {
++      inferenceId,
++      status: 'success' as const,
++      videoUrl,
++    };
++  }
++
++  const errorMessage = body.data?.task_status_msg || body.message || 'Video generation failed';
++
++  log('Video generation failed: %s, error: %s', inferenceId, errorMessage);
++
++  return { error: errorMessage, inferenceId, status: 'error' };
++}
 diff --git a/packages/model-runtime/src/runtimeMap.ts b/packages/model-runtime/src/runtimeMap.ts
 index d7ce683653f..2f7615f4b8d 100644
 --- a/packages/model-runtime/src/runtimeMap.ts
