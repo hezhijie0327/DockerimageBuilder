@@ -11,40 +11,29 @@ index 05f6ade2567..30bc59bc6d1 100644
    url: 'https://github.com/features/copilot',
  };
 diff --git a/packages/model-runtime/src/providers/githubCopilot/index.test.ts b/packages/model-runtime/src/providers/githubCopilot/index.test.ts
-index 701404d4ee8..172e9be1816 100644
+index 701404d4ee8..7f4a9308d5c 100644
 --- a/packages/model-runtime/src/providers/githubCopilot/index.test.ts
 +++ b/packages/model-runtime/src/providers/githubCopilot/index.test.ts
-@@ -185,4 +185,64 @@ describe('LobeGithubCopilotAI', () => {
+@@ -1,6 +1,7 @@
+ // @vitest-environment node
+ import { afterEach, describe, expect, it, vi } from 'vitest';
+ 
++import { responsesAPIModels } from '../../const/models';
+ import { LobeGithubCopilotAI } from './index';
+ 
+ // Mock console.error to avoid polluting test output
+@@ -185,4 +186,45 @@ describe('LobeGithubCopilotAI', () => {
        expect(instance.baseURL).toBe('https://api.githubcopilot.com');
      });
    });
 +
 +  describe('responses api routing helpers', () => {
-+    it('should use responses API for responses-only model', () => {
-+      const instance = new LobeGithubCopilotAI({ apiKey: 'ghp_test' });
-+
-+      const shouldUse = (instance as any).shouldUseResponsesAPI('gpt-5.1-codex-mini');
-+
-+      expect(shouldUse).toBe(true);
++    it('should contain codex mini model in responses api model list', () => {
++      expect(responsesAPIModels.has('gpt-5.1-codex-mini')).toBe(true);
 +    });
 +
-+    it('should respect apiMode override to chatCompletion', () => {
-+      const instance = new LobeGithubCopilotAI({ apiKey: 'ghp_test' });
-+
-+      const shouldUse = (instance as any).shouldUseResponsesAPI(
-+        'gpt-5.1-codex-mini',
-+        'chatCompletion',
-+      );
-+
-+      expect(shouldUse).toBe(false);
-+    });
-+
-+    it('should respect apiMode override to responses', () => {
-+      const instance = new LobeGithubCopilotAI({ apiKey: 'ghp_test' });
-+
-+      const shouldUse = (instance as any).shouldUseResponsesAPI('gpt-4o', 'responses');
-+
-+      expect(shouldUse).toBe(true);
++    it('should not treat gpt-4o as responses-only model', () => {
++      expect(responsesAPIModels.has('gpt-4o')).toBe(false);
 +    });
 +
 +    it('should convert chat completion tool to responses tool', () => {
@@ -80,7 +69,7 @@ index 701404d4ee8..172e9be1816 100644
 +  });
  });
 diff --git a/packages/model-runtime/src/providers/githubCopilot/index.ts b/packages/model-runtime/src/providers/githubCopilot/index.ts
-index 6c344597276..90454e92516 100644
+index 6c344597276..8c908c280a8 100644
 --- a/packages/model-runtime/src/providers/githubCopilot/index.ts
 +++ b/packages/model-runtime/src/providers/githubCopilot/index.ts
 @@ -2,9 +2,14 @@ import { type ChatModelCard } from '@lobechat/types';
@@ -104,7 +93,7 @@ index 6c344597276..90454e92516 100644
        const { model, ...rest } = this.handlePayload(payload);
        const shouldStream = rest.stream !== false;
  
-+      if (this.shouldUseResponsesAPI(model, (payload as any).apiMode)) {
++      if (responsesAPIModels.has(model) || (payload as any).apiMode === 'responses') {
 +        const input = await convertOpenAIResponseInputs(rest.messages as any, {
 +          strictToolPairing: true,
 +        });
@@ -154,16 +143,10 @@ index 6c344597276..90454e92516 100644
          { signal: options?.signal },
        );
  
-@@ -224,6 +273,16 @@ export class LobeGithubCopilotAI implements LobeRuntimeAI {
+@@ -224,6 +273,10 @@ export class LobeGithubCopilotAI implements LobeRuntimeAI {
      return { ...payload, stream: true };
    }
  
-+  private shouldUseResponsesAPI(model: string, apiMode?: string): boolean {
-+    if (apiMode === 'chatCompletion') return false;
-+    if (apiMode === 'responses') return true;
-+    return responsesAPIModels.has(model);
-+  }
-+
 +  private convertChatCompletionToolToResponseTool = (tool: any): OpenAI.Responses.Tool => {
 +    return { type: tool.type, ...tool.function } as any;
 +  };
