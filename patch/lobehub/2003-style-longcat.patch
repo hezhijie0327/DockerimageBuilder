@@ -67,14 +67,36 @@ index 29c5ee37cf9..8e0855d1379 100644
  
  export const allModels = [...longcatModels];
 diff --git a/packages/model-runtime/src/providers/longcat/index.ts b/packages/model-runtime/src/providers/longcat/index.ts
-index 1c03f315350..ba53257972b 100644
+index 1c03f315350..6329f2bc7cd 100644
 --- a/packages/model-runtime/src/providers/longcat/index.ts
 +++ b/packages/model-runtime/src/providers/longcat/index.ts
-@@ -8,11 +8,63 @@ export const LobeLongCatAI = createOpenAICompatibleRuntime({
-     handlePayload: (payload) => {
-       const { frequency_penalty, presence_penalty, ...rest } = payload;
+@@ -1,18 +1,85 @@
+ import { ModelProvider } from 'model-bank';
  
-+      const messages = payload.messages?.map((message: any) => {
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
++import { parseDataUri } from '../../utils/uriParser';
+ 
+ export const LobeLongCatAI = createOpenAICompatibleRuntime({
+   baseURL: 'https://api.longcat.chat/openai/v1',
+   chatCompletion: {
+     handlePayload: (payload) => {
+-      const { frequency_penalty, presence_penalty, ...rest } = payload;
++      const { frequency_penalty, messages, model, presence_penalty, ...rest } = payload;
++
++      const omniMessages = messages?.map((message: any) => {
++        // If content is a string, convert to LongCat array format
++        if (typeof message?.content === 'string') {
++          return {
++            ...message,
++            content: [
++              {
++                text: message.content,
++                type: 'text',
++              },
++            ],
++          };
++        }
++
 +        if (!Array.isArray(message?.content)) return message;
 +
 +        return {
@@ -92,12 +114,12 @@ index 1c03f315350..ba53257972b 100644
 +
 +              if (!imageUrl) return item;
 +
-+              const isUrl = imageUrl.startsWith('http');
++              const { type } = parseDataUri(imageUrl);
 +
 +              return {
 +                input_image: {
-+                  data: isUrl ? [imageUrl] : imageUrl,
-+                  type: isUrl ? 'url' : 'base64',
++                  data: type === 'url' ? [imageUrl] : imageUrl,
++                  type: type === 'url' ? 'url' : 'base64',
 +                },
 +                type: 'input_image',
 +              };
@@ -108,12 +130,12 @@ index 1c03f315350..ba53257972b 100644
 +
 +              if (!videoUrl) return item;
 +
-+              const isUrl = videoUrl.startsWith('http');
++              const { type } = parseDataUri(videoUrl);
 +
 +              return {
 +                input_video: {
 +                  data: videoUrl,
-+                  type: isUrl ? 'url' : 'base64',
++                  type: type === 'url' ? 'url' : 'base64',
 +                },
 +                type: 'input_video',
 +              };
@@ -123,15 +145,16 @@ index 1c03f315350..ba53257972b 100644
 +          }),
 +        };
 +      });
-+
+ 
        return {
          ...rest,
          frequency_penalty: undefined,
-+        messages,
++        model,
          presence_penalty: undefined,
 -        stream: true,
-+        // if payload.model contains omni, then add output_modalities and stream
-+        ...(payload.model.includes('omni') ? { output_modalities: ['text'], stream: false } : {}),
++        ...(model.includes('omni')
++          ? { messages: omniMessages, output_modalities: ['text'], stream: false }
++          : { messages, stream: true }),
        } as any;
      },
    },
