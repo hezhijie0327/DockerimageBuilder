@@ -1,8 +1,8 @@
 diff --git a/packages/model-bank/src/aiModels/githubCopilot.ts b/packages/model-bank/src/aiModels/githubCopilot.ts
-index f0846af6f9a..4d2828a5ba4 100644
+index f0846af6f9a..4bd9028655a 100644
 --- a/packages/model-bank/src/aiModels/githubCopilot.ts
 +++ b/packages/model-bank/src/aiModels/githubCopilot.ts
-@@ -5,135 +5,195 @@ const githubCopilotChatModels: AIChatModelCard[] = [
+@@ -5,135 +5,189 @@ const githubCopilotChatModels: AIChatModelCard[] = [
    {
      abilities: {
        functionCall: true,
@@ -25,7 +25,6 @@ index f0846af6f9a..4d2828a5ba4 100644
 +    releasedAt: '2026-03-05',
 +    settings: {
 +      extendParams: ['gpt5_2ReasoningEffort', 'textVerbosity'],
-+      searchImpl: 'params',
 +    },
      type: 'chat',
    },
@@ -51,7 +50,6 @@ index f0846af6f9a..4d2828a5ba4 100644
 +    releasedAt: '2026-03-18',
 +    settings: {
 +      extendParams: ['gpt5_2ReasoningEffort', 'textVerbosity'],
-+      searchImpl: 'params',
 +    },
      type: 'chat',
    },
@@ -77,7 +75,6 @@ index f0846af6f9a..4d2828a5ba4 100644
 +    releasedAt: '2026-02-05',
 +    settings: {
 +      extendParams: ['codexMaxReasoningEffort'],
-+      searchImpl: 'params',
 +    },
      type: 'chat',
    },
@@ -103,7 +100,6 @@ index f0846af6f9a..4d2828a5ba4 100644
 +    releasedAt: '2025-12-11',
 +    settings: {
 +      extendParams: ['gpt5_2ReasoningEffort', 'textVerbosity'],
-+      searchImpl: 'params',
 +    },
      type: 'chat',
    },
@@ -129,7 +125,6 @@ index f0846af6f9a..4d2828a5ba4 100644
 +    releasedAt: '2025-12-18',
 +    settings: {
 +      extendParams: ['codexMaxReasoningEffort'],
-+      searchImpl: 'params',
 +    },
      type: 'chat',
    },
@@ -178,7 +173,6 @@ index f0846af6f9a..4d2828a5ba4 100644
 +    releasedAt: '2025-11-13',
 +    settings: {
 +      extendParams: ['reasoningEffort'],
-+      searchImpl: 'params',
 +    },
      type: 'chat',
    },
@@ -256,7 +250,7 @@ index f0846af6f9a..4d2828a5ba4 100644
      type: 'chat',
    },
    {
-@@ -141,181 +201,176 @@ const githubCopilotChatModels: AIChatModelCard[] = [
+@@ -141,181 +195,176 @@ const githubCopilotChatModels: AIChatModelCard[] = [
        functionCall: true,
        vision: true,
      },
@@ -530,7 +524,7 @@ index f0846af6f9a..4d2828a5ba4 100644
      type: 'chat',
    },
    {
-@@ -324,25 +379,30 @@ const githubCopilotChatModels: AIChatModelCard[] = [
+@@ -324,25 +373,30 @@ const githubCopilotChatModels: AIChatModelCard[] = [
        reasoning: true,
        vision: true,
      },
@@ -572,7 +566,7 @@ index f0846af6f9a..4d2828a5ba4 100644
      type: 'chat',
    },
  
-@@ -350,53 +410,26 @@ const githubCopilotChatModels: AIChatModelCard[] = [
+@@ -350,53 +404,26 @@ const githubCopilotChatModels: AIChatModelCard[] = [
    {
      abilities: {
        functionCall: true,
@@ -652,7 +646,7 @@ index 05f6ade2567..a8fd06d34c7 100644
    url: 'https://github.com/features/copilot',
  };
 diff --git a/packages/model-runtime/src/providers/githubCopilot/index.test.ts b/packages/model-runtime/src/providers/githubCopilot/index.test.ts
-index 701404d4ee8..d9c430663cd 100644
+index 701404d4ee8..568fb215841 100644
 --- a/packages/model-runtime/src/providers/githubCopilot/index.test.ts
 +++ b/packages/model-runtime/src/providers/githubCopilot/index.test.ts
 @@ -1,6 +1,8 @@
@@ -726,7 +720,7 @@ index 701404d4ee8..d9c430663cd 100644
    describe('constructor', () => {
      it('should throw error if no token is provided', () => {
        expect(() => new LobeGithubCopilotAI({})).toThrow();
-@@ -185,4 +239,86 @@ describe('LobeGithubCopilotAI', () => {
+@@ -185,4 +239,182 @@ describe('LobeGithubCopilotAI', () => {
        expect(instance.baseURL).toBe('https://api.githubcopilot.com');
      });
    });
@@ -812,12 +806,108 @@ index 701404d4ee8..d9c430663cd 100644
 +      vi.doUnmock('openai');
 +    });
 +  });
++
++  describe('debug env flags', () => {
++    it('should enable chat completion request debug with DEBUG_GITHUBCOPILOT_CHAT_COMPLETION', async () => {
++      vi.resetModules();
++
++      const chatCompletionCreateMock = vi.fn().mockRejectedValue({ status: 500 });
++
++      vi.doMock('openai', () => {
++        return {
++          default: class MockOpenAI {
++            chat = {
++              completions: {
++                create: chatCompletionCreateMock,
++              },
++            };
++
++            responses = {
++              create: vi.fn(),
++            };
++          },
++        };
++      });
++
++      process.env.DEBUG_GITHUBCOPILOT_CHAT_COMPLETION = '1';
++      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
++
++      const { LobeGithubCopilotAI: ReloadedLobeGithubCopilotAI } = await import('./index');
++
++      const futureTime = Date.now() + 600_000;
++      const instance = new ReloadedLobeGithubCopilotAI({
++        bearerToken: 'cached-bearer-token',
++        bearerTokenExpiresAt: futureTime,
++        oauthAccessToken: 'ghu_oauth',
++      });
++
++      await expect(
++        instance.chat({
++          messages: [{ content: 'hello', role: 'user' }],
++          model: 'gpt-4o',
++        } as any),
++      ).rejects.toBeDefined();
++
++      expect(chatCompletionCreateMock).toHaveBeenCalledTimes(1);
++      expect(logSpy).toHaveBeenCalledWith('[requestPayload]');
++
++      delete process.env.DEBUG_GITHUBCOPILOT_CHAT_COMPLETION;
++      vi.doUnmock('openai');
++    });
++
++    it('should enable responses request debug with DEBUG_GITHUBCOPILOT_RESPONSES', async () => {
++      vi.resetModules();
++
++      const responsesCreateMock = vi.fn().mockRejectedValue({ status: 500 });
++
++      vi.doMock('openai', () => {
++        return {
++          default: class MockOpenAI {
++            chat = {
++              completions: {
++                create: vi.fn(),
++              },
++            };
++
++            responses = {
++              create: responsesCreateMock,
++            };
++          },
++        };
++      });
++
++      process.env.DEBUG_GITHUBCOPILOT_RESPONSES = '1';
++      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
++
++      const { LobeGithubCopilotAI: ReloadedLobeGithubCopilotAI } = await import('./index');
++
++      const futureTime = Date.now() + 600_000;
++      const instance = new ReloadedLobeGithubCopilotAI({
++        bearerToken: 'cached-bearer-token',
++        bearerTokenExpiresAt: futureTime,
++        oauthAccessToken: 'ghu_oauth',
++      });
++
++      await expect(
++        instance.chat({
++          messages: [{ content: 'hello', role: 'user' }],
++          model: 'gpt-5.1-codex-mini',
++        } as any),
++      ).rejects.toBeDefined();
++
++      expect(responsesCreateMock).toHaveBeenCalledTimes(1);
++      expect(logSpy).toHaveBeenCalledWith('[requestPayload]');
++
++      delete process.env.DEBUG_GITHUBCOPILOT_RESPONSES;
++      vi.doUnmock('openai');
++    });
++  });
  });
 diff --git a/packages/model-runtime/src/providers/githubCopilot/index.ts b/packages/model-runtime/src/providers/githubCopilot/index.ts
-index 6c344597276..9695bfefac9 100644
+index 6c344597276..e1651c3dc92 100644
 --- a/packages/model-runtime/src/providers/githubCopilot/index.ts
 +++ b/packages/model-runtime/src/providers/githubCopilot/index.ts
-@@ -2,9 +2,15 @@ import { type ChatModelCard } from '@lobechat/types';
+@@ -2,12 +2,19 @@ import { type ChatModelCard } from '@lobechat/types';
  import { ModelProvider } from 'model-bank';
  import OpenAI from 'openai';
  
@@ -835,10 +925,30 @@ index 6c344597276..9695bfefac9 100644
  import { type ChatMethodOptions, type ChatStreamPayload } from '../../types';
  import { AgentRuntimeErrorType } from '../../types/error';
  import { AgentRuntimeError } from '../../utils/createError';
-@@ -167,8 +173,82 @@ export class LobeGithubCopilotAI implements LobeRuntimeAI {
++import { debugResponse, debugStream } from '../../utils/debugStream';
+ import { StreamingResponse } from '../../utils/response';
+ 
+ const COPILOT_BASE_URL = 'https://api.githubcopilot.com';
+@@ -16,6 +23,11 @@ const TOKEN_EXCHANGE_URL = 'https://api.github.com/copilot_internal/v2/token';
+ const MAX_TOTAL_ATTEMPTS = 5;
+ const MAX_RATE_LIMIT_RETRIES = 3;
+ 
++const debugParams = {
++  chatCompletion: () => process.env.DEBUG_GITHUBCOPILOT_CHAT_COMPLETION === '1',
++  responses: () => process.env.DEBUG_GITHUBCOPILOT_RESPONSES === '1',
++};
++
+ interface CachedToken {
+   expiresAt: number;
+   token: string;
+@@ -167,10 +179,127 @@ export class LobeGithubCopilotAI implements LobeRuntimeAI {
        const { model, ...rest } = this.handlePayload(payload);
        const shouldStream = rest.stream !== false;
  
+-      const response = await client.chat.completions.create(
+-        { ...rest, model, stream: shouldStream } as OpenAI.ChatCompletionCreateParamsStreaming,
+-        { signal: options?.signal },
+-      );
 +      if (responsesAPIModels.has(model) || (payload as any).apiMode === 'responses') {
 +        const {
 +          messages,
@@ -860,30 +970,48 @@ index 6c344597276..9695bfefac9 100644
 +        });
 +
 +        const responseTools = tools?.map(this.convertChatCompletionToolToResponseTool);
-+        const response = await client.responses.create(
-+          {
-+            ...responseRest,
-+            ...(reasoning || reasoning_effort
-+              ? {
-+                  reasoning: {
-+                    ...reasoning,
-+                    ...(reasoning_effort && { effort: reasoning_effort }),
-+                  },
-+                }
-+              : {}),
-+            ...(max_tokens && { max_output_tokens: max_tokens }),
-+            text: verbosity ? { verbosity } : undefined,
-+            input,
-+            model,
-+            stream: shouldStream,
-+            ...(responseTools ? { tools: responseTools } : {}),
-+          },
-+          { signal: options?.signal },
-+        );
++        const responsePayload = {
++          ...responseRest,
++          ...(reasoning || reasoning_effort
++            ? {
++                reasoning: {
++                  ...reasoning,
++                  ...(reasoning_effort && { effort: reasoning_effort }),
++                },
++              }
++            : {}),
++          ...(max_tokens && { max_output_tokens: max_tokens }),
++          text: verbosity ? { verbosity } : undefined,
++          input,
++          model,
++          stream: shouldStream,
++          ...(responseTools ? { tools: responseTools } : {}),
++        };
++
++        if (debugParams.responses()) {
++          // eslint-disable-next-line no-console
++          console.log('[requestPayload]');
++          // eslint-disable-next-line no-console
++          console.log(JSON.stringify(responsePayload), '\n');
++        }
++
++        const response = await client.responses.create(responsePayload, {
++          signal: options?.signal,
++        });
 +
 +        if (shouldStream) {
++          const stream = response as any;
++          const [prod, useForDebug] = stream.tee();
++
++          if (debugParams.responses()) {
++            const useForDebugStream =
++              useForDebug instanceof ReadableStream ? useForDebug : useForDebug.toReadableStream();
++
++            debugStream(useForDebugStream).catch(console.error);
++          }
++
 +          return StreamingResponse(
-+            OpenAIResponsesStream(response as any, {
++            OpenAIResponsesStream(prod, {
 +              callbacks: options?.callback,
 +              payload: { model, provider: ModelProvider.GithubCopilot },
 +            }),
@@ -892,6 +1020,10 @@ index 6c344597276..9695bfefac9 100644
 +        }
 +
 +        const responseStream = transformResponseAPIToStream(response as OpenAI.Responses.Response);
++
++        if (debugParams.responses()) {
++          debugResponse(response);
++        }
 +
 +        return StreamingResponse(
 +          OpenAIResponsesStream(responseStream, {
@@ -908,18 +1040,40 @@ index 6c344597276..9695bfefac9 100644
 +        forceImageBase64: true,
 +      });
 +
-       const response = await client.chat.completions.create(
--        { ...rest, model, stream: shouldStream } as OpenAI.ChatCompletionCreateParamsStreaming,
-+        {
-+          ...cleanedRest,
-+          messages,
-+          model,
-+          stream: shouldStream,
-+        } as OpenAI.ChatCompletionCreateParamsStreaming,
-         { signal: options?.signal },
-       );
++      const chatCompletionPayload = {
++        ...cleanedRest,
++        messages,
++        model,
++        stream: shouldStream,
++      } as OpenAI.ChatCompletionCreateParamsStreaming;
++
++      if (debugParams.chatCompletion()) {
++        // eslint-disable-next-line no-console
++        console.log('[requestPayload]');
++        // eslint-disable-next-line no-console
++        console.log(JSON.stringify(chatCompletionPayload), '\n');
++      }
++
++      let response = await client.chat.completions.create(chatCompletionPayload, {
++        signal: options?.signal,
++      });
++
++      if (shouldStream && debugParams.chatCompletion()) {
++        const [prod, useForDebug] = (response as any).tee();
++        const useForDebugStream =
++          useForDebug instanceof ReadableStream ? useForDebug : useForDebug.toReadableStream();
++
++        debugStream(useForDebugStream).catch(console.error);
++        response = prod;
++      }
++
++      if (!shouldStream && debugParams.chatCompletion()) {
++        debugResponse(response);
++      }
  
-@@ -224,6 +304,10 @@ export class LobeGithubCopilotAI implements LobeRuntimeAI {
+       return StreamingResponse(
+         OpenAIStream(response, {
+@@ -224,6 +353,10 @@ export class LobeGithubCopilotAI implements LobeRuntimeAI {
      return { ...payload, stream: true };
    }
  
