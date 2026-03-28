@@ -54,7 +54,7 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true \
     CARGO_PROFILE_RELEASE_DEBUG=false \
     CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=off \
     CARGO_PROFILE_RELEASE_STRIP=symbols \
-    RUSTFLAGS="--cfg tokio_unstable -C force-frame-pointers=yes -C target-feature=-crt-static"
+    RUSTFLAGS="--cfg tokio_unstable"
 
 WORKDIR /rustfs
 
