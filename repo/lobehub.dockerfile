@@ -87,7 +87,7 @@ COPY --from=build_baseos /distroless/ /
 
 COPY --from=build_lobehub /app/.next/standalone /app/
 COPY --from=build_lobehub /app/.next/static /app/.next/static
-COPY --from=build_lobehub /app/public/spa /app/public/spa
+COPY --from=build_lobehub /app/public/_spa /app/public/_spa
 
 COPY --from=build_lobehub /app/packages/database/migrations /app/migrations
 COPY --from=build_lobehub /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
