@@ -906,60 +906,6 @@ index 61319c44204..319df1398f0 100644
 +];
  
  export default allModels;
-diff --git a/packages/model-bank/src/aiModels/siliconcloud.ts.rej b/packages/model-bank/src/aiModels/siliconcloud.ts.rej
-new file mode 100644
-index 00000000000..1d7eccf74d3
---- /dev/null
-+++ b/packages/model-bank/src/aiModels/siliconcloud.ts.rej
-@@ -0,0 +1,48 @@
-+diff a/packages/model-bank/src/aiModels/siliconcloud.ts b/packages/model-bank/src/aiModels/siliconcloud.ts	(rejected hunks)
-+@@ -459,7 +463,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
-+           lookup: {
-+             prices: {
-+               '[0, 0.131072]': 0.8,
-+-              '[0.131072, infinity]': 2.0,
-++              '[0.131072, infinity]': 2,
-+             },
-+             pricingParams: ['textInput'],
-+           },
-+@@ -471,7 +475,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
-+           lookup: {
-+             prices: {
-+               '[0, 0.131072]': 4.8,
-+-              '[0.131072, infinity]': 12.0,
-++              '[0.131072, infinity]': 12,
-+             },
-+             pricingParams: ['textInput'],
-+           },
-+@@ -506,7 +510,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
-+           lookup: {
-+             prices: {
-+               '[0, 0.131072]': 0.8,
-+-              '[0.131072, infinity]': 2.0,
-++              '[0.131072, infinity]': 2,
-+             },
-+             pricingParams: ['textInput'],
-+           },
-+@@ -518,7 +522,7 @@ const siliconcloudChatModels: AIChatModelCard[] = [
-+           lookup: {
-+             prices: {
-+               '[0, 0.131072]': 6.4,
-+-              '[0.131072, infinity]': 16.0,
-++              '[0.131072, infinity]': 16,
-+             },
-+             pricingParams: ['textInput'],
-+           },
-+@@ -658,8 +662,8 @@ const siliconcloudChatModels: AIChatModelCard[] = [
-+         {
-+           lookup: {
-+             prices: {
-+-              '[0, 0.131072]': 4.0,
-+-              '[0.131072, infinity]': 12.0,
-++              '[0, 0.131072]': 4,
-++              '[0.131072, infinity]': 12,
-+             },
-+             pricingParams: ['textInput'],
-+           },
 diff --git a/packages/model-bank/src/aiModels/wenxin.ts b/packages/model-bank/src/aiModels/wenxin.ts
 index fdbcdcef85e..cab21ce898f 100644
 --- a/packages/model-bank/src/aiModels/wenxin.ts
@@ -2979,7 +2925,7 @@ index 00000000000..2233018baad
 +});
 diff --git a/packages/model-runtime/src/providers/google/createVideo.ts b/packages/model-runtime/src/providers/google/createVideo.ts
 new file mode 100644
-index 00000000000..bbcbec35467
+index 00000000000..f169fae1dda
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/google/createVideo.ts
 @@ -0,0 +1,187 @@
@@ -3051,7 +2997,7 @@ index 00000000000..bbcbec35467
 +      ...(endImageUrl && { lastFrame: await imageToGoogleImageFormat(endImageUrl) }),
 +      ...(generateAudio && { generateAudio }),
 +      ...(resolution && { resolution }),
-+      ...(seed && { seed }),
++      ...(seed !== undefined && seed !== null && { seed }),
 +    };
 +
 +    const requestParams: any = {
@@ -4107,10 +4053,10 @@ index 00000000000..1da0a3830f1
 +});
 diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
 new file mode 100644
-index 00000000000..f867c312af4
+index 00000000000..2f4376d1f29
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
-@@ -0,0 +1,310 @@
+@@ -0,0 +1,291 @@
 +import createDebug from 'debug';
 +
 +import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
@@ -4137,6 +4083,10 @@ index 00000000000..f867c312af4
 +    video_count?: number;
 +  };
 +}
++
++// Model patterns for different video generation types
++const image2VideoModels = [/^wan2\.(2|5)-i2v-/, /^wanx2\.(0|1)-i2v-/];
++const keyframe2VideoModels = [/^wan2\.(2|5)-kf2v-/];
 +
 +/**
 + * Query the status of a video generation task
@@ -4201,32 +4151,9 @@ index 00000000000..f867c312af4
 +  return { status: 'pending' };
 +}
 +
-+// Model patterns for different video generation types
-+const image2VideoModels = [/^wan2\.(2|5)-i2v-/, /^wanx2\.(0|1)-i2v-/];
-+const keyframe2VideoModels = [/^wan2\.(2|5)-kf2v-/];
-+
 +// Helper function to check if model matches any pattern in the array
 +function matchesModelPattern(model: string, patterns: Array<RegExp>): boolean {
 +  return patterns.some((pattern) => pattern.test(model));
-+}
-+
-+interface QwenVideoTaskResponse {
-+  output: {
-+    error_message?: string;
-+    task_id: string;
-+    task_status: 'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
-+    video_url?: string;
-+    cover_image_url?: string;
-+    // For keyframe models
-+    first_frame_url?: string;
-+    last_frame_url?: string;
-+  };
-+  request_id: string;
-+  usage?: {
-+    duration?: number;
-+    size?: string;
-+    video_count?: number;
-+  };
 +}
 +
 +/**
