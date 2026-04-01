@@ -125,7 +125,7 @@ index 2c8fa066f9a..595722e99f8 100644
      description:
        'FLUX.1 [schnell] is the most advanced open-source few-step model, surpassing similar competitors and even strong non-distilled models like Midjourney v6.0 and DALL-E 3 (HD). It is finely tuned to preserve pretraining diversity, significantly improving visual quality, instruction following, size/aspect variation, font handling, and output diversity.',
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.test.ts b/packages/model-runtime/src/providers/qwen/createImage.test.ts
-index 9b8f011f2b0..2f7ee8fa929 100644
+index 9b8f011f2b0..c37885ced8b 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.test.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.test.ts
 @@ -757,7 +757,7 @@ describe('createQwenImage', () => {
@@ -137,7 +137,7 @@ index 9b8f011f2b0..2f7ee8fa929 100644
        });
      });
  
-@@ -821,4 +821,141 @@ describe('createQwenImage', () => {
+@@ -821,4 +821,210 @@ describe('createQwenImage', () => {
        );
      });
    });
@@ -223,24 +223,30 @@ index 9b8f011f2b0..2f7ee8fa929 100644
 +      });
 +    });
 +
-+    it('should use multimodal-generation sync API for wan2.7 model', async () => {
++    it('should use image-generation async API for wan2.7 model', async () => {
++      const mockTaskId = 'task-wan27-1';
 +      const mockImageUrl = 'https://dashscope.oss-cn-beijing.aliyuncs.com/aigc/wan27-image.jpg';
 +
-+      global.fetch = vi.fn().mockResolvedValueOnce({
-+        ok: true,
-+        json: async () => ({
-+          output: {
-+            choices: [
-+              {
-+                message: {
-+                  content: [{ image: mockImageUrl }],
-+                },
-+              },
-+            ],
-+          },
-+          request_id: 'req-wan27-1',
-+        }),
-+      });
++      global.fetch = vi
++        .fn()
++        .mockResolvedValueOnce({
++          ok: true,
++          json: async () => ({
++            output: { task_id: mockTaskId },
++            request_id: 'req-wan27-create',
++          }),
++        })
++        .mockResolvedValueOnce({
++          ok: true,
++          json: async () => ({
++            output: {
++              results: [{ url: mockImageUrl }],
++              task_id: mockTaskId,
++              task_status: 'SUCCEEDED',
++            },
++            request_id: 'req-wan27-status',
++          }),
++        });
 +
 +      const payload: CreateImagePayload = {
 +        model: 'wan2.7-image-pro',
@@ -256,43 +262,113 @@ index 9b8f011f2b0..2f7ee8fa929 100644
 +
 +      expect(result).toEqual({ imageUrl: mockImageUrl });
 +
-+      expect(fetch).toHaveBeenCalledWith(
-+        'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
-+        expect.objectContaining({
-+          body: JSON.stringify({
-+            input: {
-+              messages: [
-+                {
-+                  content: [{ text: 'A futuristic city skyline' }],
-+                  role: 'user',
-+                },
-+              ],
-+            },
-+            model: 'wan2.7-image-pro',
-+            parameters: {
-+              n: 1,
-+              seed: 123,
-+            },
-+          }),
-+        }),
++      const [createUrl, createOptions] = (fetch as any).mock.calls[0];
++
++      expect(createUrl).toBe(
++        'https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation',
 +      );
++      expect(JSON.parse(createOptions.body)).toEqual({
++        input: {
++          messages: [
++            {
++              content: [{ text: 'A futuristic city skyline' }],
++              role: 'user',
++            },
++          ],
++        },
++        model: 'wan2.7-image-pro',
++        parameters: {
++          n: 1,
++          seed: 123,
++          size: '2048*2048',
++        },
++      });
++
++      expect(fetch).toHaveBeenCalledWith(
++        `https://dashscope.aliyuncs.com/api/v1/tasks/${mockTaskId}`,
++        {
++          headers: {
++            Authorization: 'Bearer test-api-key',
++          },
++        },
++      );
++    });
++
++    it('should use multimodal-generation sync API for sync-only model', async () => {
++      const mockImageUrl = 'https://dashscope.oss-cn-beijing.aliyuncs.com/aigc/sync-only-image.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          output: {
++            choices: [
++              {
++                message: {
++                  content: [{ image: mockImageUrl }],
++                },
++              },
++            ],
++          },
++          request_id: 'req-sync-only',
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'qwen-image-max',
++        params: {
++          prompt: 'A cinematic portrait',
++          seed: 42,
++        },
++      };
++
++      const result = await createQwenImage(payload, mockOptions);
++
++      expect(result).toEqual({ imageUrl: mockImageUrl });
++
++      const [syncUrl, syncOptions] = (fetch as any).mock.calls[0];
++
++      expect(syncUrl).toBe(
++        'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
++      );
++      expect(JSON.parse(syncOptions.body)).toEqual({
++        input: {
++          messages: [
++            {
++              content: [{ text: 'A cinematic portrait' }],
++              role: 'user',
++            },
++          ],
++        },
++        model: 'qwen-image-max',
++        parameters: {
++          n: 1,
++          seed: 42,
++        },
++      });
 +    });
 +  });
  });
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.ts b/packages/model-runtime/src/providers/qwen/createImage.ts
-index d7b724096d5..4edcc8fcdd4 100644
+index d7b724096d5..8a891e56dc9 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.ts
-@@ -18,6 +18,8 @@ const text2ImageModels = [
+@@ -12,12 +12,15 @@ const text2ImageModels = [
+   /^wan2\.(2|5)-t2i-/,
+   /^wanx2\.(0|1)-t2i-/,
+   /^wanx-v1/,
++  /^qwen-image(-plus)?$/,
+   /^stable-diffusion-/,
+   /^flux-/,
+ ];
  
  const image2ImageModels = [/^wan2\.(2|5)-i2i-/];
  
-+const asyncOnlyModels = [/^kling/];
++const syncOnlyModels = [/^qwen-image-(edit|max)/, /^qwen-image-2\.0/, /^z-image-turbo/];
 +
  const imageRequiredModels = [/^qwen-image-edit/, /^wan2\.(2|5)-i2i-/, /^wan2\.6-image/];
  
  // Helper function to check if model matches any pattern in the array
-@@ -29,7 +31,16 @@ function matchesModel(model: string, patterns: Array<string | RegExp>): boolean
+@@ -29,7 +32,16 @@ function matchesModel(model: string, patterns: Array<string | RegExp>): boolean
  
  interface QwenImageTaskResponse {
    output: {
@@ -309,7 +385,7 @@ index d7b724096d5..4edcc8fcdd4 100644
      results?: Array<{
        url: string;
      }>;
-@@ -39,25 +50,22 @@ interface QwenImageTaskResponse {
+@@ -39,25 +51,22 @@ interface QwenImageTaskResponse {
    request_id: string;
  }
  
@@ -345,7 +421,7 @@ index d7b724096d5..4edcc8fcdd4 100644
    payload: CreateImagePayload,
    apiKey: string,
    endpoint: 'text2image' | 'image2image',
-@@ -132,12 +140,89 @@ async function createQwenImageTask(
+@@ -132,15 +141,93 @@ async function createQwenImageTask(
    return data.output.task_id;
  }
  
@@ -436,7 +512,20 @@ index d7b724096d5..4edcc8fcdd4 100644
    payload: CreateImagePayload,
    apiKey: string,
    baseUrl: string,
-@@ -180,6 +265,7 @@ async function createMultimodalGeneration(
++  provider: string,
+ ): Promise<CreateImageResponse> {
+   const { model, params } = payload;
+   const endpoint = `${baseUrl}/api/v1/services/aigc/multimodal-generation/generation`;
+@@ -153,7 +240,7 @@ async function createMultimodalGeneration(
+     throw AgentRuntimeError.createImage({
+       error: new Error(`imageUrl or imageUrls is required for model ${model}`),
+       errorType: 'ProviderBizError',
+-      provider: 'qwen',
++      provider,
+     });
+   }
+ 
+@@ -180,6 +267,7 @@ async function createMultimodalGeneration(
        },
        model,
        parameters: {
@@ -444,7 +533,7 @@ index d7b724096d5..4edcc8fcdd4 100644
          ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
        },
      }),
-@@ -202,23 +288,16 @@ async function createMultimodalGeneration(
+@@ -202,23 +290,16 @@ async function createMultimodalGeneration(
      );
    }
  
@@ -473,7 +562,7 @@ index d7b724096d5..4edcc8fcdd4 100644
    log('Image edit generated successfully: %s', resultImageUrl);
  
    return { imageUrl: resultImageUrl };
-@@ -227,7 +306,7 @@ async function createMultimodalGeneration(
+@@ -227,7 +308,7 @@ async function createMultimodalGeneration(
  /**
   * Query the status of an image generation task
   */
@@ -482,7 +571,7 @@ index d7b724096d5..4edcc8fcdd4 100644
    taskId: string,
    apiKey: string,
    baseUrl: string,
-@@ -257,12 +336,59 @@ async function queryTaskStatus(
+@@ -257,12 +338,59 @@ async function queryTaskStatus(
    return response.json();
  }
  
@@ -543,11 +632,11 @@ index d7b724096d5..4edcc8fcdd4 100644
   */
  export async function createQwenImage(
    payload: CreateImagePayload,
-@@ -280,57 +406,33 @@ export async function createQwenImage(
+@@ -280,57 +408,33 @@ export async function createQwenImage(
    try {
      const isText2Image = matchesModel(model, text2ImageModels);
      const isImage2Image = matchesModel(model, image2ImageModels);
-+    const isAsyncGeneration = matchesModel(model, asyncOnlyModels);
++    const isSyncGeneration = matchesModel(model, syncOnlyModels);
  
      if (isText2Image || isImage2Image) {
        const endpoint = isImage2Image ? 'image2image' : 'text2image';
@@ -603,19 +692,20 @@ index d7b724096d5..4edcc8fcdd4 100644
 +
 +      return await pollTaskToImageResponse(taskId, apiKey, dashscopeURL, model);
 +    }
-+
-+    if (isAsyncGeneration) {
-+      log('Using image-generation async API for model: %s', model);
-+
-+      const taskId = await createHTTPAsyncGenerationTask(payload, apiKey, dashscopeURL);
  
 -      return result;
-+      return await pollTaskToImageResponse(taskId, apiKey, dashscopeURL, model);
++    if (isSyncGeneration) {
++      log('Using multimodal-generation API for model: %s', model);
++      return await createHTTPSyncGeneration(payload, apiKey, dashscopeURL, provider);
      }
  
-     log('Using multimodal-generation API for model: %s', model);
+-    log('Using multimodal-generation API for model: %s', model);
 -    return await createMultimodalGeneration(payload, apiKey, dashscopeURL);
-+    return await createHTTPSyncGeneration(payload, apiKey, dashscopeURL);
++    log('Using image-generation async API for model: %s', model);
++
++    const taskId = await createHTTPAsyncGenerationTask(payload, apiKey, dashscopeURL);
++
++    return await pollTaskToImageResponse(taskId, apiKey, dashscopeURL, model);
    } catch (error) {
      log('Error in createQwenImage: %O', error);
  
