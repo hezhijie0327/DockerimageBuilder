@@ -453,7 +453,7 @@ index 08ba31bb764..8464d14e659 100644
  
  export default allModels;
 diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
-index 2c8fa066f9a..98cab2ddfcd 100644
+index 2c8fa066f9a..9796d9760f1 100644
 --- a/packages/model-bank/src/aiModels/qwen.ts
 +++ b/packages/model-bank/src/aiModels/qwen.ts
 @@ -1,4 +1,8 @@
@@ -466,7 +466,7 @@ index 2c8fa066f9a..98cab2ddfcd 100644
  
  // https://help.aliyun.com/zh/model-studio/models?spm=a2c4g.11186623
  
-@@ -3481,6 +3485,1087 @@ const qwenImageModels: AIImageModelCard[] = [
+@@ -3481,6 +3485,1160 @@ const qwenImageModels: AIImageModelCard[] = [
    },
  ];
  
@@ -519,6 +519,79 @@ index 2c8fa066f9a..98cab2ddfcd 100644
 +    pricing: {
 +      currency: 'CNY',
 +      units: [{ name: 'videoGeneration', rate: 1, strategy: 'fixed', unit: 'second' }],
++    },
++    releasedAt: '2025-12-16',
++    type: 'video',
++  },
++  {
++    description:
++      'Wanxiang 2.6 Reference-to-Video – Flash offers faster generation and better cost performance. It supports referencing specific characters or any objects, accurately maintaining consistency in appearance and voice, and enables multi-character reference for co-performance.',
++    displayName: 'Wan2.6 R2V Flash',
++    enabled: true,
++    id: 'wan2.6-r2v-flash',
++    parameters: {
++      duration: { default: 5, max: 10, min: 2 },
++      generateAudio: { default: true },
++      imageUrl: {
++        default: null,
++      },
++      prompt: { default: '' },
++      size: {
++        default: '1920x1080',
++        enum: [
++          '1280x720',
++          '720x1280',
++          '960x960',
++          '1088x832',
++          '832x1088',
++          '1920x1080',
++          '1080x1920',
++          '1440x1440',
++          '1632x1248',
++          '1248x1632',
++        ],
++      },
++      seed: { default: null },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'videoGeneration', rate: 1, strategy: 'fixed', unit: 'second' }],
++    },
++    releasedAt: '2025-12-16',
++    type: 'video',
++  },
++  {
++    description:
++      'Wanxiang 2.6 Reference-to-Video supports referencing specific characters or any objects, accurately maintaining consistency in appearance and voice, and enabling multi-character reference for co-performance. Note: When using videos as references, the input video will also be counted toward the cost. Please refer to the model pricing documentation for details.',
++    displayName: 'Wan2.6 R2V',
++    enabled: true,
++    id: 'wan2.6-r2v',
++    parameters: {
++      duration: { default: 5, max: 10, min: 2 },
++      imageUrl: {
++        default: null,
++      },
++      prompt: { default: '' },
++      size: {
++        default: '1920x1080',
++        enum: [
++          '1280x720',
++          '720x1280',
++          '960x960',
++          '1088x832',
++          '832x1088',
++          '1920x1080',
++          '1080x1920',
++          '1440x1440',
++          '1632x1248',
++          '1248x1632',
++        ],
++      },
++      seed: { default: null },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'videoGeneration', rate: 0.5, strategy: 'fixed', unit: 'second' }],
 +    },
 +    releasedAt: '2025-12-16',
 +    type: 'video',
@@ -4830,10 +4903,10 @@ index 00000000000..b17d62cc9a2
 +});
 diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
 new file mode 100644
-index 00000000000..21517ee6a9a
+index 00000000000..223bb36f8a1
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
-@@ -0,0 +1,363 @@
+@@ -0,0 +1,369 @@
 +import createDebug from 'debug';
 +
 +import type { CreateVideoOptions } from '../../core/openaiCompatibleFactory';
@@ -4871,6 +4944,7 @@ index 00000000000..21517ee6a9a
 +  /r2v$/,
 +];
 +const keyframe2VideoModels = [/^wan2\.(2|5)-kf2v-/, /start-end2video$/, /kf2v$/];
++const reference2VideoModels = [/^wan2\.6-r2v/];
 +
 +/**
 + * Query the status of a video generation task
@@ -4963,7 +5037,10 @@ index 00000000000..21517ee6a9a
 +  const parameters: Record<string, any> = {};
 +
 +  // Validate required parameters based on model type
-+  if (matchesModelPattern(model, image2VideoModels)) {
++  if (
++    matchesModelPattern(model, image2VideoModels) ||
++    matchesModelPattern(model, reference2VideoModels)
++  ) {
 +    if (!imageUrl) {
 +      throw AgentRuntimeError.createVideo({
 +        error: new Error('imageUrl is required for image-to-video models'),
@@ -5036,6 +5113,8 @@ index 00000000000..21517ee6a9a
 +        },
 +      ];
 +    }
++  } else if (matchesModelPattern(model, reference2VideoModels)) {
++    input.reference_urls = [imageUrl];
 +  } else if (matchesModelPattern(model, keyframe2VideoModels)) {
 +    input.first_frame_url = imageUrl;
 +    input.last_frame_url = endImageUrl;
