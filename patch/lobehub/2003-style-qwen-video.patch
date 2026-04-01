@@ -1,18 +1,13 @@
-From 85cb18c8adca6f662fdd93655e3137269d9f7b5a Mon Sep 17 00:00:00 2001
+From e350c2f17b2bd1819491f4b28115fe8251ff0dcf Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Wed, 1 Apr 2026 22:05:30 +0800
 Subject: [PATCH] style: add third-party provider from qwen
 
-style: add third-party provider from qwen
-
-style: add third-party provider from qwen
-
-style: add third-party provider from qwen
 ---
  packages/model-bank/src/aiModels/qwen.ts      | 618 ++++++++++++++++++
  .../src/providers/qwen/createVideo.test.ts    |  46 ++
- .../src/providers/qwen/createVideo.ts         | 115 +++-
- 3 files changed, 755 insertions(+), 24 deletions(-)
+ .../src/providers/qwen/createVideo.ts         | 120 +++-
+ 3 files changed, 760 insertions(+), 24 deletions(-)
 
 diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
 index cce2c9e..e216615 100644
@@ -708,7 +703,7 @@ index 1da0a38..b17d62c 100644
  
  describe('pollQwenVideoStatus', () => {
 diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
-index 2f4376d..fa01a33 100644
+index 2f4376d..21517ee 100644
 --- a/packages/model-runtime/src/providers/qwen/createVideo.ts
 +++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
 @@ -26,8 +26,15 @@ interface QwenVideoTaskResponse {
@@ -854,12 +849,17 @@ index 2f4376d..fa01a33 100644
    if (params.size) {
      // Convert size format from "widthxheight" to "width*height" if needed
      parameters.size = params.size.replace('x', '*');
-@@ -165,6 +228,10 @@ async function createVideoTask(
+@@ -165,6 +228,15 @@ async function createVideoTask(
      parameters.audio = params.generateAudio;
    }
  
 +  if (params.resolution) {
-+    parameters.resolution = params.resolution;
++    if (model.startsWith('kling/')) {
++      // For Kling models, resolution is determined by mode parameter. Map 1080p to pro mode, others to std mode.
++      parameters.mode = params.resolution === '1080p' ? 'pro' : 'std';
++    } else {
++      parameters.resolution = params.resolution;
++    }
 +  }
 +
    const response = await fetch(url, {
