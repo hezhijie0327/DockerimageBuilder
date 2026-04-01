@@ -1,0 +1,621 @@
+diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
+index 2c8fa066f9a..595722e99f8 100644
+--- a/packages/model-bank/src/aiModels/qwen.ts
++++ b/packages/model-bank/src/aiModels/qwen.ts
+@@ -3108,6 +3108,54 @@ const qwenImageModels: AIImageModelCard[] = [
+     releasedAt: '2025-08-13',
+     type: 'image',
+   },
++  {
++    description: 'Wanxiang 2.7 Image Professional Edition, supports 4K high-definition output.',
++    displayName: 'Wanxiang2.7 Image Pro',
++    enabled: true,
++    id: 'wan2.7-image-pro',
++    organization: 'Qwen',
++    parameters: {
++      height: { default: 2048, max: 11_585, min: 271, step: 1 },
++      imageUrls: {
++        default: [],
++      },
++      prompt: {
++        default: '',
++      },
++      seed: { default: null },
++      width: { default: 2048, max: 11_585, min: 271, step: 1 },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.5, strategy: 'fixed', unit: 'image' }],
++    },
++    releasedAt: '2026-04-01',
++    type: 'image',
++  },
++  {
++    description: 'Wanxiang 2.7 Image, faster image generation speed.',
++    displayName: 'Wanxiang2.7 Image',
++    enabled: true,
++    id: 'wan2.7-image',
++    organization: 'Qwen',
++    parameters: {
++      height: { default: 2048, max: 5792, min: 271, step: 1 },
++      imageUrls: {
++        default: [],
++      },
++      prompt: {
++        default: '',
++      },
++      seed: { default: null },
++      width: { default: 2048, max: 5792, min: 271, step: 1 },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.2, strategy: 'fixed', unit: 'image' }],
++    },
++    releasedAt: '2026-04-01',
++    type: 'image',
++  },
+   {
+     description: 'Wanxiang 2.6 Image supports image editing and mixed image–text layout output.',
+     displayName: 'Wanxiang2.6 Image',
+@@ -3323,6 +3371,66 @@ const qwenImageModels: AIImageModelCard[] = [
+     releasedAt: '2024-05-22',
+     type: 'image',
+   },
++  {
++    description:
++      'Supports up to 10 reference images, allowing you to lock subjects, elements, and color tones to ensure consistent style. Combines style transfer, portrait/character referencing, multi-image fusion, and localized inpainting for flexible control. Delivers realistic portrait details, with overall visuals that are delicate and richly layered, featuring cinematic color and atmosphere.',
++    displayName: 'Kling V3 Image Generation',
++    enabled: true,
++    id: 'kling/kling-v3-image-generation',
++    organization: 'Qwen',
++    parameters: {
++      aspectRatio: {
++        default: '16:9',
++        enum: ['16:9', '9:16', '1:1'],
++      },
++      imageUrl: {
++        default: '',
++      },
++      prompt: {
++        default: '',
++      },
++      resolution: {
++        default: '1k',
++        enum: ['1k', '2k'],
++      },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.2, strategy: 'fixed', unit: 'image' }],
++    },
++    releasedAt: '2026-03-26',
++    type: 'image',
++  },
++  {
++    description:
++      'Unlock cinematic storytelling visuals with new series image generation and direct 2K/4K output. Deeply analyzes audiovisual elements in prompts to precisely execute creative instructions. Supports flexible multi-reference inputs and comprehensive quality upgrades, ideal for storyboards, narrative concept art, and scene design.',
++    displayName: 'Kling V3 Omni Image Generation',
++    enabled: true,
++    id: 'kling/kling-v3-omni-image-generation',
++    organization: 'Qwen',
++    parameters: {
++      aspectRatio: {
++        default: '16:9',
++        enum: ['16:9', '9:16', '1:1'],
++      },
++      imageUrls: {
++        default: [],
++      },
++      prompt: {
++        default: '',
++      },
++      resolution: {
++        default: '1k',
++        enum: ['1k', '2k', '4k'],
++      },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.2, strategy: 'fixed', unit: 'image' }],
++    },
++    releasedAt: '2026-03-26',
++    type: 'image',
++  },
+   {
+     description:
+       'FLUX.1 [schnell] is the most advanced open-source few-step model, surpassing similar competitors and even strong non-distilled models like Midjourney v6.0 and DALL-E 3 (HD). It is finely tuned to preserve pretraining diversity, significantly improving visual quality, instruction following, size/aspect variation, font handling, and output diversity.',
+diff --git a/packages/model-runtime/src/providers/qwen/createImage.test.ts b/packages/model-runtime/src/providers/qwen/createImage.test.ts
+index 9b8f011f2b0..2f7ee8fa929 100644
+--- a/packages/model-runtime/src/providers/qwen/createImage.test.ts
++++ b/packages/model-runtime/src/providers/qwen/createImage.test.ts
+@@ -757,7 +757,7 @@ describe('createQwenImage', () => {
+           ],
+         },
+         model: 'qwen-image-edit',
+-        parameters: {},
++        parameters: { n: 1 },
+       });
+     });
+ 
+@@ -821,4 +821,141 @@ describe('createQwenImage', () => {
+       );
+     });
+   });
++
++  describe('new image-generation route coverage', () => {
++    it('should use image-generation async API for kling model and parse choices result', async () => {
++      const mockTaskId = 'task-kling-123';
++      const mockImageUrl = 'https://p4-fdl.klingai.com/xxx.png?token=abc';
++
++      global.fetch = vi
++        .fn()
++        .mockResolvedValueOnce({
++          ok: true,
++          json: async () => ({
++            output: { task_id: mockTaskId },
++            request_id: 'req-kling-1',
++          }),
++        })
++        .mockResolvedValueOnce({
++          ok: true,
++          json: async () => ({
++            output: {
++              choices: [
++                {
++                  message: {
++                    content: [{ image: mockImageUrl, type: 'image' }],
++                  },
++                },
++              ],
++              task_id: mockTaskId,
++              task_status: 'SUCCEEDED',
++            },
++            request_id: 'req-kling-2',
++          }),
++        });
++
++      const payload: CreateImagePayload = {
++        model: 'kling/kling-v3-omni-image-generation',
++        params: {
++          aspectRatio: '1:1',
++          imageUrls: ['https://cdn.example.com/ref-1.png', 'https://cdn.example.com/ref-2.png'],
++          prompt: '参考图1风格和图2背景生成番茄炒蛋',
++          resolution: '1k',
++        },
++      };
++
++      const result = await createQwenImage(payload, mockOptions);
++
++      expect(result).toEqual({ imageUrl: mockImageUrl });
++
++      const [firstUrl, firstOptions] = (fetch as any).mock.calls[0];
++      expect(firstUrl).toBe(
++        'https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation',
++      );
++      expect(firstOptions).toEqual({
++        body: JSON.stringify({
++          input: {
++            messages: [
++              {
++                content: [
++                  { text: '参考图1风格和图2背景生成番茄炒蛋' },
++                  { image: 'https://cdn.example.com/ref-1.png' },
++                  { image: 'https://cdn.example.com/ref-2.png' },
++                ],
++                role: 'user',
++              },
++            ],
++          },
++          model: 'kling/kling-v3-omni-image-generation',
++          parameters: {
++            n: 1,
++            aspect_ratio: '1:1',
++            resolution: '1k',
++            size: '1024*1024',
++          },
++        }),
++        headers: {
++          'Authorization': 'Bearer test-api-key',
++          'Content-Type': 'application/json',
++          'X-DashScope-Async': 'enable',
++        },
++        method: 'POST',
++      });
++    });
++
++    it('should use multimodal-generation sync API for wan2.7 model', async () => {
++      const mockImageUrl = 'https://dashscope.oss-cn-beijing.aliyuncs.com/aigc/wan27-image.jpg';
++
++      global.fetch = vi.fn().mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          output: {
++            choices: [
++              {
++                message: {
++                  content: [{ image: mockImageUrl }],
++                },
++              },
++            ],
++          },
++          request_id: 'req-wan27-1',
++        }),
++      });
++
++      const payload: CreateImagePayload = {
++        model: 'wan2.7-image-pro',
++        params: {
++          height: 2048,
++          prompt: 'A futuristic city skyline',
++          seed: 123,
++          width: 2048,
++        },
++      };
++
++      const result = await createQwenImage(payload, mockOptions);
++
++      expect(result).toEqual({ imageUrl: mockImageUrl });
++
++      expect(fetch).toHaveBeenCalledWith(
++        'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
++        expect.objectContaining({
++          body: JSON.stringify({
++            input: {
++              messages: [
++                {
++                  content: [{ text: 'A futuristic city skyline' }],
++                  role: 'user',
++                },
++              ],
++            },
++            model: 'wan2.7-image-pro',
++            parameters: {
++              n: 1,
++              seed: 123,
++            },
++          }),
++        }),
++      );
++    });
++  });
+ });
+diff --git a/packages/model-runtime/src/providers/qwen/createImage.ts b/packages/model-runtime/src/providers/qwen/createImage.ts
+index d7b724096d5..4edcc8fcdd4 100644
+--- a/packages/model-runtime/src/providers/qwen/createImage.ts
++++ b/packages/model-runtime/src/providers/qwen/createImage.ts
+@@ -18,6 +18,8 @@ const text2ImageModels = [
+ 
+ const image2ImageModels = [/^wan2\.(2|5)-i2i-/];
+ 
++const asyncOnlyModels = [/^kling/];
++
+ const imageRequiredModels = [/^qwen-image-edit/, /^wan2\.(2|5)-i2i-/, /^wan2\.6-image/];
+ 
+ // Helper function to check if model matches any pattern in the array
+@@ -29,7 +31,16 @@ function matchesModel(model: string, patterns: Array<string | RegExp>): boolean
+ 
+ interface QwenImageTaskResponse {
+   output: {
++    choices?: Array<{
++      message?: {
++        content?: Array<{
++          image?: string;
++          type?: string;
++        }>;
++      };
++    }>;
+     error_message?: string;
++    finished?: boolean;
+     results?: Array<{
+       url: string;
+     }>;
+@@ -39,25 +50,22 @@ interface QwenImageTaskResponse {
+   request_id: string;
+ }
+ 
+-// Interface for multimodal-generation response
+-interface QwenMultimodalGenerationResponse {
+-  output: {
+-    choices: Array<{
+-      message: {
+-        content: Array<{
+-          image: string;
+-        }>;
+-      };
+-    }>;
+-  };
+-  request_id: string;
++function extractImageUrlFromTaskResult(taskStatus: QwenImageTaskResponse): string | undefined {
++  const generatedImageUrl = taskStatus.output.results?.[0]?.url;
++  if (generatedImageUrl) return generatedImageUrl;
++
++  const generatedChoiceImage = taskStatus.output.choices?.[0]?.message?.content?.find(
++    (item) => !!item.image,
++  )?.image;
++
++  return generatedChoiceImage;
+ }
+ 
+ /**
+  * Create an image generation task with Qwen API
+  * Supports both text-to-image and image-to-image workflows
+  */
+-async function createQwenImageTask(
++async function createLegacySynthesisTask(
+   payload: CreateImagePayload,
+   apiKey: string,
+   endpoint: 'text2image' | 'image2image',
+@@ -132,12 +140,89 @@ async function createQwenImageTask(
+   return data.output.task_id;
+ }
+ 
++/**
++ * Create an async image-generation task with Qwen API
++ * Used by newer async models like wan2.7-image and kling image-generation family
++ */
++async function createHTTPAsyncGenerationTask(
++  payload: CreateImagePayload,
++  apiKey: string,
++  baseUrl: string,
++): Promise<string> {
++  const { model, params } = payload;
++  const endpoint = `${baseUrl}/api/v1/services/aigc/image-generation/generation`;
++  log('Creating async generation task with model: %s, endpoint: %s', model, endpoint);
++
++  const content: Array<{ image: string } | { text: string }> = [{ text: params.prompt }];
++
++  if (params.imageUrl) {
++    content.push({ image: params.imageUrl });
++  }
++
++  if (params.imageUrls && params.imageUrls.length > 0) {
++    for (const imageUrl of params.imageUrls) {
++      content.push({ image: imageUrl });
++    }
++  }
++
++  const parameters: Record<string, unknown> = {
++    n: 1,
++    ...(params.aspectRatio ? { aspect_ratio: params.aspectRatio } : {}),
++    ...(params.resolution ? { resolution: params.resolution } : {}),
++    ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
++    ...(params.width && params.height
++      ? { size: `${params.width}*${params.height}` }
++      : params.size
++        ? { size: params.size.replaceAll('x', '*') }
++        : { size: '1024*1024' }),
++  };
++
++  const response = await fetch(endpoint, {
++    body: JSON.stringify({
++      input: {
++        messages: [
++          {
++            content,
++            role: 'user',
++          },
++        ],
++      },
++      model,
++      parameters,
++    }),
++    headers: {
++      'Authorization': `Bearer ${apiKey}`,
++      'Content-Type': 'application/json',
++      'X-DashScope-Async': 'enable',
++    },
++    method: 'POST',
++  });
++
++  if (!response.ok) {
++    let errorData;
++    try {
++      errorData = await response.json();
++    } catch {
++      // Failed to parse JSON error response
++    }
++
++    throw new Error(
++      `Failed to create async generation task for model ${model} (${response.status}): ${errorData?.message || response.statusText}`,
++    );
++  }
++
++  const data: QwenImageTaskResponse = await response.json();
++  log('Async generation task created with ID: %s', data.output.task_id);
++
++  return data.output.task_id;
++}
++
+ /**
+  * Create image with Qwen multimodal-generation API
+  * This is a synchronous API that returns the result directly
+  * Supports both text-to-image (t2i) and image-to-image (i2i) workflows
+  */
+-async function createMultimodalGeneration(
++async function createHTTPSyncGeneration(
+   payload: CreateImagePayload,
+   apiKey: string,
+   baseUrl: string,
+@@ -180,6 +265,7 @@ async function createMultimodalGeneration(
+       },
+       model,
+       parameters: {
++        n: 1,
+         ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
+       },
+     }),
+@@ -202,23 +288,16 @@ async function createMultimodalGeneration(
+     );
+   }
+ 
+-  const data: QwenMultimodalGenerationResponse = await response.json();
+-
+-  if (!data.output.choices || data.output.choices.length === 0) {
+-    throw new Error(`No image choices returned from API for model ${model}`);
+-  }
++  const data: QwenImageTaskResponse = await response.json();
+ 
+-  const choice = data.output.choices[0];
+-  if (!choice.message.content || choice.message.content.length === 0) {
+-    throw new Error(`No image content returned from API for model ${model}`);
+-  }
++  const resultImageUrl = data.output.choices?.[0]?.message?.content?.find(
++    (item) => !!item.image,
++  )?.image;
+ 
+-  const imageContent = choice.message.content.find((content) => 'image' in content);
+-  if (!imageContent) {
++  if (!resultImageUrl) {
+     throw new Error(`No image found in response content for model ${model}`);
+   }
+ 
+-  const resultImageUrl = imageContent.image;
+   log('Image edit generated successfully: %s', resultImageUrl);
+ 
+   return { imageUrl: resultImageUrl };
+@@ -227,7 +306,7 @@ async function createMultimodalGeneration(
+ /**
+  * Query the status of an image generation task
+  */
+-async function queryTaskStatus(
++async function queryQwenTaskStatus(
+   taskId: string,
+   apiKey: string,
+   baseUrl: string,
+@@ -257,12 +336,59 @@ async function queryTaskStatus(
+   return response.json();
+ }
+ 
++async function pollTaskToImageResponse(
++  taskId: string,
++  apiKey: string,
++  baseUrl: string,
++  model: string,
++): Promise<CreateImageResponse> {
++  return asyncifyPolling<QwenImageTaskResponse, CreateImageResponse>({
++    checkStatus: (taskStatus: QwenImageTaskResponse): TaskResult<CreateImageResponse> => {
++      log('Task %s status: %s', taskId, taskStatus.output.task_status);
++
++      if (taskStatus.output.task_status === 'SUCCEEDED') {
++        const generatedImageUrl = extractImageUrlFromTaskResult(taskStatus);
++
++        if (!generatedImageUrl) {
++          return {
++            error: new Error('Task succeeded but no images generated'),
++            status: 'failed',
++          };
++        }
++
++        log('Image generated successfully: %s', generatedImageUrl);
++
++        return {
++          data: { imageUrl: generatedImageUrl },
++          status: 'success',
++        };
++      }
++
++      if (taskStatus.output.task_status === 'FAILED') {
++        const errorMessage = taskStatus.output.error_message || 'Task failed without error message';
++        return {
++          error: new Error(`Image generation failed for model ${model}: ${errorMessage}`),
++          status: 'failed',
++        };
++      }
++
++      return { status: 'pending' };
++    },
++    logger: {
++      debug: (message: any, ...args: any[]) => log(message, ...args),
++      error: (message: any, ...args: any[]) => log(message, ...args),
++    },
++    pollingQuery: () => queryQwenTaskStatus(taskId, apiKey, baseUrl),
++  });
++}
++
+ /**
+  * Create image using Qwen API
+  * Supports three types:
+  * - text2image (async with polling for legacy models)
+  * - image2image (async with polling for legacy models)
+- * - multimodal-generation (sync for new models, default fallback)
++ * - image-generation (async with polling for new async models)
++ * - multimodal-generation (sync for remaining models, default fallback)
+  */
+ export async function createQwenImage(
+   payload: CreateImagePayload,
+@@ -280,57 +406,33 @@ export async function createQwenImage(
+   try {
+     const isText2Image = matchesModel(model, text2ImageModels);
+     const isImage2Image = matchesModel(model, image2ImageModels);
++    const isAsyncGeneration = matchesModel(model, asyncOnlyModels);
+ 
+     if (isText2Image || isImage2Image) {
+       const endpoint = isImage2Image ? 'image2image' : 'text2image';
+       log('Using %s API for model: %s', endpoint, model);
+ 
+-      const taskId = await createQwenImageTask(payload, apiKey, endpoint, provider, dashscopeURL);
+-
+-      const result = await asyncifyPolling<QwenImageTaskResponse, CreateImageResponse>({
+-        checkStatus: (taskStatus: QwenImageTaskResponse): TaskResult<CreateImageResponse> => {
+-          log('Task %s status: %s', taskId, taskStatus.output.task_status);
+-
+-          if (taskStatus.output.task_status === 'SUCCEEDED') {
+-            if (!taskStatus.output.results || taskStatus.output.results.length === 0) {
+-              return {
+-                error: new Error('Task succeeded but no images generated'),
+-                status: 'failed',
+-              };
+-            }
+-
+-            const generatedImageUrl = taskStatus.output.results[0].url;
+-            log('Image generated successfully: %s', generatedImageUrl);
+-
+-            return {
+-              data: { imageUrl: generatedImageUrl },
+-              status: 'success',
+-            };
+-          }
+-
+-          if (taskStatus.output.task_status === 'FAILED') {
+-            const errorMessage =
+-              taskStatus.output.error_message || 'Task failed without error message';
+-            return {
+-              error: new Error(`Image generation failed for model ${model}: ${errorMessage}`),
+-              status: 'failed',
+-            };
+-          }
+-
+-          return { status: 'pending' };
+-        },
+-        logger: {
+-          debug: (message: any, ...args: any[]) => log(message, ...args),
+-          error: (message: any, ...args: any[]) => log(message, ...args),
+-        },
+-        pollingQuery: () => queryTaskStatus(taskId, apiKey, dashscopeURL),
+-      });
++      const taskId = await createLegacySynthesisTask(
++        payload,
++        apiKey,
++        endpoint,
++        provider,
++        dashscopeURL,
++      );
++
++      return await pollTaskToImageResponse(taskId, apiKey, dashscopeURL, model);
++    }
++
++    if (isAsyncGeneration) {
++      log('Using image-generation async API for model: %s', model);
++
++      const taskId = await createHTTPAsyncGenerationTask(payload, apiKey, dashscopeURL);
+ 
+-      return result;
++      return await pollTaskToImageResponse(taskId, apiKey, dashscopeURL, model);
+     }
+ 
+     log('Using multimodal-generation API for model: %s', model);
+-    return await createMultimodalGeneration(payload, apiKey, dashscopeURL);
++    return await createHTTPSyncGeneration(payload, apiKey, dashscopeURL);
+   } catch (error) {
+     log('Error in createQwenImage: %O', error);
+ 
