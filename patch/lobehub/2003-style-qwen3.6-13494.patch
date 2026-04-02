@@ -1,0 +1,656 @@
+diff --git a/locales/en-US/chat.json b/locales/en-US/chat.json
+index 629020b39c3..293cba9f511 100644
+--- a/locales/en-US/chat.json
++++ b/locales/en-US/chat.json
+@@ -68,6 +68,8 @@
+   "extendParams.enableReasoning.title": "Enable Deep Thinking",
+   "extendParams.imageAspectRatio.title": "Image Aspect Ratio",
+   "extendParams.imageResolution.title": "Image Resolution",
++  "extendParams.preserveThinking.desc": "When enabled, assistant historical reasoning will be sent back as context for compatible models. This may increase token usage.",
++  "extendParams.preserveThinking.title": "Preserve Historical Thinking",
+   "extendParams.reasoningBudgetToken.title": "Thinking Consumption Token",
+   "extendParams.reasoningEffort.title": "Reasoning Intensity",
+   "extendParams.textVerbosity.title": "Output Text Detail Level",
+diff --git a/locales/en-US/modelProvider.json b/locales/en-US/modelProvider.json
+index a13a52336d7..10d98dd6e88 100644
+--- a/locales/en-US/modelProvider.json
++++ b/locales/en-US/modelProvider.json
+@@ -230,6 +230,7 @@
+   "providerModels.item.modelConfig.extendParams.options.imageAspectRatio2.hint": "For Nano Banana 2; controls aspect ratio of generated images (supports extra-wide 1:4, 4:1, 1:8, 8:1).",
+   "providerModels.item.modelConfig.extendParams.options.imageResolution.hint": "For Gemini 3 image generation models; controls resolution of generated images.",
+   "providerModels.item.modelConfig.extendParams.options.imageResolution2.hint": "For Gemini 3.1 Flash Image models; controls resolution of generated images (supports 512px).",
++  "providerModels.item.modelConfig.extendParams.options.preserveThinking.hint": "For Qwen3.6 Plus; sends historical assistant reasoning back to model context (preserve_thinking).",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint": "For Claude, Qwen3 and similar; controls token budget for reasoning.",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint": "For GLM-5 and GLM-4.7; controls token budget for reasoning (max 32k).",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "For Qwen3 series; controls token budget for reasoning (max 80k).",
+diff --git a/locales/zh-CN/chat.json b/locales/zh-CN/chat.json
+index 7a2a9d04ee7..bdff417d45a 100644
+--- a/locales/zh-CN/chat.json
++++ b/locales/zh-CN/chat.json
+@@ -68,6 +68,8 @@
+   "extendParams.enableReasoning.title": "开启深度思考",
+   "extendParams.imageAspectRatio.title": "图片宽高比",
+   "extendParams.imageResolution.title": "图片分辨率",
++  "extendParams.preserveThinking.desc": "开启后会将历史助手思考过程作为上下文回传给模型，可能增加 Token 消耗。",
++  "extendParams.preserveThinking.title": "传递历史思考过程",
+   "extendParams.reasoningBudgetToken.title": "思考 Token 预算",
+   "extendParams.reasoningEffort.title": "推理强度",
+   "extendParams.textVerbosity.title": "输出详细程度",
+diff --git a/locales/zh-CN/modelProvider.json b/locales/zh-CN/modelProvider.json
+index 4219f516201..7f2b4800b88 100644
+--- a/locales/zh-CN/modelProvider.json
++++ b/locales/zh-CN/modelProvider.json
+@@ -230,6 +230,7 @@
+   "providerModels.item.modelConfig.extendParams.options.imageAspectRatio2.hint": "适用于 Nano Banana 2；控制生成图像的宽高比（支持超宽 1:4、4:1、1:8、8:1）。",
+   "providerModels.item.modelConfig.extendParams.options.imageResolution.hint": "适用于 Gemini 3 图像生成模型；控制生成图像的分辨率。",
+   "providerModels.item.modelConfig.extendParams.options.imageResolution2.hint": "适用于 Gemini 3.1 Flash Image 模型；控制生成图像的分辨率（支持 512px）。",
++  "providerModels.item.modelConfig.extendParams.options.preserveThinking.hint": "适用于 Qwen3.6 Plus；将历史助手思考过程回传为模型上下文（preserve_thinking）。",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint": "适用于 Claude、Qwen3 等模型；控制用于推理的 Token 预算。",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint": "适用于GLM-5和GLM-4.7；控制推理的令牌预算（最大32k）。",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "适用于Qwen3系列；控制推理的令牌预算（最大80k）。",
+diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
+index 2c8fa066f9a..82bb9d1aca4 100644
+--- a/packages/model-bank/src/aiModels/qwen.ts
++++ b/packages/model-bank/src/aiModels/qwen.ts
+@@ -1498,6 +1498,61 @@ const qwenChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      video: true,
++      vision: true,
++    },
++    config: {
++      deploymentName: 'qwen3.6-plus', // Supports context caching
++    },
++    contextWindowTokens: 1_000_000,
++    description:
++      'Qwen3.6 Plus supports text, image, and video input. It delivers a balanced performance across quality, speed, and cost. Its multimodal capabilities are significantly improved compared to the Qwen3 VL series.',
++    displayName: 'Qwen3.6 Plus',
++    enabled: true,
++    id: 'qwen3.6-plus',
++    maxOutput: 65_536,
++    organization: 'Qwen',
++    pricing: {
++      currency: 'CNY',
++      units: [
++        {
++          lookup: {
++            prices: {
++              '[0, 0.256]': 2,
++              '[0.256, 1]': 8,
++            },
++            pricingParams: ['textInputRange'],
++          },
++          name: 'textInput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.256]': 12,
++              '[0.256, 1]': 48,
++            },
++            pricingParams: ['textInputRange'],
++          },
++          name: 'textOutput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2026-04-02',
++    settings: {
++      extendParams: ['enableReasoning', 'reasoningBudgetToken', 'preserveThinking'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -1513,7 +1568,6 @@ const qwenChatModels: AIChatModelCard[] = [
+     description:
+       'Qwen3.5 Plus supports text, image, and video input. Its performance on pure text tasks is comparable to Qwen3 Max, with better performance and lower cost. Its multimodal capabilities are significantly improved compared to the Qwen3 VL series.',
+     displayName: 'Qwen3.5 Plus',
+-    enabled: true,
+     id: 'qwen3.5-plus',
+     maxOutput: 65_536,
+     organization: 'Qwen',
+diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
+index 635f815696d..3624d291726 100644
+--- a/packages/model-bank/src/types/aiModel.ts
++++ b/packages/model-bank/src/types/aiModel.ts
+@@ -244,6 +244,7 @@ export type ExtendParamsType =
+   | 'reasoningBudgetToken32k'
+   | 'reasoningBudgetToken80k'
+   | 'enableReasoning'
++  | 'preserveThinking'
+   | 'enableAdaptiveThinking'
+   | 'disableContextCaching'
+   | 'effort'
+@@ -282,6 +283,7 @@ export const ExtendParamsTypeSchema = z.enum([
+   'reasoningBudgetToken32k',
+   'reasoningBudgetToken80k',
+   'enableReasoning',
++  'preserveThinking',
+   'enableAdaptiveThinking',
+   'disableContextCaching',
+   'effort',
+diff --git a/packages/model-runtime/src/providers/qwen/index.test.ts b/packages/model-runtime/src/providers/qwen/index.test.ts
+index eceb53768d5..dc6c2d505c9 100644
+--- a/packages/model-runtime/src/providers/qwen/index.test.ts
++++ b/packages/model-runtime/src/providers/qwen/index.test.ts
+@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
+ 
+ import type { LobeOpenAICompatibleRuntime } from '../../core/BaseAI';
+ import { testProvider } from '../../providerTestUtils';
+-import { LobeQwenAI } from './index';
++import { LobeQwenAI, params } from './index';
+ 
+ const provider = ModelProvider.Qwen;
+ const defaultBaseURL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+@@ -62,4 +62,111 @@ describe('LobeQwenAI - custom features', () => {
+       expect(calledPayload.thinking_budget).toBe(4096);
+     });
+   });
++
++  describe('preserve thinking mapping', () => {
++    it('should map preserveThinking to preserve_thinking for qwen3.6-plus', () => {
++      const payload = {
++        messages: [
++          { content: 'hello', role: 'user' },
++          {
++            content: 'answer',
++            reasoning: { content: 'reasoning content' },
++            role: 'assistant',
++          },
++        ],
++        model: 'qwen3.6-plus',
++        preserveThinking: true,
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.preserve_thinking).toBe(true);
++      expect(result.messages).toEqual([
++        { content: 'hello', role: 'user' },
++        {
++          content: 'answer',
++          reasoning_content: 'reasoning content',
++          role: 'assistant',
++        },
++      ]);
++    });
++
++    it('should set preserve_thinking=false when explicitly disabled on supported model', () => {
++      const payload = {
++        messages: [{ content: 'hello', role: 'user' }],
++        model: 'qwen3.6-plus',
++        preserveThinking: false,
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.preserve_thinking).toBe(false);
++    });
++
++    it('should map preserveThinking for deployment-name aliases when caller provides the param', () => {
++      const payload = {
++        messages: [
++          {
++            content: 'answer',
++            reasoning: { content: 'reasoning content' },
++            role: 'assistant',
++          },
++        ],
++        model: 'my-qwen3.6-plus-deployment',
++        preserveThinking: true,
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.preserve_thinking).toBe(true);
++      expect(result.messages).toEqual([
++        {
++          content: 'answer',
++          reasoning_content: 'reasoning content',
++          role: 'assistant',
++        },
++      ]);
++    });
++
++    it('should not set preserve_thinking when preserveThinking is absent', () => {
++      const payload = {
++        messages: [
++          {
++            content: 'answer',
++            reasoning: { content: 'reasoning content' },
++            role: 'assistant',
++          },
++        ],
++        model: 'qwen3.5-plus',
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.preserve_thinking).toBeUndefined();
++      expect(result.messages).toEqual([{ content: 'answer', role: 'assistant' }]);
++    });
++
++    it('should keep caller-provided reasoning_content', () => {
++      const payload = {
++        messages: [
++          {
++            content: 'answer',
++            reasoning_content: 'existing reasoning content',
++            role: 'assistant',
++          },
++        ],
++        model: 'qwen3.5-plus',
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.messages).toEqual([
++        {
++          content: 'answer',
++          reasoning_content: 'existing reasoning content',
++          role: 'assistant',
++        },
++      ]);
++    });
++  });
+ });
+diff --git a/packages/model-runtime/src/providers/qwen/index.ts b/packages/model-runtime/src/providers/qwen/index.ts
+index 0cae27c2711..83f6ef1d769 100644
+--- a/packages/model-runtime/src/providers/qwen/index.ts
++++ b/packages/model-runtime/src/providers/qwen/index.ts
+@@ -1,5 +1,6 @@
+ import { ModelProvider } from 'model-bank';
+ 
++import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+ import { resolveParameters } from '../../core/parameterResolver';
+ import { QwenAIStream } from '../../core/streams';
+@@ -22,12 +23,20 @@ export const QwenLegacyModels = new Set([
+   'qwen-1.8b-longcontext-chat',
+ ]);
+ 
+-export const LobeQwenAI = createOpenAICompatibleRuntime({
++export const params = {
+   baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+   chatCompletion: {
+     handlePayload: (payload) => {
+-      const { model, presence_penalty, temperature, thinking, top_p, enabledSearch, ...rest } =
+-        payload;
++      const {
++        model,
++        presence_penalty,
++        temperature,
++        thinking,
++        top_p,
++        enabledSearch,
++        preserveThinking,
++        ...rest
++      } = payload;
+ 
+       // Resolve parameters with model-specific constraints
+       const resolvedParams = resolveParameters(
+@@ -43,6 +52,42 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
+         },
+       );
+ 
++      // Preserve-thinking support is gated by upstream extendParams resolution.
++      const shouldPreserveThinking = preserveThinking === true;
++
++      const messages = (rest.messages || []).map((message: any) => {
++        const { reasoning, ...messageRest } = message;
++
++        const reasoningContent =
++          typeof messageRest.reasoning_content === 'string'
++            ? messageRest.reasoning_content
++            : typeof reasoning?.content === 'string'
++              ? reasoning.content
++              : undefined;
++
++        // For preserve_thinking, convert assistant reasoning into reasoning_content.
++        if (
++          message.role === 'assistant' &&
++          shouldPreserveThinking &&
++          reasoningContent !== undefined
++        ) {
++          return {
++            ...messageRest,
++            reasoning_content: reasoningContent,
++          };
++        }
++
++        // Keep explicitly provided reasoning_content to avoid dropping caller data.
++        if (messageRest.reasoning_content !== undefined && reasoningContent !== undefined) {
++          return {
++            ...messageRest,
++            reasoning_content: reasoningContent,
++          };
++        }
++
++        return messageRest;
++      });
++
+       return {
+         ...rest,
+         ...(model.includes('-thinking')
+@@ -60,7 +105,9 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
+                   thinking?.budget_tokens === 0 ? 0 : thinking?.budget_tokens || undefined,
+               }
+             : {}),
++        ...(typeof preserveThinking === 'boolean' && { preserve_thinking: preserveThinking }),
+         frequency_penalty: undefined,
++        messages,
+         model,
+         presence_penalty: resolvedParams.presence_penalty,
+         stream: true,
+@@ -90,4 +137,6 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
+     return processMultiProviderModelList(modelList, 'qwen');
+   },
+   provider: ModelProvider.Qwen,
+-});
++} satisfies OpenAICompatibleFactoryOptions;
++
++export const LobeQwenAI = createOpenAICompatibleRuntime(params);
+diff --git a/packages/model-runtime/src/types/chat.ts b/packages/model-runtime/src/types/chat.ts
+index 8328e67dabd..5d58ec83a8e 100644
+--- a/packages/model-runtime/src/types/chat.ts
++++ b/packages/model-runtime/src/types/chat.ts
+@@ -7,13 +7,13 @@ export type LLMRoleType = 'user' | 'system' | 'assistant' | 'function' | 'tool';
+ export type ChatResponseFormat =
+   | { type: 'json_object' }
+   | {
+-    json_schema: {
+-      name: string;
+-      schema: Record<string, any>;
+-      strict?: boolean;
++      json_schema: {
++        name: string;
++        schema: Record<string, any>;
++        strict?: boolean;
++      };
++      type: 'json_schema';
+     };
+-    type: 'json_schema';
+-  };
+ 
+ interface UserMessageContentPartThinking {
+   signature: string;
+@@ -51,6 +51,7 @@ export interface OpenAIChatMessage {
+     content?: string;
+     duration?: number;
+   };
++  reasoning_content?: string;
+   role: LLMRoleType;
+   tool_call_id?: string;
+   tool_calls?: MessageToolCall[];
+@@ -119,6 +120,7 @@ export interface ChatStreamPayload {
+    * @default 0
+    */
+   presence_penalty?: number;
++  preserveThinking?: boolean;
+   provider?: string;
+   reasoning?: {
+     effort?: string;
+diff --git a/packages/model-runtime/src/utils/modelParse.ts b/packages/model-runtime/src/utils/modelParse.ts
+index ea4848f0eda..7a140dda01b 100644
+--- a/packages/model-runtime/src/utils/modelParse.ts
++++ b/packages/model-runtime/src/utils/modelParse.ts
+@@ -91,7 +91,7 @@ export const MODEL_LIST_CONFIGS = {
+       'qwen3',
+     ],
+     reasoningKeywords: ['qvq', 'qwq', 'qwen3', '!-instruct-', '!-coder-'],
+-    visionKeywords: ['qvq', '-vl', '-omni'],
++    visionKeywords: ['qvq', '-vl', '-omni', 'qwen3.'],
+   },
+   replicate: {
+     imageOutputKeywords: [
+diff --git a/packages/types/src/agent/chatConfig.ts b/packages/types/src/agent/chatConfig.ts
+index cd7ed80ec9c..3ec4602f4a8 100644
+--- a/packages/types/src/agent/chatConfig.ts
++++ b/packages/types/src/agent/chatConfig.ts
+@@ -95,6 +95,11 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig {
+    */
+   imageResolution2?: '512px' | '1K' | '2K' | '4K';
+   inputTemplate?: string;
++  /**
++   * Whether to preserve and pass historical thinking content to the model
++   * (provider support required, e.g. Qwen preserve_thinking)
++   */
++  preserveThinking?: boolean;
+   reasoningBudgetToken?: number;
+   /**
+    * Reasoning budget token for models with 32k max (GLM-5/GLM-4.7)
+@@ -193,6 +198,7 @@ export const AgentChatConfigSchema = z
+     imageResolution: z.enum(['1K', '2K', '4K']).optional(),
+     imageResolution2: z.enum(['512px', '1K', '2K', '4K']).optional(),
+     runtimeEnv: RuntimeEnvConfigSchema.optional(),
++    preserveThinking: z.boolean().optional(),
+     reasoningBudgetToken: z.number().optional(),
+     reasoningBudgetToken32k: z.number().optional(),
+     reasoningBudgetToken80k: z.number().optional(),
+diff --git a/packages/types/src/openai/chat.ts b/packages/types/src/openai/chat.ts
+index c6e318092b3..134d232c8f4 100644
+--- a/packages/types/src/openai/chat.ts
++++ b/packages/types/src/openai/chat.ts
+@@ -48,6 +48,11 @@ export interface OpenAIChatMessage {
+    */
+   function_call?: OpenAIFunctionCall;
+   name?: string;
++  reasoning?: {
++    content?: string;
++    duration?: number;
++  };
++  reasoning_content?: string;
+   /**
+    * Role
+    * @description Role of the message sender
+@@ -91,6 +96,7 @@ export interface ChatStreamPayload {
+    * @default 0
+    */
+   presence_penalty?: number;
++  preserveThinking?: boolean;
+   /**
+    * @default openai
+    */
+diff --git a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
+index e13fa387048..2de05f6c7ea 100644
+--- a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
++++ b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
+@@ -118,6 +118,18 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
+       minWidth: undefined,
+       name: 'enableReasoning',
+     },
++    {
++      children: <Switch />,
++      desc: isNarrow ? (
++        <span style={descNarrow}>{t('extendParams.preserveThinking.desc')}</span>
++      ) : (
++        t('extendParams.preserveThinking.desc')
++      ),
++      label: t('extendParams.preserveThinking.title'),
++      layout: isNarrow ? 'vertical' : 'horizontal',
++      minWidth: undefined,
++      name: 'preserveThinking',
++    },
+     {
+       children: <Switch />,
+       desc: isNarrow ? (
+diff --git a/src/locales/default/chat.ts b/src/locales/default/chat.ts
+index 98700d2adaf..f7c33ba2bea 100644
+--- a/src/locales/default/chat.ts
++++ b/src/locales/default/chat.ts
+@@ -84,6 +84,9 @@ export default {
+   'extendParams.enableReasoning.desc':
+     'Based on the Claude Thinking mechanism limit. <1>Learn more</1>',
+   'extendParams.enableReasoning.title': 'Enable Deep Thinking',
++  'extendParams.preserveThinking.desc':
++    'When enabled, assistant historical reasoning will be sent back as context for models. This may increase token usage.',
++  'extendParams.preserveThinking.title': 'Preserve Historical Thinking',
+   'extendParams.imageAspectRatio.title': 'Image Aspect Ratio',
+   'extendParams.imageResolution.title': 'Image Resolution',
+   'extendParams.reasoningBudgetToken.title': 'Thinking Consumption Token',
+diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
+index 9a70aa3ab54..4e8573269b6 100644
+--- a/src/locales/default/modelProvider.ts
++++ b/src/locales/default/modelProvider.ts
+@@ -274,6 +274,8 @@ export default {
+     'For Gemini 3 image generation models; controls resolution of generated images.',
+   'providerModels.item.modelConfig.extendParams.options.imageResolution2.hint':
+     'For Gemini 3.1 Flash Image models; controls resolution of generated images (supports 512px).',
++  'providerModels.item.modelConfig.extendParams.options.preserveThinking.hint':
++    'For Qwen3.6 Plus; sends historical assistant reasoning back to model context (preserve_thinking).',
+   'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint':
+     'For Claude, Qwen3 and similar; controls token budget for reasoning.',
+   'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint':
+diff --git a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+index 08df7b02917..6555f448438 100644
+--- a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
++++ b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+@@ -47,6 +47,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.enableAdaptiveThinking.hint',
+     key: 'enableAdaptiveThinking',
+   },
++  {
++    hintKey: 'providerModels.item.modelConfig.extendParams.options.preserveThinking.hint',
++    key: 'preserveThinking',
++  },
+   {
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint',
+     key: 'reasoningBudgetToken',
+@@ -155,6 +159,7 @@ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
+   gpt5_2ReasoningEffort: 'reasoningEffort',
+   grok4_20ReasoningEffort: 'reasoningEffort',
+   imageAspectRatio2: 'imageAspectRatio',
++  imageResolution2: 'imageResolution',
+   reasoningBudgetToken32k: 'reasoningBudgetToken',
+   reasoningBudgetToken80k: 'reasoningBudgetToken',
+   thinkingLevel2: 'thinkingLevel',
+@@ -201,6 +206,7 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
+   imageAspectRatio2: { labelSuffix: ' (Nano Banana 2)', previewWidth: 350, tag: 'aspect_ratio' },
+   imageResolution: { labelSuffix: '', previewWidth: 250, tag: 'resolution' },
+   imageResolution2: { labelSuffix: ' (512px+)', previewWidth: 280, tag: 'resolution' },
++  preserveThinking: { labelSuffix: ' (Qwen3.6)', previewWidth: 360, tag: 'preserve_thinking' },
+   reasoningBudgetToken: { previewWidth: 350, tag: 'thinking.budget_tokens' },
+   reasoningBudgetToken32k: {
+     labelSuffix: ' (32k)',
+@@ -320,6 +326,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
+       effort: <EffortSlider value="high" />,
+       enableAdaptiveThinking: <Switch checked disabled />,
+       enableReasoning: <Switch checked disabled />,
++      preserveThinking: <Switch checked disabled />,
+       gpt5ReasoningEffort: <GPT5ReasoningEffortSlider value="medium" />,
+       gpt5_1ReasoningEffort: <GPT51ReasoningEffortSlider value="none" />,
+       gpt5_2ProReasoningEffort: <GPT52ProReasoningEffortSlider value="medium" />,
+diff --git a/src/server/modules/AgentRuntime/RuntimeExecutors.ts b/src/server/modules/AgentRuntime/RuntimeExecutors.ts
+index a07da06fa4c..94ef06ac4b8 100644
+--- a/src/server/modules/AgentRuntime/RuntimeExecutors.ts
++++ b/src/server/modules/AgentRuntime/RuntimeExecutors.ts
+@@ -787,6 +787,13 @@ export const createRuntimeExecutors = (
+             content,
+             role: 'assistant',
+             tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
++            ...(thinkingContent
++              ? {
++                  reasoning: {
++                    content: thinkingContent,
++                  },
++                }
++              : {}),
+           });
+ 
+           if (currentStepUsage) {
+diff --git a/src/services/chat/mecha/modelParamsResolver.test.ts b/src/services/chat/mecha/modelParamsResolver.test.ts
+index 2a61418e8ac..cd6ec996eb0 100644
+--- a/src/services/chat/mecha/modelParamsResolver.test.ts
++++ b/src/services/chat/mecha/modelParamsResolver.test.ts
+@@ -209,6 +209,51 @@ describe('resolveModelExtendParams', () => {
+     });
+   });
+ 
++  describe('preserve thinking', () => {
++    beforeEach(() => {
++      vi.spyOn(aiModelSelectors.aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(
++        () => true,
++      );
++      vi.spyOn(aiModelSelectors.aiModelSelectors, 'modelExtendParams').mockReturnValue(() => [
++        'preserveThinking',
++      ]);
++    });
++
++    it('should set preserveThinking when supported and enabled', () => {
++      const result = resolveModelExtendParams({
++        chatConfig: {
++          preserveThinking: true,
++        } as any,
++        model: 'qwen3.6-plus',
++        provider: 'qwen',
++      });
++
++      expect(result.preserveThinking).toBe(true);
++    });
++
++    it('should set preserveThinking to false when explicitly disabled', () => {
++      const result = resolveModelExtendParams({
++        chatConfig: {
++          preserveThinking: false,
++        } as any,
++        model: 'qwen3.6-plus',
++        provider: 'qwen',
++      });
++
++      expect(result.preserveThinking).toBe(false);
++    });
++
++    it('should not set preserveThinking when not configured', () => {
++      const result = resolveModelExtendParams({
++        chatConfig: {} as any,
++        model: 'qwen3.6-plus',
++        provider: 'qwen',
++      });
++
++      expect(result.preserveThinking).toBeUndefined();
++    });
++  });
++
+   describe('reasoning effort variants', () => {
+     describe('reasoningEffort param', () => {
+       beforeEach(() => {
+diff --git a/src/services/chat/mecha/modelParamsResolver.ts b/src/services/chat/mecha/modelParamsResolver.ts
+index 24a30e91766..e890134392f 100644
+--- a/src/services/chat/mecha/modelParamsResolver.ts
++++ b/src/services/chat/mecha/modelParamsResolver.ts
+@@ -19,6 +19,7 @@ export interface ModelExtendParams {
+   enabledContextCaching?: boolean;
+   imageAspectRatio?: string;
+   imageResolution?: string;
++  preserveThinking?: boolean;
+   reasoning_effort?: string;
+   thinking?: {
+     budget_tokens?: number;
+@@ -118,6 +119,14 @@ export const resolveModelExtendParams = (ctx: ModelParamsContext): ModelExtendPa
+     extendParams.enabledContextCaching = false;
+   }
+ 
++  // Preserve historical thinking content (provider support required)
++  if (
++    modelExtendParams.includes('preserveThinking') &&
++    typeof chatConfig.preserveThinking === 'boolean'
++  ) {
++    extendParams.preserveThinking = chatConfig.preserveThinking;
++  }
++
+   // Reasoning effort variants
+   if (modelExtendParams.includes('reasoningEffort') && chatConfig.reasoningEffort) {
+     extendParams.reasoning_effort = chatConfig.reasoningEffort;
