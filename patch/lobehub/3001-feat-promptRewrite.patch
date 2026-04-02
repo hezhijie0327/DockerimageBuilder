@@ -1,0 +1,409 @@
+diff --git a/packages/prompts/src/chains/index.ts b/packages/prompts/src/chains/index.ts
+index 8efe8751161..78ea7c3ad8b 100644
+--- a/packages/prompts/src/chains/index.ts
++++ b/packages/prompts/src/chains/index.ts
+@@ -4,6 +4,7 @@ export * from './compressContext';
+ export * from './inputCompletion';
+ export * from './langDetect';
+ export * from './pickEmoji';
++export * from './rewriteGenerationPrompt';
+ export * from './rewriteQuery';
+ export * from './summaryAgentName';
+ export * from './summaryDescription';
+diff --git a/packages/prompts/src/chains/rewriteGenerationPrompt.ts b/packages/prompts/src/chains/rewriteGenerationPrompt.ts
+new file mode 100644
+index 00000000000..589f13f2348
+--- /dev/null
++++ b/packages/prompts/src/chains/rewriteGenerationPrompt.ts
+@@ -0,0 +1,30 @@
++import type { ChatStreamPayload } from '@lobechat/types';
++
++interface RewriteGenerationPromptParams {
++  locale: string;
++  mode: 'image' | 'video' | 'text';
++  prompt: string;
++}
++
++export const chainRewriteGenerationPrompt = ({
++  mode,
++  prompt,
++  locale,
++}: RewriteGenerationPromptParams): Partial<ChatStreamPayload> => ({
++  messages: [
++    {
++      content: `You are an expert AI ${mode} prompt engineer. Rewrite the user's prompt to make it clearer, richer in visual details, and more production-ready while preserving the original intent.
++
++Rules:
++1. Output only the rewritten prompt, without explanation.
++2. Keep the output in ${locale}.
++3. Keep important entities, style, scene, and constraints from the original prompt.
++4. Keep it concise and practical for direct model input.`,
++      role: 'system',
++    },
++    {
++      content: prompt,
++      role: 'user',
++    },
++  ],
++});
+diff --git a/src/features/PageEditor/Copilot/Conversation.tsx b/src/features/PageEditor/Copilot/Conversation.tsx
+index 3e6e1484cad..0be5f2f7220 100644
+--- a/src/features/PageEditor/Copilot/Conversation.tsx
++++ b/src/features/PageEditor/Copilot/Conversation.tsx
+@@ -17,6 +17,7 @@ import { useChatStore } from '@/store/chat';
+ 
+ import AgentSelectorAction from './AgentSelector/AgentSelectorAction';
+ import CopilotModelSelector from './CopilotModelSelector';
++import RewritePromptAction from './RewritePromptAction';
+ import CopilotToolbar from './Toolbar';
+ import Welcome from './Welcome';
+ 
+@@ -83,7 +84,15 @@ const Conversation = memo(() => {
+     [handleAgentChange],
+   );
+ 
+-  const modelSelector = useMemo(() => <CopilotModelSelector />, []);
++  const modelSelector = useMemo(
++    () => (
++      <Flexbox horizontal align={'center'} gap={2}>
++        <CopilotModelSelector />
++        <RewritePromptAction />
++      </Flexbox>
++    ),
++    [],
++  );
+ 
+   return (
+     <DragUploadZone
+diff --git a/src/features/PageEditor/Copilot/RewritePromptAction.tsx b/src/features/PageEditor/Copilot/RewritePromptAction.tsx
+new file mode 100644
+index 00000000000..72b3ba921aa
+--- /dev/null
++++ b/src/features/PageEditor/Copilot/RewritePromptAction.tsx
+@@ -0,0 +1,73 @@
++'use client';
++
++import { chainRewriteGenerationPrompt } from '@lobechat/prompts';
++import { ActionIcon } from '@lobehub/ui';
++import { Sparkles } from 'lucide-react';
++import { memo, useCallback, useState } from 'react';
++import { useTranslation } from 'react-i18next';
++
++import { conversationSelectors, useConversationStore } from '@/features/Conversation';
++import { chatService } from '@/services/chat';
++import { useUserStore } from '@/store/user';
++import { systemAgentSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
++import { merge } from '@/utils/merge';
++
++const RewritePromptAction = memo(() => {
++  const { t } = useTranslation('chat');
++  const [isRewriting, setIsRewriting] = useState(false);
++
++  const rewriteConfig = useUserStore(systemAgentSelectors.queryRewrite);
++  const [editor, inputMessage] = useConversationStore((s) => [
++    conversationSelectors.editor(s),
++    conversationSelectors.inputMessage(s),
++  ]);
++
++  const handleRewritePrompt = useCallback(async () => {
++    if (!inputMessage?.trim() || !editor) return;
++
++    let rewrittenPrompt = '';
++
++    await chatService.fetchPresetTaskResult({
++      onError: () => {
++        setIsRewriting(false);
++      },
++      onFinish: async (text) => {
++        const nextPrompt = text.trim() || rewrittenPrompt.trim();
++        if (!nextPrompt) return;
++
++        editor.setDocument('markdown', nextPrompt);
++      },
++      onLoadingChange: setIsRewriting,
++      onMessageHandle: (chunk) => {
++        if (chunk.type === 'text') rewrittenPrompt += chunk.text;
++      },
++      params: merge(
++        rewriteConfig,
++        chainRewriteGenerationPrompt({
++          locale: userGeneralSettingsSelectors.currentResponseLanguage(useUserStore.getState()),
++          mode: 'text',
++          prompt: inputMessage,
++        }),
++      ),
++    });
++  }, [editor, inputMessage, rewriteConfig]);
++
++  return (
++    <ActionIcon
++      disabled={!rewriteConfig.enabled || !inputMessage?.trim()}
++      icon={Sparkles}
++      loading={isRewriting}
++      size={{ blockSize: 28, size: 16 }}
++      title={
++        isRewriting
++          ? t('pageCopilot.status.rewritingPrompt')
++          : t('pageCopilot.actions.rewritePrompt')
++      }
++      onClick={handleRewritePrompt}
++    />
++  );
++});
++
++RewritePromptAction.displayName = 'RewritePromptAction';
++
++export default RewritePromptAction;
+diff --git a/src/locales/default/chat.ts b/src/locales/default/chat.ts
+index 98700d2adaf..ac767e59e5d 100644
+--- a/src/locales/default/chat.ts
++++ b/src/locales/default/chat.ts
+@@ -252,6 +252,8 @@ export default {
+   'owner': 'Group owner',
+   'pageCopilot.title': 'Page Agent',
+   'pageCopilot.welcome': `**Clearer, sharper writing**\n\nDraft, rewrite, or polish—tell me your intent and I'll refine the rest.`,
++  'pageCopilot.actions.rewritePrompt': 'Rewrite Prompt',
++  'pageCopilot.status.rewritingPrompt': 'Rewriting Prompt...',
+   'pageSelection.lines': 'Lines {{start}}-{{end}}',
+   'pageSelection.reference': 'Selected Text',
+   'pin': 'Pin',
+diff --git a/src/locales/default/image.ts b/src/locales/default/image.ts
+index 355bac9676e..e0876f9adc8 100644
+--- a/src/locales/default/image.ts
++++ b/src/locales/default/image.ts
+@@ -37,6 +37,7 @@ export default {
+   'generation.actions.errorCopied': 'Error Message Copied to Clipboard',
+   'generation.actions.errorCopyFailed': 'Failed to Copy Error Message',
+   'generation.actions.generate': 'Generate',
++  'generation.actions.rewritePrompt': 'Rewrite Prompt',
+   'generation.actions.promptCopied': 'Prompt Copied to Clipboard',
+   'generation.actions.promptCopyFailed': 'Failed to Copy Prompt',
+   'generation.actions.reuseSettings': 'Reuse Settings',
+@@ -47,6 +48,7 @@ export default {
+   'generation.metadata.count': '{{count}} Images',
+   'generation.status.failed': 'Generation Failed',
+   'generation.status.generating': 'Generating...',
++  'generation.status.rewritingPrompt': 'Rewriting Prompt...',
+   'notSupportGuide.desc':
+     'The current deployment mode does not support AI image generation. Switch to the <1>server database deployment mode</1>, or use <3>LobeHub Cloud</3>.',
+   'notSupportGuide.features.fileIntegration.desc':
+diff --git a/src/locales/default/video.ts b/src/locales/default/video.ts
+index 5a99dedcf45..074ef7fe311 100644
+--- a/src/locales/default/video.ts
++++ b/src/locales/default/video.ts
+@@ -17,12 +17,14 @@ export default {
+   'generation.actions.errorCopied': 'Error Message Copied to Clipboard',
+   'generation.actions.errorCopyFailed': 'Failed to Copy Error Message',
+   'generation.actions.generate': 'Generate',
++  'generation.actions.rewritePrompt': 'Rewrite Prompt',
+   'generation.freeQuota.exhausted': '🎁 Free quota used up, credits will be consumed',
+   'generation.freeQuota.remaining': '🎁 {{remaining}} free videos today',
+   'generation.validation.endFrameRequiresStartFrame':
+     'End frame cannot be used without a start frame. Please set a start frame first.',
+   'generation.status.failed': 'Generation Failed',
+   'generation.status.generating': 'Generating...',
++  'generation.status.rewritingPrompt': 'Rewriting Prompt...',
+   'topic.createNew': 'Create New Topic',
+   'topic.deleteConfirm': 'Delete Video Topic',
+   'topic.deleteConfirmDesc':
+diff --git a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
+index b57a1a5a97d..4bd9b457123 100644
+--- a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
++++ b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
+@@ -1,9 +1,10 @@
+ 'use client';
+ 
++import { chainRewriteGenerationPrompt } from '@lobechat/prompts';
+ import { ModelIcon } from '@lobehub/icons';
+ import { ActionIcon, Flexbox, Text } from '@lobehub/ui';
+-import { Images } from 'lucide-react';
+-import { useCallback, useEffect, useMemo, useRef } from 'react';
++import { Images, Sparkles } from 'lucide-react';
++import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import { useTranslation } from 'react-i18next';
+ 
+ import { loginRequired } from '@/components/Error/loginRequiredNotification';
+@@ -30,6 +31,7 @@ import {
+   useAutoDimensions,
+ } from '@/routes/(main)/(create)/image/features/ConfigPanel';
+ import ImageModelItem from '@/routes/(main)/(create)/image/features/ConfigPanel/components/ModelSelect/ImageModelItem';
++import { chatService } from '@/services/chat';
+ import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
+ import { useImageStore } from '@/store/image';
+ import { createImageSelectors, imageGenerationConfigSelectors } from '@/store/image/selectors';
+@@ -38,7 +40,9 @@ import {
+   useGenerationConfigParam,
+ } from '@/store/image/slices/generationConfig/hooks';
+ import { useUserStore } from '@/store/user';
++import { systemAgentSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
+ import { authSelectors } from '@/store/user/slices/auth/selectors';
++import { merge } from '@/utils/merge';
+ 
+ import PromptTitle from './Title';
+ 
+@@ -76,9 +80,11 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+   const isSupportSteps = useImageStore(isSupportedParamSelector('steps'));
+   const isSupportCfg = useImageStore(isSupportedParamSelector('cfg'));
+   const isLogin = useUserStore(authSelectors.isLogin);
++  const rewriteConfig = useUserStore(systemAgentSelectors.queryRewrite);
+   const enabledImageModelList = useAiInfraStore(aiProviderSelectors.enabledImageModelList);
+   const { showDimensionControl } = useDimensionControl();
+   const { autoSetDimensions, extractUrlAndDimensions } = useAutoDimensions();
++  const [isRewriting, setIsRewriting] = useState(false);
+ 
+   useFetchAiImageConfig();
+ 
+@@ -96,6 +102,34 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+     await createImage();
+   };
+ 
++  const handleRewritePrompt = useCallback(async () => {
++    if (!value?.trim()) return;
++
++    let rewrittenPrompt = '';
++
++    await chatService.fetchPresetTaskResult({
++      onError: () => {
++        setIsRewriting(false);
++      },
++      onFinish: async (text) => {
++        const nextPrompt = text.trim() || rewrittenPrompt.trim();
++        if (nextPrompt) setValue(nextPrompt as any);
++      },
++      onLoadingChange: setIsRewriting,
++      onMessageHandle: (chunk) => {
++        if (chunk.type === 'text') rewrittenPrompt += chunk.text;
++      },
++      params: merge(
++        rewriteConfig,
++        chainRewriteGenerationPrompt({
++          locale: userGeneralSettingsSelectors.currentResponseLanguage(useUserStore.getState()),
++          mode: 'image',
++          prompt: value,
++        }),
++      ),
++    });
++  }, [rewriteConfig, setValue, value]);
++
+   useEffect(() => {
+     if (modelParam && !hasProcessedModel.current && isInit) {
+       const targetModel = modelParam;
+@@ -284,6 +318,19 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+         placeholder={
+           hasRefImages ? t('config.prompt.placeholderWithRef') : t('config.prompt.placeholder')
+         }
++        rightActions={
++          <Action
++            disabled={!rewriteConfig.enabled || !value?.trim()}
++            icon={Sparkles}
++            loading={isRewriting}
++            title={
++              isRewriting
++                ? t('generation.status.rewritingPrompt')
++                : t('generation.actions.rewritePrompt')
++            }
++            onClick={handleRewritePrompt}
++          />
++        }
+         onGenerate={handleGenerate}
+         onValueChange={setValue}
+       />
+diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
+index f469459528d..35dcc6e8697 100644
+--- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
++++ b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
+@@ -1,10 +1,11 @@
+ 'use client';
+ 
++import { chainRewriteGenerationPrompt } from '@lobechat/prompts';
+ import { ModelIcon } from '@lobehub/icons';
+ import { ActionIcon, Flexbox, InputNumber, Segmented, SliderWithInput, Text } from '@lobehub/ui';
+ import { Divider, Switch } from 'antd';
+-import { Clock3, Dices } from 'lucide-react';
+-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
++import { Clock3, Dices, Sparkles } from 'lucide-react';
++import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import { useTranslation } from 'react-i18next';
+ 
+ import VideoFreeQuotaInfo from '@/business/client/features/VideoFreeQuotaInfo';
+@@ -23,12 +24,15 @@ import {
+ import { AspectRatioSelect } from '@/routes/(main)/(create)/image/features/ConfigPanel';
+ import Select from '@/routes/(main)/(create)/image/features/ConfigPanel/components/Select';
+ import VideoModelItem from '@/routes/(main)/(create)/video/features/ConfigPanel/components/ModelSelect/VideoModelItem';
++import { chatService } from '@/services/chat';
+ import { aiProviderSelectors, useAiInfraStore } from '@/store/aiInfra';
+ import { useUserStore } from '@/store/user';
++import { systemAgentSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
+ import { authSelectors } from '@/store/user/slices/auth/selectors';
+ import { useVideoStore } from '@/store/video';
+ import { createVideoSelectors, videoGenerationConfigSelectors } from '@/store/video/selectors';
+ import { useVideoGenerationConfigParam } from '@/store/video/slices/generationConfig/hooks';
++import { merge } from '@/utils/merge';
+ import { generateUniqueSeeds } from '@/utils/number';
+ 
+ import PromptTitle from './Title';
+@@ -191,7 +195,9 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+   const isSupportGenerateAudio = useVideoStore(isSupportedParamSelector('generateAudio'));
+   const isSupportCameraFixed = useVideoStore(isSupportedParamSelector('cameraFixed'));
+   const isLogin = useUserStore(authSelectors.isLogin);
++  const rewriteConfig = useUserStore(systemAgentSelectors.queryRewrite);
+   const { value: duration } = useVideoGenerationConfigParam('duration');
++  const [isRewriting, setIsRewriting] = useState(false);
+   useFetchAiVideoConfig();
+ 
+   // Read prompt from query parameter
+@@ -207,6 +213,34 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+     await createVideo();
+   };
+ 
++  const handleRewritePrompt = useCallback(async () => {
++    if (!value?.trim()) return;
++
++    let rewrittenPrompt = '';
++
++    await chatService.fetchPresetTaskResult({
++      onError: () => {
++        setIsRewriting(false);
++      },
++      onFinish: async (text) => {
++        const nextPrompt = text.trim() || rewrittenPrompt.trim();
++        if (nextPrompt) setValue(nextPrompt as any);
++      },
++      onLoadingChange: setIsRewriting,
++      onMessageHandle: (chunk) => {
++        if (chunk.type === 'text') rewrittenPrompt += chunk.text;
++      },
++      params: merge(
++        rewriteConfig,
++        chainRewriteGenerationPrompt({
++          locale: userGeneralSettingsSelectors.currentResponseLanguage(useUserStore.getState()),
++          mode: 'video',
++          prompt: value,
++        }),
++      ),
++    });
++  }, [rewriteConfig, setValue, value]);
++
+   // Auto-fill and auto-send when prompt query parameter is present
+   useEffect(() => {
+     if (promptParam && !hasProcessedPrompt.current && isLogin) {
+@@ -358,6 +392,19 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+           placeholder={
+             hasRefImages ? t('config.prompt.placeholderWithRef') : t('config.prompt.placeholder')
+           }
++          rightActions={
++            <Action
++              disabled={!rewriteConfig.enabled || !value?.trim()}
++              icon={Sparkles}
++              loading={isRewriting}
++              title={
++                isRewriting
++                  ? t('generation.status.rewritingPrompt')
++                  : t('generation.actions.rewritePrompt')
++              }
++              onClick={handleRewritePrompt}
++            />
++          }
+           onGenerate={handleGenerate}
+           onValueChange={setValue}
+         />
