@@ -1,3 +1,35 @@
+diff --git a/packages/const/src/settings/systemAgent.ts b/packages/const/src/settings/systemAgent.ts
+index dbc98d2a7aa..42828cbf8fb 100644
+--- a/packages/const/src/settings/systemAgent.ts
++++ b/packages/const/src/settings/systemAgent.ts
+@@ -1,5 +1,6 @@
+ import { DEFAULT_MINI_PROVIDER, DEFAULT_PROVIDER } from '@lobechat/business-const';
+ import type {
++  PromptRewriteSystemAgent,
+   QueryRewriteSystemAgent,
+   SystemAgentItem,
+   UserSystemAgentConfig,
+@@ -23,6 +24,12 @@ export const DEFAULT_QUERY_REWRITE_SYSTEM_AGENT_ITEM: QueryRewriteSystemAgent =
+   provider: DEFAULT_MINI_SYSTEM_AGENT_ITEM.provider,
+ };
+ 
++export const DEFAULT_PROMPT_REWRITE_SYSTEM_AGENT_ITEM: PromptRewriteSystemAgent = {
++  enabled: true,
++  model: DEFAULT_MINI_SYSTEM_AGENT_ITEM.model,
++  provider: DEFAULT_MINI_SYSTEM_AGENT_ITEM.provider,
++};
++
+ export const DEFAULT_INPUT_COMPLETION_SYSTEM_AGENT_ITEM: SystemAgentItem = {
+   enabled: true,
+   model: DEFAULT_MINI_SYSTEM_AGENT_ITEM.model,
+@@ -34,6 +41,7 @@ export const DEFAULT_SYSTEM_AGENT_CONFIG: UserSystemAgentConfig = {
+   generationTopic: DEFAULT_MINI_SYSTEM_AGENT_ITEM,
+   historyCompress: DEFAULT_SYSTEM_AGENT_ITEM,
+   inputCompletion: DEFAULT_INPUT_COMPLETION_SYSTEM_AGENT_ITEM,
++  promptRewrite: DEFAULT_PROMPT_REWRITE_SYSTEM_AGENT_ITEM,
+   queryRewrite: DEFAULT_QUERY_REWRITE_SYSTEM_AGENT_ITEM,
+   thread: DEFAULT_SYSTEM_AGENT_ITEM,
+   topic: DEFAULT_MINI_SYSTEM_AGENT_ITEM,
 diff --git a/packages/prompts/src/chains/index.ts b/packages/prompts/src/chains/index.ts
 index 8efe8751161..78ea7c3ad8b 100644
 --- a/packages/prompts/src/chains/index.ts
@@ -12,10 +44,10 @@ index 8efe8751161..78ea7c3ad8b 100644
  export * from './summaryDescription';
 diff --git a/packages/prompts/src/chains/rewriteGenerationPrompt.ts b/packages/prompts/src/chains/rewriteGenerationPrompt.ts
 new file mode 100644
-index 00000000000..589f13f2348
+index 00000000000..fb9e2146bfc
 --- /dev/null
 +++ b/packages/prompts/src/chains/rewriteGenerationPrompt.ts
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,96 @@
 +import type { ChatStreamPayload } from '@lobechat/types';
 +
 +interface RewriteGenerationPromptParams {
@@ -24,6 +56,78 @@ index 00000000000..589f13f2348
 +  prompt: string;
 +}
 +
++const IMAGE_REWRITE_SYSTEM_PROMPT = (locale: string) => `You are an expert image prompt engineer.
++
++Rewrite the user prompt into a production-ready image-generation prompt while preserving intent.
++
++Use this structure (keep it concise):
++1) Main subject & scene
++2) Visual style / medium / quality
++3) Composition & viewpoint
++4) Lighting & atmosphere
++5) Technical details (lens, depth of field, resolution, etc. when useful)
++
++Rules:
++- Keep important entities, quantities, and constraints unchanged.
++- Add concrete visual details and physically plausible lighting.
++- Avoid verbosity and avoid contradictory details.
++- Output language must be ${locale}.
++- Output ONLY the final rewritten prompt (single paragraph, no markdown).`;
++
++const VIDEO_REWRITE_SYSTEM_PROMPT = (locale: string) => `You are an expert video prompt engineer.
++
++Rewrite the user prompt into a production-ready video-generation prompt while preserving intent.
++
++Include these dimensions when relevant:
++1) Subject, scene, and action
++2) Shot framing and camera movement (pan/tilt/dolly/handheld/static)
++3) Temporal progression (start -> middle -> end)
++4) Lighting, mood, and color style
++5) Motion characteristics (speed, rhythm, realism) and quality constraints
++
++Rules:
++- Keep important entities, quantities, and constraints unchanged.
++- Prioritize temporal clarity and camera language.
++- Avoid impossible or contradictory motion/physics descriptions.
++- Output language must be ${locale}.
++- Output ONLY the final rewritten prompt (single paragraph, no markdown).`;
++
++const TEXT_REWRITE_SYSTEM_PROMPT = (
++  locale: string,
++) => `You are an expert prompt engineer for text-rendering and writing-oriented generation tasks.
++
++Rewrite the user prompt into a clear, structured prompt for text-heavy generation scenarios (e.g. page writing assistant, UI copy, poster text, or text-rendering description).
++
++Focus on:
++1) Core intent and target output type
++2) Content requirements (tone, style, audience, language)
++3) Structural constraints (sections, length, formatting)
++4) If the prompt involves visible rendered text in images/UI, explicitly include exact text content in double quotes
++
++Rules:
++- Keep key entities, numbers, and constraints unchanged.
++- If user provided literal text content, preserve the original language of that text.
++- Make requirements explicit and executable, avoid vague wording.
++- Output language must be ${locale}.
++- Output ONLY the final rewritten prompt (single paragraph, no markdown).`;
++
++const getSystemPromptByMode = (mode: RewriteGenerationPromptParams['mode'], locale: string) => {
++  switch (mode) {
++    case 'image': {
++      return IMAGE_REWRITE_SYSTEM_PROMPT(locale);
++    }
++    case 'video': {
++      return VIDEO_REWRITE_SYSTEM_PROMPT(locale);
++    }
++    case 'text': {
++      return TEXT_REWRITE_SYSTEM_PROMPT(locale);
++    }
++    default: {
++      return IMAGE_REWRITE_SYSTEM_PROMPT(locale);
++    }
++  }
++};
++
 +export const chainRewriteGenerationPrompt = ({
 +  mode,
 +  prompt,
@@ -31,13 +135,7 @@ index 00000000000..589f13f2348
 +}: RewriteGenerationPromptParams): Partial<ChatStreamPayload> => ({
 +  messages: [
 +    {
-+      content: `You are an expert AI ${mode} prompt engineer. Rewrite the user's prompt to make it clearer, richer in visual details, and more production-ready while preserving the original intent.
-+
-+Rules:
-+1. Output only the rewritten prompt, without explanation.
-+2. Keep the output in ${locale}.
-+3. Keep important entities, style, scene, and constraints from the original prompt.
-+4. Keep it concise and practical for direct model input.`,
++      content: getSystemPromptByMode(mode, locale),
 +      role: 'system',
 +    },
 +    {
@@ -46,66 +144,57 @@ index 00000000000..589f13f2348
 +    },
 +  ],
 +});
-diff --git a/src/features/PageEditor/Copilot/Conversation.tsx b/src/features/PageEditor/Copilot/Conversation.tsx
-index 3e6e1484cad..0be5f2f7220 100644
---- a/src/features/PageEditor/Copilot/Conversation.tsx
-+++ b/src/features/PageEditor/Copilot/Conversation.tsx
-@@ -17,6 +17,7 @@ import { useChatStore } from '@/store/chat';
+diff --git a/packages/types/src/user/settings/systemAgent.ts b/packages/types/src/user/settings/systemAgent.ts
+index b95bbe47888..174069b9eff 100644
+--- a/packages/types/src/user/settings/systemAgent.ts
++++ b/packages/types/src/user/settings/systemAgent.ts
+@@ -9,11 +9,16 @@ export interface QueryRewriteSystemAgent extends Omit<SystemAgentItem, 'enabled'
+   enabled: boolean;
+ }
  
- import AgentSelectorAction from './AgentSelector/AgentSelectorAction';
- import CopilotModelSelector from './CopilotModelSelector';
-+import RewritePromptAction from './RewritePromptAction';
- import CopilotToolbar from './Toolbar';
- import Welcome from './Welcome';
- 
-@@ -83,7 +84,15 @@ const Conversation = memo(() => {
-     [handleAgentChange],
-   );
- 
--  const modelSelector = useMemo(() => <CopilotModelSelector />, []);
-+  const modelSelector = useMemo(
-+    () => (
-+      <Flexbox horizontal align={'center'} gap={2}>
-+        <CopilotModelSelector />
-+        <RewritePromptAction />
-+      </Flexbox>
-+    ),
-+    [],
-+  );
- 
-   return (
-     <DragUploadZone
-diff --git a/src/features/PageEditor/Copilot/RewritePromptAction.tsx b/src/features/PageEditor/Copilot/RewritePromptAction.tsx
++export interface PromptRewriteSystemAgent extends Omit<SystemAgentItem, 'enabled'> {
++  enabled: boolean;
++}
++
+ export interface UserSystemAgentConfig {
+   agentMeta: SystemAgentItem;
+   generationTopic: SystemAgentItem;
+   historyCompress: SystemAgentItem;
+   inputCompletion: SystemAgentItem;
++  promptRewrite: PromptRewriteSystemAgent;
+   queryRewrite: QueryRewriteSystemAgent;
+   thread: SystemAgentItem;
+   topic: SystemAgentItem;
+diff --git a/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx b/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx
 new file mode 100644
-index 00000000000..72b3ba921aa
+index 00000000000..fb96b9cf384
 --- /dev/null
-+++ b/src/features/PageEditor/Copilot/RewritePromptAction.tsx
-@@ -0,0 +1,73 @@
++++ b/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx
+@@ -0,0 +1,71 @@
 +'use client';
 +
 +import { chainRewriteGenerationPrompt } from '@lobechat/prompts';
-+import { ActionIcon } from '@lobehub/ui';
 +import { Sparkles } from 'lucide-react';
 +import { memo, useCallback, useState } from 'react';
 +import { useTranslation } from 'react-i18next';
 +
-+import { conversationSelectors, useConversationStore } from '@/features/Conversation';
 +import { chatService } from '@/services/chat';
 +import { useUserStore } from '@/store/user';
 +import { systemAgentSelectors, userGeneralSettingsSelectors } from '@/store/user/selectors';
 +import { merge } from '@/utils/merge';
 +
-+const RewritePromptAction = memo(() => {
++import { useChatInputStore } from '../../store';
++import Action from '../components/Action';
++
++const RewritePrompt = memo(() => {
 +  const { t } = useTranslation('chat');
 +  const [isRewriting, setIsRewriting] = useState(false);
 +
-+  const rewriteConfig = useUserStore(systemAgentSelectors.queryRewrite);
-+  const [editor, inputMessage] = useConversationStore((s) => [
-+    conversationSelectors.editor(s),
-+    conversationSelectors.inputMessage(s),
-+  ]);
++  const rewriteConfig = useUserStore(systemAgentSelectors.promptRewrite);
++  const [editor, getMarkdownContent] = useChatInputStore((s) => [s.editor, s.getMarkdownContent]);
 +
 +  const handleRewritePrompt = useCallback(async () => {
++    const inputMessage = getMarkdownContent();
 +    if (!inputMessage?.trim() || !editor) return;
 +
 +    let rewrittenPrompt = '';
@@ -133,14 +222,13 @@ index 00000000000..72b3ba921aa
 +        }),
 +      ),
 +    });
-+  }, [editor, inputMessage, rewriteConfig]);
++  }, [editor, getMarkdownContent, rewriteConfig]);
 +
 +  return (
-+    <ActionIcon
-+      disabled={!rewriteConfig.enabled || !inputMessage?.trim()}
++    <Action
++      disabled={!rewriteConfig.enabled || !getMarkdownContent()?.trim()}
 +      icon={Sparkles}
 +      loading={isRewriting}
-+      size={{ blockSize: 28, size: 16 }}
 +      title={
 +        isRewriting
 +          ? t('pageCopilot.status.rewritingPrompt')
@@ -151,9 +239,42 @@ index 00000000000..72b3ba921aa
 +  );
 +});
 +
-+RewritePromptAction.displayName = 'RewritePromptAction';
++RewritePrompt.displayName = 'RewritePrompt';
 +
-+export default RewritePromptAction;
++export default RewritePrompt;
+diff --git a/src/features/ChatInput/ActionBar/config.ts b/src/features/ChatInput/ActionBar/config.ts
+index 71ad5ae18b4..6293474774a 100644
+--- a/src/features/ChatInput/ActionBar/config.ts
++++ b/src/features/ChatInput/ActionBar/config.ts
+@@ -5,6 +5,7 @@ import Memory from './Memory';
+ import Mention from './Mention';
+ import Model from './Model';
+ import Params from './Params';
++import RewritePrompt from './RewritePrompt';
+ import SaveTopic from './SaveTopic';
+ import Search from './Search';
+ import STT from './STT';
+@@ -24,6 +25,7 @@ export const actionMap = {
+   model: Model,
+   params: Params,
+   portalToken: PortalToken,
++  rewritePrompt: RewritePrompt,
+   saveTopic: SaveTopic,
+   search: Search,
+   stt: STT,
+diff --git a/src/features/Conversation/ChatInput/index.tsx b/src/features/Conversation/ChatInput/index.tsx
+index fc71ea75fa7..b1f64e8ac56 100644
+--- a/src/features/Conversation/ChatInput/index.tsx
++++ b/src/features/Conversation/ChatInput/index.tsx
+@@ -119,7 +119,7 @@ const ChatInput = memo<ChatInputProps>(
+     allowExpand,
+     leftActions = [],
+     leftContent,
+-    rightActions = [],
++    rightActions = ['rewritePrompt'],
+     children,
+     extraActionItems,
+     mentionItems,
 diff --git a/src/locales/default/chat.ts b/src/locales/default/chat.ts
 index 98700d2adaf..ac767e59e5d 100644
 --- a/src/locales/default/chat.ts
@@ -187,6 +308,20 @@ index 355bac9676e..e0876f9adc8 100644
    'notSupportGuide.desc':
      'The current deployment mode does not support AI image generation. Switch to the <1>server database deployment mode</1>, or use <3>LobeHub Cloud</3>.',
    'notSupportGuide.features.fileIntegration.desc':
+diff --git a/src/locales/default/setting.ts b/src/locales/default/setting.ts
+index 3dc702de4eb..7d4441f6fe4 100644
+--- a/src/locales/default/setting.ts
++++ b/src/locales/default/setting.ts
+@@ -890,6 +890,9 @@ When I am ___, I need ___
+   'systemAgent.inputCompletion.modelDesc':
+     'Model used for input auto-completion suggestions (like GitHub Copilot ghost text)',
+   'systemAgent.inputCompletion.title': 'Input Auto-Completion Agent',
++  'systemAgent.promptRewrite.label': 'Model',
++  'systemAgent.promptRewrite.modelDesc': 'Specify the model used to rewrite creation prompts',
++  'systemAgent.promptRewrite.title': 'Creation Prompt Rewrite Agent',
+   'systemAgent.queryRewrite.label': 'Model',
+   'systemAgent.queryRewrite.modelDesc': 'Specify the model used to optimize user inquiries',
+   'systemAgent.queryRewrite.title': 'Library query rewrite Agent',
 diff --git a/src/locales/default/video.ts b/src/locales/default/video.ts
 index 5a99dedcf45..074ef7fe311 100644
 --- a/src/locales/default/video.ts
@@ -207,7 +342,7 @@ index 5a99dedcf45..074ef7fe311 100644
    'topic.deleteConfirm': 'Delete Video Topic',
    'topic.deleteConfirmDesc':
 diff --git a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
-index b57a1a5a97d..4bd9b457123 100644
+index b57a1a5a97d..9efc3caeec8 100644
 --- a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
 +++ b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
 @@ -1,9 +1,10 @@
@@ -245,7 +380,7 @@ index b57a1a5a97d..4bd9b457123 100644
    const isSupportSteps = useImageStore(isSupportedParamSelector('steps'));
    const isSupportCfg = useImageStore(isSupportedParamSelector('cfg'));
    const isLogin = useUserStore(authSelectors.isLogin);
-+  const rewriteConfig = useUserStore(systemAgentSelectors.queryRewrite);
++  const rewriteConfig = useUserStore(systemAgentSelectors.promptRewrite);
    const enabledImageModelList = useAiInfraStore(aiProviderSelectors.enabledImageModelList);
    const { showDimensionControl } = useDimensionControl();
    const { autoSetDimensions, extractUrlAndDimensions } = useAutoDimensions();
@@ -309,7 +444,7 @@ index b57a1a5a97d..4bd9b457123 100644
          onValueChange={setValue}
        />
 diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
-index f469459528d..35dcc6e8697 100644
+index f469459528d..0ccbaaee9ea 100644
 --- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
 +++ b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
 @@ -1,10 +1,11 @@
@@ -346,7 +481,7 @@ index f469459528d..35dcc6e8697 100644
    const isSupportGenerateAudio = useVideoStore(isSupportedParamSelector('generateAudio'));
    const isSupportCameraFixed = useVideoStore(isSupportedParamSelector('cameraFixed'));
    const isLogin = useUserStore(authSelectors.isLogin);
-+  const rewriteConfig = useUserStore(systemAgentSelectors.queryRewrite);
++  const rewriteConfig = useUserStore(systemAgentSelectors.promptRewrite);
    const { value: duration } = useVideoGenerationConfigParam('duration');
 +  const [isRewriting, setIsRewriting] = useState(false);
    useFetchAiVideoConfig();
@@ -407,3 +542,60 @@ index f469459528d..35dcc6e8697 100644
            onGenerate={handleGenerate}
            onValueChange={setValue}
          />
+diff --git a/src/routes/(main)/settings/agent/index.tsx b/src/routes/(main)/settings/agent/index.tsx
+index b03151d727c..7954a8c252c 100644
+--- a/src/routes/(main)/settings/agent/index.tsx
++++ b/src/routes/(main)/settings/agent/index.tsx
+@@ -20,6 +20,7 @@ const Page = () => {
+       <SystemAgentForm systemAgentKey="historyCompress" />
+       <SystemAgentForm systemAgentKey="agentMeta" />
+       <SystemAgentForm allowDisable systemAgentKey="inputCompletion" />
++      <SystemAgentForm allowDisable systemAgentKey="promptRewrite" />
+       {enableKnowledgeBase && (
+         <SystemAgentForm
+           allowCustomPrompt
+diff --git a/src/routes/(main)/settings/service-model/index.tsx b/src/routes/(main)/settings/service-model/index.tsx
+index ef4e73620a2..4940843bd25 100644
+--- a/src/routes/(main)/settings/service-model/index.tsx
++++ b/src/routes/(main)/settings/service-model/index.tsx
+@@ -24,6 +24,7 @@ const Page = () => {
+       <SystemAgentForm systemAgentKey="historyCompress" />
+       <SystemAgentForm systemAgentKey="agentMeta" />
+       <SystemAgentForm allowDisable systemAgentKey="inputCompletion" />
++      <SystemAgentForm allowDisable systemAgentKey="promptRewrite" />
+       {enableKnowledgeBase && (
+         <SystemAgentForm
+           allowCustomPrompt
+diff --git a/src/server/globalConfig/parseSystemAgent.ts b/src/server/globalConfig/parseSystemAgent.ts
+index ea0d9e3bfb5..33d903f04c3 100644
+--- a/src/server/globalConfig/parseSystemAgent.ts
++++ b/src/server/globalConfig/parseSystemAgent.ts
+@@ -3,7 +3,7 @@ import { type UserSystemAgentConfig } from '@/types/user/settings';
+ 
+ const protectedKeys = Object.keys(DEFAULT_SYSTEM_AGENT_CONFIG);
+ 
+-const defaultTrueLey = new Set(['queryRewrite', 'autoSuggestion']);
++const defaultTrueLey = new Set(['queryRewrite', 'promptRewrite', 'autoSuggestion']);
+ 
+ export const parseSystemAgent = (envString: string = ''): Partial<UserSystemAgentConfig> => {
+   if (!envString) return {};
+diff --git a/src/store/user/slices/settings/selectors/systemAgent.ts b/src/store/user/slices/settings/selectors/systemAgent.ts
+index 2ae8943c4ed..52948031769 100644
+--- a/src/store/user/slices/settings/selectors/systemAgent.ts
++++ b/src/store/user/slices/settings/selectors/systemAgent.ts
+@@ -12,6 +12,7 @@ const topic = (s: UserStore) => currentSystemAgent(s).topic;
+ const thread = (s: UserStore) => currentSystemAgent(s).thread;
+ const agentMeta = (s: UserStore) => currentSystemAgent(s).agentMeta;
+ const queryRewrite = (s: UserStore) => currentSystemAgent(s).queryRewrite;
++const promptRewrite = (s: UserStore) => currentSystemAgent(s).promptRewrite;
+ const historyCompress = (s: UserStore) => currentSystemAgent(s).historyCompress;
+ const generationTopic = (s: UserStore) => currentSystemAgent(s).generationTopic;
+ const inputCompletion = (s: UserStore) => currentSystemAgent(s).inputCompletion;
+@@ -21,6 +22,7 @@ export const systemAgentSelectors = {
+   generationTopic,
+   historyCompress,
+   inputCompletion,
++  promptRewrite,
+   queryRewrite,
+   thread,
+   topic,
