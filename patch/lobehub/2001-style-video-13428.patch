@@ -3967,10 +3967,10 @@ index 7fdfdbb0169..492b7eec67f 100644
     * @see https://ai.google.dev/gemini-api/docs/structured-output
 diff --git a/packages/model-runtime/src/providers/minimax/createVideo.test.ts b/packages/model-runtime/src/providers/minimax/createVideo.test.ts
 new file mode 100644
-index 00000000000..f78cd7968f4
+index 00000000000..f8de37ef201
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/minimax/createVideo.test.ts
-@@ -0,0 +1,369 @@
+@@ -0,0 +1,327 @@
 +// @vitest-environment node
 +import { beforeEach, describe, expect, it, vi } from 'vitest';
 +
@@ -4021,28 +4021,6 @@ index 00000000000..f78cd7968f4
 +      expect.any(Object),
 +    );
 +    expect(result).toEqual({ inferenceId: 'minimax-task-123' });
-+  });
-+
-+  it('should include default duration of 6', async () => {
-+    global.fetch = vi.fn().mockResolvedValueOnce({
-+      ok: true,
-+      json: async () => ({
-+        task_id: 'task-default-duration',
-+        base_resp: { status_code: 0, status_msg: 'success' },
-+      }),
-+    });
-+
-+    const payload: CreateVideoPayload = {
-+      model: 'video-01',
-+      params: {
-+        prompt: 'Test',
-+      },
-+    };
-+
-+    await createMiniMaxVideo(payload, mockOptions);
-+
-+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-+    expect(body.duration).toBe(6);
 +  });
 +
 +  it('should include custom duration', async () => {
@@ -4114,26 +4092,6 @@ index 00000000000..f78cd7968f4
 +    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
 +    expect(body.first_frame_image).toBe('https://example.com/first.jpg');
 +    expect(body.last_frame_image).toBe('https://example.com/last.jpg');
-+  });
-+
-+  it('should use default resolution of 1080P', async () => {
-+    global.fetch = vi.fn().mockResolvedValueOnce({
-+      ok: true,
-+      json: async () => ({
-+        task_id: 'task-resolution',
-+        base_resp: { status_code: 0, status_msg: 'success' },
-+      }),
-+    });
-+
-+    const payload: CreateVideoPayload = {
-+      model: 'video-01',
-+      params: { prompt: 'Test' },
-+    };
-+
-+    await createMiniMaxVideo(payload, mockOptions);
-+
-+    const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
-+    expect(body.resolution).toBe('1080P');
 +  });
 +
 +  it('should throw on non-zero status_code', async () => {
@@ -4342,7 +4300,7 @@ index 00000000000..f78cd7968f4
 +});
 diff --git a/packages/model-runtime/src/providers/minimax/createVideo.ts b/packages/model-runtime/src/providers/minimax/createVideo.ts
 new file mode 100644
-index 00000000000..42614989ccb
+index 00000000000..7b9573f4bbb
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/minimax/createVideo.ts
 @@ -0,0 +1,193 @@
@@ -4489,10 +4447,10 @@ index 00000000000..42614989ccb
 +  const baseURL = options.baseURL || 'https://api.minimaxi.com/v1';
 +
 +  const body: Record<string, unknown> = {
-+    duration: duration || 6,
 +    model,
 +    prompt,
-+    resolution,
++    ...(typeof duration === 'number' ? { duration } : {}),
++    ...(typeof resolution === 'string' ? { resolution } : {}),
 +  };
 +
 +  if (imageUrl) {
