@@ -359,10 +359,10 @@ index fc71ea75fa7..b1f64e8ac56 100644
      mentionItems,
 diff --git a/src/features/PromptRewrite/PromptTransformAction.tsx b/src/features/PromptRewrite/PromptTransformAction.tsx
 new file mode 100644
-index 00000000000..8f953e861a6
+index 00000000000..5a4d3cad93a
 --- /dev/null
 +++ b/src/features/PromptRewrite/PromptTransformAction.tsx
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,87 @@
 +'use client';
 +
 +import { Sparkles } from 'lucide-react';
@@ -387,7 +387,6 @@ index 00000000000..8f953e861a6
 +      isRewriteDisabled,
 +      isRewriteActionEnabled,
 +      isRewriting,
-+      isTranslateActionEnabled,
 +      rewritePrompt,
 +      translatePrompt,
 +      transformAction,
@@ -400,37 +399,39 @@ index 00000000000..8f953e861a6
 +    const menuItems = useMemo(
 +      () => [
 +        {
-+          disabled: !isRewriteActionEnabled,
 +          key: 'rewrite',
 +          label: t('promptTransform.actions.rewrite'),
 +          onClick: rewritePrompt,
 +        },
 +        {
-+          disabled: !isTranslateActionEnabled,
 +          key: 'translate',
 +          label: t('promptTransform.actions.translate'),
 +          onClick: translatePrompt,
 +        },
 +      ],
-+      [isRewriteActionEnabled, isTranslateActionEnabled, rewritePrompt, t, translatePrompt],
++      [rewritePrompt, t, translatePrompt],
 +    );
 +
-+    const handlePrimaryAction = useMemo(() => {
-+      if (isRewriteActionEnabled) return rewritePrompt;
-+      if (isTranslateActionEnabled) return translatePrompt;
++    const handlePrimaryAction = useMemo(
++      () => (isRewriteActionEnabled ? rewritePrompt : translatePrompt),
++      [isRewriteActionEnabled, rewritePrompt, translatePrompt],
++    );
 +
-+      return undefined;
-+    }, [isRewriteActionEnabled, isTranslateActionEnabled, rewritePrompt, translatePrompt]);
++    const dropdown = useMemo(() => {
++      if (!isRewriteActionEnabled) return undefined;
++
++      return {
++        menu: { items: menuItems },
++        trigger: 'hover' as const,
++      };
++    }, [isRewriteActionEnabled, menuItems]);
 +
 +    return (
 +      <Action
 +        disabled={isRewriteDisabled}
++        dropdown={dropdown}
 +        icon={Sparkles}
 +        loading={isRewriting}
-+        dropdown={{
-+          menu: { items: menuItems },
-+          trigger: 'hover',
-+        }}
 +        title={
 +          isRewriting
 +            ? t(
@@ -451,10 +452,10 @@ index 00000000000..8f953e861a6
 +export default PromptTransformAction;
 diff --git a/src/features/PromptRewrite/usePromptRewrite.ts b/src/features/PromptRewrite/usePromptRewrite.ts
 new file mode 100644
-index 00000000000..1e4d3bef235
+index 00000000000..f7dde533669
 --- /dev/null
 +++ b/src/features/PromptRewrite/usePromptRewrite.ts
-@@ -0,0 +1,94 @@
+@@ -0,0 +1,86 @@
 +import { chainRewriteGenerationPrompt, chainTranslate } from '@lobechat/prompts';
 +import { useCallback, useState } from 'react';
 +
@@ -478,14 +479,6 @@ index 00000000000..1e4d3bef235
 +  const rewriteConfig = useUserStore(systemAgentSelectors.promptRewrite);
 +  const translateConfig = useUserStore(systemAgentSelectors.translation);
 +  const isRewriteActionEnabled = rewriteConfig?.enabled ?? false;
-+  const isTranslateActionEnabled = translateConfig?.enabled ?? false;
-+  const isEnabled = isRewriteActionEnabled || isTranslateActionEnabled;
-+
-+  const isActionEnabled = useCallback(
-+    (action: PromptTransformAction) =>
-+      action === 'rewrite' ? isRewriteActionEnabled : isTranslateActionEnabled,
-+    [isRewriteActionEnabled, isTranslateActionEnabled],
-+  );
 +
 +  const getConfigByAction = useCallback(
 +    (action: PromptTransformAction) =>
@@ -495,7 +488,8 @@ index 00000000000..1e4d3bef235
 +
 +  const runTransform = useCallback(
 +    async (action: PromptTransformAction) => {
-+      if (isRewriting || !prompt?.trim() || !isEnabled || !isActionEnabled(action)) return;
++      if (isRewriting || !prompt?.trim()) return;
++      if (action === 'rewrite' && !isRewriteActionEnabled) return;
 +
 +      let rewrittenPrompt = '';
 +      setTransformAction(action);
@@ -528,7 +522,7 @@ index 00000000000..1e4d3bef235
 +        setTransformAction('rewrite');
 +      }
 +    },
-+    [getConfigByAction, isActionEnabled, isEnabled, isRewriting, mode, onPromptChange, prompt],
++    [getConfigByAction, isRewriteActionEnabled, isRewriting, mode, onPromptChange, prompt],
 +  );
 +
 +  const rewritePrompt = useCallback(async () => {
@@ -540,9 +534,8 @@ index 00000000000..1e4d3bef235
 +  }, [runTransform]);
 +
 +  return {
-+    isRewriteDisabled: !isEnabled || !prompt?.trim(),
++    isRewriteDisabled: !prompt?.trim(),
 +    isRewriteActionEnabled,
-+    isTranslateActionEnabled,
 +    isRewriting,
 +    transformAction,
 +    translatePrompt,
