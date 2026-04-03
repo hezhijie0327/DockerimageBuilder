@@ -1,12 +1,11 @@
 diff --git a/locales/en-US/common.json b/locales/en-US/common.json
-index 1ef99957ed9..6eb42aaa9dd 100644
+index 1ef99957ed9..00b7ddcf9a3 100644
 --- a/locales/en-US/common.json
 +++ b/locales/en-US/common.json
-@@ -362,6 +362,11 @@
+@@ -362,6 +362,10 @@
    "productHunt.actionLabel": "Support us",
    "productHunt.description": "Support us on Product Hunt. Your support means a lot to us!",
    "productHunt.title": "We're on Product Hunt!",
-+  "promptTransform.action": "Prompt Optimization",
 +  "promptTransform.actions.rewrite": "Rewrite Prompt",
 +  "promptTransform.actions.translate": "Translate Prompt",
 +  "promptTransform.status.rewrite": "Rewriting Prompt...",
@@ -29,14 +28,13 @@ index 1f0937dabec..df95cbe64e8 100644
    "systemAgent.queryRewrite.modelDesc": "Specify the model used to optimize user inquiries",
    "systemAgent.queryRewrite.title": "Library query rewrite Agent",
 diff --git a/locales/zh-CN/common.json b/locales/zh-CN/common.json
-index 2250395eaa2..0f033d99e43 100644
+index 2250395eaa2..abcce129eca 100644
 --- a/locales/zh-CN/common.json
 +++ b/locales/zh-CN/common.json
-@@ -362,6 +362,11 @@
+@@ -362,6 +362,10 @@
    "productHunt.actionLabel": "支持我们",
    "productHunt.description": "在 Product Hunt 上支持我们，您的支持对我们意义重大！",
    "productHunt.title": "我们登上 Product Hunt 了！",
-+  "promptTransform.action": "提示词优化",
 +  "promptTransform.actions.rewrite": "提示词重写",
 +  "promptTransform.actions.translate": "提示词翻译",
 +  "promptTransform.status.rewrite": "提示词重写中...",
@@ -359,14 +357,15 @@ index fc71ea75fa7..b1f64e8ac56 100644
      mentionItems,
 diff --git a/src/features/PromptRewrite/PromptTransformAction.tsx b/src/features/PromptRewrite/PromptTransformAction.tsx
 new file mode 100644
-index 00000000000..5a4d3cad93a
+index 00000000000..a4c1dbe089e
 --- /dev/null
 +++ b/src/features/PromptRewrite/PromptTransformAction.tsx
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,75 @@
 +'use client';
 +
-+import { Sparkles } from 'lucide-react';
-+import { memo, useMemo } from 'react';
++import { Flexbox } from '@lobehub/ui';
++import { Languages, Sparkles } from 'lucide-react';
++import { memo } from 'react';
 +import { useTranslation } from 'react-i18next';
 +
 +import Action from '@/features/ChatInput/ActionBar/components/Action';
@@ -396,53 +395,40 @@ index 00000000000..5a4d3cad93a
 +      prompt,
 +    });
 +
-+    const menuItems = useMemo(
-+      () => [
-+        {
-+          key: 'rewrite',
-+          label: t('promptTransform.actions.rewrite'),
-+          onClick: rewritePrompt,
-+        },
-+        {
-+          key: 'translate',
-+          label: t('promptTransform.actions.translate'),
-+          onClick: translatePrompt,
-+        },
-+      ],
-+      [rewritePrompt, t, translatePrompt],
-+    );
++    const isRewriteLoading = isRewriting && transformAction === 'rewrite';
++    const isTranslateLoading = isRewriting && transformAction === 'translate';
 +
-+    const handlePrimaryAction = useMemo(
-+      () => (isRewriteActionEnabled ? rewritePrompt : translatePrompt),
-+      [isRewriteActionEnabled, rewritePrompt, translatePrompt],
-+    );
-+
-+    const dropdown = useMemo(() => {
-+      if (!isRewriteActionEnabled) return undefined;
-+
-+      return {
-+        menu: { items: menuItems },
-+        trigger: 'hover' as const,
-+      };
-+    }, [isRewriteActionEnabled, menuItems]);
++    // When rewriting or translating, disable both buttons to prevent multiple simultaneous actions
++    const isRewriteButtonDisabled = isRewriteDisabled || (isRewriting && !isRewriteLoading);
++    const isTranslateButtonDisabled = isRewriteDisabled || (isRewriting && !isTranslateLoading);
 +
 +    return (
-+      <Action
-+        disabled={isRewriteDisabled}
-+        dropdown={dropdown}
-+        icon={Sparkles}
-+        loading={isRewriting}
-+        title={
-+          isRewriting
-+            ? t(
-+                transformAction === 'translate'
-+                  ? 'promptTransform.status.translate'
-+                  : 'promptTransform.status.rewrite',
-+              )
-+            : t('promptTransform.action')
-+        }
-+        onClick={handlePrimaryAction}
-+      />
++      <Flexbox horizontal gap={4}>
++        {isRewriteActionEnabled && (
++          <Action
++            disabled={isRewriteButtonDisabled}
++            icon={Sparkles}
++            loading={isRewriteLoading}
++            title={
++              isRewriteLoading
++                ? t('promptTransform.status.rewrite')
++                : t('promptTransform.actions.rewrite')
++            }
++            onClick={rewritePrompt}
++          />
++        )}
++        <Action
++          disabled={isTranslateButtonDisabled}
++          icon={Languages}
++          loading={isTranslateLoading}
++          title={
++            isTranslateLoading
++              ? t('promptTransform.status.translate')
++              : t('promptTransform.actions.translate')
++          }
++          onClick={translatePrompt}
++        />
++      </Flexbox>
 +    );
 +  },
 +);
@@ -543,14 +529,13 @@ index 00000000000..f7dde533669
 +  };
 +};
 diff --git a/src/locales/default/common.ts b/src/locales/default/common.ts
-index 1797f37c2f7..0c104b9f53e 100644
+index 1797f37c2f7..d49c44956ee 100644
 --- a/src/locales/default/common.ts
 +++ b/src/locales/default/common.ts
-@@ -279,6 +279,11 @@ export default {
+@@ -279,6 +279,10 @@ export default {
    'copy': 'Copy',
    'copyFail': 'Copy failed',
    'copySuccess': 'Copied',
-+  'promptTransform.action': 'Prompt Optimization',
 +  'promptTransform.actions.rewrite': 'Rewrite Prompt',
 +  'promptTransform.actions.translate': 'Translate Prompt',
 +  'promptTransform.status.rewrite': 'Rewriting Prompt...',
