@@ -1,16 +1,19 @@
 diff --git a/locales/en-US/common.json b/locales/en-US/common.json
-index 1ef99957ed9..c60a560a038 100644
+index 1ef99957ed9..26d17e3f92e 100644
 --- a/locales/en-US/common.json
 +++ b/locales/en-US/common.json
-@@ -368,6 +368,8 @@
-   "reset": "Reset",
-   "restartToUpdate": "Restart to Update",
-   "retry": "Retry",
-+  "rewritePrompt.action": "Rewrite Prompt",
-+  "rewritePrompt.status": "Rewriting Prompt...",
-   "run": "Run",
-   "save": "Save",
-   "send": "Send",
+@@ -362,6 +362,11 @@
+   "productHunt.actionLabel": "Support us",
+   "productHunt.description": "Support us on Product Hunt. Your support means a lot to us!",
+   "productHunt.title": "We're on Product Hunt!",
++  "promptTransform.action": "Prompt Transform",
++  "promptTransform.actions.rewrite": "Rewrite Prompt",
++  "promptTransform.actions.translate": "Translate to English",
++  "promptTransform.status.rewrite": "Rewriting Prompt...",
++  "promptTransform.status.translate": "Translating Prompt...",
+   "regenerate": "Regenerate",
+   "releaseNotes": "Version Details",
+   "rename": "Rename",
 diff --git a/locales/en-US/setting.json b/locales/en-US/setting.json
 index 1f0937dabec..e2d3502d333 100644
 --- a/locales/en-US/setting.json
@@ -26,18 +29,21 @@ index 1f0937dabec..e2d3502d333 100644
    "systemAgent.queryRewrite.modelDesc": "Specify the model used to optimize user inquiries",
    "systemAgent.queryRewrite.title": "Library query rewrite Agent",
 diff --git a/locales/zh-CN/common.json b/locales/zh-CN/common.json
-index 2250395eaa2..9b328f66e69 100644
+index 2250395eaa2..ae6a0ed61dd 100644
 --- a/locales/zh-CN/common.json
 +++ b/locales/zh-CN/common.json
-@@ -368,6 +368,8 @@
-   "reset": "重置",
-   "restartToUpdate": "重启以更新",
-   "retry": "重试",
-+  "rewritePrompt.action": "重写提示词",
-+  "rewritePrompt.status": "提示词重写中...",
-   "run": "运行",
-   "save": "保存",
-   "send": "发送",
+@@ -362,6 +362,11 @@
+   "productHunt.actionLabel": "支持我们",
+   "productHunt.description": "在 Product Hunt 上支持我们，您的支持对我们意义重大！",
+   "productHunt.title": "我们登上 Product Hunt 了！",
++  "promptTransform.action": "提示词处理",
++  "promptTransform.actions.rewrite": "重写提示词",
++  "promptTransform.actions.translate": "翻译为英文",
++  "promptTransform.status.rewrite": "提示词重写中...",
++  "promptTransform.status.translate": "提示词翻译中...",
+   "regenerate": "重新生成",
+   "releaseNotes": "版本详情",
+   "rename": "重命名",
 diff --git a/locales/zh-CN/setting.json b/locales/zh-CN/setting.json
 index ee3798abe4d..50d60badffc 100644
 --- a/locales/zh-CN/setting.json
@@ -221,23 +227,19 @@ index b95bbe47888..174069b9eff 100644
    topic: SystemAgentItem;
 diff --git a/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx b/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx
 new file mode 100644
-index 00000000000..0202942e12f
+index 00000000000..93aefb910be
 --- /dev/null
 +++ b/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,27 @@
 +'use client';
 +
-+import { Sparkles } from 'lucide-react';
 +import { memo, useCallback } from 'react';
-+import { useTranslation } from 'react-i18next';
 +
-+import { usePromptRewrite } from '@/features/PromptRewrite/usePromptRewrite';
++import PromptTransformAction from '@/features/PromptRewrite/PromptTransformAction';
 +
 +import { useChatInputStore } from '../../store';
-+import Action from '../components/Action';
 +
 +const RewritePrompt = memo(() => {
-+  const { t } = useTranslation(['chat', 'common']);
 +  const [editor, markdownContent] = useChatInputStore((s) => [s.editor, s.markdownContent]);
 +
 +  const onPromptChange = useCallback(
@@ -248,24 +250,8 @@ index 00000000000..0202942e12f
 +    [editor],
 +  );
 +
-+  const { isRewriteDisabled, isRewriting, rewritePrompt } = usePromptRewrite({
-+    mode: 'text',
-+    onPromptChange,
-+    prompt: markdownContent,
-+  });
-+
 +  return (
-+    <Action
-+      disabled={isRewriteDisabled}
-+      icon={Sparkles}
-+      loading={isRewriting}
-+      title={
-+        isRewriting
-+          ? t('rewritePrompt.status', { ns: 'common' })
-+          : t('rewritePrompt.action', { ns: 'common' })
-+      }
-+      onClick={rewritePrompt}
-+    />
++    <PromptTransformAction mode={'text'} prompt={markdownContent} onPromptChange={onPromptChange} />
 +  );
 +});
 +
@@ -305,13 +291,89 @@ index fc71ea75fa7..b1f64e8ac56 100644
      children,
      extraActionItems,
      mentionItems,
+diff --git a/src/features/PromptRewrite/PromptTransformAction.tsx b/src/features/PromptRewrite/PromptTransformAction.tsx
+new file mode 100644
+index 00000000000..90d83ccf1f9
+--- /dev/null
++++ b/src/features/PromptRewrite/PromptTransformAction.tsx
+@@ -0,0 +1,70 @@
++'use client';
++
++import { Sparkles } from 'lucide-react';
++import { memo, useMemo } from 'react';
++import { useTranslation } from 'react-i18next';
++
++import Action from '@/features/ChatInput/ActionBar/components/Action';
++
++import { usePromptRewrite } from './usePromptRewrite';
++
++interface PromptTransformActionProps {
++  mode: 'image' | 'video' | 'text';
++  onPromptChange: (prompt: string) => void;
++  prompt?: string | null;
++}
++
++const PromptTransformAction = memo<PromptTransformActionProps>(
++  ({ mode, onPromptChange, prompt }) => {
++    const { t } = useTranslation('common');
++
++    const { isRewriteDisabled, isRewriting, rewritePrompt, translatePrompt, transformAction } =
++      usePromptRewrite({
++        mode,
++        onPromptChange,
++        prompt,
++      });
++
++    const menuItems = useMemo(
++      () => [
++        {
++          key: 'rewrite',
++          label: t('promptTransform.actions.rewrite'),
++          onClick: rewritePrompt,
++        },
++        {
++          key: 'translate',
++          label: t('promptTransform.actions.translate'),
++          onClick: translatePrompt,
++        },
++      ],
++      [rewritePrompt, t, translatePrompt],
++    );
++
++    return (
++      <Action
++        disabled={isRewriteDisabled}
++        icon={Sparkles}
++        loading={isRewriting}
++        dropdown={{
++          menu: { items: menuItems },
++          trigger: 'hover',
++        }}
++        title={
++          isRewriting
++            ? t(
++                transformAction === 'translate'
++                  ? 'promptTransform.status.translate'
++                  : 'promptTransform.status.rewrite',
++              )
++            : t('promptTransform.action')
++        }
++        onClick={rewritePrompt}
++      />
++    );
++  },
++);
++
++PromptTransformAction.displayName = 'PromptTransformAction';
++
++export default PromptTransformAction;
 diff --git a/src/features/PromptRewrite/usePromptRewrite.ts b/src/features/PromptRewrite/usePromptRewrite.ts
 new file mode 100644
-index 00000000000..aa9112aeaf4
+index 00000000000..a34a8d42f46
 --- /dev/null
 +++ b/src/features/PromptRewrite/usePromptRewrite.ts
-@@ -0,0 +1,55 @@
-+import { chainRewriteGenerationPrompt } from '@lobechat/prompts';
+@@ -0,0 +1,79 @@
++import { chainRewriteGenerationPrompt, chainTranslate } from '@lobechat/prompts';
 +import { useCallback, useState } from 'react';
 +
 +import { chatService } from '@/services/chat';
@@ -325,57 +387,84 @@ index 00000000000..aa9112aeaf4
 +  prompt?: string | null;
 +}
 +
++type PromptTransformAction = 'rewrite' | 'translate';
++
 +export const usePromptRewrite = ({ mode, prompt, onPromptChange }: UsePromptRewriteParams) => {
 +  const [isRewriting, setIsRewriting] = useState(false);
++  const [transformAction, setTransformAction] = useState<PromptTransformAction>('rewrite');
 +
 +  const rewriteConfig = useUserStore(systemAgentSelectors.promptRewrite);
 +  const locale = useUserStore(userGeneralSettingsSelectors.currentResponseLanguage);
 +  const isEnabled = rewriteConfig?.enabled ?? false;
 +
-+  const rewritePrompt = useCallback(async () => {
-+    if (!prompt?.trim() || !isEnabled) return;
++  const runTransform = useCallback(
++    async (action: PromptTransformAction) => {
++      if (!prompt?.trim() || !isEnabled) return;
 +
-+    let rewrittenPrompt = '';
++      let rewrittenPrompt = '';
++      setTransformAction(action);
 +
-+    await chatService.fetchPresetTaskResult({
-+      onError: () => {
++      try {
++        await chatService.fetchPresetTaskResult({
++          onError: () => {
++            setIsRewriting(false);
++          },
++          onFinish: async (text) => {
++            const nextPrompt = text.trim() || rewrittenPrompt.trim();
++            if (nextPrompt) onPromptChange(nextPrompt);
++          },
++          onLoadingChange: setIsRewriting,
++          onMessageHandle: (chunk) => {
++            if (chunk.type === 'text') rewrittenPrompt += chunk.text;
++          },
++          params: merge(
++            rewriteConfig ?? {},
++            action === 'rewrite'
++              ? chainRewriteGenerationPrompt({
++                  locale,
++                  mode,
++                  prompt,
++                })
++              : chainTranslate(prompt, 'English'),
++          ),
++        });
++      } finally {
 +        setIsRewriting(false);
-+      },
-+      onFinish: async (text) => {
-+        const nextPrompt = text.trim() || rewrittenPrompt.trim();
-+        if (nextPrompt) onPromptChange(nextPrompt);
-+      },
-+      onLoadingChange: setIsRewriting,
-+      onMessageHandle: (chunk) => {
-+        if (chunk.type === 'text') rewrittenPrompt += chunk.text;
-+      },
-+      params: merge(
-+        rewriteConfig ?? {},
-+        chainRewriteGenerationPrompt({
-+          locale,
-+          mode,
-+          prompt,
-+        }),
-+      ),
-+    });
-+  }, [isEnabled, locale, mode, onPromptChange, prompt, rewriteConfig]);
++        setTransformAction('rewrite');
++      }
++    },
++    [isEnabled, locale, mode, onPromptChange, prompt, rewriteConfig],
++  );
++
++  const rewritePrompt = useCallback(async () => {
++    await runTransform('rewrite');
++  }, [runTransform]);
++
++  const translatePrompt = useCallback(async () => {
++    await runTransform('translate');
++  }, [runTransform]);
 +
 +  return {
 +    isRewriteDisabled: !isEnabled || !prompt?.trim(),
 +    isRewriting,
++    transformAction,
++    translatePrompt,
 +    rewritePrompt,
 +  };
 +};
 diff --git a/src/locales/default/common.ts b/src/locales/default/common.ts
-index 1797f37c2f7..099c4d376de 100644
+index 1797f37c2f7..29e4165db6c 100644
 --- a/src/locales/default/common.ts
 +++ b/src/locales/default/common.ts
-@@ -279,6 +279,8 @@ export default {
+@@ -279,6 +279,11 @@ export default {
    'copy': 'Copy',
    'copyFail': 'Copy failed',
    'copySuccess': 'Copied',
-+  'rewritePrompt.action': 'Rewrite Prompt',
-+  'rewritePrompt.status': 'Rewriting Prompt...',
++  'promptTransform.action': 'Prompt Transform',
++  'promptTransform.actions.rewrite': 'Rewrite Prompt',
++  'promptTransform.actions.translate': 'Translate to English',
++  'promptTransform.status.rewrite': 'Rewriting Prompt...',
++  'promptTransform.status.translate': 'Translating Prompt...',
    'dataStatistics.messages': 'Messages',
    'dataStatistics.sessions': 'Agents',
    'dataStatistics.today': "Today's New",
@@ -394,22 +483,14 @@ index 3dc702de4eb..7d4441f6fe4 100644
    'systemAgent.queryRewrite.modelDesc': 'Specify the model used to optimize user inquiries',
    'systemAgent.queryRewrite.title': 'Library query rewrite Agent',
 diff --git a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
-index b57a1a5a97d..5cab5ecbf90 100644
+index b57a1a5a97d..0dc5cb90a19 100644
 --- a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
 +++ b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
-@@ -2,13 +2,14 @@
- 
- import { ModelIcon } from '@lobehub/icons';
- import { ActionIcon, Flexbox, Text } from '@lobehub/ui';
--import { Images } from 'lucide-react';
-+import { Images, Sparkles } from 'lucide-react';
- import { useCallback, useEffect, useMemo, useRef } from 'react';
- import { useTranslation } from 'react-i18next';
- 
+@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
  import { loginRequired } from '@/components/Error/loginRequiredNotification';
  import Action from '@/features/ChatInput/ActionBar/components/Action';
  import ModelSwitchPanel from '@/features/ModelSwitchPanel';
-+import { usePromptRewrite } from '@/features/PromptRewrite/usePromptRewrite';
++import PromptTransformAction from '@/features/PromptRewrite/PromptTransformAction';
  import { useFetchAiImageConfig } from '@/hooks/useFetchAiImageConfig';
  import { useIsDark } from '@/hooks/useIsDark';
  import { useQueryState } from '@/hooks/useQueryParam';
@@ -422,57 +503,25 @@ index b57a1a5a97d..5cab5ecbf90 100644
    const { value, setValue } = useGenerationConfigParam('prompt');
    const { value: imageUrl, setValue: setImageUrl } = useGenerationConfigParam('imageUrl');
    const {
-@@ -80,6 +81,12 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
-   const { showDimensionControl } = useDimensionControl();
-   const { autoSetDimensions, extractUrlAndDimensions } = useAutoDimensions();
- 
-+  const { isRewriteDisabled, isRewriting, rewritePrompt } = usePromptRewrite({
-+    mode: 'image',
-+    onPromptChange: setValue as any,
-+    prompt: value,
-+  });
-+
-   useFetchAiImageConfig();
- 
-   const [promptParam, setPromptParam] = useQueryState('prompt');
-@@ -284,6 +291,19 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+@@ -284,6 +285,9 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
          placeholder={
            hasRefImages ? t('config.prompt.placeholderWithRef') : t('config.prompt.placeholder')
          }
 +        rightActions={
-+          <Action
-+            disabled={isRewriteDisabled}
-+            icon={Sparkles}
-+            loading={isRewriting}
-+            title={
-+              isRewriting
-+                ? t('rewritePrompt.status', { ns: 'common' })
-+                : t('rewritePrompt.action', { ns: 'common' })
-+            }
-+            onClick={rewritePrompt}
-+          />
++          <PromptTransformAction mode={'image'} prompt={value} onPromptChange={setValue as any} />
 +        }
          onGenerate={handleGenerate}
          onValueChange={setValue}
        />
 diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
-index f469459528d..7e9a27c9b44 100644
+index f469459528d..8fb96e691c1 100644
 --- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
 +++ b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
-@@ -3,7 +3,7 @@
- import { ModelIcon } from '@lobehub/icons';
- import { ActionIcon, Flexbox, InputNumber, Segmented, SliderWithInput, Text } from '@lobehub/ui';
- import { Divider, Switch } from 'antd';
--import { Clock3, Dices } from 'lucide-react';
-+import { Clock3, Dices, Sparkles } from 'lucide-react';
- import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
- import { useTranslation } from 'react-i18next';
- 
 @@ -11,6 +11,7 @@ import VideoFreeQuotaInfo from '@/business/client/features/VideoFreeQuotaInfo';
  import { loginRequired } from '@/components/Error/loginRequiredNotification';
  import Action from '@/features/ChatInput/ActionBar/components/Action';
  import ModelSwitchPanel from '@/features/ModelSwitchPanel';
-+import { usePromptRewrite } from '@/features/PromptRewrite/usePromptRewrite';
++import PromptTransformAction from '@/features/PromptRewrite/PromptTransformAction';
  import { useFetchAiVideoConfig } from '@/hooks/useFetchAiVideoConfig';
  import { useIsDark } from '@/hooks/useIsDark';
  import { useQueryState } from '@/hooks/useQueryParam';
@@ -485,34 +534,12 @@ index f469459528d..7e9a27c9b44 100644
    const { value, setValue } = useVideoGenerationConfigParam('seed');
  
    const handleRandomize = useCallback(() => {
-@@ -192,6 +193,11 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
-   const isSupportCameraFixed = useVideoStore(isSupportedParamSelector('cameraFixed'));
-   const isLogin = useUserStore(authSelectors.isLogin);
-   const { value: duration } = useVideoGenerationConfigParam('duration');
-+  const { isRewriteDisabled, isRewriting, rewritePrompt } = usePromptRewrite({
-+    mode: 'video',
-+    onPromptChange: setValue as any,
-+    prompt: value,
-+  });
-   useFetchAiVideoConfig();
- 
-   // Read prompt from query parameter
-@@ -358,6 +364,19 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+@@ -358,6 +359,9 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
            placeholder={
              hasRefImages ? t('config.prompt.placeholderWithRef') : t('config.prompt.placeholder')
            }
 +          rightActions={
-+            <Action
-+              disabled={isRewriteDisabled}
-+              icon={Sparkles}
-+              loading={isRewriting}
-+              title={
-+                isRewriting
-+                  ? t('rewritePrompt.status', { ns: 'common' })
-+                  : t('rewritePrompt.action', { ns: 'common' })
-+              }
-+              onClick={rewritePrompt}
-+            />
++            <PromptTransformAction mode={'video'} prompt={value} onPromptChange={setValue as any} />
 +          }
            onGenerate={handleGenerate}
            onValueChange={setValue}
