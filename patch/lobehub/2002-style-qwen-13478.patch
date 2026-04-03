@@ -215,7 +215,7 @@ index 3a5b030f61a..dc26f782125 100644
      description:
        'Wanxiang 2.6 introduces multi-shot narrative capabilities, while also supporting automatic voiceover generation and the ability to incorporate custom audio files.',
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.test.ts b/packages/model-runtime/src/providers/qwen/createImage.test.ts
-index 9b8f011f2b0..c37885ced8b 100644
+index 9b8f011f2b0..a79d5e51ae5 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.test.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.test.ts
 @@ -757,7 +757,7 @@ describe('createQwenImage', () => {
@@ -227,12 +227,42 @@ index 9b8f011f2b0..c37885ced8b 100644
        });
      });
  
-@@ -821,4 +821,210 @@ describe('createQwenImage', () => {
+@@ -821,4 +821,240 @@ describe('createQwenImage', () => {
        );
      });
    });
 +
 +  describe('new image-generation route coverage', () => {
++    it('should throw helpful validation error when image is missing for wan2.6-image model', async () => {
++      const payload: CreateImagePayload = {
++        model: 'wan2.6-image-pro',
++        params: {
++          prompt: '参考输入图生成新图',
++        },
++      };
++
++      try {
++        await createQwenImage(payload, mockOptions);
++      } catch (error) {
++        const runtimeError = error as any;
++
++        expect(runtimeError).toEqual(
++          expect.objectContaining({
++            errorType: 'ProviderBizError',
++            provider: 'qwen',
++          }),
++        );
++
++        const errorMessage = runtimeError?.error?.message ?? runtimeError?.error?.error?.message;
++        expect(errorMessage).toBe('imageUrl or imageUrls is required for model wan2.6-image-pro');
++
++        expect(fetch).not.toHaveBeenCalled();
++        return;
++      }
++
++      throw new Error('Expected createQwenImage to throw for missing image on wan2.6-image');
++    });
++
 +    it('should use image-generation async API for kling model and parse choices result', async () => {
 +      const mockTaskId = 'task-kling-123';
 +      const mockImageUrl = 'https://p4-fdl.klingai.com/xxx.png?token=abc';
@@ -439,7 +469,7 @@ index 9b8f011f2b0..c37885ced8b 100644
 +  });
  });
 diff --git a/packages/model-runtime/src/providers/qwen/createImage.ts b/packages/model-runtime/src/providers/qwen/createImage.ts
-index d7b724096d5..8a891e56dc9 100644
+index d7b724096d5..b5b43222bb6 100644
 --- a/packages/model-runtime/src/providers/qwen/createImage.ts
 +++ b/packages/model-runtime/src/providers/qwen/createImage.ts
 @@ -12,12 +12,15 @@ const text2ImageModels = [
@@ -475,7 +505,7 @@ index d7b724096d5..8a891e56dc9 100644
      results?: Array<{
        url: string;
      }>;
-@@ -39,25 +51,22 @@ interface QwenImageTaskResponse {
+@@ -39,29 +51,25 @@ interface QwenImageTaskResponse {
    request_id: string;
  }
  
@@ -511,7 +541,24 @@ index d7b724096d5..8a891e56dc9 100644
    payload: CreateImagePayload,
    apiKey: string,
    endpoint: 'text2image' | 'image2image',
-@@ -132,15 +141,93 @@ async function createQwenImageTask(
+-  provider: string,
+   baseUrl: string,
+ ): Promise<string> {
+   const { model, params } = payload;
+@@ -90,11 +98,7 @@ async function createQwenImageTask(
+     }
+ 
+     if (!images || images.length === 0) {
+-      throw AgentRuntimeError.createImage({
+-        error: new Error('imageUrls or imageUrl is required for image-to-image models'),
+-        errorType: 'ProviderBizError',
+-        provider,
+-      });
++      throw new Error('imageUrls or imageUrl is required for image-to-image models');
+     }
+ 
+     input.images = images;
+@@ -132,12 +136,96 @@ async function createQwenImageTask(
    return data.output.task_id;
  }
  
@@ -527,6 +574,13 @@ index d7b724096d5..8a891e56dc9 100644
 +  const { model, params } = payload;
 +  const endpoint = `${baseUrl}/api/v1/services/aigc/image-generation/generation`;
 +  log('Creating async generation task with model: %s, endpoint: %s', model, endpoint);
++
++  // Check if this model requires an image
++  const requiresImage = matchesModel(model, imageRequiredModels);
++
++  if (requiresImage && !params.imageUrl && (!params.imageUrls || params.imageUrls.length === 0)) {
++    throw new Error(`imageUrl or imageUrls is required for model ${model}`);
++  }
 +
 +  const content: Array<{ image: string } | { text: string }> = [{ text: params.prompt }];
 +
@@ -602,20 +656,20 @@ index d7b724096d5..8a891e56dc9 100644
    payload: CreateImagePayload,
    apiKey: string,
    baseUrl: string,
-+  provider: string,
- ): Promise<CreateImageResponse> {
-   const { model, params } = payload;
-   const endpoint = `${baseUrl}/api/v1/services/aigc/multimodal-generation/generation`;
-@@ -153,7 +240,7 @@ async function createMultimodalGeneration(
-     throw AgentRuntimeError.createImage({
-       error: new Error(`imageUrl or imageUrls is required for model ${model}`),
-       errorType: 'ProviderBizError',
+@@ -150,11 +238,7 @@ async function createMultimodalGeneration(
+   const requiresImage = matchesModel(model, imageRequiredModels);
+ 
+   if (requiresImage && !params.imageUrl && (!params.imageUrls || params.imageUrls.length === 0)) {
+-    throw AgentRuntimeError.createImage({
+-      error: new Error(`imageUrl or imageUrls is required for model ${model}`),
+-      errorType: 'ProviderBizError',
 -      provider: 'qwen',
-+      provider,
-     });
+-    });
++    throw new Error(`imageUrl or imageUrls is required for model ${model}`);
    }
  
-@@ -180,6 +267,7 @@ async function createMultimodalGeneration(
+   const content: Array<{ image: string } | { text: string }> = [{ text: params.prompt }];
+@@ -180,6 +264,7 @@ async function createMultimodalGeneration(
        },
        model,
        parameters: {
@@ -623,7 +677,7 @@ index d7b724096d5..8a891e56dc9 100644
          ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
        },
      }),
-@@ -202,23 +290,16 @@ async function createMultimodalGeneration(
+@@ -202,23 +287,16 @@ async function createMultimodalGeneration(
      );
    }
  
@@ -652,7 +706,7 @@ index d7b724096d5..8a891e56dc9 100644
    log('Image edit generated successfully: %s', resultImageUrl);
  
    return { imageUrl: resultImageUrl };
-@@ -227,7 +308,7 @@ async function createMultimodalGeneration(
+@@ -227,7 +305,7 @@ async function createMultimodalGeneration(
  /**
   * Query the status of an image generation task
   */
@@ -661,7 +715,7 @@ index d7b724096d5..8a891e56dc9 100644
    taskId: string,
    apiKey: string,
    baseUrl: string,
-@@ -257,12 +338,59 @@ async function queryTaskStatus(
+@@ -257,12 +335,59 @@ async function queryTaskStatus(
    return response.json();
  }
  
@@ -722,7 +776,7 @@ index d7b724096d5..8a891e56dc9 100644
   */
  export async function createQwenImage(
    payload: CreateImagePayload,
-@@ -280,57 +408,33 @@ export async function createQwenImage(
+@@ -280,57 +405,27 @@ export async function createQwenImage(
    try {
      const isText2Image = matchesModel(model, text2ImageModels);
      const isImage2Image = matchesModel(model, image2ImageModels);
@@ -772,21 +826,16 @@ index d7b724096d5..8a891e56dc9 100644
 -        },
 -        pollingQuery: () => queryTaskStatus(taskId, apiKey, dashscopeURL),
 -      });
-+      const taskId = await createLegacySynthesisTask(
-+        payload,
-+        apiKey,
-+        endpoint,
-+        provider,
-+        dashscopeURL,
-+      );
+-
+-      return result;
++      const taskId = await createLegacySynthesisTask(payload, apiKey, endpoint, dashscopeURL);
 +
 +      return await pollTaskToImageResponse(taskId, apiKey, dashscopeURL, model);
 +    }
- 
--      return result;
++
 +    if (isSyncGeneration) {
 +      log('Using multimodal-generation API for model: %s', model);
-+      return await createHTTPSyncGeneration(payload, apiKey, dashscopeURL, provider);
++      return await createHTTPSyncGeneration(payload, apiKey, dashscopeURL);
      }
  
 -    log('Using multimodal-generation API for model: %s', model);
@@ -800,16 +849,16 @@ index d7b724096d5..8a891e56dc9 100644
      log('Error in createQwenImage: %O', error);
  
 diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
-index 397f81c456a..7828a79f342 100644
+index 397f81c456a..73900bf4f5d 100644
 --- a/packages/model-runtime/src/providers/qwen/createVideo.ts
 +++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
-@@ -31,11 +31,12 @@ const image2VideoModels = [
+@@ -31,11 +31,11 @@ const image2VideoModels = [
    /^wanx2\.(0|1)-i2v-/,
    /img2video$/,
    /reference2video$/,
 +  /i2v$/,
    /it2v$/,
-   /r2v$/,
+-  /r2v$/,
  ];
  const keyframe2VideoModels = [/^wan2\.(2|5)-kf2v-/, /start-end2video$/, /kf2v$/];
 -const reference2VideoModels = [/^wan2\.6-r2v/];
@@ -817,7 +866,7 @@ index 397f81c456a..7828a79f342 100644
  
  /**
   * Query the status of a video generation task
-@@ -204,6 +205,31 @@ async function createVideoTask(
+@@ -204,6 +204,31 @@ async function createVideoTask(
          },
        ];
      }
@@ -849,7 +898,7 @@ index 397f81c456a..7828a79f342 100644
    } else if (matchesModelPattern(model, reference2VideoModels)) {
      input.reference_urls = [imageUrl];
    } else if (matchesModelPattern(model, keyframe2VideoModels)) {
-@@ -218,7 +244,12 @@ async function createVideoTask(
+@@ -218,7 +243,12 @@ async function createVideoTask(
  
    // Add optional parameters
    if (params.aspectRatio) {
