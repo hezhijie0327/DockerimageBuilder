@@ -1,111 +1,44 @@
-From df65d854a77968e980942daf299aae503ff613c3 Mon Sep 17 00:00:00 2001
+From 40d466855792b98add6f918f94cc6a2c6b7a959e Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
-Date: Fri, 3 Apr 2026 17:57:32 +0800
-Subject: [PATCH] style: remove dropmenu
+Date: Fri, 3 Apr 2026 19:00:28 +0800
+Subject: [PATCH] fix: disable button when loding
 
 ---
- .../PromptRewrite/PromptTransformAction.tsx   | 80 ++++++++-----------
- 1 file changed, 33 insertions(+), 47 deletions(-)
+ src/features/PromptRewrite/PromptTransformAction.tsx | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
 
 diff --git a/src/features/PromptRewrite/PromptTransformAction.tsx b/src/features/PromptRewrite/PromptTransformAction.tsx
-index 5a4d3ca..b8926a3 100644
+index a4c1dbe..9cd84dd 100644
 --- a/src/features/PromptRewrite/PromptTransformAction.tsx
 +++ b/src/features/PromptRewrite/PromptTransformAction.tsx
-@@ -1,7 +1,8 @@
- 'use client';
+@@ -35,15 +35,14 @@ const PromptTransformAction = memo<PromptTransformActionProps>(
+     const isRewriteLoading = isRewriting && transformAction === 'rewrite';
+     const isTranslateLoading = isRewriting && transformAction === 'translate';
  
--import { Sparkles } from 'lucide-react';
--import { memo, useMemo } from 'react';
-+import { Flexbox } from '@lobehub/ui';
-+import { Languages, Sparkles } from 'lucide-react';
-+import { memo } from 'react';
- import { useTranslation } from 'react-i18next';
- 
- import Action from '@/features/ChatInput/ActionBar/components/Action';
-@@ -31,53 +32,38 @@ const PromptTransformAction = memo<PromptTransformActionProps>(
-       prompt,
-     });
- 
--    const menuItems = useMemo(
--      () => [
--        {
--          key: 'rewrite',
--          label: t('promptTransform.actions.rewrite'),
--          onClick: rewritePrompt,
--        },
--        {
--          key: 'translate',
--          label: t('promptTransform.actions.translate'),
--          onClick: translatePrompt,
--        },
--      ],
--      [rewritePrompt, t, translatePrompt],
--    );
--
--    const handlePrimaryAction = useMemo(
--      () => (isRewriteActionEnabled ? rewritePrompt : translatePrompt),
--      [isRewriteActionEnabled, rewritePrompt, translatePrompt],
--    );
--
--    const dropdown = useMemo(() => {
--      if (!isRewriteActionEnabled) return undefined;
--
--      return {
--        menu: { items: menuItems },
--        trigger: 'hover' as const,
--      };
--    }, [isRewriteActionEnabled, menuItems]);
-+    const isRewriteLoading = isRewriting && transformAction === 'rewrite';
-+    const isTranslateLoading = isRewriting && transformAction === 'translate';
-+    const isRewriteButtonDisabled = isRewriteDisabled || (isRewriting && !isRewriteLoading);
-+    const isTranslateButtonDisabled = isRewriteDisabled || (isRewriting && !isTranslateLoading);
+-    // When rewriting or translating, disable both buttons to prevent multiple simultaneous actions
+-    const isRewriteButtonDisabled = isRewriteDisabled || (isRewriting && !isRewriteLoading);
+-    const isTranslateButtonDisabled = isRewriteDisabled || (isRewriting && !isTranslateLoading);
++    // Disable all transform buttons while one action is running
++    const isActionDisabled = isRewriteDisabled || isRewriting;
  
      return (
--      <Action
--        disabled={isRewriteDisabled}
--        dropdown={dropdown}
--        icon={Sparkles}
--        loading={isRewriting}
--        title={
--          isRewriting
--            ? t(
--                transformAction === 'translate'
--                  ? 'promptTransform.status.translate'
--                  : 'promptTransform.status.rewrite',
--              )
--            : t('promptTransform.action')
--        }
--        onClick={handlePrimaryAction}
--      />
-+      <Flexbox horizontal gap={4}>
-+        {isRewriteActionEnabled && (
-+          <Action
-+            disabled={isRewriteButtonDisabled}
-+            icon={Sparkles}
-+            loading={isRewriteLoading}
-+            title={
-+              isRewriteLoading
-+                ? t('promptTransform.status.rewrite')
-+                : t('promptTransform.actions.rewrite')
-+            }
-+            onClick={rewritePrompt}
-+          />
-+        )}
-+        <Action
-+          disabled={isTranslateButtonDisabled}
-+          icon={Languages}
-+          loading={isTranslateLoading}
-+          title={
-+            isTranslateLoading
-+              ? t('promptTransform.status.translate')
-+              : t('promptTransform.actions.translate')
-+          }
-+          onClick={translatePrompt}
-+        />
-+      </Flexbox>
-     );
-   },
- );
+       <Flexbox horizontal gap={4}>
+         {isRewriteActionEnabled && (
+           <Action
+-            disabled={isRewriteButtonDisabled}
++            disabled={isActionDisabled}
+             icon={Sparkles}
+             loading={isRewriteLoading}
+             title={
+@@ -55,7 +54,7 @@ const PromptTransformAction = memo<PromptTransformActionProps>(
+           />
+         )}
+         <Action
+-          disabled={isTranslateButtonDisabled}
++          disabled={isActionDisabled}
+           icon={Languages}
+           loading={isTranslateLoading}
+           title={
 -- 
 2.53.0
 
