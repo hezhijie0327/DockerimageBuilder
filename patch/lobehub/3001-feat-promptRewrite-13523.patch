@@ -365,10 +365,10 @@ index 00000000000..90d83ccf1f9
 +export default PromptTransformAction;
 diff --git a/src/features/PromptRewrite/usePromptRewrite.ts b/src/features/PromptRewrite/usePromptRewrite.ts
 new file mode 100644
-index 00000000000..b6a177b9475
+index 00000000000..70bc4e8f78f
 --- /dev/null
 +++ b/src/features/PromptRewrite/usePromptRewrite.ts
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,84 @@
 +import { chainRewriteGenerationPrompt, chainTranslate } from '@lobechat/prompts';
 +import { useCallback, useState } from 'react';
 +
@@ -390,7 +390,14 @@ index 00000000000..b6a177b9475
 +  const [transformAction, setTransformAction] = useState<PromptTransformAction>('rewrite');
 +
 +  const rewriteConfig = useUserStore(systemAgentSelectors.promptRewrite);
-+  const isEnabled = rewriteConfig?.enabled ?? false;
++  const translateConfig = useUserStore(systemAgentSelectors.translation);
++  const isEnabled = (rewriteConfig?.enabled ?? false) || (translateConfig?.enabled ?? false);
++
++  const getConfigByAction = useCallback(
++    (action: PromptTransformAction) =>
++      action === 'rewrite' ? (rewriteConfig ?? {}) : (translateConfig ?? {}),
++    [rewriteConfig, translateConfig],
++  );
 +
 +  const runTransform = useCallback(
 +    async (action: PromptTransformAction) => {
@@ -413,7 +420,7 @@ index 00000000000..b6a177b9475
 +            if (chunk.type === 'text') rewrittenPrompt += chunk.text;
 +          },
 +          params: merge(
-+            rewriteConfig ?? {},
++            getConfigByAction(action),
 +            action === 'rewrite'
 +              ? chainRewriteGenerationPrompt({
 +                  mode,
@@ -427,7 +434,7 @@ index 00000000000..b6a177b9475
 +        setTransformAction('rewrite');
 +      }
 +    },
-+    [isEnabled, mode, onPromptChange, prompt, rewriteConfig],
++    [getConfigByAction, isEnabled, mode, onPromptChange, prompt],
 +  );
 +
 +  const rewritePrompt = useCallback(async () => {
