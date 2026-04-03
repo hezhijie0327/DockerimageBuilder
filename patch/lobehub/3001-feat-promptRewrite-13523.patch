@@ -268,11 +268,11 @@ index b95bbe47888..174069b9eff 100644
    queryRewrite: QueryRewriteSystemAgent;
    thread: SystemAgentItem;
    topic: SystemAgentItem;
-diff --git a/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx b/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx
+diff --git a/src/features/ChatInput/ActionBar/PromptTransform/index.tsx b/src/features/ChatInput/ActionBar/PromptTransform/index.tsx
 new file mode 100644
-index 00000000000..3929d0d2c42
+index 00000000000..95dae016d5d
 --- /dev/null
-+++ b/src/features/ChatInput/ActionBar/RewritePrompt/index.tsx
++++ b/src/features/ChatInput/ActionBar/PromptTransform/index.tsx
 @@ -0,0 +1,27 @@
 +'use client';
 +
@@ -282,7 +282,7 @@ index 00000000000..3929d0d2c42
 +
 +import { useChatInputStore } from '../../store';
 +
-+const RewritePrompt = memo(() => {
++const PromptTransform = memo(() => {
 +  const [editor, markdownContent] = useChatInputStore((s) => [s.editor, s.markdownContent]);
 +
 +  const onPromptChange = useCallback(
@@ -298,9 +298,9 @@ index 00000000000..3929d0d2c42
 +  );
 +});
 +
-+RewritePrompt.displayName = 'RewritePrompt';
++PromptTransform.displayName = 'PromptTransform';
 +
-+export default RewritePrompt;
++export default PromptTransform;
 diff --git a/src/features/ChatInput/ActionBar/components/Action.tsx b/src/features/ChatInput/ActionBar/components/Action.tsx
 index 8a515d28e55..25e786ad351 100644
 --- a/src/features/ChatInput/ActionBar/components/Action.tsx
@@ -323,14 +323,14 @@ index 8a515d28e55..25e786ad351 100644
      if (dropdown)
        return (
 diff --git a/src/features/ChatInput/ActionBar/config.ts b/src/features/ChatInput/ActionBar/config.ts
-index 71ad5ae18b4..6293474774a 100644
+index 71ad5ae18b4..17cd095da3f 100644
 --- a/src/features/ChatInput/ActionBar/config.ts
 +++ b/src/features/ChatInput/ActionBar/config.ts
 @@ -5,6 +5,7 @@ import Memory from './Memory';
  import Mention from './Mention';
  import Model from './Model';
  import Params from './Params';
-+import RewritePrompt from './RewritePrompt';
++import PromptTransform from './PromptTransform';
  import SaveTopic from './SaveTopic';
  import Search from './Search';
  import STT from './STT';
@@ -338,12 +338,12 @@ index 71ad5ae18b4..6293474774a 100644
    model: Model,
    params: Params,
    portalToken: PortalToken,
-+  rewritePrompt: RewritePrompt,
++  promptTransform: PromptTransform,
    saveTopic: SaveTopic,
    search: Search,
    stt: STT,
 diff --git a/src/features/Conversation/ChatInput/index.tsx b/src/features/Conversation/ChatInput/index.tsx
-index fc71ea75fa7..b1f64e8ac56 100644
+index fc71ea75fa7..508278952a3 100644
 --- a/src/features/Conversation/ChatInput/index.tsx
 +++ b/src/features/Conversation/ChatInput/index.tsx
 @@ -119,7 +119,7 @@ const ChatInput = memo<ChatInputProps>(
@@ -351,7 +351,7 @@ index fc71ea75fa7..b1f64e8ac56 100644
      leftActions = [],
      leftContent,
 -    rightActions = [],
-+    rightActions = ['rewritePrompt'],
++    rightActions = ['promptTransform'],
      children,
      extraActionItems,
      mentionItems,
@@ -437,7 +437,7 @@ index 00000000000..9aa30beb5be
 +export default PromptTransformAction;
 diff --git a/src/features/PromptTransform/usePromptTransform.ts b/src/features/PromptTransform/usePromptTransform.ts
 new file mode 100644
-index 00000000000..8872d45bfe5
+index 00000000000..52b0acedee9
 --- /dev/null
 +++ b/src/features/PromptTransform/usePromptTransform.ts
 @@ -0,0 +1,86 @@
@@ -476,7 +476,7 @@ index 00000000000..8872d45bfe5
 +      if (isTransforming || !prompt?.trim()) return;
 +      if (action === 'rewrite' && !isRewriteActionEnabled) return;
 +
-+      let rewrittenPrompt = '';
++      let transformedPrompt = '';
 +      setTransformAction(action);
 +
 +      try {
@@ -485,12 +485,12 @@ index 00000000000..8872d45bfe5
 +            setIsTransforming(false);
 +          },
 +          onFinish: async (text) => {
-+            const nextPrompt = text.trim() || rewrittenPrompt.trim();
++            const nextPrompt = text.trim() || transformedPrompt.trim();
 +            if (nextPrompt) onPromptChange(nextPrompt);
 +          },
 +          onLoadingChange: setIsTransforming,
 +          onMessageHandle: (chunk) => {
-+            if (chunk.type === 'text') rewrittenPrompt += chunk.text;
++            if (chunk.type === 'text') transformedPrompt += chunk.text;
 +          },
 +          params: merge(
 +            getConfigByAction(action),
@@ -601,7 +601,7 @@ index f469459528d..7b908380bd7 100644
            onValueChange={setValue}
          />
 diff --git a/src/routes/(main)/agent/features/Conversation/MainChatInput/index.tsx b/src/routes/(main)/agent/features/Conversation/MainChatInput/index.tsx
-index accae74a5bb..f67e68fb49f 100644
+index accae74a5bb..2cf149a7bc5 100644
 --- a/src/routes/(main)/agent/features/Conversation/MainChatInput/index.tsx
 +++ b/src/routes/(main)/agent/features/Conversation/MainChatInput/index.tsx
 @@ -10,7 +10,7 @@ import { userGeneralSettingsSelectors } from '@/store/user/selectors';
@@ -609,7 +609,7 @@ index accae74a5bb..f67e68fb49f 100644
  import { useSendMenuItems } from './useSendMenuItems';
  
 -const rightActions: ActionKeys[] = [];
-+const rightActions: ActionKeys[] = ['rewritePrompt'];
++const rightActions: ActionKeys[] = ['promptTransform'];
  
  /**
   * MainChatInput
