@@ -12,14 +12,14 @@ index 629020b39c3..293cba9f511 100644
    "extendParams.reasoningEffort.title": "Reasoning Intensity",
    "extendParams.textVerbosity.title": "Output Text Detail Level",
 diff --git a/locales/en-US/modelProvider.json b/locales/en-US/modelProvider.json
-index a13a52336d7..10d98dd6e88 100644
+index a13a52336d7..c43d9b55aff 100644
 --- a/locales/en-US/modelProvider.json
 +++ b/locales/en-US/modelProvider.json
 @@ -230,6 +230,7 @@
    "providerModels.item.modelConfig.extendParams.options.imageAspectRatio2.hint": "For Nano Banana 2; controls aspect ratio of generated images (supports extra-wide 1:4, 4:1, 1:8, 8:1).",
    "providerModels.item.modelConfig.extendParams.options.imageResolution.hint": "For Gemini 3 image generation models; controls resolution of generated images.",
    "providerModels.item.modelConfig.extendParams.options.imageResolution2.hint": "For Gemini 3.1 Flash Image models; controls resolution of generated images (supports 512px).",
-+  "providerModels.item.modelConfig.extendParams.options.preserveThinking.hint": "For Qwen3.6 Plus; sends historical assistant reasoning back to model context (preserve_thinking).",
++  "providerModels.item.modelConfig.extendParams.options.preserveThinking.hint": "For Qwen3.6 Plus, GLM-5 and GLM-4.7; sends historical assistant reasoning back to model context (preserve_thinking / clear_thinking=false).",
    "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint": "For Claude, Qwen3 and similar; controls token budget for reasoning.",
    "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint": "For GLM-5 and GLM-4.7; controls token budget for reasoning (max 32k).",
    "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "For Qwen3 series; controls token budget for reasoning (max 80k).",
@@ -37,14 +37,14 @@ index 7a2a9d04ee7..bdff417d45a 100644
    "extendParams.reasoningEffort.title": "推理强度",
    "extendParams.textVerbosity.title": "输出详细程度",
 diff --git a/locales/zh-CN/modelProvider.json b/locales/zh-CN/modelProvider.json
-index 4219f516201..7f2b4800b88 100644
+index 4219f516201..83acb629284 100644
 --- a/locales/zh-CN/modelProvider.json
 +++ b/locales/zh-CN/modelProvider.json
 @@ -230,6 +230,7 @@
    "providerModels.item.modelConfig.extendParams.options.imageAspectRatio2.hint": "适用于 Nano Banana 2；控制生成图像的宽高比（支持超宽 1:4、4:1、1:8、8:1）。",
    "providerModels.item.modelConfig.extendParams.options.imageResolution.hint": "适用于 Gemini 3 图像生成模型；控制生成图像的分辨率。",
    "providerModels.item.modelConfig.extendParams.options.imageResolution2.hint": "适用于 Gemini 3.1 Flash Image 模型；控制生成图像的分辨率（支持 512px）。",
-+  "providerModels.item.modelConfig.extendParams.options.preserveThinking.hint": "适用于 Qwen3.6 Plus；将历史助手思考过程回传为模型上下文（preserve_thinking）。",
++  "providerModels.item.modelConfig.extendParams.options.preserveThinking.hint": "适用于 Qwen3.6 Plus、GLM-5 与 GLM-4.7；将历史助手思考过程回传为模型上下文（preserve_thinking / clear_thinking=false）。",
    "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint": "适用于 Claude、Qwen3 等模型；控制用于推理的 Token 预算。",
    "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint": "适用于GLM-5和GLM-4.7；控制推理的令牌预算（最大32k）。",
    "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "适用于Qwen3系列；控制推理的令牌预算（最大80k）。",
@@ -122,6 +122,167 @@ index 2c8fa066f9a..82bb9d1aca4 100644
      id: 'qwen3.5-plus',
      maxOutput: 65_536,
      organization: 'Qwen',
+diff --git a/packages/model-bank/src/aiModels/zhipu.ts b/packages/model-bank/src/aiModels/zhipu.ts
+index d90b607c000..8f2109da740 100644
+--- a/packages/model-bank/src/aiModels/zhipu.ts
++++ b/packages/model-bank/src/aiModels/zhipu.ts
+@@ -4,6 +4,68 @@ import { type AIChatModelCard, type AIImageModelCard } from '../types/aiModel';
+ // ref: https://docs.bigmodel.cn/cn/guide/start/model-overview
+ 
+ const zhipuChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      video: true,
++      vision: true,
++    },
++    contextWindowTokens: 200_000,
++    description:
++      'GLM-5V-Turbo is Zhipu’s multimodal Coding foundation model for visual programming tasks. It natively handles images, video, text, and files, and is optimized for long-horizon planning, complex coding, and agent execution in multimodal workflows.',
++    displayName: 'GLM-5V-Turbo',
++    enabled: true,
++    id: 'glm-5v-turbo',
++    maxOutput: 131_072,
++    pricing: {
++      currency: 'CNY',
++      units: [
++        {
++          lookup: {
++            prices: {
++              '[0, 0.032]': 1.2,
++              '[0.032, infinity]': 1.8,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textInput_cacheRead',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.032]': 5,
++              '[0.032, infinity]': 7,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textInput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.032]': 22,
++              '[0.032, infinity]': 26,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textOutput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    settings: {
++      extendParams: ['enableReasoning', 'preserveThinking'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -120,7 +182,7 @@ const zhipuChatModels: AIChatModelCard[] = [
+     },
+     releasedAt: '2026-02-12',
+     settings: {
+-      extendParams: ['enableReasoning'],
++      extendParams: ['enableReasoning', 'preserveThinking'],
+       searchImpl: 'params',
+     },
+     type: 'chat',
+@@ -183,7 +245,7 @@ const zhipuChatModels: AIChatModelCard[] = [
+     },
+     releasedAt: '2025-12-22',
+     settings: {
+-      extendParams: ['enableReasoning'],
++      extendParams: ['enableReasoning', 'preserveThinking'],
+       searchImpl: 'params',
+     },
+     type: 'chat',
+@@ -243,69 +305,6 @@ const zhipuChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
+-  {
+-    abilities: {
+-      functionCall: true,
+-      reasoning: true,
+-      search: true,
+-      video: true,
+-      vision: true,
+-    },
+-    contextWindowTokens: 200_000,
+-    description:
+-      'GLM-5V-Turbo is Zhipu’s first multimodal coding foundation model, designed for visual programming tasks. It can natively process multimodal inputs such as images, videos, and text, while excelling in long-horizon planning, complex programming, and action execution. Deeply integrated with agent workflows, it can collaborate seamlessly with agents like Claude Code and OpenClaw to complete a full closed loop of “understanding the environment → planning actions → executing tasks.”',
+-    displayName: 'GLM-5V-Turbo',
+-    enabled: true,
+-    id: 'glm-5v-turbo',
+-    maxOutput: 131_072,
+-    pricing: {
+-      currency: 'CNY',
+-      units: [
+-        {
+-          lookup: {
+-            prices: {
+-              '[0, 0.032]': 1.2,
+-              '[0.032, infinity]': 1.8,
+-            },
+-            pricingParams: ['textInput'],
+-          },
+-          name: 'textInput_cacheRead',
+-          strategy: 'lookup',
+-          unit: 'millionTokens',
+-        },
+-        {
+-          lookup: {
+-            prices: {
+-              '[0, 0.032]': 5,
+-              '[0.032, infinity]': 7,
+-            },
+-            pricingParams: ['textInput'],
+-          },
+-          name: 'textInput',
+-          strategy: 'lookup',
+-          unit: 'millionTokens',
+-        },
+-        {
+-          lookup: {
+-            prices: {
+-              '[0, 0.032]': 22,
+-              '[0.032, infinity]': 26,
+-            },
+-            pricingParams: ['textInput'],
+-          },
+-          name: 'textOutput',
+-          strategy: 'lookup',
+-          unit: 'millionTokens',
+-        },
+-      ],
+-    },
+-    releasedAt: '2026-04-02',
+-    settings: {
+-      extendParams: ['enableReasoning'],
+-      searchImpl: 'params',
+-    },
+-    type: 'chat',
+-  },
+   {
+     abilities: {
+       functionCall: true,
 diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
 index 635f815696d..3624d291726 100644
 --- a/packages/model-bank/src/types/aiModel.ts
@@ -363,6 +524,156 @@ index 0cae27c2711..83f6ef1d769 100644
 +} satisfies OpenAICompatibleFactoryOptions;
 +
 +export const LobeQwenAI = createOpenAICompatibleRuntime(params);
+diff --git a/packages/model-runtime/src/providers/zhipu/index.test.ts b/packages/model-runtime/src/providers/zhipu/index.test.ts
+index 42a8510e5a1..0dd8533b22e 100644
+--- a/packages/model-runtime/src/providers/zhipu/index.test.ts
++++ b/packages/model-runtime/src/providers/zhipu/index.test.ts
+@@ -384,6 +384,72 @@ describe('LobeZhipuAI - custom features', () => {
+       });
+     });
+ 
++    describe('preserve thinking mapping', () => {
++      it('should map preserveThinking=true to clear_thinking=false and convert reasoning content', () => {
++        const payload = {
++          messages: [
++            { content: 'hello', role: 'user' },
++            {
++              content: 'answer',
++              reasoning: { content: 'reasoning content' },
++              role: 'assistant',
++            },
++          ],
++          model: 'glm-5',
++          preserveThinking: true,
++          thinking: { budget_tokens: 1024, type: 'enabled' },
++        } as any;
++
++        const result = params.chatCompletion.handlePayload(payload);
++
++        expect(result.thinking).toEqual({ clear_thinking: false, type: 'enabled' });
++        expect(result.messages).toEqual([
++          { content: 'hello', role: 'user' },
++          {
++            content: 'answer',
++            reasoning_content: 'reasoning content',
++            role: 'assistant',
++          },
++        ]);
++      });
++
++      it('should map preserveThinking=false to clear_thinking=true', () => {
++        const payload = {
++          messages: [{ content: 'hello', role: 'user' }],
++          model: 'glm-4.7',
++          preserveThinking: false,
++        } as any;
++
++        const result = params.chatCompletion.handlePayload(payload);
++
++        expect(result.thinking).toEqual({ clear_thinking: true });
++      });
++
++      it('should keep caller-provided reasoning_content', () => {
++        const payload = {
++          messages: [
++            {
++              content: 'answer',
++              reasoning_content: 'existing reasoning content',
++              role: 'assistant',
++            },
++          ],
++          model: 'glm-5',
++          preserveThinking: true,
++        } as any;
++
++        const result = params.chatCompletion.handlePayload(payload);
++
++        expect(result.messages).toEqual([
++          {
++            content: 'answer',
++            reasoning_content: 'existing reasoning content',
++            role: 'assistant',
++          },
++        ]);
++      });
++    });
++
+     describe('Preserve other payload properties', () => {
+       it('should preserve all other properties', async () => {
+         await instance.chat({
+diff --git a/packages/model-runtime/src/providers/zhipu/index.ts b/packages/model-runtime/src/providers/zhipu/index.ts
+index 81d4b23771f..d70370b98bf 100644
+--- a/packages/model-runtime/src/providers/zhipu/index.ts
++++ b/packages/model-runtime/src/providers/zhipu/index.ts
+@@ -24,6 +24,7 @@ export const params = {
+         enabledSearch,
+         max_tokens,
+         model,
++        preserveThinking,
+         stream,
+         temperature,
+         thinking,
+@@ -32,6 +33,48 @@ export const params = {
+         ...rest
+       } = payload;
+ 
++      const shouldPreserveThinking = preserveThinking === true;
++
++      const messages = (rest.messages || []).map((message: any) => {
++        const { reasoning, ...messageRest } = message;
++
++        const reasoningContent =
++          typeof messageRest.reasoning_content === 'string'
++            ? messageRest.reasoning_content
++            : typeof reasoning?.content === 'string'
++              ? reasoning.content
++              : undefined;
++
++        if (
++          message.role === 'assistant' &&
++          shouldPreserveThinking &&
++          reasoningContent !== undefined
++        ) {
++          return {
++            ...messageRest,
++            reasoning_content: reasoningContent,
++          };
++        }
++
++        if (messageRest.reasoning_content !== undefined && reasoningContent !== undefined) {
++          return {
++            ...messageRest,
++            reasoning_content: reasoningContent,
++          };
++        }
++
++        return messageRest;
++      });
++
++      const shouldSetClearThinking = typeof preserveThinking === 'boolean';
++      const thinkingPayload = thinking ? { type: thinking.type } : undefined;
++      const resolvedThinking = shouldSetClearThinking
++        ? {
++            ...thinkingPayload,
++            clear_thinking: !preserveThinking,
++          }
++        : thinkingPayload;
++
+       const zhipuTools = enabledSearch
+         ? [
+             ...(tools || []),
+@@ -76,9 +119,10 @@ export const params = {
+       return {
+         ...rest,
+         ...resolvedParams,
++        messages,
+         model,
+         stream,
+-        thinking: thinking ? { type: thinking.type } : undefined,
++        thinking: resolvedThinking,
+         tool_stream: stream && /^glm-(?:4\.(?:6|7)|5)$/.test(model) ? true : undefined,
+         tools: zhipuTools,
+       } as any;
 diff --git a/packages/model-runtime/src/types/chat.ts b/packages/model-runtime/src/types/chat.ts
 index 8328e67dabd..5d58ec83a8e 100644
 --- a/packages/model-runtime/src/types/chat.ts
@@ -502,7 +813,7 @@ index 98700d2adaf..f7c33ba2bea 100644
    'extendParams.imageResolution.title': 'Image Resolution',
    'extendParams.reasoningBudgetToken.title': 'Thinking Consumption Token',
 diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
-index 9a70aa3ab54..4e8573269b6 100644
+index 9a70aa3ab54..9038df8540a 100644
 --- a/src/locales/default/modelProvider.ts
 +++ b/src/locales/default/modelProvider.ts
 @@ -274,6 +274,8 @@ export default {
@@ -510,12 +821,12 @@ index 9a70aa3ab54..4e8573269b6 100644
    'providerModels.item.modelConfig.extendParams.options.imageResolution2.hint':
      'For Gemini 3.1 Flash Image models; controls resolution of generated images (supports 512px).',
 +  'providerModels.item.modelConfig.extendParams.options.preserveThinking.hint':
-+    'For Qwen3.6 Plus; sends historical assistant reasoning back to model context (preserve_thinking).',
++    'For Qwen3.6 Plus, GLM-5 and GLM-4.7; sends historical assistant reasoning back to model context (preserve_thinking / clear_thinking=false).',
    'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint':
      'For Claude, Qwen3 and similar; controls token budget for reasoning.',
    'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint':
 diff --git a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
-index 08df7b02917..6555f448438 100644
+index 08df7b02917..185a845e2d1 100644
 --- a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
 +++ b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
 @@ -47,6 +47,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
@@ -537,15 +848,19 @@ index 08df7b02917..6555f448438 100644
    reasoningBudgetToken32k: 'reasoningBudgetToken',
    reasoningBudgetToken80k: 'reasoningBudgetToken',
    thinkingLevel2: 'thinkingLevel',
-@@ -201,6 +206,7 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
+@@ -201,6 +206,11 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
    imageAspectRatio2: { labelSuffix: ' (Nano Banana 2)', previewWidth: 350, tag: 'aspect_ratio' },
    imageResolution: { labelSuffix: '', previewWidth: 250, tag: 'resolution' },
    imageResolution2: { labelSuffix: ' (512px+)', previewWidth: 280, tag: 'resolution' },
-+  preserveThinking: { labelSuffix: ' (Qwen3.6)', previewWidth: 360, tag: 'preserve_thinking' },
++  preserveThinking: {
++    labelSuffix: ' (Qwen3.6 / GLM-4.7+)',
++    previewWidth: 460,
++    tag: 'preserve_thinking',
++  },
    reasoningBudgetToken: { previewWidth: 350, tag: 'thinking.budget_tokens' },
    reasoningBudgetToken32k: {
      labelSuffix: ' (32k)',
-@@ -320,6 +326,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
+@@ -320,6 +330,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
        effort: <EffortSlider value="high" />,
        enableAdaptiveThinking: <Switch checked disabled />,
        enableReasoning: <Switch checked disabled />,
