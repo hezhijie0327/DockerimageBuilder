@@ -357,14 +357,14 @@ index fc71ea75fa7..508278952a3 100644
      mentionItems,
 diff --git a/src/features/PromptTransform/PromptTransformAction.tsx b/src/features/PromptTransform/PromptTransformAction.tsx
 new file mode 100644
-index 00000000000..64f6815940a
+index 00000000000..f55bc45f399
 --- /dev/null
 +++ b/src/features/PromptTransform/PromptTransformAction.tsx
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,95 @@
 +'use client';
 +
 +import { Languages, Sparkles } from 'lucide-react';
-+import { memo } from 'react';
++import { memo, useMemo } from 'react';
 +import { useTranslation } from 'react-i18next';
 +
 +import Action from '@/features/ChatInput/ActionBar/components/Action';
@@ -394,56 +394,60 @@ index 00000000000..64f6815940a
 +      prompt,
 +    });
 +
-+    const isRewriteLoading = isTransforming && transformAction === 'rewrite';
-+    const isTranslateLoading = isTransforming && transformAction === 'translate';
-+
-+    // Disable all transform buttons while one action is running
-+    const isActionDisabled = isTransformDisabled || isTransforming;
-+
-+    const translateAction = (
-+      <Action
-+        disabled={isActionDisabled}
-+        icon={Languages}
-+        loading={isTranslateLoading}
-+        title={
-+          isTranslateLoading
-+            ? t('promptTransform.status.translate')
-+            : t('promptTransform.actions.translate')
-+        }
-+        onClick={translatePrompt}
-+      />
++    const menuItems = useMemo(
++      () => [
++        {
++          icon: <Sparkles size={16} />,
++          key: 'rewrite',
++          label: t('promptTransform.actions.rewrite'),
++          onClick: rewritePrompt,
++        },
++        {
++          icon: <Languages size={16} />,
++          key: 'translate',
++          label: t('promptTransform.actions.translate'),
++          onClick: translatePrompt,
++        },
++      ],
++      [rewritePrompt, t, translatePrompt],
 +    );
 +
-+    if (!isRewriteEnabled) {
-+      return translateAction;
-+    }
++    const handlePrimaryAction = useMemo(
++      () => (isRewriteEnabled ? rewritePrompt : translatePrompt),
++      [isRewriteEnabled, rewritePrompt, translatePrompt],
++    );
 +
-+    const currentAction = isTransforming ? transformAction : 'rewrite';
-+    const actionIcon = currentAction === 'translate' ? Languages : Sparkles;
-+    const actionTitle =
-+      currentAction === 'translate'
-+        ? t('promptTransform.status.translate')
-+        : isRewriteLoading
-+          ? t('promptTransform.status.rewrite')
-+          : t('promptTransform.actions.rewrite');
++    const dropdown = useMemo(() => {
++      if (!isRewriteEnabled) return undefined;
++
++      return {
++        menu: { items: menuItems },
++        trigger: 'hover' as const,
++      };
++    }, [isRewriteEnabled, menuItems]);
++
++    const primaryIcon = isRewriteEnabled ? Sparkles : Languages;
 +
 +    return (
 +      <Action
-+        disabled={isActionDisabled}
-+        icon={actionIcon}
++        disabled={isTransformDisabled}
++        dropdown={dropdown}
++        icon={primaryIcon}
 +        loading={isTransforming}
-+        title={actionTitle}
-+        trigger="hover"
-+        popover={{
-+          content: translateAction,
-+          placement: 'top',
-+          styles: {
-+            content: {
-+              padding: 4,
-+            },
-+          },
-+        }}
-+        onClick={rewritePrompt}
++        title={
++          isTransforming
++            ? t(
++                transformAction === 'translate'
++                  ? 'promptTransform.status.translate'
++                  : 'promptTransform.status.rewrite',
++              )
++            : t(
++                isRewriteEnabled
++                  ? 'promptTransform.actions.rewrite'
++                  : 'promptTransform.actions.translate',
++              )
++        }
++        onClick={handlePrimaryAction}
 +      />
 +    );
 +  },
