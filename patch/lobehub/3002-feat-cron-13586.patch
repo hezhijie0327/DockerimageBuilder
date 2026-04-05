@@ -309,7 +309,7 @@ index ae6c2c553cd..9e500cf1896 100644
      image: cleanObject({
        defaultImageNum: imageEnv.AI_IMAGE_DEFAULT_IMAGE_NUM,
 diff --git a/src/server/routers/lambda/agentCronJob.ts b/src/server/routers/lambda/agentCronJob.ts
-index 6a47920142b..0e6e9cf2a25 100644
+index 6a47920142b..7003fb0b462 100644
 --- a/src/server/routers/lambda/agentCronJob.ts
 +++ b/src/server/routers/lambda/agentCronJob.ts
 @@ -4,8 +4,13 @@ import { TRPCError } from '@trpc/server';
@@ -326,18 +326,51 @@ index 6a47920142b..0e6e9cf2a25 100644
  
  const agentCronJobProcedure = authedProcedure.use(serverDatabase);
  
-@@ -79,6 +84,10 @@ export const agentCronJobRouter = router({
+@@ -79,12 +84,43 @@ export const agentCronJobRouter = router({
          const cronJobData = { ...input, userId };
          const cronJob = await cronJobModel.create(cronJobData as InsertAgentCronJob);
  
 +        if (appEnv.isQStashConfigured && cronJob.enabled) {
-+          await upsertCronJobSchedule(cronJob.id);
++          try {
++            await upsertCronJobSchedule(cronJob);
++          } catch (scheduleError) {
++            console.error(
++              '[agentCronJob:create] schedule provisioning failed, compensating delete',
++              {
++                cronJobId: cronJob.id,
++                error: scheduleError,
++              },
++            );
++
++            try {
++              await cronJobModel.delete(cronJob.id);
++            } catch (compensationError) {
++              console.error('[agentCronJob:create] compensation delete failed', {
++                compensationError,
++                cronJobId: cronJob.id,
++              });
++            }
++
++            throw new TRPCError({
++              cause: scheduleError,
++              code: 'INTERNAL_SERVER_ERROR',
++              message: 'Failed to create cron job schedule',
++            });
++          }
 +        }
 +
          return {
            data: cronJob,
            message: 'Cron job created successfully',
-@@ -105,6 +114,18 @@ export const agentCronJobRouter = router({
+           success: true,
+         };
+       } catch (error) {
++        if (error instanceof TRPCError) throw error;
++
+         console.error('[agentCronJob:create]', error);
+         throw new TRPCError({
+           cause: error,
+@@ -105,6 +141,18 @@ export const agentCronJobRouter = router({
  
        try {
          const cronJobModel = new AgentCronJobModel(db, userId);
@@ -356,7 +389,18 @@ index 6a47920142b..0e6e9cf2a25 100644
          const deleted = await cronJobModel.delete(id);
  
          if (!deleted) {
-@@ -333,6 +354,15 @@ export const agentCronJobRouter = router({
+@@ -300,6 +348,10 @@ export const agentCronJobRouter = router({
+           });
+         }
+ 
++        if (appEnv.isQStashConfigured && cronJob.enabled) {
++          await upsertCronJobSchedule(cronJob);
++        }
++
+         return {
+           data: cronJob,
+           message: 'Execution counts reset successfully',
+@@ -333,6 +385,15 @@ export const agentCronJobRouter = router({
  
        try {
          const cronJobModel = new AgentCronJobModel(db, userId);
@@ -372,14 +416,14 @@ index 6a47920142b..0e6e9cf2a25 100644
          const cronJob = await cronJobModel.update(id, data as UpdateAgentCronJob);
  
          if (!cronJob) {
-@@ -342,6 +372,12 @@ export const agentCronJobRouter = router({
+@@ -342,6 +403,12 @@ export const agentCronJobRouter = router({
            });
          }
  
 +        if (appEnv.isQStashConfigured && !cronJob.enabled) {
 +          await deleteCronJobSchedule(existing.id);
 +        } else if (appEnv.isQStashConfigured) {
-+          await upsertCronJobSchedule(cronJob.id);
++          await upsertCronJobSchedule(cronJob);
 +        }
 +
          return {
@@ -387,15 +431,17 @@ index 6a47920142b..0e6e9cf2a25 100644
            message: 'Cron job updated successfully',
 diff --git a/src/server/services/agentCron/qstashSchedule.ts b/src/server/services/agentCron/qstashSchedule.ts
 new file mode 100644
-index 00000000000..44a190d6416
+index 00000000000..85ba389f556
 --- /dev/null
 +++ b/src/server/services/agentCron/qstashSchedule.ts
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,52 @@
 +import { appEnv } from '@/envs/app';
 +import { qstashClient } from '@/libs/qstash';
 +
-+const JOB_TICK_CRON = '*/15 * * * *';
-+const JOB_SCHEDULE_ID_PREFIX = 'cron-job';
++type CronScheduleJob = {
++  cronPattern: string;
++  id: string;
++};
 +
 +const buildExecuteUrl = (): string => {
 +  // QStash is an external service and must call a publicly reachable URL.
@@ -405,11 +451,7 @@ index 00000000000..44a190d6416
 +  return new URL('/api/agent/cron/execute', baseUrl).toString();
 +};
 +
-+export const getCronJobScheduleId = (jobId: string): string => {
-+  return `${JOB_SCHEDULE_ID_PREFIX}-${jobId}`;
-+};
-+
-+export const upsertCronJobSchedule = async (jobId: string): Promise<string> => {
++export const upsertCronJobSchedule = async (job: CronScheduleJob): Promise<string> => {
 +  const headers: Record<string, string> = {
 +    'Content-Type': 'application/json',
 +  };
@@ -420,22 +462,21 @@ index 00000000000..44a190d6416
 +  }
 +
 +  const response = await qstashClient.schedules.create({
-+    body: JSON.stringify({ jobId }),
-+    cron: JOB_TICK_CRON,
++    body: JSON.stringify({ jobId: job.id }),
++    cron: job.cronPattern,
 +    destination: buildExecuteUrl(),
 +    headers,
 +    method: 'POST',
 +    retries: 3,
-+    scheduleId: getCronJobScheduleId(jobId),
++    scheduleId: job.id,
 +  });
 +
 +  return response.scheduleId;
 +};
 +
 +export const deleteCronJobSchedule = async (jobId: string): Promise<void> => {
-+  const scheduleId = getCronJobScheduleId(jobId);
 +  try {
-+    await qstashClient.schedules.delete(scheduleId);
++    await qstashClient.schedules.delete(jobId);
 +  } catch (error) {
 +    // Idempotent delete: ignore not-found schedule
 +    const message = error instanceof Error ? error.message : String(error);
