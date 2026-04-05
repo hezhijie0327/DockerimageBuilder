@@ -206,6 +206,36 @@ index 9d42ce434d8..efc3bd377d0 100644
  
    const addAction = (
      <ActionIcon
+diff --git a/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts b/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
+index 5aba2ca4a43..75cb3ff70c8 100644
+--- a/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
++++ b/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
+@@ -101,8 +101,10 @@ export const parseCronPattern = (
+ 
+   const [minute, hour, , , weekday] = parts;
+   const rawMinute = minute === '*' ? 0 : Number.parseInt(minute);
+-  // Normalize to nearest 30-minute interval (0 or 30)
+-  const triggerMinute = rawMinute >= 15 && rawMinute < 45 ? 30 : 0;
++  // Normalize to nearest 15-minute interval (0, 15, 30, 45)
++  const triggerMinute = Number.isNaN(rawMinute)
++    ? 0
++    : (Math.round((((rawMinute % 60) + 60) % 60) / 15) * 15) % 60;
+ 
+   // Hourly: 0 * * * * or 0 */N * * *
+   if (hour.startsWith('*/')) {
+@@ -155,8 +157,10 @@ export const buildCronPattern = (
+   weekdays?: number[],
+ ): string => {
+   const rawMinute = triggerTime.minute();
+-  // Normalize to 0 or 30
+-  const minute = rawMinute >= 15 && rawMinute < 45 ? 30 : 0;
++  // Normalize to nearest 15-minute interval (0, 15, 30, 45)
++  const minute = Number.isNaN(rawMinute)
++    ? 0
++    : (Math.round((((rawMinute % 60) + 60) % 60) / 15) * 15) % 60;
+   const hour = triggerTime.hour();
+ 
+   switch (scheduleType) {
 diff --git a/src/routes/(main)/agent/cron/[cronId]/index.tsx b/src/routes/(main)/agent/cron/[cronId]/index.tsx
 index c760c370f52..f893143a90e 100644
 --- a/src/routes/(main)/agent/cron/[cronId]/index.tsx
