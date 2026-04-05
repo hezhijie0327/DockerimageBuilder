@@ -1,0 +1,935 @@
+diff --git a/.env.example b/.env.example
+index 5cacea98376..14020a6842a 100644
+--- a/.env.example
++++ b/.env.example
+@@ -41,6 +41,15 @@
+ # Namespace prefix for cache/queue keys.
+ # REDIS_PREFIX=lobechat
+ 
++# #######################################
++# ####### Cron Feature Toggle ###########
++# #######################################
++
++# Enable community cron per-job schedule (QStash)
++# 0 = keep original business cron behavior (default)
++# 1 = enable new community cron scheduling path
++# ENABLE_QSTASH_CRON=0
++
+ # #######################################
+ # ######### AI Provider Service #########
+ # #######################################
+@@ -56,7 +65,6 @@ OPENAI_API_KEY=sk-xxxxxxxxx
+ # add your custom model name, multi model separate by comma. for example gpt-3.5-1106,gpt-4-1106
+ # OPENAI_MODEL_LIST=gpt-3.5-turbo
+ 
+-
+ # ## Azure OpenAI ###
+ 
+ # you can learn azure OpenAI Service on https://learn.microsoft.com/en-us/azure/ai-services/openai/overview
+@@ -71,7 +79,6 @@ OPENAI_API_KEY=sk-xxxxxxxxx
+ # Azure's API version, follows the YYYY-MM-DD format
+ # AZURE_API_VERSION=2024-10-21
+ 
+-
+ # ## Anthropic Service ####
+ 
+ # ANTHROPIC_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+@@ -79,19 +86,16 @@ OPENAI_API_KEY=sk-xxxxxxxxx
+ # use a proxy to connect to the Anthropic API
+ # ANTHROPIC_PROXY_URL=https://api.anthropic.com
+ 
+-
+ # ## Google AI  ####
+ 
+ # GOOGLE_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+-
+ # ## AWS Bedrock  ###
+ 
+ # AWS_REGION=us-east-1
+ # AWS_ACCESS_KEY_ID=xxxxxxxxxxxxxxxxxxx
+ # AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+-
+ # ## Ollama AI ####
+ 
+ # You can use ollama to get and run LLM locally, learn more about it via https://github.com/ollama/ollama
+@@ -101,13 +105,11 @@ OPENAI_API_KEY=sk-xxxxxxxxx
+ 
+ # OLLAMA_MODEL_LIST=your_ollama_model_names
+ 
+-
+ # ## OpenRouter Service ###
+ 
+ # OPENROUTER_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ # OPENROUTER_MODEL_LIST=model1,model2,model3
+ 
+-
+ # ## Mistral AI ###
+ 
+ # MISTRAL_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+@@ -163,7 +165,6 @@ OPENAI_API_KEY=sk-xxxxxxxxx
+ 
+ # SILICONCLOUD_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+-
+ # ## TencentCloud AI  ####
+ 
+ # TENCENT_CLOUD_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+@@ -176,7 +177,6 @@ OPENAI_API_KEY=sk-xxxxxxxxx
+ 
+ # INFINIAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ 
+-
+ # ## 302.AI ###
+ 
+ # AI302_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+@@ -217,7 +217,6 @@ OPENAI_API_KEY=sk-xxxxxxxxx
+ 
+ # VERCELAIGATEWAY_API_KEY=your_vercel_ai_gateway_api_key
+ 
+-
+ # #######################################
+ # ########### Market Service ############
+ # #######################################
+@@ -278,7 +277,6 @@ OPENAI_API_KEY=sk-xxxxxxxxx
+ # but some service providers may require configuration
+ # S3_REGION=us-west-1
+ 
+-
+ # #######################################
+ # ########### Auth Service ##############
+ # #######################################
+diff --git a/packages/database/src/models/agentCronJob.ts b/packages/database/src/models/agentCronJob.ts
+index 402a2237781..042639fd106 100644
+--- a/packages/database/src/models/agentCronJob.ts
++++ b/packages/database/src/models/agentCronJob.ts
+@@ -45,6 +45,13 @@ export class AgentCronJobModel {
+     return result[0] || null;
+   }
+ 
++  // Find cron job by ID (without ownership check, for system execution)
++  static async findById(db: LobeChatDatabase, id: string): Promise<AgentCronJob | null> {
++    const result = await db.select().from(agentCronJobs).where(eq(agentCronJobs.id, id)).limit(1);
++
++    return result[0] || null;
++  }
++
+   // Find all cron jobs for a specific agent
+   async findByAgentId(agentId: string): Promise<AgentCronJob[]> {
+     return this.db
+@@ -136,7 +143,7 @@ export class AgentCronJobModel {
+       .set({
+         lastExecutedAt: new Date(),
+         remainingExecutions: sql`
+-          CASE 
++          CASE
+             WHEN ${agentCronJobs.remainingExecutions} IS NULL THEN NULL
+             ELSE ${agentCronJobs.remainingExecutions} - 1
+           END
+diff --git a/src/app/(backend)/api/agent/cron/dispatch/route.ts b/src/app/(backend)/api/agent/cron/dispatch/route.ts
+new file mode 100644
+index 00000000000..f9249b1ef73
+--- /dev/null
++++ b/src/app/(backend)/api/agent/cron/dispatch/route.ts
+@@ -0,0 +1,147 @@
++import debug from 'debug';
++import { type NextRequest } from 'next/server';
++import { NextResponse } from 'next/server';
++import urlJoin from 'url-join';
++
++import { AgentCronJobModel } from '@/database/models/agentCronJob';
++import { type AgentCronJob } from '@/database/schemas/agentCronJob';
++import { getServerDB } from '@/database/server';
++import { appEnv } from '@/envs/app';
++import { qstashClient, verifyQStashSignature } from '@/libs/qstash';
++import { shouldDispatchCronJob } from '@/server/services/agentCron/scheduleMatcher';
++import { AiAgentService } from '@/server/services/aiAgent';
++
++const log = debug('api-route:agent:cron-dispatch');
++
++const verifyApiKey = (request: NextRequest): boolean => {
++  const cronSecret = process.env.CRON_SECRET;
++  const apiKey = process.env.AGENT_EXEC_API_KEY;
++  const expectedSecret = cronSecret || apiKey;
++
++  if (!expectedSecret) {
++    log('API key verification disabled (CRON_SECRET/AGENT_EXEC_API_KEY not configured)');
++    return false;
++  }
++
++  const authHeader = request.headers.get('Authorization');
++  if (!authHeader?.startsWith('Bearer ')) {
++    return false;
++  }
++
++  return authHeader.slice(7) === expectedSecret;
++};
++
++const buildAgentExecUrl = (): string => {
++  const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
++  return urlJoin(baseUrl, '/api/agent');
++};
++
++const triggerAgentByQStash = async (job: AgentCronJob): Promise<void> => {
++  const headers: Record<string, string> = {
++    'Content-Type': 'application/json',
++  };
++
++  if (process.env.AGENT_EXEC_API_KEY) {
++    headers.Authorization = `Bearer ${process.env.AGENT_EXEC_API_KEY}`;
++  }
++
++  await qstashClient.publishJSON({
++    body: {
++      agentId: job.agentId,
++      cronJobId: job.id,
++      prompt: job.content,
++      title: job.name || undefined,
++      trigger: 'cron',
++      userId: job.userId,
++    },
++    destination: buildAgentExecUrl(),
++    headers,
++    retries: 3,
++  });
++};
++
++const triggerAgentDirectly = async (
++  db: Awaited<ReturnType<typeof getServerDB>>,
++  job: AgentCronJob,
++): Promise<void> => {
++  const aiAgentService = new AiAgentService(db, job.userId);
++
++  await aiAgentService.execAgent({
++    agentId: job.agentId,
++    autoStart: true,
++    cronJobId: job.id,
++    prompt: job.content,
++    title: job.name || undefined,
++    trigger: 'cron',
++  });
++};
++
++export async function POST(request: NextRequest) {
++  const rawBody = await request.text();
++
++  const isValidQStash = await verifyQStashSignature(request, rawBody);
++  const isValidApiKey = verifyApiKey(request);
++
++  if (!isValidQStash && !isValidApiKey) {
++    return NextResponse.json(
++      { error: 'Unauthorized - Valid QStash signature or API key required' },
++      { status: 401 },
++    );
++  }
++
++  const db = await getServerDB();
++  const enabledJobs = await AgentCronJobModel.getEnabledJobs(db);
++
++  if (!enabledJobs.length) {
++    return NextResponse.json({
++      dispatched: 0,
++      message: 'No enabled cron jobs found',
++      scanned: 0,
++      skipped: 0,
++      success: true,
++    });
++  }
++
++  let dispatched = 0;
++  let skipped = 0;
++  const failed: Array<{ error: string; id: string }> = [];
++
++  const hasQStashSigningKeys =
++    !!process.env.QSTASH_CURRENT_SIGNING_KEY && !!process.env.QSTASH_NEXT_SIGNING_KEY;
++  const hasAgentExecApiKey = !!process.env.AGENT_EXEC_API_KEY;
++  const shouldUseQStash =
++    !!process.env.QSTASH_TOKEN && (hasAgentExecApiKey || hasQStashSigningKeys);
++
++  for (const job of enabledJobs) {
++    try {
++      if (!shouldDispatchCronJob(job)) {
++        skipped += 1;
++        continue;
++      }
++
++      if (shouldUseQStash) {
++        await triggerAgentByQStash(job);
++      } else {
++        await triggerAgentDirectly(db, job);
++      }
++
++      await AgentCronJobModel.updateExecutionStats(db, job.id);
++      dispatched += 1;
++    } catch (error) {
++      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
++      failed.push({
++        error: errorMessage,
++        id: job.id,
++      });
++      console.error('[agent:cron:dispatch]', { error, jobId: job.id });
++    }
++  }
++
++  return NextResponse.json({
++    dispatched,
++    failed,
++    scanned: enabledJobs.length,
++    skipped,
++    success: failed.length === 0,
++  });
++}
+diff --git a/src/app/(backend)/api/agent/cron/execute/route.ts b/src/app/(backend)/api/agent/cron/execute/route.ts
+new file mode 100644
+index 00000000000..f58dac7592d
+--- /dev/null
++++ b/src/app/(backend)/api/agent/cron/execute/route.ts
+@@ -0,0 +1,101 @@
++import debug from 'debug';
++import { type NextRequest } from 'next/server';
++import { NextResponse } from 'next/server';
++
++import { AgentCronJobModel } from '@/database/models/agentCronJob';
++import { getServerDB } from '@/database/server';
++import { verifyQStashSignature } from '@/libs/qstash';
++import {
++  deleteCronJobSchedule,
++  isQStashCronEnabled,
++} from '@/server/services/agentCron/qstashSchedule';
++import { shouldDispatchCronJob } from '@/server/services/agentCron/scheduleMatcher';
++import { AiAgentService } from '@/server/services/aiAgent';
++
++const log = debug('api-route:agent:cron-execute');
++
++const verifyApiKey = (request: NextRequest): boolean => {
++  const expectedSecret = process.env.CRON_SECRET || process.env.AGENT_EXEC_API_KEY;
++  if (!expectedSecret) {
++    return false;
++  }
++
++  const authHeader = request.headers.get('Authorization');
++  if (!authHeader?.startsWith('Bearer ')) {
++    return false;
++  }
++
++  return authHeader.slice(7) === expectedSecret;
++};
++
++export async function POST(request: NextRequest) {
++  if (!isQStashCronEnabled()) {
++    return NextResponse.json({ message: 'QStash cron feature is disabled', skipped: true });
++  }
++
++  const rawBody = await request.text();
++
++  const isValidQStash = await verifyQStashSignature(request, rawBody);
++  const isValidApiKey = verifyApiKey(request);
++
++  if (!isValidQStash && !isValidApiKey) {
++    return NextResponse.json(
++      { error: 'Unauthorized - Valid QStash signature or API key required' },
++      { status: 401 },
++    );
++  }
++
++  let payload: { jobId?: string };
++  try {
++    payload = rawBody ? (JSON.parse(rawBody) as { jobId?: string }) : {};
++  } catch {
++    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
++  }
++
++  if (!payload.jobId) {
++    return NextResponse.json({ error: 'jobId is required' }, { status: 400 });
++  }
++
++  const db = await getServerDB();
++  const job = await AgentCronJobModel.findById(db, payload.jobId);
++
++  if (!job) {
++    return NextResponse.json({ message: 'Cron job not found', success: true });
++  }
++
++  if (!job.enabled) {
++    return NextResponse.json({ message: 'Cron job disabled', skipped: true, success: true });
++  }
++
++  if (job.remainingExecutions !== null && job.remainingExecutions <= 0) {
++    await deleteCronJobSchedule(job.id);
++
++    return NextResponse.json({ message: 'Cron job depleted', skipped: true, success: true });
++  }
++
++  if (!shouldDispatchCronJob(job)) {
++    return NextResponse.json({ message: 'Not due in current slot', skipped: true, success: true });
++  }
++
++  const aiAgentService = new AiAgentService(db, job.userId);
++  await aiAgentService.execAgent({
++    agentId: job.agentId,
++    autoStart: true,
++    cronJobId: job.id,
++    prompt: job.content,
++    title: job.name || undefined,
++    trigger: 'cron',
++  });
++
++  const updated = await AgentCronJobModel.updateExecutionStats(db, job.id);
++
++  if (updated && !updated.enabled) {
++    try {
++      await deleteCronJobSchedule(job.id);
++    } catch (error) {
++      log('Failed to delete depleted cron schedule for job %s: %O', job.id, error);
++    }
++  }
++
++  return NextResponse.json({ executed: true, success: true });
++}
+diff --git a/src/envs/app.ts b/src/envs/app.ts
+index de5a7f6afff..1a23748b9d9 100644
+--- a/src/envs/app.ts
++++ b/src/envs/app.ts
+@@ -82,6 +82,12 @@ export const getAppConfig = () => {
+        * @default false
+        */
+       enableQueueAgentRuntime: z.boolean().optional(),
++      /**
++       * Enable QStash cron per-job scheduling
++       * When false, keeps the original business-oriented cron behavior.
++       * @default false
++       */
++      enableQStashCron: z.boolean().optional(),
+       TELEMETRY_DISABLED: z.boolean().optional(),
+     },
+     runtimeEnv: {
+@@ -119,6 +125,7 @@ export const getAppConfig = () => {
+       MARKET_TRUSTED_CLIENT_ID: process.env.MARKET_TRUSTED_CLIENT_ID,
+ 
+       enableQueueAgentRuntime: process.env.AGENT_RUNTIME_MODE === 'queue',
++      enableQStashCron: process.env.ENABLE_QSTASH_CRON === '1',
+       TELEMETRY_DISABLED: process.env.TELEMETRY_DISABLED === '1',
+     },
+   });
+diff --git a/src/routes/(main)/agent/_layout/Sidebar/Cron/index.tsx b/src/routes/(main)/agent/_layout/Sidebar/Cron/index.tsx
+index 9d42ce434d8..4d30b639f3f 100644
+--- a/src/routes/(main)/agent/_layout/Sidebar/Cron/index.tsx
++++ b/src/routes/(main)/agent/_layout/Sidebar/Cron/index.tsx
+@@ -11,7 +11,6 @@ import EmptyNavItem from '@/features/NavPanel/components/EmptyNavItem';
+ import SkeletonList from '@/features/NavPanel/components/SkeletonList';
+ import { useQueryRoute } from '@/hooks/useQueryRoute';
+ import { useAgentStore } from '@/store/agent';
+-import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
+ 
+ import CronTopicGroup from './CronTopicGroup';
+ 
+@@ -26,19 +25,14 @@ const CronTopicList = memo<CronTopicListProps>(({ itemKey }) => {
+     s.activeAgentId,
+     s.useFetchCronTopicsWithJobInfo,
+   ]);
+-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+-  const { data: cronTopicsGroupsWithJobInfo = [], isLoading } = useFetchCronTopicsWithJobInfo(
+-    agentId,
+-    enableBusinessFeatures,
+-  );
++  const { data: cronTopicsGroupsWithJobInfo = [], isLoading } =
++    useFetchCronTopicsWithJobInfo(agentId);
+ 
+   const handleCreateCronJob = useCallback(() => {
+     if (!agentId) return;
+     router.push(urlJoin('/agent', agentId, 'cron', 'new'));
+   }, [agentId, router]);
+ 
+-  if (!enableBusinessFeatures) return null;
+-
+   const addAction = (
+     <ActionIcon
+       disabled={!agentId}
+diff --git a/src/routes/(main)/agent/cron/[cronId]/index.tsx b/src/routes/(main)/agent/cron/[cronId]/index.tsx
+index c760c370f52..50fdeff7590 100644
+--- a/src/routes/(main)/agent/cron/[cronId]/index.tsx
++++ b/src/routes/(main)/agent/cron/[cronId]/index.tsx
+@@ -24,7 +24,6 @@ import { agentCronJobService } from '@/services/agentCronJob';
+ import { topicService } from '@/services/topic';
+ import { useAgentStore } from '@/store/agent';
+ import { useChatStore } from '@/store/chat';
+-import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
+ import { useUserStore } from '@/store/user';
+ import { labPreferSelectors } from '@/store/user/selectors';
+ 
+@@ -87,7 +86,6 @@ const CronJobDetailPage = memo(() => {
+   const router = useQueryRoute();
+   const { modal } = App.useApp();
+   const enableRichRender = useUserStore(labPreferSelectors.enableInputMarkdown);
+-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+ 
+   const isNewJob = cronId === 'new';
+ 
+@@ -118,7 +116,7 @@ const CronJobDetailPage = memo(() => {
+   const cronListAgentId = activeAgentId || aid;
+ 
+   const { data: cronJob, isLoading } = useSWR(
+-    enableBusinessFeatures && cronId && !isNewJob ? ['cronJob', cronId] : null,
++    cronId && !isNewJob ? ['cronJob', cronId] : null,
+     async () => {
+       if (!cronId || isNewJob) return null;
+       const result = await agentCronJobService.getById(cronId);
+@@ -455,10 +453,6 @@ const CronJobDetailPage = memo(() => {
+     flushPendingSave();
+   }, [cronJob, flushPendingSave]);
+ 
+-  if (!enableBusinessFeatures) {
+-    return null;
+-  }
+-
+   return (
+     <Flexbox flex={1} height={'100%'}>
+       <NavHeader
+diff --git a/src/routes/(main)/agent/profile/features/AgentCronJobs/index.tsx b/src/routes/(main)/agent/profile/features/AgentCronJobs/index.tsx
+index f439a6bab15..8fba09cf091 100644
+--- a/src/routes/(main)/agent/profile/features/AgentCronJobs/index.tsx
++++ b/src/routes/(main)/agent/profile/features/AgentCronJobs/index.tsx
+@@ -9,7 +9,6 @@ import urlJoin from 'url-join';
+ 
+ import { useQueryRoute } from '@/hooks/useQueryRoute';
+ import { useAgentStore } from '@/store/agent';
+-import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
+ 
+ import CronJobCards from './CronJobCards';
+ import { useAgentCronJobs } from './hooks/useAgentCronJobs';
+@@ -20,9 +19,7 @@ const AgentCronJobs = memo(() => {
+   const { t } = useTranslation('setting');
+   const agentId = useAgentStore((s) => s.activeAgentId);
+   const router = useQueryRoute();
+-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+-
+-  const { cronJobs, loading, deleteCronJob } = useAgentCronJobs(agentId, enableBusinessFeatures);
++  const { cronJobs, loading, deleteCronJob } = useAgentCronJobs(agentId);
+ 
+   // Edit: Navigate to cron job detail page
+   const handleEdit = useCallback(
+@@ -41,8 +38,6 @@ const AgentCronJobs = memo(() => {
+     [deleteCronJob],
+   );
+ 
+-  if (!enableBusinessFeatures) return null;
+-
+   if (!agentId) {
+     return null;
+   }
+diff --git a/src/routes/(main)/agent/profile/features/ProfileEditor/index.tsx b/src/routes/(main)/agent/profile/features/ProfileEditor/index.tsx
+index 71355d9aa1a..1f71302bdb0 100644
+--- a/src/routes/(main)/agent/profile/features/ProfileEditor/index.tsx
++++ b/src/routes/(main)/agent/profile/features/ProfileEditor/index.tsx
+@@ -8,7 +8,6 @@ import React, { memo } from 'react';
+ import ModelSelect from '@/features/ModelSelect';
+ import { useAgentStore } from '@/store/agent';
+ import { agentSelectors } from '@/store/agent/selectors';
+-import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
+ 
+ import AgentCronJobs from '../AgentCronJobs';
+ import AgentSettings from '../AgentSettings';
+@@ -19,7 +18,6 @@ import AgentTool from './AgentTool';
+ const ProfileEditor = memo(() => {
+   const config = useAgentStore(agentSelectors.currentAgentConfig, isEqual);
+   const updateConfig = useAgentStore((s) => s.updateAgentConfig);
+-  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
+ 
+   return (
+     <>
+@@ -55,7 +53,7 @@ const ProfileEditor = memo(() => {
+       {/* Main Content: Prompt Editor */}
+       <EditorCanvas />
+       {/* Agent Cron Jobs Display (only show if jobs exist) */}
+-      {enableBusinessFeatures && <AgentCronJobs />}
++      <AgentCronJobs />
+       {/* Advanced Settings Modal */}
+       <AgentSettings />
+     </>
+diff --git a/src/server/routers/lambda/agentCronJob.ts b/src/server/routers/lambda/agentCronJob.ts
+index 6a47920142b..d9cc82fb928 100644
+--- a/src/server/routers/lambda/agentCronJob.ts
++++ b/src/server/routers/lambda/agentCronJob.ts
+@@ -6,6 +6,13 @@ import { z } from 'zod';
+ import { AgentCronJobModel } from '@/database/models/agentCronJob';
+ import { authedProcedure, router } from '@/libs/trpc/lambda';
+ import { serverDatabase } from '@/libs/trpc/lambda/middleware';
++import {
++  assertQStashCronSchedulingReady,
++  deleteCronJobSchedule,
++  isQStashCronEnabled,
++  isQStashCronSchedulingReady,
++  upsertCronJobSchedule,
++} from '@/server/services/agentCron/qstashSchedule';
+ 
+ const agentCronJobProcedure = authedProcedure.use(serverDatabase);
+ 
+@@ -79,6 +86,11 @@ export const agentCronJobRouter = router({
+         const cronJobData = { ...input, userId };
+         const cronJob = await cronJobModel.create(cronJobData as InsertAgentCronJob);
+ 
++        if (isQStashCronEnabled() && cronJob.enabled) {
++          assertQStashCronSchedulingReady();
++          await upsertCronJobSchedule(cronJob.id);
++        }
++
+         return {
+           data: cronJob,
+           message: 'Cron job created successfully',
+@@ -105,6 +117,18 @@ export const agentCronJobRouter = router({
+ 
+       try {
+         const cronJobModel = new AgentCronJobModel(db, userId);
++        const existing = await cronJobModel.findById(id);
++        if (!existing) {
++          throw new TRPCError({
++            code: 'NOT_FOUND',
++            message: 'Cron job not found or access denied',
++          });
++        }
++
++        if (isQStashCronEnabled()) {
++          await deleteCronJobSchedule(existing.id);
++        }
++
+         const deleted = await cronJobModel.delete(id);
+ 
+         if (!deleted) {
+@@ -333,6 +357,20 @@ export const agentCronJobRouter = router({
+ 
+       try {
+         const cronJobModel = new AgentCronJobModel(db, userId);
++        const existing = await cronJobModel.findById(id);
++
++        if (!existing) {
++          throw new TRPCError({
++            code: 'NOT_FOUND',
++            message: 'Cron job not found or access denied',
++          });
++        }
++
++        const shouldKeepEnabled = data.enabled ?? existing.enabled;
++        if (isQStashCronEnabled() && shouldKeepEnabled) {
++          assertQStashCronSchedulingReady();
++        }
++
+         const cronJob = await cronJobModel.update(id, data as UpdateAgentCronJob);
+ 
+         if (!cronJob) {
+@@ -342,6 +380,12 @@ export const agentCronJobRouter = router({
+           });
+         }
+ 
++        if (isQStashCronEnabled() && !cronJob.enabled) {
++          await deleteCronJobSchedule(existing.id);
++        } else if (isQStashCronSchedulingReady()) {
++          await upsertCronJobSchedule(cronJob.id);
++        }
++
+         return {
+           data: cronJob,
+           message: 'Cron job updated successfully',
+diff --git a/src/server/services/agentCron/qstashSchedule.ts b/src/server/services/agentCron/qstashSchedule.ts
+new file mode 100644
+index 00000000000..7a6f45a5c53
+--- /dev/null
++++ b/src/server/services/agentCron/qstashSchedule.ts
+@@ -0,0 +1,91 @@
++import { appEnv } from '@/envs/app';
++import { qstashClient } from '@/libs/qstash';
++
++const JOB_TICK_CRON = '*/15 * * * *';
++const JOB_SCHEDULE_ID_PREFIX = 'cron-job';
++
++export const isQStashCronEnabled = (): boolean => {
++  return appEnv.enableQStashCron === true;
++};
++
++const getAuthorizationSecret = (): string | undefined => {
++  return process.env.CRON_SECRET || process.env.AGENT_EXEC_API_KEY;
++};
++
++const hasQStashSigningKeys = (): boolean => {
++  return !!process.env.QSTASH_CURRENT_SIGNING_KEY && !!process.env.QSTASH_NEXT_SIGNING_KEY;
++};
++
++export const isQStashCronSchedulingReady = (): boolean => {
++  if (!isQStashCronEnabled()) return false;
++  if (!process.env.QSTASH_TOKEN) return false;
++  return !!getAuthorizationSecret() || hasQStashSigningKeys();
++};
++
++export const assertQStashCronSchedulingReady = (): void => {
++  if (!isQStashCronEnabled()) {
++    throw new Error('QStash cron feature is disabled by ENABLE_QSTASH_CRON');
++  }
++
++  if (!process.env.QSTASH_TOKEN) {
++    throw new Error('QSTASH_TOKEN is required for per-job cron scheduling');
++  }
++
++  if (!getAuthorizationSecret() && !hasQStashSigningKeys()) {
++    throw new Error(
++      'Cron scheduling requires CRON_SECRET or AGENT_EXEC_API_KEY, or both QSTASH signing keys',
++    );
++  }
++};
++
++const buildExecuteUrl = (): string => {
++  const baseUrl = appEnv.INTERNAL_APP_URL || appEnv.APP_URL;
++
++  return new URL('/api/agent/cron/execute', baseUrl).toString();
++};
++
++export const getCronJobScheduleId = (jobId: string): string => {
++  return `${JOB_SCHEDULE_ID_PREFIX}-${jobId}`;
++};
++
++export const upsertCronJobSchedule = async (jobId: string): Promise<string> => {
++  assertQStashCronSchedulingReady();
++
++  const authorizationSecret = getAuthorizationSecret();
++  const headers: Record<string, string> = {
++    'Content-Type': 'application/json',
++  };
++
++  if (authorizationSecret) {
++    headers.Authorization = `Bearer ${authorizationSecret}`;
++  }
++
++  const response = await qstashClient.schedules.create({
++    body: JSON.stringify({ jobId }),
++    cron: JOB_TICK_CRON,
++    destination: buildExecuteUrl(),
++    headers,
++    method: 'POST',
++    retries: 3,
++    scheduleId: getCronJobScheduleId(jobId),
++  });
++
++  return response.scheduleId;
++};
++
++export const deleteCronJobSchedule = async (jobId: string): Promise<void> => {
++  if (!process.env.QSTASH_TOKEN) return;
++
++  const scheduleId = getCronJobScheduleId(jobId);
++  try {
++    await qstashClient.schedules.delete(scheduleId);
++  } catch (error) {
++    // Idempotent delete: ignore not-found schedule
++    const message = error instanceof Error ? error.message : String(error);
++    if (message.includes('404') || message.toLowerCase().includes('not found')) {
++      return;
++    }
++
++    throw error;
++  }
++};
+diff --git a/src/server/services/agentCron/scheduleMatcher.test.ts b/src/server/services/agentCron/scheduleMatcher.test.ts
+new file mode 100644
+index 00000000000..2543c2f8a83
+--- /dev/null
++++ b/src/server/services/agentCron/scheduleMatcher.test.ts
+@@ -0,0 +1,76 @@
++import { describe, expect, it } from 'vitest';
++
++import { isCronPatternMatched, shouldDispatchCronJob } from './scheduleMatcher';
++
++describe('scheduleMatcher', () => {
++  describe('isCronPatternMatched', () => {
++    it('should match daily cron in UTC', () => {
++      const now = new Date('2026-04-05T09:00:00.000Z');
++
++      expect(isCronPatternMatched('0 9 * * *', now, 'UTC')).toBe(true);
++      expect(isCronPatternMatched('30 9 * * *', now, 'UTC')).toBe(false);
++    });
++
++    it('should match weekly cron with timezone', () => {
++      const now = new Date('2026-04-05T01:00:00.000Z');
++
++      // 2026-04-05 09:00 Asia/Shanghai is Sunday(0)
++      expect(isCronPatternMatched('0 9 * * 0', now, 'Asia/Shanghai')).toBe(true);
++      expect(isCronPatternMatched('0 9 * * 1', now, 'Asia/Shanghai')).toBe(false);
++    });
++
++    it('should support step format', () => {
++      const now = new Date('2026-04-05T10:30:00.000Z');
++
++      expect(isCronPatternMatched('*/30 * * * *', now, 'UTC')).toBe(true);
++      expect(isCronPatternMatched('*/45 * * * *', now, 'UTC')).toBe(false);
++    });
++  });
++
++  describe('shouldDispatchCronJob', () => {
++    it('should dispatch when never executed before', () => {
++      const now = new Date('2026-04-05T10:00:00.000Z');
++
++      expect(
++        shouldDispatchCronJob(
++          {
++            cronPattern: '0 10 * * *',
++            lastExecutedAt: null,
++            timezone: 'UTC',
++          },
++          now,
++        ),
++      ).toBe(true);
++    });
++
++    it('should skip when already executed in current slot', () => {
++      const now = new Date('2026-04-05T10:00:20.000Z');
++
++      expect(
++        shouldDispatchCronJob(
++          {
++            cronPattern: '0 10 * * *',
++            lastExecutedAt: new Date('2026-04-05T10:00:00.000Z'),
++            timezone: 'UTC',
++          },
++          now,
++        ),
++      ).toBe(false);
++    });
++
++    it('should dispatch in next slot', () => {
++      const now = new Date('2026-04-05T10:30:00.000Z');
++
++      expect(
++        shouldDispatchCronJob(
++          {
++            cronPattern: '30 * * * *',
++            lastExecutedAt: new Date('2026-04-05T10:00:00.000Z'),
++            timezone: 'UTC',
++          },
++          now,
++        ),
++      ).toBe(true);
++    });
++  });
++});
+diff --git a/src/server/services/agentCron/scheduleMatcher.ts b/src/server/services/agentCron/scheduleMatcher.ts
+new file mode 100644
+index 00000000000..7d1a269faa9
+--- /dev/null
++++ b/src/server/services/agentCron/scheduleMatcher.ts
+@@ -0,0 +1,118 @@
++import type { AgentCronJob } from '@/database/schemas/agentCronJob';
++
++type DateTimeParts = {
++  day: number;
++  hour: number;
++  minute: number;
++  month: number;
++  weekday: number;
++  year: number;
++};
++
++const weekdayMap: Record<string, number> = {
++  fri: 5,
++  mon: 1,
++  sat: 6,
++  sun: 0,
++  thu: 4,
++  tue: 2,
++  wed: 3,
++};
++
++const getDateTimeParts = (date: Date, timeZone: string): DateTimeParts => {
++  const formatter = new Intl.DateTimeFormat('en-US', {
++    day: 'numeric',
++    hour: 'numeric',
++    hour12: false,
++    minute: 'numeric',
++    month: 'numeric',
++    timeZone,
++    weekday: 'short',
++    year: 'numeric',
++  });
++
++  const parts = formatter.formatToParts(date);
++
++  const findPart = (type: Intl.DateTimeFormatPartTypes) =>
++    parts.find((part) => part.type === type)?.value;
++
++  const weekday = findPart('weekday')?.toLowerCase() || 'sun';
++
++  return {
++    day: Number(findPart('day') || 1),
++    hour: Number(findPart('hour') || 0),
++    minute: Number(findPart('minute') || 0),
++    month: Number(findPart('month') || 1),
++    weekday: weekdayMap[weekday] ?? 0,
++    year: Number(findPart('year') || 1970),
++  };
++};
++
++const matchToken = (token: string, value: number): boolean => {
++  const normalized = token.trim();
++  if (!normalized) return false;
++  if (normalized === '*') return true;
++
++  if (normalized.includes(',')) {
++    return normalized.split(',').some((item) => matchToken(item, value));
++  }
++
++  if (normalized.startsWith('*/')) {
++    const step = Number(normalized.slice(2));
++    if (!Number.isInteger(step) || step <= 0) return false;
++    return value % step === 0;
++  }
++
++  const numberValue = Number(normalized);
++  if (!Number.isInteger(numberValue)) return false;
++
++  return value === numberValue;
++};
++
++export const isCronPatternMatched = (
++  cronPattern: string,
++  date: Date,
++  timeZone: string,
++): boolean => {
++  const parts = cronPattern.trim().split(/\s+/);
++  if (parts.length !== 5) return false;
++
++  const [minutePart, hourPart, dayPart, monthPart, weekdayPart] = parts;
++  const local = getDateTimeParts(date, timeZone);
++
++  return (
++    matchToken(minutePart, local.minute) &&
++    matchToken(hourPart, local.hour) &&
++    matchToken(dayPart, local.day) &&
++    matchToken(monthPart, local.month) &&
++    matchToken(weekdayPart, local.weekday)
++  );
++};
++
++const getExecutionSlotKey = (date: Date, timeZone: string): string => {
++  const local = getDateTimeParts(date, timeZone);
++
++  return `${local.year}-${local.month}-${local.day}-${local.hour}-${local.minute}`;
++};
++
++export const shouldDispatchCronJob = (
++  job: Pick<AgentCronJob, 'cronPattern' | 'lastExecutedAt' | 'timezone'>,
++  now: Date = new Date(),
++): boolean => {
++  const timezone = job.timezone || 'UTC';
++
++  if (!isCronPatternMatched(job.cronPattern, now, timezone)) {
++    return false;
++  }
++
++  if (!job.lastExecutedAt) {
++    return true;
++  }
++
++  const lastRun = new Date(job.lastExecutedAt);
++  if (Number.isNaN(lastRun.getTime())) {
++    return true;
++  }
++
++  return getExecutionSlotKey(lastRun, timezone) !== getExecutionSlotKey(now, timezone);
++};
