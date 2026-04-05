@@ -16,8 +16,9 @@ RUN \
 FROM debian:stable-slim AS build_baseos
 
 RUN \
-    mkdir -p /distroless/lib \
-    && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2
+    mkdir -p /distroless/lib /distroless/usr/share/zoneinfo \
+    && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
+    && cp -rf /usr/share/zoneinfo/* /distroless/usr/share/zoneinfo/
 
 FROM busybox:latest AS rebased_qstash
 
