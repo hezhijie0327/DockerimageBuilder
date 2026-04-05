@@ -1,3 +1,34 @@
+diff --git a/packages/builtin-tool-cron/src/systemRole.ts b/packages/builtin-tool-cron/src/systemRole.ts
+index 28ab37d901d..cd945e303fa 100644
+--- a/packages/builtin-tool-cron/src/systemRole.ts
++++ b/packages/builtin-tool-cron/src/systemRole.ts
+@@ -33,21 +33,24 @@ Cron patterns use the format: "minute hour day month weekday"
+ 
+ **Common Patterns:**
+ - \`0 9 * * *\` - Every day at 9:00 AM
++- \`15 9 * * *\` - Every day at 9:15 AM
+ - \`30 9 * * *\` - Every day at 9:30 AM
++- \`45 9 * * *\` - Every day at 9:45 AM
+ - \`0 */2 * * *\` - Every 2 hours at :00
++- \`15 */2 * * *\` - Every 2 hours at :15
+ - \`30 */2 * * *\` - Every 2 hours at :30
+ - \`0 9 * * 1-5\` - Weekdays at 9:00 AM
+ - \`0 9 * * 1,3,5\` - Monday, Wednesday, Friday at 9:00 AM
+ - \`0 9 * * 0\` - Every Sunday at 9:00 AM
+ 
+ **Field Values:**
+-- Minute: 0-59 (only 0 or 30 for minimum 30-minute interval)
++- Minute: 0-59 (recommended: 0, 15, 30, 45 for minimum 15-minute interval)
+ - Hour: 0-23 or */N for every N hours
+ - Day: 1-31 or * for every day
+ - Month: 1-12 or * for every month
+ - Weekday: 0-6 (0=Sunday, 1=Monday, etc.) or * for every day
+ 
+-**Important:** Minimum execution interval is 30 minutes. Patterns like \`*/5 * * * *\` (every 5 minutes) are not allowed.
++**Important:** Minimum execution interval is 15 minutes. Patterns like \`*/5 * * * *\` (every 5 minutes) are not allowed.
+ </cron_pattern_guide>
+ 
+ <timezone_guide>
 diff --git a/packages/database/src/models/agentCronJob.ts b/packages/database/src/models/agentCronJob.ts
 index 402a2237781..042639fd106 100644
 --- a/packages/database/src/models/agentCronJob.ts
@@ -25,6 +56,154 @@ index 402a2237781..042639fd106 100644
              WHEN ${agentCronJobs.remainingExecutions} IS NULL THEN NULL
              ELSE ${agentCronJobs.remainingExecutions} - 1
            END
+diff --git a/packages/types/src/agentCronJob/index.ts b/packages/types/src/agentCronJob/index.ts
+index 81af0e502a2..6c9b9f856b5 100644
+--- a/packages/types/src/agentCronJob/index.ts
++++ b/packages/types/src/agentCronJob/index.ts
+@@ -1,5 +1,54 @@
+ import { z } from 'zod';
+ 
++const CRON_SHORTCUTS = new Set([
++  '@annually',
++  '@yearly',
++  '@monthly',
++  '@weekly',
++  '@daily',
++  '@hourly',
++  '@reboot',
++]);
++
++const cronEveryPattern = /^@every (?:\d+(?:ns|us|µs|ms|[hms]))+$/;
++const cronFieldPattern = /^(?:\*|\d+)(?:[/-]\d+)?(?:,\d+(?:[/-]\d+)?)*$/;
++const validQuarterMinutes = new Set(['0', '15', '30', '45']);
++
++const parseStepValue = (value: string) => {
++  if (!value.startsWith('*/')) {
++    return null;
++  }
++
++  const stepText = value.slice(2);
++  if (!/^\d+$/.test(stepText)) {
++    return null;
++  }
++
++  const step = Number.parseInt(stepText, 10);
++  if (Number.isNaN(step)) {
++    return null;
++  }
++
++  return step;
++};
++
++const isValidCronPattern = (pattern: string) => {
++  if (CRON_SHORTCUTS.has(pattern)) {
++    return true;
++  }
++
++  if (cronEveryPattern.test(pattern)) {
++    return true;
++  }
++
++  const fields = pattern.trim().split(/\s+/);
++  if (fields.length < 5 || fields.length > 7) {
++    return false;
++  }
++
++  return fields.every((field) => cronFieldPattern.test(field));
++};
++
+ // Execution conditions type
+ export interface ExecutionConditions {
+   maxExecutionsPerDay?: number;
+@@ -11,65 +60,52 @@ export interface ExecutionConditions {
+ }
+ 
+ // Cron pattern validation schema
+-export const cronPatternSchema = z
+-  .string()
+-  .regex(
+-    /^(@(annually|yearly|monthly|weekly|daily|hourly|reboot))|(@every (\d+(ns|us|µs|ms|[hms]))+)|((((\d+,)+\d+|(\d+([/-])\d+)|\d+|\*) ?){5,7})$/,
+-    'Invalid cron pattern',
+-  );
+-
+-// Minimum 30 minutes validation (using standard cron format)
++export const cronPatternSchema = z.string().refine(isValidCronPattern, 'Invalid cron pattern');
++
++// Minimum 15 minutes validation (using standard cron format)
+ export const minimumIntervalSchema = z.string().refine((pattern) => {
+   // Standard cron format: minute hour day month weekday
+-  // Parse pattern to validate minimum 30-minute interval
+-  const parts = pattern.split(' ');
++  // Parse pattern to validate minimum 15-minute interval
++  const parts = pattern.trim().split(/\s+/);
+   if (parts.length !== 5) {
+     return false;
+   }
+ 
+   const [minute, hour] = parts;
+ 
+-  // Validate minute is 0 or 30 (we only allow 30-minute intervals)
+-  const isValidMinute = minute === '0' || minute === '30' || minute === '*/30';
+-
+-  if (!isValidMinute) {
+-    return false;
++  // Allow minute intervals >= 15 (e.g., */15, */30, */45, */60)
++  const minuteStep = parseStepValue(minute);
++  if (minuteStep !== null) {
++    return minuteStep >= 15;
+   }
+ 
+-  // Allow minute intervals >= 30 (e.g., */30, */45, */60)
+-  if (minute.startsWith('*/')) {
+-    const interval = parseInt(minute.slice(2));
+-    if (!isNaN(interval) && interval >= 30) {
+-      return true;
+-    }
++  // Validate minute is 0, 15, 30 or 45 (we only allow 15-minute intervals)
++  if (!validQuarterMinutes.has(minute)) {
+     return false;
+   }
+ 
+-  // Allow hourly patterns: {0|30} */N * * * where N >= 1
+-  if ((minute === '0' || minute === '30') && hour.startsWith('*/')) {
+-    const interval = parseInt(hour.slice(2));
+-    if (!isNaN(interval) && interval >= 1) {
+-      return true;
+-    }
+-    return false;
++  // Allow hourly patterns: {0|15|30|45} */N * * * where N >= 1
++  const hourStep = parseStepValue(hour);
++  if (hourStep !== null) {
++    return hourStep >= 1;
+   }
+ 
+-  // Allow hourly patterns: {0|30} * * * * (every hour at :00 or :30)
+-  if ((minute === '0' || minute === '30') && hour === '*') {
++  // Allow hourly patterns: {0|15|30|45} * * * * (every hour at :00, :15, :30 or :45)
++  if (hour === '*') {
+     return true;
+   }
+ 
+-  // Allow specific hour patterns: {0|30} N * * * (runs once per day)
+-  // or {0|30} N * * {weekdays} (runs on specific weekdays)
+-  if ((minute === '0' || minute === '30') && /^\d+$/.test(hour)) {
+-    const h = parseInt(hour);
+-    if (!isNaN(h) && h >= 0 && h <= 23) {
++  // Allow specific hour patterns: {0|15|30|45} N * * * (runs once per day)
++  // or {0|15|30|45} N * * {weekdays} (runs on specific weekdays)
++  if (/^\d{1,2}$/.test(hour)) {
++    const h = Number.parseInt(hour, 10);
++    if (!Number.isNaN(h) && h >= 0 && h <= 23) {
+       return true;
+     }
+   }
+ 
+   return false;
+-}, 'Minimum execution interval is 30 minutes');
++}, 'Minimum execution interval is 15 minutes');
+ 
+ // Execution conditions schema
+ export const ExecutionConditionsSchema = z
 diff --git a/packages/types/src/serverConfig.ts b/packages/types/src/serverConfig.ts
 index 5e2592d018a..12a6794934f 100644
 --- a/packages/types/src/serverConfig.ts
@@ -206,6 +385,61 @@ index 9d42ce434d8..efc3bd377d0 100644
  
    const addAction = (
      <ActionIcon
+diff --git a/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts b/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
+index 5aba2ca4a43..d567092cf7b 100644
+--- a/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
++++ b/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
+@@ -1,4 +1,4 @@
+-import { type Dayjs } from 'dayjs';
++import type { Dayjs } from 'dayjs';
+ 
+ export type ScheduleType = 'daily' | 'hourly' | 'weekly';
+ 
+@@ -100,13 +100,14 @@ export const parseCronPattern = (
+   }
+ 
+   const [minute, hour, , , weekday] = parts;
+-  const rawMinute = minute === '*' ? 0 : Number.parseInt(minute);
+-  // Normalize to nearest 30-minute interval (0 or 30)
+-  const triggerMinute = rawMinute >= 15 && rawMinute < 45 ? 30 : 0;
++  const rawMinute = minute === '*' ? 0 : Number.parseInt(minute, 10);
++  const safeMinute = Number.isFinite(rawMinute) && rawMinute >= 0 ? Math.min(rawMinute, 59) : 0;
++  // Normalize to quarter-hour interval (0, 15, 30, 45)
++  const triggerMinute = Math.floor(safeMinute / 15) * 15;
+ 
+   // Hourly: 0 * * * * or 0 */N * * *
+   if (hour.startsWith('*/')) {
+-    const interval = Number.parseInt(hour.slice(2));
++    const interval = Number.parseInt(hour.slice(2), 10);
+     return {
+       hourlyInterval: interval,
+       scheduleType: 'hourly',
+@@ -123,11 +124,11 @@ export const parseCronPattern = (
+     };
+   }
+ 
+-  const triggerHour = Number.parseInt(hour);
++  const triggerHour = Number.parseInt(hour, 10);
+ 
+   // Weekly: has specific weekday(s)
+   if (weekday !== '*') {
+-    const weekdays = weekday.split(',').map((d) => Number.parseInt(d));
++    const weekdays = weekday.split(',').map((d) => Number.parseInt(d, 10));
+     return {
+       scheduleType: 'weekly',
+       triggerHour,
+@@ -155,8 +156,9 @@ export const buildCronPattern = (
+   weekdays?: number[],
+ ): string => {
+   const rawMinute = triggerTime.minute();
+-  // Normalize to 0 or 30
+-  const minute = rawMinute >= 15 && rawMinute < 45 ? 30 : 0;
++  const safeMinute = Number.isFinite(rawMinute) && rawMinute >= 0 ? Math.min(rawMinute, 59) : 0;
++  // Normalize to 0, 15, 30, or 45
++  const minute = Math.floor(safeMinute / 15) * 15;
+   const hour = triggerTime.hour();
+ 
+   switch (scheduleType) {
 diff --git a/src/routes/(main)/agent/cron/[cronId]/index.tsx b/src/routes/(main)/agent/cron/[cronId]/index.tsx
 index c760c370f52..f893143a90e 100644
 --- a/src/routes/(main)/agent/cron/[cronId]/index.tsx
