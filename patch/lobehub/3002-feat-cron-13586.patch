@@ -431,16 +431,28 @@ index 6a47920142b..7003fb0b462 100644
            message: 'Cron job updated successfully',
 diff --git a/src/server/services/agentCron/qstashSchedule.ts b/src/server/services/agentCron/qstashSchedule.ts
 new file mode 100644
-index 00000000000..85ba389f556
+index 00000000000..e5ba3ac18c8
 --- /dev/null
 +++ b/src/server/services/agentCron/qstashSchedule.ts
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,81 @@
++import debug from 'debug';
++
 +import { appEnv } from '@/envs/app';
 +import { qstashClient } from '@/libs/qstash';
++
++const log = debug('server:agentCron:qstashSchedule');
 +
 +type CronScheduleJob = {
 +  cronPattern: string;
 +  id: string;
++  timezone?: string | null;
++};
++
++const buildQStashCron = (job: CronScheduleJob): string => {
++  const timezone = job.timezone?.trim();
++  if (!timezone) return job.cronPattern;
++
++  return `CRON_TZ=${timezone} ${job.cronPattern}`;
 +};
 +
 +const buildExecuteUrl = (): string => {
@@ -452,6 +464,16 @@ index 00000000000..85ba389f556
 +};
 +
 +export const upsertCronJobSchedule = async (job: CronScheduleJob): Promise<string> => {
++  const qstashCron = buildQStashCron(job);
++
++  log(
++    'Upserting QStash schedule: jobId=%s cronPattern=%s timezone=%s qstashCron=%s',
++    job.id,
++    job.cronPattern,
++    job.timezone || 'UTC',
++    qstashCron,
++  );
++
 +  const headers: Record<string, string> = {
 +    'Content-Type': 'application/json',
 +  };
@@ -463,7 +485,7 @@ index 00000000000..85ba389f556
 +
 +  const response = await qstashClient.schedules.create({
 +    body: JSON.stringify({ jobId: job.id }),
-+    cron: job.cronPattern,
++    cron: qstashCron,
 +    destination: buildExecuteUrl(),
 +    headers,
 +    method: 'POST',
@@ -471,18 +493,25 @@ index 00000000000..85ba389f556
 +    scheduleId: job.id,
 +  });
 +
++  log('Upserted QStash schedule: jobId=%s scheduleId=%s', job.id, response.scheduleId);
++
 +  return response.scheduleId;
 +};
 +
 +export const deleteCronJobSchedule = async (jobId: string): Promise<void> => {
 +  try {
++    log('Deleting QStash schedule: jobId=%s scheduleId=%s', jobId, jobId);
 +    await qstashClient.schedules.delete(jobId);
++    log('Deleted QStash schedule: jobId=%s scheduleId=%s', jobId, jobId);
 +  } catch (error) {
 +    // Idempotent delete: ignore not-found schedule
 +    const message = error instanceof Error ? error.message : String(error);
 +    if (message.includes('404') || message.toLowerCase().includes('not found')) {
++      log('QStash schedule already absent: jobId=%s scheduleId=%s', jobId, jobId);
 +      return;
 +    }
++
++    log('Failed to delete QStash schedule: jobId=%s scheduleId=%s error=%O', jobId, jobId, error);
 +
 +    throw error;
 +  }
