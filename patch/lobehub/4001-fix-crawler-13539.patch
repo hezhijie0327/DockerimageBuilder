@@ -1,63 +1,934 @@
-diff --git a/packages/web-crawler/src/__tests__/crawler.test.ts b/packages/web-crawler/src/__tests__/crawler.test.ts
-index ba971ca7e76..858e3966b6a 100644
---- a/packages/web-crawler/src/__tests__/crawler.test.ts
-+++ b/packages/web-crawler/src/__tests__/crawler.test.ts
-@@ -187,6 +187,40 @@ describe('Crawler', () => {
+diff --git a/locales/en-US/tool.json b/locales/en-US/tool.json
+index 9d702765a04..9ba1cda2f14 100644
+--- a/locales/en-US/tool.json
++++ b/locales/en-US/tool.json
+@@ -136,6 +136,8 @@
+   "search.searchCategory.value.videos": "Videos",
+   "search.searchEngine.placeholder": "Search Engine",
+   "search.searchEngine.title": "Search Engine:",
++  "search.searchProvider.placeholder": "Search Provider",
++  "search.searchProvider.title": "Search Provider:",
+   "search.searchResult": "Number of searches:",
+   "search.searchTimeRange.title": "Time Range:",
+   "search.searchTimeRange.value.anytime": "Anytime",
+diff --git a/locales/zh-CN/tool.json b/locales/zh-CN/tool.json
+index ae80d6bed7b..a3082eaa767 100644
+--- a/locales/zh-CN/tool.json
++++ b/locales/zh-CN/tool.json
+@@ -136,6 +136,8 @@
+   "search.searchCategory.value.videos": "视频",
+   "search.searchEngine.placeholder": "搜索引擎",
+   "search.searchEngine.title": "搜索引擎：",
++  "search.searchProvider.placeholder": "搜索服务商",
++  "search.searchProvider.title": "搜索服务商：",
+   "search.searchResult": "搜索数量：",
+   "search.searchTimeRange.title": "时间范围：",
+   "search.searchTimeRange.value.anytime": "时间不限",
+diff --git a/packages/builtin-tool-web-browsing/src/ExecutionRuntime/index.test.ts b/packages/builtin-tool-web-browsing/src/ExecutionRuntime/index.test.ts
+index 6f07d76e612..cac8fb56740 100644
+--- a/packages/builtin-tool-web-browsing/src/ExecutionRuntime/index.test.ts
++++ b/packages/builtin-tool-web-browsing/src/ExecutionRuntime/index.test.ts
+@@ -83,4 +83,61 @@ describe('WebBrowsingExecutionRuntime', () => {
+       expect(result.content).toBe('Network error');
      });
    });
- 
-+  it('should fall back to configured impls when rule impls are not in user-configured impls', async () => {
-+    const mockResult = {
-+      content: 'test content'.padEnd(101, ' '),
-+      contentType: 'text' as const,
-+      url: 'https://example.com',
-+    };
 +
-+    // Create crawler with only 'naive' configured
-+    const naiveCrawler = new Crawler({ impls: ['naive'] });
++  describe('crawlMultiPages', () => {
++    it('should forward crawlProvider to the search service', async () => {
++      const mockSearchService = {
++        crawlPages: vi.fn().mockResolvedValue({
++          results: [
++            {
++              crawler: 'browserless',
++              data: { content: 'Test content', contentType: 'text' },
++              originalUrl: 'https://example.com',
++            },
++          ],
++        }),
++        webSearch: vi.fn(),
++      };
 +
-+    const { crawlImpls } = await import('../crawImpl');
-+    vi.mocked(crawlImpls.naive).mockResolvedValue(mockResult);
++      const runtime = new WebBrowsingExecutionRuntime({ searchService: mockSearchService });
++      await runtime.crawlMultiPages({
++        crawlProvider: 'browserless',
++        urls: ['https://example.com'],
++      });
 +
-+    const { applyUrlRules } = await import('../utils/appUrlRules');
-+    // URL rule says to use 'jina', but user hasn't configured jina
-+    vi.mocked(applyUrlRules).mockReturnValue({
-+      transformedUrl: 'https://example.com',
-+      filterOptions: {},
-+      impls: ['jina'],
-+    });
-+
-+    const result = await naiveCrawler.crawl({
-+      url: 'https://example.com',
-+    });
-+
-+    // Should use 'naive' (user-configured) instead of 'jina' (rule-specified but not configured)
-+    expect(result).toEqual({
-+      crawler: 'naive',
-+      data: mockResult,
-+      originalUrl: 'https://example.com',
-+      transformedUrl: undefined,
++      expect(mockSearchService.crawlPages).toHaveBeenCalledWith({
++        crawlProvider: 'browserless',
++        urls: ['https://example.com'],
++      });
 +    });
 +  });
 +
-   it('should skip results with content length <= 100', async () => {
-     const mockResult = {
-       content: 'short content', // Content length <= 100
++  describe('crawlSinglePage', () => {
++    it('should forward crawlProvider to crawlMultiPages flow', async () => {
++      const mockSearchService = {
++        crawlPages: vi.fn().mockResolvedValue({
++          results: [
++            {
++              crawler: 'browserless',
++              data: { content: 'Test content', contentType: 'text' },
++              originalUrl: 'https://example.com',
++            },
++          ],
++        }),
++        webSearch: vi.fn(),
++      };
++
++      const runtime = new WebBrowsingExecutionRuntime({ searchService: mockSearchService });
++
++      await runtime.crawlSinglePage({
++        crawlProvider: 'browserless',
++        url: 'https://example.com',
++      });
++
++      expect(mockSearchService.crawlPages).toHaveBeenCalledWith({
++        crawlProvider: 'browserless',
++        urls: ['https://example.com'],
++      });
++    });
++  });
+ });
+diff --git a/packages/builtin-tool-web-browsing/src/ExecutionRuntime/index.ts b/packages/builtin-tool-web-browsing/src/ExecutionRuntime/index.ts
+index c814e1c3d3a..179cf05dbee 100644
+--- a/packages/builtin-tool-web-browsing/src/ExecutionRuntime/index.ts
++++ b/packages/builtin-tool-web-browsing/src/ExecutionRuntime/index.ts
+@@ -56,11 +56,12 @@ export class WebBrowsingExecutionRuntime {
+   }
+ 
+   async crawlSinglePage(args: CrawlSinglePageQuery): Promise<BuiltinServerRuntimeOutput> {
+-    return this.crawlMultiPages({ urls: [args.url] });
++    return this.crawlMultiPages({ crawlProvider: args.crawlProvider, urls: [args.url] });
+   }
+ 
+   async crawlMultiPages(args: CrawlMultiPagesQuery): Promise<BuiltinServerRuntimeOutput> {
+     const response = await this.searchService.crawlPages({
++      crawlProvider: args.crawlProvider,
+       urls: args.urls,
+     });
+ 
+diff --git a/packages/builtin-tool-web-browsing/src/client/Portal/Search/index.tsx b/packages/builtin-tool-web-browsing/src/client/Portal/Search/index.tsx
+index a479707925e..d348d8e566a 100644
+--- a/packages/builtin-tool-web-browsing/src/client/Portal/Search/index.tsx
++++ b/packages/builtin-tool-web-browsing/src/client/Portal/Search/index.tsx
+@@ -19,6 +19,7 @@ interface InspectorUIProps {
+ const Inspector = memo<InspectorUIProps>(({ query: args, messageId, response }) => {
+   const engines = uniq((response.results || []).flatMap((result) => result.engines));
+   const defaultEngines = engines.length > 0 ? engines : args?.searchEngines || [];
++  const defaultSearchProvider = args?.searchProvider;
+   const loading = useChatStore(chatToolSelectors.isSearXNGSearching(messageId));
+ 
+   if (loading) {
+@@ -28,6 +29,7 @@ const Inspector = memo<InspectorUIProps>(({ query: args, messageId, response })
+           aiSummary={false}
+           defaultEngines={defaultEngines}
+           defaultQuery={args.query}
++          defaultSearchProvider={defaultSearchProvider}
+           messageId={messageId}
+           tooltip={false}
+         />
+@@ -53,6 +55,7 @@ const Inspector = memo<InspectorUIProps>(({ query: args, messageId, response })
+           aiSummary={false}
+           defaultEngines={defaultEngines}
+           defaultQuery={args.query}
++          defaultSearchProvider={defaultSearchProvider}
+           messageId={messageId}
+           tooltip={false}
+         />
+diff --git a/packages/builtin-tool-web-browsing/src/client/Render/Search/SearchQuery/index.tsx b/packages/builtin-tool-web-browsing/src/client/Render/Search/SearchQuery/index.tsx
+index 2d05390267a..24b0b50605c 100644
+--- a/packages/builtin-tool-web-browsing/src/client/Render/Search/SearchQuery/index.tsx
++++ b/packages/builtin-tool-web-browsing/src/client/Render/Search/SearchQuery/index.tsx
+@@ -28,11 +28,13 @@ const SearchQueryView = memo<SearchQueryViewProps>(
+ 
+     const engines = uniq(searchResults.flatMap((result) => result.engines));
+     const defaultEngines = engines.length > 0 ? engines : args.searchEngines || [];
++    const defaultSearchProvider = args.searchProvider;
+ 
+     return editing ? (
+       <SearchBar
+         defaultEngines={defaultEngines}
+         defaultQuery={args?.query}
++        defaultSearchProvider={defaultSearchProvider}
+         messageId={messageId}
+         searchAddon={
+           <ActionIcon
+diff --git a/packages/builtin-tool-web-browsing/src/client/components/SearchBar.tsx b/packages/builtin-tool-web-browsing/src/client/components/SearchBar.tsx
+index 9dd7388a538..e1c1469dc61 100644
+--- a/packages/builtin-tool-web-browsing/src/client/components/SearchBar.tsx
++++ b/packages/builtin-tool-web-browsing/src/client/components/SearchBar.tsx
+@@ -19,6 +19,7 @@ import { useChatStore } from '@/store/chat';
+ import { chatToolSelectors } from '@/store/chat/selectors';
+ 
+ import { CATEGORY_ICON_MAP, ENGINE_ICON_MAP } from '../../const';
++import { SEARCH_PROVIDER_ENUM } from '../../manifest';
+ import { CategoryAvatar } from './CategoryAvatar';
+ import { EngineAvatar } from './EngineAvatar';
+ 
+@@ -34,6 +35,7 @@ interface SearchBarProps {
+   defaultCategories?: string[];
+   defaultEngines?: string[];
+   defaultQuery: string;
++  defaultSearchProvider?: string;
+   defaultTimeRange?: string;
+   messageId: string;
+   onSearch?: (searchQuery: SearchQuery) => void;
+@@ -45,6 +47,7 @@ const SearchBar = memo<SearchBarProps>(
+   ({
+     defaultCategories = [],
+     defaultEngines = [],
++    defaultSearchProvider,
+     defaultTimeRange,
+     aiSummary = true,
+     defaultQuery,
+@@ -58,6 +61,7 @@ const SearchBar = memo<SearchBarProps>(
+     const [query, setQuery] = useState(defaultQuery);
+     const [categories, setCategories] = useState(defaultCategories);
+     const [engines, setEngines] = useState(defaultEngines);
++    const [searchProvider, setSearchProvider] = useState<string | undefined>(defaultSearchProvider);
+     const [time_range, setTimeRange] = useState(defaultTimeRange);
+     const isMobile = useIsMobile();
+     const [reSearchWithSearXNG] = useChatStore((s) => [s.triggerSearchAgain]);
+@@ -67,6 +71,7 @@ const SearchBar = memo<SearchBarProps>(
+         query,
+         searchCategories: categories,
+         searchEngines: engines,
++        searchProvider,
+         searchTimeRange: time_range,
+       };
+       onSearch?.(data);
+@@ -98,6 +103,40 @@ const SearchBar = memo<SearchBarProps>(
+           {searchAddon}
+         </Flexbox>
+         <Block gap={24} padding={12} variant={'outlined'}>
++          {isMobile ? (
++            <Select
++              placeholder={t('search.searchProvider.placeholder')}
++              size={'small'}
++              value={searchProvider}
++              variant={'filled'}
++              options={SEARCH_PROVIDER_ENUM.map((item) => ({
++                label: item,
++                value: item,
++              }))}
++              onChange={(checkedValue) => {
++                setSearchProvider(checkedValue as string | undefined);
++              }}
++            />
++          ) : (
++            <Flexbox horizontal align={'flex-start'} gap={8}>
++              <Text className={styles.textHeader} type={'secondary'}>
++                {t('search.searchProvider.title')}
++              </Text>
++              <Select
++                allowClear
++                placeholder={t('search.searchProvider.placeholder')}
++                value={searchProvider}
++                options={SEARCH_PROVIDER_ENUM.map((item) => ({
++                  label: item,
++                  value: item,
++                }))}
++                onChange={(checkedValue) => {
++                  setSearchProvider(checkedValue as string | undefined);
++                }}
++              />
++            </Flexbox>
++          )}
++
+           {isMobile ? (
+             <Select
+               mode={'multiple'}
+diff --git a/packages/builtin-tool-web-browsing/src/manifest.ts b/packages/builtin-tool-web-browsing/src/manifest.ts
+index 264a22638e4..5001e8e4979 100644
+--- a/packages/builtin-tool-web-browsing/src/manifest.ts
++++ b/packages/builtin-tool-web-browsing/src/manifest.ts
+@@ -4,6 +4,68 @@ import dayjs from 'dayjs';
+ import { systemPrompt } from './systemRole';
+ import { WebBrowsingApiName } from './types';
+ 
++export const SEARCH_PROVIDER_ENUM = [
++  'anspire',
++  'bocha',
++  'brave',
++  'exa',
++  'firecrawl',
++  'google',
++  'jina',
++  'kagi',
++  'search1api',
++  'searxng',
++  'tavily',
++] as const;
++
++export const CRAWL_PROVIDER_ENUM = [
++  'browserless',
++  'exa',
++  'firecrawl',
++  'jina',
++  'naive',
++  'search1api',
++  'tavily',
++] as const;
++
++interface WebBrowsingManifestOptions {
++  crawlProvidersEnv?: string;
++  searchProvidersEnv?: string;
++}
++
++const parseProviderEnv = (envValue?: string) => {
++  return (envValue || '')
++    .replaceAll('，', ',')
++    .split(',')
++    .map((item) => item.trim())
++    .filter(Boolean);
++};
++
++const filterProviders = <T extends string>(availableProviders: readonly T[], envValue?: string) => {
++  const enabledProviders = new Set(parseProviderEnv(envValue));
++
++  return availableProviders.filter((provider) => enabledProviders.has(provider));
++};
++
++const updateProviderItems = <T extends string>(
++  properties: Record<string, any>,
++  key: 'crawlProvider' | 'searchProvider',
++  availableProviders: readonly T[],
++  envValue?: string,
++) => {
++  const configuredProviders = filterProviders(availableProviders, envValue);
++
++  if (configuredProviders.length > 0) {
++    properties[key] = {
++      ...(properties[key] as object),
++      enum: configuredProviders,
++      type: 'string',
++    };
++  } else {
++    delete properties[key];
++  }
++};
++
+ export const WebBrowsingManifest: BuiltinToolManifest = {
+   api: [
+     {
+@@ -24,6 +86,11 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
+             },
+             type: 'array',
+           },
++          searchProvider: {
++            description: 'The search provider you can use:',
++            enum: [],
++            type: 'string',
++          },
+           searchEngines: {
+             description: 'The search engines you can use:',
+             items: {
+@@ -67,6 +134,11 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
+       name: WebBrowsingApiName.crawlSinglePage,
+       parameters: {
+         properties: {
++          crawlProvider: {
++            description: 'The crawl provider you can use:',
++            enum: [],
++            type: 'string',
++          },
+           url: {
+             description: 'The url need to be crawled',
+             type: 'string',
+@@ -82,6 +154,11 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
+       name: WebBrowsingApiName.crawlMultiPages,
+       parameters: {
+         properties: {
++          crawlProvider: {
++            description: 'The crawl provider you can use:',
++            enum: [],
++            type: 'string',
++          },
+           urls: {
+             items: {
+               description: 'The urls need to be crawled',
+@@ -107,3 +184,49 @@ export const WebBrowsingManifest: BuiltinToolManifest = {
+   systemRole: systemPrompt(dayjs(new Date()).format('YYYY-MM-DD')),
+   type: 'builtin',
+ };
++
++export const createWebBrowsingManifest = (
++  options: WebBrowsingManifestOptions = {},
++): BuiltinToolManifest => {
++  const searchProviders = parseProviderEnv(options.searchProvidersEnv);
++  const crawlProviders = parseProviderEnv(options.crawlProvidersEnv);
++
++  const api = WebBrowsingManifest.api.map((apiItem) => {
++    const properties = { ...apiItem.parameters?.properties };
++
++    if ('searchProvider' in properties) {
++      updateProviderItems(
++        properties,
++        'searchProvider',
++        SEARCH_PROVIDER_ENUM,
++        options.searchProvidersEnv,
++      );
++    }
++
++    if ('crawlProvider' in properties) {
++      updateProviderItems(
++        properties,
++        'crawlProvider',
++        CRAWL_PROVIDER_ENUM,
++        options.crawlProvidersEnv,
++      );
++    }
++
++    return {
++      ...apiItem,
++      parameters: {
++        ...apiItem.parameters,
++        properties,
++      },
++    };
++  });
++
++  return {
++    ...WebBrowsingManifest,
++    api,
++    systemRole: systemPrompt(dayjs(new Date()).format('YYYY-MM-DD'), {
++      enabledCrawlProviders: crawlProviders,
++      enabledSearchProviders: searchProviders,
++    }),
++  };
++};
+diff --git a/packages/builtin-tool-web-browsing/src/systemRole.ts b/packages/builtin-tool-web-browsing/src/systemRole.ts
+index 7056f8fd49a..8c89c05d4b1 100644
+--- a/packages/builtin-tool-web-browsing/src/systemRole.ts
++++ b/packages/builtin-tool-web-browsing/src/systemRole.ts
+@@ -1,6 +1,18 @@
+-export const systemPrompt = (
+-  date: string,
+-) => `You have a Web Information tool with powerful internet access capabilities. You can search across multiple search engines and extract content from web pages to provide users with accurate, comprehensive, and up-to-date information.
++interface SystemPromptOptions {
++  enabledCrawlProviders?: string[];
++  enabledSearchProviders?: string[];
++}
++
++const formatProviderList = (providers?: string[]) => {
++  if (!providers?.length) return 'none currently enabled';
++
++  return providers.join(', ');
++};
++
++export const systemPrompt = (date: string, options: SystemPromptOptions = {}) => {
++  const { enabledCrawlProviders, enabledSearchProviders } = options;
++
++  return `You have a Web Information tool with powerful internet access capabilities. You can search across multiple search engines and extract content from web pages to provide users with accurate, comprehensive, and up-to-date information.
+ 
+ <core_capabilities>
+ 1. Search the web using multiple search engines (search)
+@@ -8,6 +20,11 @@ export const systemPrompt = (
+ 3. Retrieve content from a specific webpage (crawlSinglePage)
+ </core_capabilities>
+ 
++<provider_list>
++- Current enabled search providers: ${formatProviderList(enabledSearchProviders)}
++- Current enabled crawl providers: ${formatProviderList(enabledCrawlProviders)}
++</provider_list>
++
+ <workflow>
+ 1. Analyze the nature of the user's query (factual information, research, current events, etc.)
+ 2. Select the appropriate tool and search strategy based on the query type. For vague queries with no constraints, default to the 'general' category and reliable broad engines (e.g., Google).
+@@ -148,3 +165,4 @@ Our search service is a metasearch engine that can leverage multiple search engi
+ 
+ Current date: ${date}
+ `;
++};
+diff --git a/packages/types/src/tool/crawler.ts b/packages/types/src/tool/crawler.ts
+index 58adfe0e3fe..5eb30ed095c 100644
+--- a/packages/types/src/tool/crawler.ts
++++ b/packages/types/src/tool/crawler.ts
+@@ -1,10 +1,12 @@
+ import type { CrawlErrorResult, CrawlSuccessResult } from '@lobechat/web-crawler';
+ 
+ export interface CrawlSinglePageQuery {
++  crawlProvider?: string;
+   url: string;
+ }
+ 
+ export interface CrawlMultiPagesQuery {
++  crawlProvider?: string;
+   urls: string[];
+ }
+ 
+diff --git a/packages/types/src/tool/search/index.ts b/packages/types/src/tool/search/index.ts
+index 175b9887652..ac5ed07b257 100644
+--- a/packages/types/src/tool/search/index.ts
++++ b/packages/types/src/tool/search/index.ts
+@@ -5,6 +5,7 @@ import type { CrawlMultiPagesQuery } from '../crawler';
+ export interface SearchParams {
+   searchCategories?: string[];
+   searchEngines?: string[];
++  searchProvider?: string;
+   searchTimeRange?: string;
+ }
+ 
 diff --git a/packages/web-crawler/src/crawler.ts b/packages/web-crawler/src/crawler.ts
-index 14dcf1362ff..568b5c29db1 100644
+index 14dcf1362ff..972e952139b 100644
 --- a/packages/web-crawler/src/crawler.ts
 +++ b/packages/web-crawler/src/crawler.ts
-@@ -48,7 +48,12 @@ export class Crawler {
+@@ -48,7 +48,13 @@ export class Crawler {
      let finalCrawler: string | undefined;
      let finalError: Error | undefined;
  
 -    const systemImpls = (ruleImpls ?? this.impls) as CrawlImplType[];
-+    // When URL rules specify impls, filter them through user-configured impls
-+    // so that crawlers not enabled by the user are never called (fixes #13379)
++    // Determine which implementations to use based on rule and user input
 +    const filteredRuleImpls = ruleImpls
 +      ? (ruleImpls.filter((impl) => this.impls.includes(impl as CrawlImplType)) as CrawlImplType[])
 +      : undefined;
-+    const systemImpls = (filteredRuleImpls?.length ? filteredRuleImpls : this.impls) as CrawlImplType[];
++    const systemImpls = (
++      filteredRuleImpls?.length ? filteredRuleImpls : this.impls
++    ) as CrawlImplType[];
  
      const finalImpls = userImpls
        ? (userImpls.filter((impl) => Object.keys(crawlImpls).includes(impl)) as CrawlImplType[])
+diff --git a/src/locales/default/tool.ts b/src/locales/default/tool.ts
+index de7d578fc5f..d27c44354f5 100644
+--- a/src/locales/default/tool.ts
++++ b/src/locales/default/tool.ts
+@@ -159,6 +159,8 @@ export default {
+   'search.searchBar.placeholder': 'Keywords',
+   'search.searchBar.tooltip':
+     'This will refresh the search results and create a new summary message',
++  'search.searchProvider.placeholder': 'Search Provider',
++  'search.searchProvider.title': 'Search Provider:',
+   'search.searchCategory.placeholder': 'Search Category',
+   'search.searchCategory.title': 'Search Category:',
+   'search.searchCategory.value.files': 'Files',
+diff --git a/src/server/modules/Mecha/AgentToolsEngine/__tests__/index.test.ts b/src/server/modules/Mecha/AgentToolsEngine/__tests__/index.test.ts
+index 3eed3dbcddd..196e49d3aea 100644
+--- a/src/server/modules/Mecha/AgentToolsEngine/__tests__/index.test.ts
++++ b/src/server/modules/Mecha/AgentToolsEngine/__tests__/index.test.ts
+@@ -6,11 +6,20 @@ import { RemoteDeviceManifest } from '@lobechat/builtin-tool-remote-device';
+ import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
+ import { builtinTools } from '@lobechat/builtin-tools';
+ import { ToolsEngine } from '@lobechat/context-engine';
+-import { describe, expect, it } from 'vitest';
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++
++import { toolsEnv } from '@/envs/tools';
+ 
+ import { createServerAgentToolsEngine, createServerToolsEngine } from '../index';
+ import { type InstalledPlugin, type ServerAgentToolsContext } from '../types';
+ 
++vi.mock('@/envs/tools', () => ({
++  toolsEnv: {
++    CRAWLER_IMPLS: '',
++    SEARCH_PROVIDERS: '',
++  },
++}));
++
+ // Mock installed plugins
+ const mockInstalledPlugins: InstalledPlugin[] = [
+   {
+@@ -75,6 +84,24 @@ const createMockContext = (
+   ...overrides,
+ });
+ 
++const mockToolsEnv = toolsEnv as {
++  CRAWLER_IMPLS: string;
++  SEARCH_PROVIDERS: string;
++};
++
++const defaultSearchProviders = mockToolsEnv.SEARCH_PROVIDERS;
++const defaultCrawlerImpls = mockToolsEnv.CRAWLER_IMPLS;
++
++beforeEach(() => {
++  mockToolsEnv.SEARCH_PROVIDERS = defaultSearchProviders;
++  mockToolsEnv.CRAWLER_IMPLS = defaultCrawlerImpls;
++});
++
++afterEach(() => {
++  mockToolsEnv.SEARCH_PROVIDERS = defaultSearchProviders;
++  mockToolsEnv.CRAWLER_IMPLS = defaultCrawlerImpls;
++});
++
+ describe('createServerToolsEngine', () => {
+   it('should return a ToolsEngine instance', () => {
+     const context = createMockContext();
+@@ -139,6 +166,45 @@ describe('createServerToolsEngine', () => {
+     const availablePlugins = engine.getAvailablePlugins();
+     expect(availablePlugins).toContain('additional-tool');
+   });
++
++  it('should filter WebBrowsing providers by env configuration', () => {
++    mockToolsEnv.SEARCH_PROVIDERS = 'searxng,exa';
++    mockToolsEnv.CRAWLER_IMPLS = 'jina,browserless';
++
++    const context = createMockContext();
++    const engine = createServerToolsEngine(context);
++    const manifest = engine.getPluginManifest(WebBrowsingManifest.identifier)!;
++
++    const searchApi = manifest.api.find((item) => item.name === 'search')!;
++    const crawlSingleApi = manifest.api.find((item) => item.name === 'crawlSinglePage')!;
++
++    expect((searchApi.parameters as any).properties.searchProvider.enum).toEqual([
++      'exa',
++      'searxng',
++    ]);
++    expect((crawlSingleApi.parameters as any).properties.crawlProvider.enum).toEqual([
++      'browserless',
++      'jina',
++    ]);
++    expect(manifest.systemRole).toContain('<provider_list>');
++    expect(manifest.systemRole).toContain('- Current enabled search providers: searxng, exa');
++    expect(manifest.systemRole).toContain('- Current enabled crawl providers: jina, browserless');
++  });
++
++  it('should remove provider options when env is not configured', () => {
++    mockToolsEnv.SEARCH_PROVIDERS = '';
++    mockToolsEnv.CRAWLER_IMPLS = '';
++
++    const context = createMockContext();
++    const engine = createServerToolsEngine(context);
++    const manifest = engine.getPluginManifest(WebBrowsingManifest.identifier)!;
++
++    const searchApi = manifest.api.find((item) => item.name === 'search')!;
++    const crawlSingleApi = manifest.api.find((item) => item.name === 'crawlSinglePage')!;
++
++    expect((searchApi.parameters as any).properties.searchProvider).toBeUndefined();
++    expect((crawlSingleApi.parameters as any).properties.crawlProvider).toBeUndefined();
++  });
+ });
+ 
+ describe('createServerAgentToolsEngine', () => {
+diff --git a/src/server/modules/Mecha/AgentToolsEngine/index.ts b/src/server/modules/Mecha/AgentToolsEngine/index.ts
+index 07cc2a05a0c..9e58d6e6196 100644
+--- a/src/server/modules/Mecha/AgentToolsEngine/index.ts
++++ b/src/server/modules/Mecha/AgentToolsEngine/index.ts
+@@ -16,12 +16,17 @@ import { LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
+ import { MemoryManifest } from '@lobechat/builtin-tool-memory';
+ import { MessageManifest } from '@lobechat/builtin-tool-message';
+ import { RemoteDeviceManifest } from '@lobechat/builtin-tool-remote-device';
+-import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
++import {
++  createWebBrowsingManifest,
++  WebBrowsingManifest,
++} from '@lobechat/builtin-tool-web-browsing';
+ import { alwaysOnToolIds, builtinTools, defaultToolIds } from '@lobechat/builtin-tools';
+ import { createEnableChecker, type LobeToolManifest } from '@lobechat/context-engine';
+ import { ToolsEngine } from '@lobechat/context-engine';
+ import debug from 'debug';
+ 
++import { toolsEnv } from '@/envs/tools';
++
+ import {
+   type ServerAgentToolsContext,
+   type ServerAgentToolsEngineConfig,
+@@ -58,7 +63,16 @@ export const createServerToolsEngine = (
+     .filter(Boolean);
+ 
+   // Get all builtin tool manifests
+-  const builtinManifests = builtinTools.map((tool) => tool.manifest as LobeToolManifest);
++  const builtinManifests = builtinTools.map((tool) => {
++    if (tool.identifier === WebBrowsingManifest.identifier) {
++      return createWebBrowsingManifest({
++        crawlProvidersEnv: toolsEnv.CRAWLER_IMPLS,
++        searchProvidersEnv: toolsEnv.SEARCH_PROVIDERS,
++      });
++    }
++
++    return tool.manifest as LobeToolManifest;
++  });
+ 
+   // Combine all manifests
+   const allManifests = [...pluginManifests, ...builtinManifests, ...additionalManifests];
+diff --git a/src/server/routers/tools/search.test.ts b/src/server/routers/tools/search.test.ts
+index b995f5a9cef..726255f8035 100644
+--- a/src/server/routers/tools/search.test.ts
++++ b/src/server/routers/tools/search.test.ts
+@@ -37,7 +37,7 @@ describe('searchRouter', () => {
+ 
+       const result = await caller.crawlPages({
+         urls: ['http://test1.com', 'http://test2.com'],
+-        impls: ['naive'],
++        crawlProvider: 'naive',
+       });
+ 
+       expect(result.results).toHaveLength(2);
+@@ -60,13 +60,13 @@ describe('searchRouter', () => {
+       for (const impl of allImpls) {
+         const result = await caller.crawlPages({
+           urls: ['http://test.com'],
+-          impls: [impl],
++          crawlProvider: impl,
+         });
+         expect(result.results).toHaveLength(1);
+       }
+     });
+ 
+-    it('should work without specifying impls', async () => {
++    it('should work without specifying crawlProvider', async () => {
+       const caller = searchRouter.createCaller(mockContext as any);
+ 
+       const result = await caller.crawlPages({
+diff --git a/src/server/routers/tools/search.ts b/src/server/routers/tools/search.ts
+index 682d4de58f8..af492711820 100644
+--- a/src/server/routers/tools/search.ts
++++ b/src/server/routers/tools/search.ts
+@@ -1,3 +1,4 @@
++import { CRAWL_PROVIDER_ENUM, SEARCH_PROVIDER_ENUM } from '@lobechat/builtin-tool-web-browsing';
+ import { z } from 'zod';
+ 
+ import { authedProcedure, router } from '@/libs/trpc/lambda';
+@@ -9,10 +10,7 @@ export const searchRouter = router({
+   crawlPages: searchProcedure
+     .input(
+       z.object({
+-        impls: z
+-          .enum(['browserless', 'exa', 'firecrawl', 'jina', 'naive', 'search1api', 'tavily'])
+-          .array()
+-          .optional(),
++        crawlProvider: z.enum(CRAWL_PROVIDER_ENUM).optional(),
+         urls: z.string().array(),
+       }),
+     )
+@@ -27,6 +25,7 @@ export const searchRouter = router({
+           .object({
+             searchCategories: z.array(z.string()).optional(),
+             searchEngines: z.array(z.string()).optional(),
++            searchProvider: z.enum(SEARCH_PROVIDER_ENUM).optional(),
+             searchTimeRange: z.string().optional(),
+           })
+           .optional(),
+@@ -43,6 +42,7 @@ export const searchRouter = router({
+         query: z.string(),
+         searchCategories: z.array(z.string()).optional(),
+         searchEngines: z.array(z.string()).optional(),
++        searchProvider: z.enum(SEARCH_PROVIDER_ENUM).optional(),
+         searchTimeRange: z.string().optional(),
+       }),
+     )
+diff --git a/src/server/services/search/index.test.ts b/src/server/services/search/index.test.ts
+index 7b767072181..11b57e45048 100644
+--- a/src/server/services/search/index.test.ts
++++ b/src/server/services/search/index.test.ts
+@@ -98,6 +98,29 @@ describe('SearchService', () => {
+       expect(mockSearchImpl.query).toHaveBeenCalledWith('test query', params);
+     });
+ 
++    it('should use searchProvider override when provided', async () => {
++      const mockResponse = {
++        costTime: 100,
++        query: 'test query',
++        resultNumbers: 1,
++        results: [],
++      };
++      const overrideSearchImpl = {
++        query: vi.fn().mockResolvedValue(mockResponse),
++      };
++      vi.mocked(createSearchServiceImpl).mockReturnValueOnce(overrideSearchImpl as any);
++
++      const result = await searchService.query('test query', {
++        searchProvider: 'searxng',
++      });
++
++      expect(overrideSearchImpl.query).toHaveBeenCalledWith('test query', {
++        searchProvider: 'searxng',
++      });
++      expect(mockSearchImpl.query).not.toHaveBeenCalled();
++      expect(result).toBe(mockResponse);
++    });
++
+     it('should return errorDetail instead of throwing when impl fails', async () => {
+       mockSearchImpl.query.mockRejectedValue(new Error('Service unavailable'));
+ 
+@@ -143,6 +166,38 @@ describe('SearchService', () => {
+       expect(result).toBe(mockResponse);
+     });
+ 
++    it('should use searchProvider override when provided', async () => {
++      const mockResponse = {
++        costTime: 100,
++        query: 'test',
++        resultNumbers: 1,
++        results: [
++          {
++            category: 'general',
++            content: 'Result 1',
++            engines: ['google'],
++            parsedUrl: 'https://example.com',
++            score: 1,
++            title: 'Test 1',
++            url: 'https://example.com',
++          },
++        ],
++      };
++      const overrideSearchImpl = {
++        query: vi.fn().mockResolvedValue(mockResponse),
++      };
++      vi.mocked(createSearchServiceImpl).mockReturnValueOnce(overrideSearchImpl as any);
++
++      const result = await searchService.webSearch({
++        query: 'test',
++        searchProvider: 'searxng',
++      });
++
++      expect(overrideSearchImpl.query).toHaveBeenCalledTimes(1);
++      expect(mockSearchImpl.query).not.toHaveBeenCalled();
++      expect(result).toBe(mockResponse);
++    });
++
+     it('should retry without searchEngines when no results found', async () => {
+       const emptyResponse = {
+         costTime: 100,
+@@ -471,7 +526,7 @@ describe('SearchService', () => {
+       expect(Crawler).toHaveBeenCalledWith({ impls: ['jina', 'reader'] });
+     });
+ 
+-    it('should pass impls parameter to crawler.crawl', async () => {
++    it('should pass crawlProvider parameter to crawler.crawl', async () => {
+       const mockSuccessResult = {
+         crawler: 'jina',
+         data: { content: 'ok', contentType: 'text' },
+@@ -485,7 +540,7 @@ describe('SearchService', () => {
+       searchService = new SearchService();
+ 
+       await searchService.crawlPages({
+-        impls: ['jina'],
++        crawlProvider: 'jina',
+         urls: ['https://example.com'],
+       });
+ 
+diff --git a/src/server/services/search/index.ts b/src/server/services/search/index.ts
+index a36b0f094bd..2a7ee9221b1 100644
+--- a/src/server/services/search/index.ts
++++ b/src/server/services/search/index.ts
+@@ -5,12 +5,13 @@ import pMap from 'p-map';
+ 
+ import { toolsEnv } from '@/envs/tools';
+ 
+-import { type SearchImplType, type SearchServiceImpl } from './impls';
+-import { createSearchServiceImpl } from './impls';
++import type { SearchServiceImpl } from './impls';
++import { createSearchServiceImpl, SearchImplType } from './impls';
+ 
+ const DEFAULT_CRAWL_CONCURRENCY = 3;
+ const DEFAULT_CRAWLER_RETRY = 1;
+ const log = debug('lobe-oom:web-browsing:search-service');
++const searchImplValues = new Set(Object.values(SearchImplType));
+ 
+ const parseImplEnv = (envString: string = '') => {
+   // Handle full-width commas and extra whitespace
+@@ -18,6 +19,16 @@ const parseImplEnv = (envString: string = '') => {
+   return envValue.split(',').filter(Boolean);
+ };
+ 
++const normalizeSearchProvider = (provider?: string) => {
++  const normalizedProvider = provider?.trim();
++
++  if (!normalizedProvider) return undefined;
++
++  return searchImplValues.has(normalizedProvider as SearchImplType)
++    ? (normalizedProvider as SearchImplType)
++    : undefined;
++};
++
+ const getMemorySnapshot = () => {
+   if (typeof process === 'undefined' || typeof process.memoryUsage !== 'function') {
+     return 'non-node';
+@@ -55,13 +66,13 @@ export class SearchService {
+         : [createSearchServiceImpl()];
+   }
+ 
+-  async crawlPages(input: { impls?: CrawlImplType[]; urls: string[] }) {
++  async crawlPages(input: { crawlProvider?: CrawlImplType; urls: string[] }) {
+     try {
+       if (log.enabled) {
+         log(
+           'crawlPages:start urls=%d impls=%s mem=%s',
+           input.urls.length,
+-          (input.impls || this.crawlerImpls).join(',') || '-',
++          input.crawlProvider || this.crawlerImpls.join(',') || '-',
+           getMemorySnapshot(),
+         );
+       }
+@@ -73,7 +84,7 @@ export class SearchService {
+     const results = await pMap(
+       input.urls,
+       async (url) => {
+-        return await this.crawlWithRetry(crawler, url, input.impls);
++        return await this.crawlWithRetry(crawler, url, input.crawlProvider);
+       },
+       { concurrency: this.crawlConcurrency },
+     );
+@@ -84,7 +95,7 @@ export class SearchService {
+   private async crawlWithRetry(
+     crawler: Crawler,
+     url: string,
+-    impls?: CrawlImplType[],
++    crawlProvider?: CrawlImplType,
+   ): Promise<CrawlUniformResult> {
+     const maxAttempts = this.crawlerRetry + 1;
+     let lastResult: CrawlUniformResult | undefined;
+@@ -92,7 +103,10 @@ export class SearchService {
+ 
+     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+       try {
+-        const result = await crawler.crawl({ impls, url });
++        const result = await crawler.crawl({
++          impls: crawlProvider ? [crawlProvider] : undefined,
++          url,
++        });
+         try {
+           if (log.enabled) {
+             log('crawlWithRetry:result crawler=%s mem=%s', result.crawler, getMemorySnapshot());
+@@ -135,6 +149,12 @@ export class SearchService {
+     return parseImplEnv(toolsEnv.SEARCH_PROVIDERS) as SearchImplType[];
+   }
+ 
++  private getSearchImplList(searchProvider?: string) {
++    const normalizedProvider = normalizeSearchProvider(searchProvider);
++
++    return normalizedProvider ? [createSearchServiceImpl(normalizedProvider)] : this.searchImpList;
++  }
++
+   /**
+    * Query for search results using the specified impl
+    */
+@@ -157,15 +177,26 @@ export class SearchService {
+    * Query for search results (uses the first provider)
+    */
+   async query(query: string, params?: SearchParams) {
+-    return this.queryWithImpl(this.searchImpList[0], query, params);
++    const searchProvider = normalizeSearchProvider(params?.searchProvider);
++    const impl = searchProvider ? createSearchServiceImpl(searchProvider) : this.searchImpList[0];
++
++    return this.queryWithImpl(impl, query, params);
+   }
+ 
+-  async webSearch({ query, searchCategories, searchEngines, searchTimeRange }: SearchQuery) {
++  async webSearch({
++    query,
++    searchCategories,
++    searchEngines,
++    searchProvider,
++    searchTimeRange,
++  }: SearchQuery) {
++    const searchImplList = this.getSearchImplList(searchProvider);
++
+     try {
+       if (log.enabled) {
+         log(
+           'webSearch:start providers=%d q=%d c=%d e=%d mem=%s',
+-          this.searchImpList.length,
++          searchImplList.length,
+           query.length,
+           searchCategories?.length || 0,
+           searchEngines?.length || 0,
+@@ -174,7 +205,7 @@ export class SearchService {
+       }
+     } catch {}
+ 
+-    for (const impl of this.searchImpList) {
++    for (const impl of searchImplList) {
+       try {
+         if (log.enabled) {
+           log(
