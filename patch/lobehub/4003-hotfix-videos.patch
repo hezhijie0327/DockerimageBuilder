@@ -1,4 +1,4 @@
-From 17105f6fc253ba66c8dfa82247e37461a388d0b3 Mon Sep 17 00:00:00 2001
+From 867319122580cb657e6664f52b9fcb43a8935ed9 Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Mon, 6 Apr 2026 21:15:21 +0800
 Subject: [PATCH] feat: support imageUrls for videoGen
@@ -8,6 +8,8 @@ fix: fix ci error
 fix: fix ci error
 
 fix: fix + button
+
+fix: fix batch images display
 ---
  packages/model-bank/src/aiModels/google.ts    |  10 +-
  packages/model-bank/src/aiModels/qwen.ts      |  35 +++---
@@ -21,10 +23,12 @@ fix: fix + button
  .../GenerationInput/InlineVideoFrames.tsx     | 107 ++++++++++++++++--
  .../components/VideoFramesUpload.tsx          |  82 ++++++++++++++
  .../video/features/ConfigPanel/index.ts       |   1 +
+ .../features/GenerationFeed/BatchItem.tsx     |   6 +-
+ .../GenerationFeed/VideoReferenceFrames.tsx   |  68 +++++------
  .../video/features/PromptInput/index.tsx      |  76 +++++++++++--
  .../video/slices/generationConfig/action.ts   |   1 +
  .../video/slices/generationConfig/hooks.ts    |   3 +-
- 15 files changed, 390 insertions(+), 69 deletions(-)
+ 17 files changed, 431 insertions(+), 102 deletions(-)
  create mode 100644 src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx
 
 diff --git a/packages/model-bank/src/aiModels/google.ts b/packages/model-bank/src/aiModels/google.ts
@@ -678,6 +682,113 @@ index e7a745a..80b00ab 100644
  export { default as FrameUpload } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/FrameUpload';
  export { default as VideoModelItem } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/ModelSelect/VideoModelItem';
 +export { default as VideoFramesUpload } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload';
+diff --git a/src/routes/(main)/(create)/video/features/GenerationFeed/BatchItem.tsx b/src/routes/(main)/(create)/video/features/GenerationFeed/BatchItem.tsx
+index 97636bb..5e342d8 100644
+--- a/src/routes/(main)/(create)/video/features/GenerationFeed/BatchItem.tsx
++++ b/src/routes/(main)/(create)/video/features/GenerationFeed/BatchItem.tsx
+@@ -214,7 +214,10 @@ export const VideoGenerationBatchItem = memo<VideoGenerationBatchItemProps>(({ b
+     );
+   };
+ 
+-  const hasReferenceFrames = batch.config?.imageUrl || batch.config?.endImageUrl;
++  const hasReferenceFrames =
++    batch.config?.imageUrl ||
++    (batch.config?.imageUrls && batch.config.imageUrls.length > 0) ||
++    batch.config?.endImageUrl;
+ 
+   return (
+     <Block className={styles.container} gap={8} variant={'borderless'}>
+@@ -223,6 +226,7 @@ export const VideoGenerationBatchItem = memo<VideoGenerationBatchItemProps>(({ b
+           <VideoReferenceFrames
+             endImageUrl={batch.config?.endImageUrl}
+             imageUrl={batch.config?.imageUrl}
++            imageUrls={batch.config?.imageUrls}
+           />
+         )}
+         <Markdown variant={'chat'}>{batch.prompt}</Markdown>
+diff --git a/src/routes/(main)/(create)/video/features/GenerationFeed/VideoReferenceFrames.tsx b/src/routes/(main)/(create)/video/features/GenerationFeed/VideoReferenceFrames.tsx
+index 7b26c84..7b10d2d 100644
+--- a/src/routes/(main)/(create)/video/features/GenerationFeed/VideoReferenceFrames.tsx
++++ b/src/routes/(main)/(create)/video/features/GenerationFeed/VideoReferenceFrames.tsx
+@@ -37,42 +37,46 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
+ interface VideoReferenceFramesProps {
+   endImageUrl?: string | null;
+   imageUrl?: string | null;
++  imageUrls?: string[];
+ }
+ 
+-const VideoReferenceFrames = memo<VideoReferenceFramesProps>(({ imageUrl, endImageUrl }) => {
+-  const allImages: string[] = [];
+-  if (imageUrl) allImages.push(imageUrl);
+-  if (endImageUrl) allImages.push(endImageUrl);
++const VideoReferenceFrames = memo<VideoReferenceFramesProps>(
++  ({ imageUrl, imageUrls, endImageUrl }) => {
++    const allImages: string[] = [];
++    if (imageUrl) allImages.push(imageUrl);
++    if (imageUrls && imageUrls.length > 0) allImages.push(...imageUrls);
++    if (endImageUrl) allImages.push(endImageUrl);
+ 
+-  if (allImages.length === 0) return null;
++    if (allImages.length === 0) return null;
+ 
+-  return (
+-    <Image.PreviewGroup>
+-      <Flexbox horizontal align={'flex-end'} flex={'none'} wrap="wrap">
+-        <ActionIcon
+-          glass
+-          className={styles.icon}
+-          icon={QuoteIcon}
+-          size={'small'}
+-          variant={'filled'}
+-        />
+-        {allImages.map((url, index) => (
+-          <div className={styles.container} key={`${url}-${index}`}>
+-            <Image
+-              alt={index === 0 ? 'Start frame' : 'End frame'}
+-              className={styles.image}
+-              height={'100%'}
+-              src={url}
+-              style={{ height: '100%', width: '100%' }}
+-              variant={'outlined'}
+-              width={'100%'}
+-            />
+-          </div>
+-        ))}
+-      </Flexbox>
+-    </Image.PreviewGroup>
+-  );
+-});
++    return (
++      <Image.PreviewGroup>
++        <Flexbox horizontal align={'flex-end'} flex={'none'} wrap="wrap">
++          <ActionIcon
++            glass
++            className={styles.icon}
++            icon={QuoteIcon}
++            size={'small'}
++            variant={'filled'}
++          />
++          {allImages.map((url, index) => (
++            <div className={styles.container} key={`${url}-${index}`}>
++              <Image
++                alt={index === 0 ? 'Start frame' : 'End frame'}
++                className={styles.image}
++                height={'100%'}
++                src={url}
++                style={{ height: '100%', width: '100%' }}
++                variant={'outlined'}
++                width={'100%'}
++              />
++            </div>
++          ))}
++        </Flexbox>
++      </Image.PreviewGroup>
++    );
++  },
++);
+ 
+ VideoReferenceFrames.displayName = 'VideoReferenceFrames';
+ 
 diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
 index f469459..7bed164 100644
 --- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
