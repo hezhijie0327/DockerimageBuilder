@@ -1,4 +1,4 @@
-From 867319122580cb657e6664f52b9fcb43a8935ed9 Mon Sep 17 00:00:00 2001
+From 55058b7b8c91fe9bfa21ccd7184ae286403f1555 Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Mon, 6 Apr 2026 21:15:21 +0800
 Subject: [PATCH] feat: support imageUrls for videoGen
@@ -10,25 +10,27 @@ fix: fix ci error
 fix: fix + button
 
 fix: fix batch images display
+
+fix: fix muti images upload display
 ---
  packages/model-bank/src/aiModels/google.ts    |  10 +-
- packages/model-bank/src/aiModels/qwen.ts      |  35 +++---
+ packages/model-bank/src/aiModels/qwen.ts      |  35 +++--
  .../model-bank/src/aiModels/volcengine.ts     |   5 +-
  packages/model-bank/src/aiModels/zhipu.ts     |   8 +-
- .../src/standard-parameters/video.ts          |  21 +++-
- .../src/providers/google/createVideo.ts       |  13 +++
- .../src/providers/qwen/createVideo.ts         |  70 +++++++++---
+ .../src/standard-parameters/video.ts          |  21 ++-
+ .../src/providers/google/createVideo.ts       |  13 ++
+ .../src/providers/qwen/createVideo.ts         |  70 +++++++--
  .../providers/volcengine/video/createVideo.ts |  11 ++
- .../src/providers/zhipu/createVideo.ts        |  16 ++-
- .../GenerationInput/InlineVideoFrames.tsx     | 107 ++++++++++++++++--
- .../components/VideoFramesUpload.tsx          |  82 ++++++++++++++
+ .../src/providers/zhipu/createVideo.ts        |  16 +-
+ .../GenerationInput/InlineVideoFrames.tsx     | 144 ++++++++++++++++--
+ .../components/VideoFramesUpload.tsx          |  82 ++++++++++
  .../video/features/ConfigPanel/index.ts       |   1 +
  .../features/GenerationFeed/BatchItem.tsx     |   6 +-
- .../GenerationFeed/VideoReferenceFrames.tsx   |  68 +++++------
- .../video/features/PromptInput/index.tsx      |  76 +++++++++++--
+ .../GenerationFeed/VideoReferenceFrames.tsx   |  68 +++++----
+ .../video/features/PromptInput/index.tsx      |  76 +++++++--
  .../video/slices/generationConfig/action.ts   |   1 +
  .../video/slices/generationConfig/hooks.ts    |   3 +-
- 17 files changed, 431 insertions(+), 102 deletions(-)
+ 17 files changed, 468 insertions(+), 102 deletions(-)
  create mode 100644 src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx
 
 diff --git a/packages/model-bank/src/aiModels/google.ts b/packages/model-bank/src/aiModels/google.ts
@@ -444,19 +446,22 @@ index 9d96d60..5e3164e 100644
  
    // Add other optional parameters
 diff --git a/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx b/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
-index de4dda5..e69cd7f 100644
+index de4dda5..8ac89fa 100644
 --- a/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
 +++ b/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
-@@ -3,12 +3,21 @@
+@@ -3,16 +3,34 @@
  import { Flexbox } from '@lobehub/ui';
  import { createStaticStyles, cssVar } from 'antd-style';
  import { ArrowLeftRight } from 'lucide-react';
 -import { memo } from 'react';
-+import { memo, useMemo } from 'react';
++import { memo, useMemo, useState } from 'react';
  import { useTranslation } from 'react-i18next';
  
  import UploadCard, { UPLOAD_CARD_SIZE, type UploadData } from './UploadCard';
  
++const STACK_OFFSET = -(UPLOAD_CARD_SIZE - 8);
++const EXPAND_OFFSET = 4;
++
  const styles = createStaticStyles(({ css }) => ({
 +  addCirclePos: css`
 +    position: absolute;
@@ -470,7 +475,17 @@ index de4dda5..e69cd7f 100644
    stack: css`
      position: relative;
      padding-block: 4px;
-@@ -23,28 +32,106 @@ const styles = createStaticStyles(({ css }) => ({
+     padding-inline: 0;
++
++    &:hover {
++      .inline-ref-close {
++        opacity: 1;
++      }
++    }
+   `,
+   swapIcon: css`
+     flex-shrink: 0;
+@@ -23,28 +41,134 @@ const styles = createStaticStyles(({ css }) => ({
  interface InlineVideoFramesProps {
    endImageUrl?: string | null;
    imageUrl?: string | null;
@@ -499,9 +514,8 @@ index de4dda5..e69cd7f 100644
 +    maxFileSize,
 +  }) => {
      const { t } = useTranslation('video');
- 
--    const hasStartFrame = Boolean(imageUrl);
--    const showEndFrame = isSupportEndImage && hasStartFrame;
++    const [isHovered, setIsHovered] = useState(false);
++
 +    // Combine imageUrl and imageUrls for display
 +    const refFrameUrls = useMemo(() => {
 +      const urls: string[] = [];
@@ -511,9 +525,12 @@ index de4dda5..e69cd7f 100644
 +      }
 +      return urls;
 +    }, [imageUrl, imageUrls]);
-+
+ 
+-    const hasStartFrame = Boolean(imageUrl);
+-    const showEndFrame = isSupportEndImage && hasStartFrame;
 +    const hasRefFrames = refFrameUrls.length > 0;
 +    const canAddMore = refFrameUrls.length < maxCount;
++    const shouldCollapse = hasRefFrames && !isHovered;
 +    const showEndFrame = isSupportEndImage && hasRefFrames;
  
      return (
@@ -524,7 +541,13 @@ index de4dda5..e69cd7f 100644
 -          onRemove={() => onImageChange(null)}
 -          onUpload={(data) => onImageChange(data)}
 -        />
-+        <Flexbox horizontal align={'end'} className={styles.refGroup} gap={6}>
++        <Flexbox
++          horizontal
++          align={'end'}
++          className={styles.refGroup}
++          onMouseEnter={() => setIsHovered(true)}
++          onMouseLeave={() => setIsHovered(false)}
++        >
 +          {/* Render ref frames (from imageUrl and imageUrls) */}
 +          {refFrameUrls.map((url, index) => {
 +            const isFromImageUrl = url === imageUrl;
@@ -535,10 +558,16 @@ index de4dda5..e69cd7f 100644
 +
 +            return (
 +              <UploadCard
++                closeClassName="inline-ref-close"
 +                imageUrl={url}
 +                key={url}
 +                label={label}
 +                maxFileSize={maxFileSize}
++                style={{
++                  marginInlineStart:
++                    index > 0 ? (shouldCollapse ? STACK_OFFSET : EXPAND_OFFSET) : 0,
++                  zIndex: index + 1,
++                }}
 +                onRemove={() => {
 +                  if (isFromImageUrl && imageUrl === url) {
 +                    onImageChange(null);
@@ -557,7 +586,7 @@ index de4dda5..e69cd7f 100644
 +
 +          {/* Add new frame button */}
 +          {canAddMore &&
-+            (hasRefFrames ? (
++            (shouldCollapse ? (
 +              <UploadCard
 +                className={styles.addCirclePos}
 +                maxFileSize={maxFileSize}
@@ -576,8 +605,22 @@ index de4dda5..e69cd7f 100644
 +                imageUrl={null}
 +                label={t('config.referenceImage.label')}
 +                maxFileSize={maxFileSize}
++                style={{
++                  marginInlineStart: hasRefFrames ? EXPAND_OFFSET : 0,
++                  zIndex: refFrameUrls.length + 1,
++                }}
 +                onRemove={() => {}}
-+                onUpload={(data) => onImageChange(data)}
++                onUpload={(data) => {
++                  if (hasRefFrames) {
++                    if (onImageUrlsChange) {
++                      onImageUrlsChange(data);
++                    } else {
++                      onImageChange(data);
++                    }
++                  } else {
++                    onImageChange(data);
++                  }
++                }}
 +              />
 +            ))}
 +        </Flexbox>
