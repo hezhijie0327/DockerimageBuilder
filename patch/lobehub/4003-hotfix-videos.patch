@@ -1,13 +1,13 @@
-From 46dc625751d045ddc3edacaf5314401b428a130d Mon Sep 17 00:00:00 2001
+From 03bcac2137d136017c8941cabbb20ff6b0cd3b32 Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
-Date: Mon, 6 Apr 2026 20:49:58 +0800
-Subject: [PATCH] feat: support imageUrls parms for videoGen
+Date: Mon, 6 Apr 2026 21:15:21 +0800
+Subject: [PATCH] fix: fix ci error
 
 ---
- packages/model-bank/src/aiModels/google.ts    |  8 +-
- packages/model-bank/src/aiModels/qwen.ts      | 28 +++----
- .../model-bank/src/aiModels/volcengine.ts     |  4 +-
- packages/model-bank/src/aiModels/zhipu.ts     |  7 +-
+ packages/model-bank/src/aiModels/google.ts    | 10 ++-
+ packages/model-bank/src/aiModels/qwen.ts      | 35 ++++----
+ .../model-bank/src/aiModels/volcengine.ts     |  5 +-
+ packages/model-bank/src/aiModels/zhipu.ts     |  8 +-
  .../src/standard-parameters/video.ts          | 21 ++++-
  .../src/providers/google/createVideo.ts       | 13 +++
  .../src/providers/qwen/createVideo.ts         | 70 ++++++++++++----
@@ -19,14 +19,14 @@ Subject: [PATCH] feat: support imageUrls parms for videoGen
  .../video/features/PromptInput/index.tsx      | 59 ++++++++++---
  .../video/slices/generationConfig/action.ts   |  1 +
  .../video/slices/generationConfig/hooks.ts    |  3 +-
- 15 files changed, 328 insertions(+), 69 deletions(-)
+ 15 files changed, 339 insertions(+), 69 deletions(-)
  create mode 100644 src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx
 
 diff --git a/packages/model-bank/src/aiModels/google.ts b/packages/model-bank/src/aiModels/google.ts
-index 922810a..392ba8b 100644
+index 922810a..d5ddf02 100644
 --- a/packages/model-bank/src/aiModels/google.ts
 +++ b/packages/model-bank/src/aiModels/google.ts
-@@ -886,8 +886,8 @@ const googleVideoModels: AIVideoModelCard[] = [
+@@ -886,8 +886,9 @@ const googleVideoModels: AIVideoModelCard[] = [
        endImageUrl: {
          default: null,
        },
@@ -34,10 +34,11 @@ index 922810a..392ba8b 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 3,
        },
        prompt: { default: '' },
        resolution: {
-@@ -917,8 +917,8 @@ const googleVideoModels: AIVideoModelCard[] = [
+@@ -917,8 +918,9 @@ const googleVideoModels: AIVideoModelCard[] = [
        endImageUrl: {
          default: null,
        },
@@ -45,14 +46,15 @@ index 922810a..392ba8b 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 3,
        },
        prompt: { default: '' },
        resolution: {
 diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
-index dc26f78..a37f08f 100644
+index dc26f78..5b1e597 100644
 --- a/packages/model-bank/src/aiModels/qwen.ts
 +++ b/packages/model-bank/src/aiModels/qwen.ts
-@@ -3634,8 +3634,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -3634,8 +3634,9 @@ const qwenVideoModels: AIVideoModelCard[] = [
          enum: ['16:9', '9:16', '1:1', '4:3', '3:4'],
        },
        duration: { default: 5, max: 10, min: 2 },
@@ -60,10 +62,11 @@ index dc26f78..a37f08f 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 5,
        },
        prompt: { default: '' },
        resolution: {
-@@ -3736,8 +3736,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -3736,8 +3737,9 @@ const qwenVideoModels: AIVideoModelCard[] = [
      parameters: {
        duration: { default: 5, max: 10, min: 2 },
        generateAudio: { default: true },
@@ -71,10 +74,11 @@ index dc26f78..a37f08f 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 5,
        },
        prompt: { default: '' },
        size: {
-@@ -3771,8 +3771,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -3771,8 +3773,9 @@ const qwenVideoModels: AIVideoModelCard[] = [
      id: 'wan2.6-r2v',
      parameters: {
        duration: { default: 5, max: 10, min: 2 },
@@ -82,10 +86,11 @@ index dc26f78..a37f08f 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 5,
        },
        prompt: { default: '' },
        size: {
-@@ -4154,8 +4154,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -4154,8 +4157,9 @@ const qwenVideoModels: AIVideoModelCard[] = [
          default: null,
        },
        generateAudio: { default: true },
@@ -93,10 +98,11 @@ index dc26f78..a37f08f 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 7,
        },
        prompt: { default: '' },
        resolution: {
-@@ -4501,8 +4501,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -4501,8 +4505,9 @@ const qwenVideoModels: AIVideoModelCard[] = [
      id: 'vidu/viduq2-pro_reference2video',
      parameters: {
        duration: { default: 5, max: 10, min: 1 },
@@ -104,10 +110,11 @@ index dc26f78..a37f08f 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 7,
        },
        prompt: { default: '' },
        resolution: {
-@@ -4544,8 +4544,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -4544,8 +4549,9 @@ const qwenVideoModels: AIVideoModelCard[] = [
      id: 'vidu/viduq2_reference2video',
      parameters: {
        duration: { default: 5, max: 10, min: 1 },
@@ -115,10 +122,11 @@ index dc26f78..a37f08f 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 7,
        },
        prompt: { default: '' },
        resolution: {
-@@ -4789,8 +4789,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -4789,8 +4795,9 @@ const qwenVideoModels: AIVideoModelCard[] = [
      parameters: {
        duration: { default: 5, enum: [5, 8, 10] },
        generateAudio: { default: true },
@@ -126,14 +134,15 @@ index dc26f78..a37f08f 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 7,
        },
        prompt: { default: '' },
        seed: { default: null },
 diff --git a/packages/model-bank/src/aiModels/volcengine.ts b/packages/model-bank/src/aiModels/volcengine.ts
-index db634a5..c099467 100644
+index db634a5..9d17152 100644
 --- a/packages/model-bank/src/aiModels/volcengine.ts
 +++ b/packages/model-bank/src/aiModels/volcengine.ts
-@@ -1373,9 +1373,9 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+@@ -1373,11 +1373,12 @@ const volcengineVideoModels: AIVideoModelCard[] = [
          requiresImageUrl: true,
          width: { max: 6000, min: 300 },
        },
@@ -144,12 +153,15 @@ index db634a5..c099467 100644
 +        default: [],
          height: { max: 6000, min: 300 },
          maxFileSize: 30 * 1024 * 1024,
++        maxCount: 4,
          width: { max: 6000, min: 300 },
+       },
+       duration: { default: 5, max: 12, min: 2 },
 diff --git a/packages/model-bank/src/aiModels/zhipu.ts b/packages/model-bank/src/aiModels/zhipu.ts
-index d25ef20..04d598f 100644
+index d25ef20..ccb29d4 100644
 --- a/packages/model-bank/src/aiModels/zhipu.ts
 +++ b/packages/model-bank/src/aiModels/zhipu.ts
-@@ -1334,12 +1334,9 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+@@ -1334,12 +1334,10 @@ const zhipuVideoModels: AIVideoModelCard[] = [
          enum: ['16:9', '9:16', '1:1'],
        },
        duration: { default: 4, enum: [4] },
@@ -161,6 +173,7 @@ index d25ef20..04d598f 100644
 -        default: null,
 +      imageUrls: {
 +        default: [],
++        maxCount: 3,
        },
        prompt: { default: '' },
        size: {
@@ -236,7 +249,7 @@ index f169fae..966551b 100644
  
      const operation = await client.models.generateVideos(requestParams);
 diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
-index 73900bf..9d7646a 100644
+index 73900bf..cee4863 100644
 --- a/packages/model-runtime/src/providers/qwen/createVideo.ts
 +++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
 @@ -117,7 +117,7 @@ async function createVideoTask(
@@ -335,7 +348,7 @@ index 73900bf..9d7646a 100644
    } else if (matchesModelPattern(model, reference2VideoModels)) {
 -    input.reference_urls = [imageUrl];
 +    if (imageUrl) {
-+      input.reference_url = imageUrl;
++      input.reference_urls = [imageUrl];
 +    }
 +    if (imageUrls && imageUrls.length > 0) {
 +      input.reference_urls = imageUrls;
