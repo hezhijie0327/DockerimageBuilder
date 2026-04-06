@@ -1,5 +1,5 @@
 diff --git a/src/store/image/slices/generationConfig/action.test.ts b/src/store/image/slices/generationConfig/action.test.ts
-index 9420af570e8..77bd7227029 100644
+index 9420af570e8..3e5d6de6a32 100644
 --- a/src/store/image/slices/generationConfig/action.test.ts
 +++ b/src/store/image/slices/generationConfig/action.test.ts
 @@ -24,6 +24,7 @@ vi.mock('@/store/user/slices/settings/selectors', () => ({
@@ -40,7 +40,7 @@ index 9420af570e8..77bd7227029 100644
  ];
  
  // Mock external dependencies
-@@ -195,22 +212,79 @@ describe('GenerationConfigAction', () => {
+@@ -195,22 +212,106 @@ describe('GenerationConfigAction', () => {
        expect(result.current.parametersSchema).toEqual(customModelSchema);
      });
  
@@ -121,11 +121,38 @@ index 9420af570e8..77bd7227029 100644
 +      expect(storeResult.current.parameters?.imageUrls).toEqual(['reference-image.png']);
 +      expect(storeResult.current.parameters?.prompt).toBe('test prompt');
 +      expect(storeResult.current.parameters?.imageUrl).toBeUndefined();
++    });
++
++    it('should migrate imageUrl when target model has empty imageUrls default', () => {
++      const singleImageSchema: ModelParamsSchema = {
++        prompt: { default: '' },
++        imageUrl: { default: '' },
++      };
++
++      useImageStore.setState({
++        model: 'single-image-model',
++        provider: 'single-image-provider',
++        parameters: {
++          prompt: 'keep this prompt',
++          imageUrl: 'from-single-model.png',
++        },
++        parametersSchema: singleImageSchema,
++      });
++
++      const { result } = renderHook(() => useImageStore());
++
++      // custom-model schema defines imageUrls default as []
++      act(() => {
++        result.current.setModelAndProviderOnSelect('custom-model', 'custom-provider');
++      });
++
++      expect(result.current.parameters?.imageUrls).toEqual(['from-single-model.png']);
++      expect(result.current.parameters?.prompt).toBe('keep this prompt');
      });
    });
  
 diff --git a/src/store/image/slices/generationConfig/action.ts b/src/store/image/slices/generationConfig/action.ts
-index 543dc966f5f..75ae50ed5e4 100644
+index 543dc966f5f..bf082ec0b94 100644
 --- a/src/store/image/slices/generationConfig/action.ts
 +++ b/src/store/image/slices/generationConfig/action.ts
 @@ -14,6 +14,7 @@ import { useUserStore } from '@/store/user';
@@ -173,7 +200,7 @@ index 543dc966f5f..75ae50ed5e4 100644
 +    imageUrl.length > 0 &&
 +    !supportsImageUrl &&
 +    supportsImageUrls &&
-+    !result.imageUrls
++    !(Array.isArray(result.imageUrls) && result.imageUrls.length > 0)
 +  ) {
 +    (result as RuntimeImageGenParams).imageUrls = [imageUrl];
 +  }
