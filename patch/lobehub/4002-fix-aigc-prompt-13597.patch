@@ -1,5 +1,5 @@
 diff --git a/src/store/image/slices/generationConfig/action.test.ts b/src/store/image/slices/generationConfig/action.test.ts
-index 9420af570e8..3e5d6de6a32 100644
+index 9420af570e8..c97c325c6c0 100644
 --- a/src/store/image/slices/generationConfig/action.test.ts
 +++ b/src/store/image/slices/generationConfig/action.test.ts
 @@ -24,6 +24,7 @@ vi.mock('@/store/user/slices/settings/selectors', () => ({
@@ -40,7 +40,27 @@ index 9420af570e8..3e5d6de6a32 100644
  ];
  
  // Mock external dependencies
-@@ -195,22 +212,106 @@ describe('GenerationConfigAction', () => {
+@@ -178,7 +195,10 @@ describe('GenerationConfigAction', () => {
+ 
+       expect(result.current.model).toBe('flux/schnell');
+       expect(result.current.provider).toBe('fal');
+-      expect(result.current.parameters).toEqual(fluxSchnellDefaultValues);
++      expect(result.current.parameters).toEqual({
++        ...fluxSchnellDefaultValues,
++        prompt: 'initial prompt',
++      });
+       expect(result.current.parametersSchema).toEqual(fluxSchnellParamsSchema);
+     });
+ 
+@@ -191,26 +211,113 @@ describe('GenerationConfigAction', () => {
+ 
+       expect(result.current.model).toBe('custom-model');
+       expect(result.current.provider).toBe('custom-provider');
+-      expect(result.current.parameters).toEqual(customModelDefaultValues);
++      expect(result.current.parameters).toEqual({
++        ...customModelDefaultValues,
++        prompt: 'initial prompt',
++      });
        expect(result.current.parametersSchema).toEqual(customModelSchema);
      });
  
@@ -152,18 +172,21 @@ index 9420af570e8..3e5d6de6a32 100644
    });
  
 diff --git a/src/store/image/slices/generationConfig/action.ts b/src/store/image/slices/generationConfig/action.ts
-index 543dc966f5f..bf082ec0b94 100644
+index 543dc966f5f..96a394ee26c 100644
 --- a/src/store/image/slices/generationConfig/action.ts
 +++ b/src/store/image/slices/generationConfig/action.ts
-@@ -14,6 +14,7 @@ import { useUserStore } from '@/store/user';
+@@ -14,6 +14,10 @@ import { useUserStore } from '@/store/user';
  import { authSelectors } from '@/store/user/selectors';
  import { settingsSelectors } from '@/store/user/slices/settings/selectors';
  
-+import { preserveSupportedParams } from '../../../utils/preserveSupportedParams';
++import {
++  normalizeImageInputOnSchemaSwitch,
++  preserveSupportedParams,
++} from '../../../utils/preserveSupportedParams';
  import { type ImageStore } from '../../store';
  import { calculateInitialAspectRatio } from '../../utils/aspectRatio';
  import { adaptSizeToRatio, parseRatio } from '../../utils/size';
-@@ -64,6 +65,47 @@ function prepareModelConfigState(model: string, provider: string) {
+@@ -64,6 +68,20 @@ function prepareModelConfigState(model: string, provider: string) {
    };
  }
  
@@ -178,40 +201,13 @@ index 543dc966f5f..bf082ec0b94 100644
 +    'imageUrls',
 +  ]);
 +
-+  // Smart conversion: multi-image ↔ single-image model switching
-+  const { imageUrl, imageUrls } = previousParameters;
-+  const supportsImageUrl = 'imageUrl' in nextSchema;
-+  const supportsImageUrls = 'imageUrls' in nextSchema;
-+
-+  // Case 1: Multi-image → Single-image (imageUrls[0] → imageUrl)
-+  if (
-+    Array.isArray(imageUrls) &&
-+    imageUrls.length > 0 &&
-+    !supportsImageUrls &&
-+    supportsImageUrl &&
-+    !result.imageUrl
-+  ) {
-+    (result as RuntimeImageGenParams).imageUrl = imageUrls[0];
-+  }
-+
-+  // Case 2: Single-image → Multi-image (imageUrl → [imageUrl])
-+  if (
-+    typeof imageUrl === 'string' &&
-+    imageUrl.length > 0 &&
-+    !supportsImageUrl &&
-+    supportsImageUrls &&
-+    !(Array.isArray(result.imageUrls) && result.imageUrls.length > 0)
-+  ) {
-+    (result as RuntimeImageGenParams).imageUrls = [imageUrl];
-+  }
-+
-+  return result;
++  return normalizeImageInputOnSchemaSwitch(previousParameters, nextSchema, result);
 +}
 +
  type Setter = StoreSetter<ImageStore>;
  export const createGenerationConfigSlice = (set: Setter, get: () => ImageStore, _api?: unknown) =>
    new GenerationConfigActionImpl(set, get, _api);
-@@ -244,16 +286,23 @@ export class GenerationConfigActionImpl {
+@@ -244,16 +262,23 @@ export class GenerationConfigActionImpl {
    };
  
    setModelAndProviderOnSelect = (model: string, provider: string): void => {
@@ -238,10 +234,10 @@ index 543dc966f5f..bf082ec0b94 100644
          activeAspectRatio: initialActiveRatio,
 diff --git a/src/store/utils/preserveSupportedParams.ts b/src/store/utils/preserveSupportedParams.ts
 new file mode 100644
-index 00000000000..a06f6387d05
+index 00000000000..8535785a7ad
 --- /dev/null
 +++ b/src/store/utils/preserveSupportedParams.ts
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,63 @@
 +export function preserveSupportedParams<
 +  TParams extends Record<string, unknown>,
 +  TSchema extends Record<string, unknown>,
@@ -265,6 +261,45 @@ index 00000000000..a06f6387d05
 +    ...nextDefaultValues,
 +    ...Object.fromEntries(supportedPreservedEntries),
 +  };
++}
++
++export function normalizeImageInputOnSchemaSwitch<
++  TParams extends Record<string, unknown> & {
++    imageUrl?: unknown;
++    imageUrls?: unknown;
++  },
++  TSchema extends Record<string, unknown>,
++>(previousParameters: TParams, nextSchema: TSchema, preservedResult: TParams): TParams {
++  const result = { ...preservedResult };
++
++  const imageUrl = previousParameters.imageUrl;
++  const imageUrls = previousParameters.imageUrls;
++  const supportsImageUrl = 'imageUrl' in nextSchema;
++  const supportsImageUrls = 'imageUrls' in nextSchema;
++
++  // Multi-image -> Single-image
++  if (
++    Array.isArray(imageUrls) &&
++    imageUrls.length > 0 &&
++    !supportsImageUrls &&
++    supportsImageUrl &&
++    !result.imageUrl
++  ) {
++    result.imageUrl = imageUrls[0];
++  }
++
++  // Single-image -> Multi-image
++  if (
++    typeof imageUrl === 'string' &&
++    imageUrl &&
++    supportsImageUrls &&
++    !supportsImageUrl &&
++    !(Array.isArray(result.imageUrls) && result.imageUrls.length > 0)
++  ) {
++    result.imageUrls = [imageUrl];
++  }
++
++  return result;
 +}
 diff --git a/src/store/video/slices/generationConfig/action.test.ts b/src/store/video/slices/generationConfig/action.test.ts
 new file mode 100644
@@ -382,7 +417,7 @@ index 00000000000..cb241bdae59
 +  });
 +});
 diff --git a/src/store/video/slices/generationConfig/action.ts b/src/store/video/slices/generationConfig/action.ts
-index ae1b1f796ed..cb210ca746e 100644
+index ae1b1f796ed..1d4a5dc3ca7 100644
 --- a/src/store/video/slices/generationConfig/action.ts
 +++ b/src/store/video/slices/generationConfig/action.ts
 @@ -1,6 +1,7 @@
@@ -393,15 +428,18 @@ index ae1b1f796ed..cb210ca746e 100644
    type RuntimeVideoGenParamsKeys,
    type RuntimeVideoGenParamsValue,
    type VideoModelParamsSchema,
-@@ -12,6 +13,7 @@ import { type StoreSetter } from '@/store/types';
+@@ -12,6 +13,10 @@ import { type StoreSetter } from '@/store/types';
  import { useUserStore } from '@/store/user';
  import { authSelectors } from '@/store/user/selectors';
  
-+import { preserveSupportedParams } from '../../../utils/preserveSupportedParams';
++import {
++  normalizeImageInputOnSchemaSwitch,
++  preserveSupportedParams,
++} from '../../../utils/preserveSupportedParams';
  import type { VideoStore } from '../../store';
  
  export function getVideoModelAndDefaults(model: string, provider: string) {
-@@ -39,17 +41,30 @@ export function getVideoModelAndDefaults(model: string, provider: string) {
+@@ -39,17 +44,32 @@ export function getVideoModelAndDefaults(model: string, provider: string) {
    return { activeModel, defaultValues, parametersSchema };
  }
  
@@ -410,11 +448,13 @@ index ae1b1f796ed..cb210ca746e 100644
 +  nextDefaultValues: RuntimeVideoGenParams,
 +  nextSchema: VideoModelParamsSchema,
 +) {
-+  return preserveSupportedParams(previousParameters, nextDefaultValues, nextSchema, [
++  const result = preserveSupportedParams(previousParameters, nextDefaultValues, nextSchema, [
 +    'prompt',
 +    'imageUrl',
 +    'endImageUrl',
 +  ]);
++
++  return normalizeImageInputOnSchemaSwitch(previousParameters, nextSchema, result);
 +}
 +
  type Setter = StoreSetter<VideoStore>;
@@ -434,7 +474,7 @@ index ae1b1f796ed..cb210ca746e 100644
      this.#set = set;
    }
  
-@@ -85,12 +100,18 @@ export class GenerationConfigActionImpl {
+@@ -85,12 +105,18 @@ export class GenerationConfigActionImpl {
    };
  
    setModelAndProviderOnSelect = (model: string, provider: string): void => {
