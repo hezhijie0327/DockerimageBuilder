@@ -1,25 +1,28 @@
-From 03bcac2137d136017c8941cabbb20ff6b0cd3b32 Mon Sep 17 00:00:00 2001
+From ac7df885d0a495fd01f97799c1e9fddf7c6784ac Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Mon, 6 Apr 2026 21:15:21 +0800
-Subject: [PATCH] fix: fix ci error
+Subject: [PATCH] feat: support imageUrls for videoGen
 
+fix: fix ci error
+
+fix: fix ci error
 ---
  packages/model-bank/src/aiModels/google.ts    | 10 ++-
- packages/model-bank/src/aiModels/qwen.ts      | 35 ++++----
+ packages/model-bank/src/aiModels/qwen.ts      | 35 +++++---
  .../model-bank/src/aiModels/volcengine.ts     |  5 +-
  packages/model-bank/src/aiModels/zhipu.ts     |  8 +-
  .../src/standard-parameters/video.ts          | 21 ++++-
  .../src/providers/google/createVideo.ts       | 13 +++
- .../src/providers/qwen/createVideo.ts         | 70 ++++++++++++----
+ .../src/providers/qwen/createVideo.ts         | 70 +++++++++++----
  .../providers/volcengine/video/createVideo.ts | 11 +++
  .../src/providers/zhipu/createVideo.ts        | 16 ++--
- .../GenerationInput/InlineVideoFrames.tsx     | 73 ++++++++++++++---
- .../components/VideoFramesUpload.tsx          | 82 +++++++++++++++++++
+ .../GenerationInput/InlineVideoFrames.tsx     | 85 ++++++++++++++++---
+ .../components/VideoFramesUpload.tsx          | 82 ++++++++++++++++++
  .../video/features/ConfigPanel/index.ts       |  1 +
- .../video/features/PromptInput/index.tsx      | 59 ++++++++++---
+ .../video/features/PromptInput/index.tsx      | 76 ++++++++++++++---
  .../video/slices/generationConfig/action.ts   |  1 +
  .../video/slices/generationConfig/hooks.ts    |  3 +-
- 15 files changed, 339 insertions(+), 69 deletions(-)
+ 15 files changed, 368 insertions(+), 69 deletions(-)
  create mode 100644 src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx
 
 diff --git a/packages/model-bank/src/aiModels/google.ts b/packages/model-bank/src/aiModels/google.ts
@@ -435,7 +438,7 @@ index 9d96d60..5e3164e 100644
  
    // Add other optional parameters
 diff --git a/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx b/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
-index de4dda5..1bd06f1 100644
+index de4dda5..664aa87 100644
 --- a/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
 +++ b/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
 @@ -3,7 +3,7 @@
@@ -447,12 +450,13 @@ index de4dda5..1bd06f1 100644
  import { useTranslation } from 'react-i18next';
  
  import UploadCard, { UPLOAD_CARD_SIZE, type UploadData } from './UploadCard';
-@@ -23,28 +23,81 @@ const styles = createStaticStyles(({ css }) => ({
+@@ -23,28 +23,93 @@ const styles = createStaticStyles(({ css }) => ({
  interface InlineVideoFramesProps {
    endImageUrl?: string | null;
    imageUrl?: string | null;
 +  imageUrls?: string[] | null;
    isSupportEndImage?: boolean;
++  maxCount?: number;
    maxFileSize?: number;
    onEndImageChange: (data: UploadData | null) => void;
    onImageChange: (data: UploadData | null) => void;
@@ -471,6 +475,8 @@ index de4dda5..1bd06f1 100644
 +    onImageUrlsChange,
 +    onRemoveImageUrl,
 +    isSupportEndImage = true,
++    maxCount = 5,
++    maxFileSize,
 +  }) => {
      const { t } = useTranslation('video');
  
@@ -487,6 +493,7 @@ index de4dda5..1bd06f1 100644
 +    }, [imageUrl, imageUrls]);
 +
 +    const hasRefFrames = refFrameUrls.length > 0;
++    const canAddMore = refFrameUrls.length < maxCount;
 +    const showEndFrame = isSupportEndImage && hasRefFrames;
  
      return (
@@ -524,13 +531,21 @@ index de4dda5..1bd06f1 100644
 +          );
 +        })}
 +
-+        {/* Add new frame button if no frames yet */}
-+        {!hasRefFrames && (
++        {/* Add new frame button */}
++        {canAddMore && (
 +          <UploadCard
 +            imageUrl={null}
 +            label={t('config.referenceImage.label')}
++            maxFileSize={maxFileSize}
++            variant={hasRefFrames ? 'circle' : 'card'}
 +            onRemove={() => {}}
-+            onUpload={(data) => onImageChange(data)}
++            onUpload={(data) => {
++              if (hasRefFrames) {
++                onImageUrlsChange?.(data);
++              } else {
++                onImageChange(data);
++              }
++            }}
 +          />
 +        )}
  
@@ -635,7 +650,7 @@ index e7a745a..80b00ab 100644
  export { default as VideoModelItem } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/ModelSelect/VideoModelItem';
 +export { default as VideoFramesUpload } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload';
 diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
-index f469459..6b0b5b4 100644
+index f469459..7bed164 100644
 --- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
 +++ b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
 @@ -172,6 +172,13 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
@@ -660,7 +675,7 @@ index f469459..6b0b5b4 100644
    const isSupportEndImageUrl = useVideoStore(isSupportedParamSelector('endImageUrl'));
    const isSupportAspectRatio = useVideoStore(isSupportedParamSelector('aspectRatio'));
    const isSupportResolution = useVideoStore(isSupportedParamSelector('resolution'));
-@@ -224,19 +232,38 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+@@ -224,19 +232,54 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
      }
    }, [promptParam, isLogin, setValue, setPromptParam, createVideo]);
  
@@ -672,18 +687,18 @@ index f469459..6b0b5b4 100644
 +    [imageUrl, imageUrls],
 +  );
 +  const hasRefImages = framePreviewUrls.length > 0 || Boolean(endImageUrl);
- 
--  const handleImageChange = useCallback(
--    (data: string | { dimensions?: { height: number; width: number }; url: string } | null) => {
--      if (data === null) {
--        setImageUrl(null as any);
--        return;
--      }
++  const maxCount = useMemo(() => {
++    let count = 0;
++    if (isSupportImageUrl) count += 1;
++    if (isSupportImageUrls) count += imageUrlsMaxCount ?? 4;
++    return count;
++  }, [isSupportImageUrl, isSupportImageUrls, imageUrlsMaxCount]);
++
 +  const handleAddImage = useCallback(
 +    (data: string | { dimensions?: { height: number; width: number }; url: string }) => {
-       const url = typeof data === 'string' ? data : data?.url;
--      setImageUrl((url ?? null) as any);
++      const url = typeof data === 'string' ? data : data?.url;
 +      if (!url) return;
++      if (framePreviewUrls.length >= maxCount) return;
 +
 +      if (isSupportImageUrl && !imageUrl) {
 +        setImageUrl(url);
@@ -692,29 +707,46 @@ index f469459..6b0b5b4 100644
 +      } else if (isSupportImageUrl) {
 +        setImageUrl(url);
 +      }
-     },
--    [setImageUrl],
-+    [isSupportImageUrl, isSupportImageUrls, imageUrl, imageUrls, setImageUrl, setImageUrls],
++    },
++    [
++      isSupportImageUrl,
++      isSupportImageUrls,
++      imageUrl,
++      imageUrls,
++      setImageUrl,
++      setImageUrls,
++      framePreviewUrls.length,
++      maxCount,
++    ],
 +  );
-+
+ 
+-  const handleImageChange = useCallback(
+-    (data: string | { dimensions?: { height: number; width: number }; url: string } | null) => {
+-      if (data === null) {
+-        setImageUrl(null as any);
+-        return;
 +  const handleRemoveImage = useCallback(
 +    (url: string) => {
 +      if (url === imageUrl) {
 +        setImageUrl(null);
 +      } else {
 +        setImageUrls((imageUrls ?? []).filter((item) => item !== url) as any);
-+      }
-+    },
+       }
+-      const url = typeof data === 'string' ? data : data?.url;
+-      setImageUrl((url ?? null) as any);
+     },
+-    [setImageUrl],
 +    [imageUrl, imageUrls, setImageUrl, setImageUrls],
    );
  
    const handleEndImageChange = useCallback(
-@@ -267,9 +294,19 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+@@ -267,9 +310,20 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
                <InlineVideoFrames
                  endImageUrl={endImageUrl}
                  imageUrl={imageUrl}
 +                imageUrls={imageUrls}
                  isSupportEndImage={isSupportEndImageUrl}
++                maxCount={maxCount}
 +                maxFileSize={imageUrlsMaxFileSize ?? imageUrlMaxFileSize}
                  onEndImageChange={handleEndImageChange}
 -                onImageChange={handleImageChange}
