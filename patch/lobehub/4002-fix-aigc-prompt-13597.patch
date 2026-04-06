@@ -1,3 +1,516 @@
+diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
+index dc26f782125..079bee04392 100644
+--- a/packages/model-bank/src/aiModels/qwen.ts
++++ b/packages/model-bank/src/aiModels/qwen.ts
+@@ -3634,8 +3634,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+       },
+       duration: { default: 5, max: 10, min: 2 },
+-      imageUrl: {
+-        default: null,
++      imageUrls: {
++        default: [],
+       },
+       prompt: { default: '' },
+       resolution: {
+@@ -4154,8 +4154,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: null,
+       },
+       generateAudio: { default: true },
+-      imageUrl: {
+-        default: null,
++      imageUrls: {
++        default: [],
+       },
+       prompt: { default: '' },
+       resolution: {
+@@ -4501,8 +4501,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+     id: 'vidu/viduq2-pro_reference2video',
+     parameters: {
+       duration: { default: 5, max: 10, min: 1 },
+-      imageUrl: {
+-        default: null,
++      imageUrls: {
++        default: [],
+       },
+       prompt: { default: '' },
+       resolution: {
+@@ -4544,8 +4544,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+     id: 'vidu/viduq2_reference2video',
+     parameters: {
+       duration: { default: 5, max: 10, min: 1 },
+-      imageUrl: {
+-        default: null,
++      imageUrls: {
++        default: [],
+       },
+       prompt: { default: '' },
+       resolution: {
+@@ -4789,8 +4789,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+     parameters: {
+       duration: { default: 5, enum: [5, 8, 10] },
+       generateAudio: { default: true },
+-      imageUrl: {
+-        default: null,
++      imageUrls: {
++        default: [],
+       },
+       prompt: { default: '' },
+       seed: { default: null },
+diff --git a/packages/model-bank/src/standard-parameters/video.test.ts b/packages/model-bank/src/standard-parameters/video.test.ts
+index cc7cd73889f..e7f11e8b841 100644
+--- a/packages/model-bank/src/standard-parameters/video.test.ts
++++ b/packages/model-bank/src/standard-parameters/video.test.ts
+@@ -128,6 +128,17 @@ describe('video standard-parameters', () => {
+       expect(result.endImageUrl).toBeNull();
+     });
+ 
++    it('should extract empty array defaults for imageUrls', () => {
++      const schema: VideoModelParamsSchema = {
++        imageUrls: { default: [] },
++        prompt: { default: 'test' },
++      };
++
++      const result = extractVideoDefaultValues(schema);
++
++      expect(result.imageUrls).toEqual([]);
++    });
++
+     it('should preserve correct types for each field', () => {
+       const schema: VideoModelParamsSchema = {
+         cameraFixed: { default: false },
+diff --git a/packages/model-bank/src/standard-parameters/video.ts b/packages/model-bank/src/standard-parameters/video.ts
+index c6c4c7002b0..b03e5f06be4 100644
+--- a/packages/model-bank/src/standard-parameters/video.ts
++++ b/packages/model-bank/src/standard-parameters/video.ts
+@@ -41,6 +41,20 @@ export const VideoModelParamsMetaSchema = z.object({
+     })
+     .optional(),
+ 
++  imageUrls: z
++    .object({
++      /** Aspect ratio (width/height) constraints */
++      aspectRatio: z.object({ max: z.number().optional(), min: z.number().optional() }).optional(),
++      default: z.array(z.string()),
++      description: z.string().optional(),
++      height: z.object({ max: z.number().optional(), min: z.number().optional() }).optional(),
++      maxCount: z.number().optional(),
++      maxFileSize: z.number().optional(),
++      type: z.literal('array').optional(),
++      width: z.object({ max: z.number().optional(), min: z.number().optional() }).optional(),
++    })
++    .optional(),
++
+   endImageUrl: z
+     .object({
+       /** Aspect ratio (width/height) constraints */
+@@ -140,8 +154,13 @@ type VideoTypeMapping<T> = T extends 'string'
+ type VideoTypeType<K extends VideoModelParamsKeys> = NonNullable<
+   VideoModelParamsOutputSchema[K]
+ >['type'];
++type VideoDefaultType<K extends VideoModelParamsKeys> = NonNullable<
++  VideoModelParamsOutputSchema[K]
++>['default'];
+ type _StandardVideoGenerationParameters<P extends VideoModelParamsKeys = VideoModelParamsKeys> = {
+-  [key in P]: VideoTypeMapping<VideoTypeType<key>>;
++  [key in P]: NonNullable<VideoTypeType<key>> extends 'array'
++    ? VideoDefaultType<key>
++    : VideoTypeMapping<VideoTypeType<key>>;
+ };
+ 
+ export type RuntimeVideoGenParams = Pick<_StandardVideoGenerationParameters, 'prompt'> &
+diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
+index 73900bf4f5d..9466d032819 100644
+--- a/packages/model-runtime/src/providers/qwen/createVideo.ts
++++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
+@@ -117,7 +117,7 @@ async function createVideoTask(
+   baseUrl: string,
+ ): Promise<string> {
+   const { model, params } = payload;
+-  const { prompt, imageUrl, endImageUrl } = params;
++  const { prompt, imageUrl, imageUrls, endImageUrl } = params;
+ 
+   // Determine the endpoint based on task type
+   const url = `${baseUrl}/api/v1/services/aigc/${taskType}/video-synthesis`;
+@@ -158,6 +158,14 @@ async function createVideoTask(
+         url: imageUrl,
+       });
+     }
++    if (imageUrls && imageUrls.length > 0) {
++      imageUrls.forEach((url) => {
++        media.push({
++          type: 'image',
++          url,
++        });
++      });
++    }
+     if (endImageUrl) {
+       media.push({
+         type: 'image',
+@@ -175,6 +183,22 @@ async function createVideoTask(
+         url: imageUrl,
+       });
+     }
++    if (imageUrls && imageUrls.length > 0) {
++      // if imageUrls has only one item and endImageUrl is provided, treat it as keyframe model with imageUrl as first frame and endImageUrl as last frame for stronger referencing capability
++      if (imageUrls.length === 1 && endImageUrl) {
++        media.push({
++          type: 'first_frame',
++          url: imageUrls[0],
++        });
++      } else {
++        imageUrls.forEach((url) => {
++          media.push({
++            type: 'refer',
++            url,
++          });
++        });
++      }
++    }
+     if (endImageUrl) {
+       media.push({
+         type: 'last_frame',
+@@ -204,21 +228,30 @@ async function createVideoTask(
+         },
+       ];
+     }
++    if (imageUrls && imageUrls.length > 0) {
++      imageUrls.forEach((url) => {
++        input.media.push({
++          type: 'image_url',
++          url,
++        });
++      });
++    }
+   } else if (model.startsWith('wan2.7')) {
+     const media = [];
+     if (imageUrl) {
+-      if (model.includes('r2v')) {
+-        // For Wan2.7 R2V models, treat reference images as "reference_image" type to provide stronger referencing capability
++      media.push({
++        type: 'first_frame',
++        url: imageUrl,
++      });
++    }
++    if (imageUrls && imageUrls.length > 0) {
++      // For Wan2.7 R2V models, treat reference images as "reference_image" type to provide stronger referencing capability
++      imageUrls.forEach((url) => {
+         media.push({
+           type: 'reference_image',
+-          url: imageUrl,
++          url,
+         });
+-      } else {
+-        media.push({
+-          type: 'first_frame',
+-          url: imageUrl,
+-        });
+-      }
++      });
+     }
+     if (endImageUrl) {
+       media.push({
+diff --git a/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx b/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
+index de4dda508aa..1bd06f15438 100644
+--- a/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
++++ b/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
+@@ -3,7 +3,7 @@
+ import { Flexbox } from '@lobehub/ui';
+ import { createStaticStyles, cssVar } from 'antd-style';
+ import { ArrowLeftRight } from 'lucide-react';
+-import { memo } from 'react';
++import { memo, useMemo } from 'react';
+ import { useTranslation } from 'react-i18next';
+ 
+ import UploadCard, { UPLOAD_CARD_SIZE, type UploadData } from './UploadCard';
+@@ -23,28 +23,81 @@ const styles = createStaticStyles(({ css }) => ({
+ interface InlineVideoFramesProps {
+   endImageUrl?: string | null;
+   imageUrl?: string | null;
++  imageUrls?: string[] | null;
+   isSupportEndImage?: boolean;
+   maxFileSize?: number;
+   onEndImageChange: (data: UploadData | null) => void;
+   onImageChange: (data: UploadData | null) => void;
++  onImageUrlsChange?: (data: UploadData) => void;
++  onRemoveImageUrl?: (url: string) => void;
+ }
+ 
+ const InlineVideoFrames = memo<InlineVideoFramesProps>(
+-  ({ imageUrl, endImageUrl, onImageChange, onEndImageChange, isSupportEndImage = true }) => {
++  ({
++    imageUrl,
++    imageUrls,
++    endImageUrl,
++    onImageChange,
++    onEndImageChange,
++    onImageUrlsChange,
++    onRemoveImageUrl,
++    isSupportEndImage = true,
++  }) => {
+     const { t } = useTranslation('video');
+ 
+-    const hasStartFrame = Boolean(imageUrl);
+-    const showEndFrame = isSupportEndImage && hasStartFrame;
++    // Combine imageUrl and imageUrls for display
++    const refFrameUrls = useMemo(() => {
++      const urls: string[] = [];
++      if (imageUrl) urls.push(imageUrl);
++      if (Array.isArray(imageUrls)) {
++        urls.push(...imageUrls);
++      }
++      return urls;
++    }, [imageUrl, imageUrls]);
++
++    const hasRefFrames = refFrameUrls.length > 0;
++    const showEndFrame = isSupportEndImage && hasRefFrames;
+ 
+     return (
+       <Flexbox horizontal align={'end'} className={styles.stack} gap={6}>
+-        <UploadCard
+-          imageUrl={imageUrl}
+-          label={hasStartFrame ? t('config.imageUrl.label') : t('config.referenceImage.label')}
+-          onRemove={() => onImageChange(null)}
+-          onUpload={(data) => onImageChange(data)}
+-        />
++        {/* Render ref frames (from imageUrl and imageUrls) */}
++        {refFrameUrls.map((url, index) => {
++          const isFromImageUrl = url === imageUrl;
++          const label =
++            index === 0 && isFromImageUrl
++              ? t('config.imageUrl.label')
++              : t('config.referenceImage.label');
++
++          return (
++            <UploadCard
++              imageUrl={url}
++              key={url}
++              label={label}
++              onRemove={() => {
++                if (isFromImageUrl && imageUrl === url) {
++                  onImageChange(null);
++                } else if (onRemoveImageUrl) {
++                  onRemoveImageUrl(url);
++                }
++              }}
++              onUpload={
++                isFromImageUrl ? (data) => onImageChange(data) : (data) => onImageUrlsChange?.(data)
++              }
++            />
++          );
++        })}
++
++        {/* Add new frame button if no frames yet */}
++        {!hasRefFrames && (
++          <UploadCard
++            imageUrl={null}
++            label={t('config.referenceImage.label')}
++            onRemove={() => {}}
++            onUpload={(data) => onImageChange(data)}
++          />
++        )}
+ 
++        {/* End frame separator and upload */}
+         {showEndFrame && (
+           <>
+             <Flexbox
+diff --git a/src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx b/src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx
+new file mode 100644
+index 00000000000..7f2d3e0f928
+--- /dev/null
++++ b/src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx
+@@ -0,0 +1,87 @@
++import { memo } from 'react';
++
++import { ImageUpload } from '@/routes/(main)/(create)/image/features/ConfigPanel';
++import { useVideoGenerationConfigParam } from '@/store/video/slices/generationConfig/hooks';
++
++interface VideoFramesUploadProps {
++  paramName: 'imageUrl' | 'imageUrls';
++}
++
++const VideoFramesUpload = memo<VideoFramesUploadProps>(({ paramName }) => {
++  const {
++    value,
++    setValue,
++    maxFileSize,
++    imageConstraints,
++    max: maxCount,
++  } = useVideoGenerationConfigParam(paramName);
++
++  if (paramName === 'imageUrl') {
++    const handleChange = (
++      data?: string | { dimensions?: { height: number; width: number }; url: string },
++    ) => {
++      const url = typeof data === 'string' ? data : data?.url;
++      setValue((url ?? null) as any);
++    };
++
++    return (
++      <ImageUpload
++        imageConstraints={imageConstraints}
++        maxFileSize={maxFileSize}
++        placeholderHeight={120}
++        value={value as string | null | undefined}
++        onChange={handleChange}
++      />
++    );
++  }
++
++  // For imageUrls
++  const handleChange = (
++    data?: string | { dimensions?: { height: number; width: number }; url: string },
++  ) => {
++    const url = typeof data === 'string' ? data : data?.url;
++
++    if (!url) {
++      setValue([] as any);
++      return;
++    }
++
++    // When maxCount is 1, replace instead of append
++    if (maxCount === 1) {
++      setValue([url] as any);
++    } else {
++      // Append to existing array
++      const currentArr = Array.isArray(value) ? value : [];
++      setValue([...currentArr, url] as any);
++    }
++  };
++
++  // For imageUrls with maxCount 1, use single image upload
++  if (maxCount === 1) {
++    const currentValue = Array.isArray(value) ? value[0] : null;
++    return (
++      <ImageUpload
++        imageConstraints={imageConstraints}
++        maxFileSize={maxFileSize}
++        placeholderHeight={120}
++        value={currentValue}
++        onChange={handleChange}
++      />
++    );
++  }
++
++  // For imageUrls with maxCount > 1, also use ImageUpload for now
++  // (could be upgraded to MultiImagesUpload in future)
++  const firstImage = Array.isArray(value) ? value[0] : null;
++  return (
++    <ImageUpload
++      imageConstraints={imageConstraints}
++      maxFileSize={maxFileSize}
++      placeholderHeight={120}
++      value={firstImage}
++      onChange={handleChange}
++    />
++  );
++});
++
++export default VideoFramesUpload;
+diff --git a/src/routes/(main)/(create)/video/features/ConfigPanel/index.ts b/src/routes/(main)/(create)/video/features/ConfigPanel/index.ts
+index e7a745a354f..80b00abf49c 100644
+--- a/src/routes/(main)/(create)/video/features/ConfigPanel/index.ts
++++ b/src/routes/(main)/(create)/video/features/ConfigPanel/index.ts
+@@ -1,2 +1,3 @@
+ export { default as FrameUpload } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/FrameUpload';
+ export { default as VideoModelItem } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/ModelSelect/VideoModelItem';
++export { default as VideoFramesUpload } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload';
+diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
+index f469459528d..3a02a0faf92 100644
+--- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
++++ b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
+@@ -172,6 +172,13 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+   const { t } = useTranslation('video');
+   const { value, setValue } = useVideoGenerationConfigParam('prompt');
+   const { value: imageUrl, setValue: setImageUrl } = useVideoGenerationConfigParam('imageUrl');
++  const {
++    value: imageUrls,
++    setValue: setImageUrls,
++    max: imageUrlsMaxCount,
++    maxFileSize: imageUrlsMaxFileSize,
++  } = useVideoGenerationConfigParam('imageUrls');
++  const { maxFileSize: imageUrlMaxFileSize } = useVideoGenerationConfigParam('imageUrl');
+   const { value: endImageUrl, setValue: setEndImageUrl } =
+     useVideoGenerationConfigParam('endImageUrl');
+   const isCreating = useVideoStore(createVideoSelectors.isCreating);
+@@ -182,6 +189,7 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+   const enabledVideoModelList = useAiInfraStore(aiProviderSelectors.enabledVideoModelList);
+   const isInit = useVideoStore((s) => s.isInit);
+   const isSupportImageUrl = useVideoStore(isSupportedParamSelector('imageUrl'));
++  const isSupportImageUrls = useVideoStore(isSupportedParamSelector('imageUrls'));
+   const isSupportEndImageUrl = useVideoStore(isSupportedParamSelector('endImageUrl'));
+   const isSupportAspectRatio = useVideoStore(isSupportedParamSelector('aspectRatio'));
+   const isSupportResolution = useVideoStore(isSupportedParamSelector('resolution'));
+@@ -224,19 +232,38 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+     }
+   }, [promptParam, isLogin, setValue, setPromptParam, createVideo]);
+ 
+-  const showInlineFrames = isSupportImageUrl || isSupportEndImageUrl;
+-  const hasRefImages = Boolean(imageUrl || endImageUrl);
++  const showInlineFrames = isSupportImageUrl || isSupportImageUrls || isSupportEndImageUrl;
++  const framePreviewUrls = useMemo(
++    () => [imageUrl, ...(imageUrls ?? [])].filter(Boolean) as string[],
++    [imageUrl, imageUrls],
++  );
++  const hasRefImages = framePreviewUrls.length > 0 || Boolean(endImageUrl);
+ 
+-  const handleImageChange = useCallback(
+-    (data: string | { dimensions?: { height: number; width: number }; url: string } | null) => {
+-      if (data === null) {
+-        setImageUrl(null as any);
+-        return;
+-      }
++  const handleAddImage = useCallback(
++    (data: string | { dimensions?: { height: number; width: number }; url: string }) => {
+       const url = typeof data === 'string' ? data : data?.url;
+-      setImageUrl((url ?? null) as any);
++      if (!url) return;
++
++      if (isSupportImageUrl && !imageUrl) {
++        setImageUrl(url);
++      } else if (isSupportImageUrls) {
++        setImageUrls([...(imageUrls ?? []), url] as any);
++      } else if (isSupportImageUrl) {
++        setImageUrl(url);
++      }
+     },
+-    [setImageUrl],
++    [isSupportImageUrl, isSupportImageUrls, imageUrl, imageUrls, setImageUrl, setImageUrls],
++  );
++
++  const handleRemoveImage = useCallback(
++    (url: string) => {
++      if (url === imageUrl) {
++        setImageUrl(null);
++      } else {
++        setImageUrls((imageUrls ?? []).filter((item) => item !== url) as any);
++      }
++    },
++    [imageUrl, imageUrls, setImageUrl, setImageUrls],
+   );
+ 
+   const handleEndImageChange = useCallback(
+@@ -267,9 +294,19 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+               <InlineVideoFrames
+                 endImageUrl={endImageUrl}
+                 imageUrl={imageUrl}
++                imageUrls={imageUrls}
+                 isSupportEndImage={isSupportEndImageUrl}
++                maxFileSize={imageUrlsMaxFileSize ?? imageUrlMaxFileSize}
+                 onEndImageChange={handleEndImageChange}
+-                onImageChange={handleImageChange}
++                onImageUrlsChange={handleAddImage}
++                onRemoveImageUrl={handleRemoveImage}
++                onImageChange={(data) => {
++                  if (data === null) {
++                    handleRemoveImage(imageUrl || '');
++                    return;
++                  }
++                  handleAddImage(data);
++                }}
+               />
+             ) : undefined
+           }
 diff --git a/src/store/image/slices/generationConfig/action.test.ts b/src/store/image/slices/generationConfig/action.test.ts
 index 9420af570e8..3e5d6de6a32 100644
 --- a/src/store/image/slices/generationConfig/action.test.ts
@@ -152,18 +665,21 @@ index 9420af570e8..3e5d6de6a32 100644
    });
  
 diff --git a/src/store/image/slices/generationConfig/action.ts b/src/store/image/slices/generationConfig/action.ts
-index 543dc966f5f..bf082ec0b94 100644
+index 543dc966f5f..96a394ee26c 100644
 --- a/src/store/image/slices/generationConfig/action.ts
 +++ b/src/store/image/slices/generationConfig/action.ts
-@@ -14,6 +14,7 @@ import { useUserStore } from '@/store/user';
+@@ -14,6 +14,10 @@ import { useUserStore } from '@/store/user';
  import { authSelectors } from '@/store/user/selectors';
  import { settingsSelectors } from '@/store/user/slices/settings/selectors';
  
-+import { preserveSupportedParams } from '../../../utils/preserveSupportedParams';
++import {
++  normalizeImageInputOnSchemaSwitch,
++  preserveSupportedParams,
++} from '../../../utils/preserveSupportedParams';
  import { type ImageStore } from '../../store';
  import { calculateInitialAspectRatio } from '../../utils/aspectRatio';
  import { adaptSizeToRatio, parseRatio } from '../../utils/size';
-@@ -64,6 +65,47 @@ function prepareModelConfigState(model: string, provider: string) {
+@@ -64,6 +68,20 @@ function prepareModelConfigState(model: string, provider: string) {
    };
  }
  
@@ -178,40 +694,13 @@ index 543dc966f5f..bf082ec0b94 100644
 +    'imageUrls',
 +  ]);
 +
-+  // Smart conversion: multi-image ↔ single-image model switching
-+  const { imageUrl, imageUrls } = previousParameters;
-+  const supportsImageUrl = 'imageUrl' in nextSchema;
-+  const supportsImageUrls = 'imageUrls' in nextSchema;
-+
-+  // Case 1: Multi-image → Single-image (imageUrls[0] → imageUrl)
-+  if (
-+    Array.isArray(imageUrls) &&
-+    imageUrls.length > 0 &&
-+    !supportsImageUrls &&
-+    supportsImageUrl &&
-+    !result.imageUrl
-+  ) {
-+    (result as RuntimeImageGenParams).imageUrl = imageUrls[0];
-+  }
-+
-+  // Case 2: Single-image → Multi-image (imageUrl → [imageUrl])
-+  if (
-+    typeof imageUrl === 'string' &&
-+    imageUrl.length > 0 &&
-+    !supportsImageUrl &&
-+    supportsImageUrls &&
-+    !(Array.isArray(result.imageUrls) && result.imageUrls.length > 0)
-+  ) {
-+    (result as RuntimeImageGenParams).imageUrls = [imageUrl];
-+  }
-+
-+  return result;
++  return normalizeImageInputOnSchemaSwitch(previousParameters, nextSchema, result);
 +}
 +
  type Setter = StoreSetter<ImageStore>;
  export const createGenerationConfigSlice = (set: Setter, get: () => ImageStore, _api?: unknown) =>
    new GenerationConfigActionImpl(set, get, _api);
-@@ -244,16 +286,23 @@ export class GenerationConfigActionImpl {
+@@ -244,16 +262,23 @@ export class GenerationConfigActionImpl {
    };
  
    setModelAndProviderOnSelect = (model: string, provider: string): void => {
@@ -238,10 +727,10 @@ index 543dc966f5f..bf082ec0b94 100644
          activeAspectRatio: initialActiveRatio,
 diff --git a/src/store/utils/preserveSupportedParams.ts b/src/store/utils/preserveSupportedParams.ts
 new file mode 100644
-index 00000000000..a06f6387d05
+index 00000000000..2ffa817a855
 --- /dev/null
 +++ b/src/store/utils/preserveSupportedParams.ts
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,63 @@
 +export function preserveSupportedParams<
 +  TParams extends Record<string, unknown>,
 +  TSchema extends Record<string, unknown>,
@@ -266,12 +755,51 @@ index 00000000000..a06f6387d05
 +    ...Object.fromEntries(supportedPreservedEntries),
 +  };
 +}
++
++export function normalizeImageInputOnSchemaSwitch<
++  TParams extends Record<string, unknown> & {
++    imageUrl?: unknown;
++    imageUrls?: unknown;
++  },
++  TSchema extends Record<string, unknown>,
++>(previousParameters: TParams, nextSchema: TSchema, preservedResult: TParams): TParams {
++  const result = { ...preservedResult };
++
++  const imageUrl = previousParameters.imageUrl;
++  const imageUrls = previousParameters.imageUrls;
++  const supportsImageUrl = 'imageUrl' in nextSchema;
++  const supportsImageUrls = 'imageUrls' in nextSchema;
++
++  // Multi-image -> Single-image
++  if (
++    Array.isArray(imageUrls) &&
++    imageUrls.length > 0 &&
++    !supportsImageUrls &&
++    supportsImageUrl &&
++    !result.imageUrl
++  ) {
++    result.imageUrl = imageUrls[0];
++  }
++
++  // Single-image -> Multi-image
++  if (
++    typeof imageUrl === 'string' &&
++    imageUrl.length > 0 &&
++    !supportsImageUrl &&
++    supportsImageUrls &&
++    !(Array.isArray(result.imageUrls) && result.imageUrls.length > 0)
++  ) {
++    result.imageUrls = [imageUrl];
++  }
++
++  return result;
++}
 diff --git a/src/store/video/slices/generationConfig/action.test.ts b/src/store/video/slices/generationConfig/action.test.ts
 new file mode 100644
-index 00000000000..cb241bdae59
+index 00000000000..3fc513f6cce
 --- /dev/null
 +++ b/src/store/video/slices/generationConfig/action.test.ts
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,187 @@
 +import { act, renderHook } from '@testing-library/react';
 +import {
 +  type AIVideoModelCard,
@@ -292,9 +820,24 @@ index 00000000000..cb241bdae59
 +
 +const modelBSchema: VideoModelParamsSchema = {
 +  prompt: { default: '' },
++  imageUrls: { default: [] },
 +  imageUrl: { default: '' },
 +  endImageUrl: { default: '' },
 +  duration: { default: 3, min: 1, max: 10 },
++};
++
++const singleOnlySchema: VideoModelParamsSchema = {
++  prompt: { default: '' },
++  imageUrl: { default: '' },
++  endImageUrl: { default: '' },
++  duration: { default: 4, min: 1, max: 10 },
++};
++
++const multiOnlySchema: VideoModelParamsSchema = {
++  prompt: { default: '' },
++  imageUrls: { default: [] },
++  endImageUrl: { default: '' },
++  duration: { default: 4, min: 1, max: 10 },
 +};
 +
 +const testVideoModels: AIVideoModelCard[] = [
@@ -312,6 +855,20 @@ index 00000000000..cb241bdae59
 +    parameters: modelBSchema,
 +    releasedAt: '2025-01-02',
 +  },
++  {
++    id: 'video-model-single-only',
++    displayName: 'Video Model Single Only',
++    type: 'video',
++    parameters: singleOnlySchema,
++    releasedAt: '2025-01-03',
++  },
++  {
++    id: 'video-model-multi-only',
++    displayName: 'Video Model Multi Only',
++    type: 'video',
++    parameters: multiOnlySchema,
++    releasedAt: '2025-01-04',
++  },
 +];
 +
 +const mockProviders = [
@@ -324,6 +881,16 @@ index 00000000000..cb241bdae59
 +    id: 'provider-b',
 +    name: 'Provider B',
 +    children: [testVideoModels[1]],
++  },
++  {
++    id: 'provider-single-only',
++    name: 'Provider Single Only',
++    children: [testVideoModels[2]],
++  },
++  {
++    id: 'provider-multi-only',
++    name: 'Provider Multi Only',
++    children: [testVideoModels[3]],
 +  },
 +];
 +
@@ -363,6 +930,7 @@ index 00000000000..cb241bdae59
 +
 +    act(() => {
 +      result.current.setParamOnInput('prompt', 'cinematic sunset');
++      result.current.setParamOnInput('imageUrls', ['ref-1.png', 'ref-2.png']);
 +      result.current.setParamOnInput('imageUrl', 'start-custom.png');
 +      result.current.setParamOnInput('endImageUrl', 'end-custom.png');
 +      result.current.setParamOnInput('duration', 8);
@@ -375,14 +943,52 @@ index 00000000000..cb241bdae59
 +    expect(result.current.parameters).toEqual({
 +      ...modelBDefaultValues,
 +      prompt: 'cinematic sunset',
++      imageUrls: ['ref-1.png', 'ref-2.png'],
 +      imageUrl: 'start-custom.png',
 +      endImageUrl: 'end-custom.png',
 +    });
 +    expect(result.current.parameters?.duration).toBe(modelBDefaultValues.duration);
 +  });
++
++  it('should convert imageUrl to imageUrls when switching to multi-only model', () => {
++    const { result } = renderHook(() => useVideoStore());
++
++    act(() => {
++      result.current.setParamOnInput('prompt', 'single to multi');
++      result.current.setParamOnInput('imageUrl', 'single-ref.png');
++    });
++
++    act(() => {
++      result.current.setModelAndProviderOnSelect('video-model-multi-only', 'provider-multi-only');
++    });
++
++    expect(result.current.parameters?.imageUrls).toEqual(['single-ref.png']);
++    expect(result.current.parameters?.prompt).toBe('single to multi');
++  });
++
++  it('should convert first imageUrls item to imageUrl when switching to single-only model', () => {
++    const { result } = renderHook(() => useVideoStore());
++
++    useVideoStore.setState({
++      model: 'video-model-multi-only',
++      provider: 'provider-multi-only',
++      parametersSchema: multiOnlySchema,
++      parameters: {
++        prompt: 'multi to single',
++        imageUrls: ['multi-ref-1.png', 'multi-ref-2.png'],
++      } as RuntimeVideoGenParams,
++    });
++
++    act(() => {
++      result.current.setModelAndProviderOnSelect('video-model-single-only', 'provider-single-only');
++    });
++
++    expect(result.current.parameters?.imageUrl).toBe('multi-ref-1.png');
++    expect(result.current.parameters?.prompt).toBe('multi to single');
++  });
 +});
 diff --git a/src/store/video/slices/generationConfig/action.ts b/src/store/video/slices/generationConfig/action.ts
-index ae1b1f796ed..cb210ca746e 100644
+index ae1b1f796ed..d5e273da43f 100644
 --- a/src/store/video/slices/generationConfig/action.ts
 +++ b/src/store/video/slices/generationConfig/action.ts
 @@ -1,6 +1,7 @@
@@ -393,15 +999,18 @@ index ae1b1f796ed..cb210ca746e 100644
    type RuntimeVideoGenParamsKeys,
    type RuntimeVideoGenParamsValue,
    type VideoModelParamsSchema,
-@@ -12,6 +13,7 @@ import { type StoreSetter } from '@/store/types';
+@@ -12,6 +13,10 @@ import { type StoreSetter } from '@/store/types';
  import { useUserStore } from '@/store/user';
  import { authSelectors } from '@/store/user/selectors';
  
-+import { preserveSupportedParams } from '../../../utils/preserveSupportedParams';
++import {
++  normalizeImageInputOnSchemaSwitch,
++  preserveSupportedParams,
++} from '../../../utils/preserveSupportedParams';
  import type { VideoStore } from '../../store';
  
  export function getVideoModelAndDefaults(model: string, provider: string) {
-@@ -39,17 +41,30 @@ export function getVideoModelAndDefaults(model: string, provider: string) {
+@@ -39,17 +44,33 @@ export function getVideoModelAndDefaults(model: string, provider: string) {
    return { activeModel, defaultValues, parametersSchema };
  }
  
@@ -410,11 +1019,14 @@ index ae1b1f796ed..cb210ca746e 100644
 +  nextDefaultValues: RuntimeVideoGenParams,
 +  nextSchema: VideoModelParamsSchema,
 +) {
-+  return preserveSupportedParams(previousParameters, nextDefaultValues, nextSchema, [
++  const result = preserveSupportedParams(previousParameters, nextDefaultValues, nextSchema, [
 +    'prompt',
 +    'imageUrl',
++    'imageUrls',
 +    'endImageUrl',
 +  ]);
++
++  return normalizeImageInputOnSchemaSwitch(previousParameters, nextSchema, result);
 +}
 +
  type Setter = StoreSetter<VideoStore>;
@@ -434,7 +1046,7 @@ index ae1b1f796ed..cb210ca746e 100644
      this.#set = set;
    }
  
-@@ -85,12 +100,18 @@ export class GenerationConfigActionImpl {
+@@ -85,12 +106,18 @@ export class GenerationConfigActionImpl {
    };
  
    setModelAndProviderOnSelect = (model: string, provider: string): void => {
