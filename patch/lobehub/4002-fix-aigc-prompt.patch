@@ -1,5 +1,5 @@
 diff --git a/src/store/image/slices/generationConfig/action.test.ts b/src/store/image/slices/generationConfig/action.test.ts
-index 9420af570e8..59bcf1ab98a 100644
+index 9420af570e8..77bd7227029 100644
 --- a/src/store/image/slices/generationConfig/action.test.ts
 +++ b/src/store/image/slices/generationConfig/action.test.ts
 @@ -24,6 +24,7 @@ vi.mock('@/store/user/slices/settings/selectors', () => ({
@@ -10,7 +10,37 @@ index 9420af570e8..59bcf1ab98a 100644
    width: { default: 1024, min: 256, max: 2048, step: 64 },
    height: { default: 1024, min: 256, max: 2048, step: 64 },
    steps: { default: 20, min: 1, max: 50 },
-@@ -195,22 +196,27 @@ describe('GenerationConfigAction', () => {
+@@ -44,6 +45,17 @@ const testImageModels: AIImageModelCard[] = [
+     parameters: customModelSchema,
+     releasedAt: '2024-01-01',
+   },
++  {
++    id: 'single-image-model',
++    displayName: 'Single Image Model',
++    type: 'image',
++    parameters: {
++      prompt: { default: '' },
++      imageUrl: { default: '' },
++      steps: { default: 20, min: 1, max: 50 },
++    } as ModelParamsSchema,
++    releasedAt: '2024-01-01',
++  },
+ ];
+ 
+ const mockProviders = [
+@@ -57,6 +69,11 @@ const mockProviders = [
+     name: 'Custom Provider',
+     children: [testImageModels[1]],
+   },
++  {
++    id: 'single-image-provider',
++    name: 'Single Image Provider',
++    children: [testImageModels[2]],
++  },
+ ];
+ 
+ // Mock external dependencies
+@@ -195,22 +212,79 @@ describe('GenerationConfigAction', () => {
        expect(result.current.parametersSchema).toEqual(customModelSchema);
      });
  
@@ -39,14 +69,74 @@ index 9420af570e8..59bcf1ab98a 100644
 +        imageUrls: ['custom-image-1.png'],
 +      });
 +      expect(result.current.parameters?.steps).toBe(customModelDefaultValues.steps);
++    });
++
++    it('should convert imageUrls[0] to imageUrl when switching to single-image model', () => {
++      const { result } = renderHook(() => useImageStore());
++
++      // Set up multi-image state with imageUrls
++      act(() => {
++        result.current.setParamOnInput('prompt', 'test prompt');
++        result.current.setParamOnInput('imageUrls', ['image1.png', 'image2.png', 'image3.png']);
++      });
++
++      // Switch to single-image model - should convert imageUrls[0] to imageUrl
++      act(() => {
++        result.current.setModelAndProviderOnSelect('single-image-model', 'single-image-provider');
++      });
++
++      expect(result.current.parameters?.imageUrl).toBe('image1.png');
++      expect(result.current.parameters?.prompt).toBe('test prompt');
++      expect(result.current.parameters?.imageUrls).toBeUndefined();
++    });
++
++    it('should convert imageUrl to imageUrls array when switching to multi-image model', () => {
++      const { result } = renderHook(() => useImageStore());
++      const singleImageSchema: ModelParamsSchema = {
++        prompt: { default: '' },
++        imageUrl: { default: '' },
++        steps: { default: 20, min: 1, max: 50 },
++      };
++
++      // Initialize with single-image model state
++      useImageStore.setState({
++        model: 'single-image-model',
++        provider: 'single-image-provider',
++        parameters: {
++          prompt: 'test prompt',
++          imageUrl: 'reference-image.png',
++          steps: 20,
++        },
++        parametersSchema: singleImageSchema,
++      });
++
++      // Get fresh hook after state update
++      const { result: storeResult } = renderHook(() => useImageStore());
++
++      // Switch to multi-image model - should convert imageUrl to imageUrls array
++      act(() => {
++        storeResult.current.setModelAndProviderOnSelect('custom-model', 'custom-provider');
++      });
++
++      expect(storeResult.current.parameters?.imageUrls).toEqual(['reference-image.png']);
++      expect(storeResult.current.parameters?.prompt).toBe('test prompt');
++      expect(storeResult.current.parameters?.imageUrl).toBeUndefined();
      });
    });
  
 diff --git a/src/store/image/slices/generationConfig/action.ts b/src/store/image/slices/generationConfig/action.ts
-index 543dc966f5f..cdedc8a82ab 100644
+index 543dc966f5f..75ae50ed5e4 100644
 --- a/src/store/image/slices/generationConfig/action.ts
 +++ b/src/store/image/slices/generationConfig/action.ts
-@@ -64,6 +64,28 @@ function prepareModelConfigState(model: string, provider: string) {
+@@ -14,6 +14,7 @@ import { useUserStore } from '@/store/user';
+ import { authSelectors } from '@/store/user/selectors';
+ import { settingsSelectors } from '@/store/user/slices/settings/selectors';
+ 
++import { preserveSupportedParams } from '../../../utils/preserveSupportedParams';
+ import { type ImageStore } from '../../store';
+ import { calculateInitialAspectRatio } from '../../utils/aspectRatio';
+ import { adaptSizeToRatio, parseRatio } from '../../utils/size';
+@@ -64,6 +65,47 @@ function prepareModelConfigState(model: string, provider: string) {
    };
  }
  
@@ -55,27 +145,46 @@ index 543dc966f5f..cdedc8a82ab 100644
 +  nextDefaultValues: RuntimeImageGenParams,
 +  nextSchema: ModelParamsSchema,
 +) {
-+  const preservedImageInputKeys = ['prompt', 'imageUrl', 'imageUrls'] as const;
++  const result = preserveSupportedParams(previousParameters, nextDefaultValues, nextSchema, [
++    'prompt',
++    'imageUrl',
++    'imageUrls',
++  ]);
 +
-+  const supportedPreservedEntries = preservedImageInputKeys.flatMap((key) => {
-+    if (!(key in nextSchema)) return [];
++  // Smart conversion: multi-image ↔ single-image model switching
++  const { imageUrl, imageUrls } = previousParameters;
++  const supportsImageUrl = 'imageUrl' in nextSchema;
++  const supportsImageUrls = 'imageUrls' in nextSchema;
 +
-+    const value = previousParameters[key];
-+    if (typeof value === 'undefined') return [];
++  // Case 1: Multi-image → Single-image (imageUrls[0] → imageUrl)
++  if (
++    Array.isArray(imageUrls) &&
++    imageUrls.length > 0 &&
++    !supportsImageUrls &&
++    supportsImageUrl &&
++    !result.imageUrl
++  ) {
++    (result as RuntimeImageGenParams).imageUrl = imageUrls[0];
++  }
 +
-+    return [[key, value] as const];
-+  });
++  // Case 2: Single-image → Multi-image (imageUrl → [imageUrl])
++  if (
++    typeof imageUrl === 'string' &&
++    imageUrl.length > 0 &&
++    !supportsImageUrl &&
++    supportsImageUrls &&
++    !result.imageUrls
++  ) {
++    (result as RuntimeImageGenParams).imageUrls = [imageUrl];
++  }
 +
-+  return {
-+    ...nextDefaultValues,
-+    ...Object.fromEntries(supportedPreservedEntries),
-+  };
++  return result;
 +}
 +
  type Setter = StoreSetter<ImageStore>;
  export const createGenerationConfigSlice = (set: Setter, get: () => ImageStore, _api?: unknown) =>
    new GenerationConfigActionImpl(set, get, _api);
-@@ -244,16 +266,23 @@ export class GenerationConfigActionImpl {
+@@ -244,16 +286,23 @@ export class GenerationConfigActionImpl {
    };
  
    setModelAndProviderOnSelect = (model: string, provider: string): void => {
@@ -100,6 +209,36 @@ index 543dc966f5f..cdedc8a82ab 100644
          parametersSchema,
          isAspectRatioLocked: false,
          activeAspectRatio: initialActiveRatio,
+diff --git a/src/store/utils/preserveSupportedParams.ts b/src/store/utils/preserveSupportedParams.ts
+new file mode 100644
+index 00000000000..a06f6387d05
+--- /dev/null
++++ b/src/store/utils/preserveSupportedParams.ts
+@@ -0,0 +1,24 @@
++export function preserveSupportedParams<
++  TParams extends Record<string, unknown>,
++  TSchema extends Record<string, unknown>,
++  TKey extends keyof TParams & string,
++>(
++  previousParameters: TParams,
++  nextDefaultValues: TParams,
++  nextSchema: TSchema,
++  keys: readonly TKey[],
++): TParams {
++  const supportedPreservedEntries = keys.flatMap((key) => {
++    if (!(key in nextSchema)) return [];
++
++    const value = previousParameters[key];
++    if (typeof value === 'undefined') return [];
++
++    return [[key, value] as const];
++  });
++
++  return {
++    ...nextDefaultValues,
++    ...Object.fromEntries(supportedPreservedEntries),
++  };
++}
 diff --git a/src/store/video/slices/generationConfig/action.test.ts b/src/store/video/slices/generationConfig/action.test.ts
 new file mode 100644
 index 00000000000..cb241bdae59
@@ -216,7 +355,7 @@ index 00000000000..cb241bdae59
 +  });
 +});
 diff --git a/src/store/video/slices/generationConfig/action.ts b/src/store/video/slices/generationConfig/action.ts
-index ae1b1f796ed..6524e877cbe 100644
+index ae1b1f796ed..cb210ca746e 100644
 --- a/src/store/video/slices/generationConfig/action.ts
 +++ b/src/store/video/slices/generationConfig/action.ts
 @@ -1,6 +1,7 @@
@@ -227,7 +366,15 @@ index ae1b1f796ed..6524e877cbe 100644
    type RuntimeVideoGenParamsKeys,
    type RuntimeVideoGenParamsValue,
    type VideoModelParamsSchema,
-@@ -39,17 +40,40 @@ export function getVideoModelAndDefaults(model: string, provider: string) {
+@@ -12,6 +13,7 @@ import { type StoreSetter } from '@/store/types';
+ import { useUserStore } from '@/store/user';
+ import { authSelectors } from '@/store/user/selectors';
+ 
++import { preserveSupportedParams } from '../../../utils/preserveSupportedParams';
+ import type { VideoStore } from '../../store';
+ 
+ export function getVideoModelAndDefaults(model: string, provider: string) {
+@@ -39,17 +41,30 @@ export function getVideoModelAndDefaults(model: string, provider: string) {
    return { activeModel, defaultValues, parametersSchema };
  }
  
@@ -236,21 +383,11 @@ index ae1b1f796ed..6524e877cbe 100644
 +  nextDefaultValues: RuntimeVideoGenParams,
 +  nextSchema: VideoModelParamsSchema,
 +) {
-+  const PRESERVED_VIDEO_INPUT_KEYS = ['prompt', 'imageUrl', 'endImageUrl'] as const;
-+
-+  const supportedPreservedEntries = PRESERVED_VIDEO_INPUT_KEYS.flatMap((key) => {
-+    if (!(key in nextSchema)) return [];
-+
-+    const value = previousParameters[key];
-+    if (typeof value === 'undefined') return [];
-+
-+    return [[key, value] as const];
-+  });
-+
-+  return {
-+    ...nextDefaultValues,
-+    ...Object.fromEntries(supportedPreservedEntries),
-+  };
++  return preserveSupportedParams(previousParameters, nextDefaultValues, nextSchema, [
++    'prompt',
++    'imageUrl',
++    'endImageUrl',
++  ]);
 +}
 +
  type Setter = StoreSetter<VideoStore>;
@@ -270,7 +407,7 @@ index ae1b1f796ed..6524e877cbe 100644
      this.#set = set;
    }
  
-@@ -85,12 +109,18 @@ export class GenerationConfigActionImpl {
+@@ -85,12 +100,18 @@ export class GenerationConfigActionImpl {
    };
  
    setModelAndProviderOnSelect = (model: string, provider: string): void => {
