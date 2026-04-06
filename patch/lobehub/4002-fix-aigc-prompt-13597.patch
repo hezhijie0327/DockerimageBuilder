@@ -57,6 +57,24 @@ index dc26f782125..079bee04392 100644
        },
        prompt: { default: '' },
        seed: { default: null },
+diff --git a/packages/model-bank/src/aiModels/volcengine.ts b/packages/model-bank/src/aiModels/volcengine.ts
+index db634a56a1b..e4ecdede1af 100644
+--- a/packages/model-bank/src/aiModels/volcengine.ts
++++ b/packages/model-bank/src/aiModels/volcengine.ts
+@@ -1373,10 +1373,11 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+         requiresImageUrl: true,
+         width: { max: 6000, min: 300 },
+       },
+-      imageUrl: {
++      imageUrls: {
+         aspectRatio: { max: 2.5, min: 0.4 },
+-        default: null,
++        default: [],
+         height: { max: 6000, min: 300 },
++        maxCount: 4,
+         maxFileSize: 30 * 1024 * 1024,
+         width: { max: 6000, min: 300 },
+       },
 diff --git a/packages/model-bank/src/standard-parameters/video.test.ts b/packages/model-bank/src/standard-parameters/video.test.ts
 index cc7cd73889f..e7f11e8b841 100644
 --- a/packages/model-bank/src/standard-parameters/video.test.ts
@@ -210,6 +228,36 @@ index 73900bf4f5d..9466d032819 100644
      }
      if (endImageUrl) {
        media.push({
+diff --git a/packages/model-runtime/src/providers/volcengine/video/createVideo.ts b/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
+index 02d9165cafb..7c942c7fdad 100644
+--- a/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
++++ b/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
+@@ -17,6 +17,7 @@ export async function createVolcengineVideo(
+   const {
+     prompt,
+     imageUrl,
++    imageUrls,
+     endImageUrl,
+     aspectRatio,
+     duration,
+@@ -37,6 +38,17 @@ export async function createVolcengineVideo(
+     content.push({ image_url: { url: imageUrl }, role: 'first_frame', type: 'image_url' });
+   }
+ 
++  if (imageUrls && imageUrls.length > 0) {
++    // if imageUrls has only one item and endImageUrl is provided and requiresImageUrl is true, treat the single imageUrl as first_frame and endImageUrl as last_frame
++    if (imageUrls.length === 1 && endImageUrl) {
++      content.push({ image_url: { url: imageUrls[0] }, role: 'first_frame', type: 'image_url' });
++    } else {
++      imageUrls.forEach((url) => {
++        content.push({ image_url: { url }, role: 'reference_image', type: 'image_url' });
++      });
++    }
++  }
++
+   if (endImageUrl) {
+     content.push({ image_url: { url: endImageUrl }, role: 'last_frame', type: 'image_url' });
+   }
 diff --git a/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx b/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
 index de4dda508aa..1bd06f15438 100644
 --- a/src/routes/(main)/(create)/features/GenerationInput/InlineVideoFrames.tsx
