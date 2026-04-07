@@ -1,9 +1,11 @@
-From 7de30821108134c67f32fa5884cab5f3c9f5d1a6 Mon Sep 17 00:00:00 2001
+From 14115a52900a1d3d2a59f18f3344b06de9437213 Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Tue, 7 Apr 2026 07:52:19 +0800
 Subject: [PATCH] style: add watermark & prompt_extend & web_search support
 
 style: update minimax & seedream price
+
+style: fix fix ui error
 ---
  locales/en-US/image.json                      |   1 +
  locales/en-US/video.json                      |   3 +
@@ -14,7 +16,7 @@ style: update minimax & seedream price
  packages/model-bank/src/aiModels/qwen.ts      | 264 +++++++-----------
  .../model-bank/src/aiModels/volcengine.ts     |  46 +--
  packages/model-bank/src/aiModels/wenxin.ts    |  18 ++
- packages/model-bank/src/aiModels/zhipu.ts     |  12 +
+ packages/model-bank/src/aiModels/zhipu.ts     |   6 +
  .../src/standard-parameters/index.test.ts     |  15 +
  .../src/standard-parameters/index.ts          |  25 ++
  .../src/standard-parameters/video.test.ts     |  24 ++
@@ -36,7 +38,7 @@ style: update minimax & seedream price
  src/locales/default/video.ts                  |   3 +
  .../image/features/PromptInput/index.tsx      |  70 ++++-
  .../video/features/PromptInput/index.tsx      |  56 +++-
- 31 files changed, 581 insertions(+), 203 deletions(-)
+ 31 files changed, 575 insertions(+), 203 deletions(-)
 
 diff --git a/locales/en-US/image.json b/locales/en-US/image.json
 index 662a2c9..7a37ef6 100644
@@ -1261,7 +1263,7 @@ index afb30f4..6f6054c 100644
      pricing: {
        currency: 'CNY',
 diff --git a/packages/model-bank/src/aiModels/zhipu.ts b/packages/model-bank/src/aiModels/zhipu.ts
-index ccb29d4..24c8510 100644
+index ccb29d4..f0db8a1 100644
 --- a/packages/model-bank/src/aiModels/zhipu.ts
 +++ b/packages/model-bank/src/aiModels/zhipu.ts
 @@ -1268,6 +1268,7 @@ const zhipuImageModels: AIImageModelCard[] = [
@@ -1288,55 +1290,7 @@ index ccb29d4..24c8510 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -1344,6 +1347,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
-         default: '1280x720',
-         enum: ['1280x720'],
-       },
-+      watermark: { default: false },
-     },
-     pricing: {
-       currency: 'CNY',
-@@ -1372,6 +1376,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
-         default: '1920x1080',
-         enum: ['1920x1080'],
-       },
-+      watermark: { default: false },
-     },
-     pricing: {
-       currency: 'CNY',
-@@ -1399,6 +1404,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
-         default: '1920x1080',
-         enum: ['1920x1080'],
-       },
-+      watermark: { default: false },
-     },
-     pricing: {
-       currency: 'CNY',
-@@ -1428,6 +1434,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
-         default: '1920x1080',
-         enum: ['1920x1080'],
-       },
-+      watermark: { default: false },
-     },
-     pricing: {
-       currency: 'CNY',
-@@ -1456,6 +1463,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
-         default: '1920x1080',
-         enum: ['1920x1080'],
-       },
-+      watermark: { default: false },
-     },
-     pricing: {
-       currency: 'CNY',
-@@ -1481,6 +1489,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
-         default: '1920x1080',
-         enum: ['1920x1080'],
-       },
-+      watermark: { default: false },
-     },
-     pricing: {
-       currency: 'CNY',
-@@ -1517,6 +1526,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+@@ -1517,6 +1520,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
            '3840x2160',
          ],
        },
@@ -1344,7 +1298,7 @@ index ccb29d4..24c8510 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -1549,6 +1559,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+@@ -1549,6 +1553,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
            '3840x2160',
          ],
        },
@@ -1352,7 +1306,7 @@ index ccb29d4..24c8510 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -1581,6 +1592,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+@@ -1581,6 +1586,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
            '3840x2160',
          ],
        },
@@ -2044,7 +1998,7 @@ index 5a99ded..b262832 100644
    'generation.actions.errorCopied': 'Error Message Copied to Clipboard',
    'generation.actions.errorCopyFailed': 'Failed to Copy Error Message',
 diff --git a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
-index b57a1a5..499a00b 100644
+index b57a1a5..b95c1f3 100644
 --- a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
 +++ b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
 @@ -1,9 +1,10 @@
@@ -2089,7 +2043,7 @@ index b57a1a5..499a00b 100644
 +
 +    return (
 +      <Flexbox gap={6}>
-+        <Text fontSize={12}>{t('config.promptExtend.label')}</Text>
++        <Text weight={500}>{t('config.promptExtend.label')}</Text>
 +        <Segmented
 +          block
 +          options={options}
