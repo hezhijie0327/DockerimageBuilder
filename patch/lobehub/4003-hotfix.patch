@@ -1,0 +1,2200 @@
+From 3c3251992b0fed392b0621e9c1e198696d9399d5 Mon Sep 17 00:00:00 2001
+From: Zhijie He <hezhijie0327@hotmail.com>
+Date: Tue, 7 Apr 2026 07:52:19 +0800
+Subject: [PATCH] style: add watermark & prompt_extend & web_search support
+
+---
+ locales/en-US/image.json                      |   1 +
+ locales/en-US/video.json                      |   3 +
+ locales/zh-CN/image.json                      |   3 +
+ locales/zh-CN/video.json                      |   3 +
+ packages/model-bank/src/aiModels/hunyuan.ts   |   2 +
+ packages/model-bank/src/aiModels/minimax.ts   |  22 ++
+ packages/model-bank/src/aiModels/qwen.ts      | 264 +++++++-----------
+ .../model-bank/src/aiModels/volcengine.ts     |  22 +-
+ packages/model-bank/src/aiModels/wenxin.ts    |  18 ++
+ packages/model-bank/src/aiModels/zhipu.ts     |  12 +
+ .../src/standard-parameters/index.test.ts     |  15 +
+ .../src/standard-parameters/index.ts          |  25 ++
+ .../src/standard-parameters/video.test.ts     |  24 ++
+ .../src/standard-parameters/video.ts          |  25 ++
+ .../openaiCompatibleFactory/createImage.ts    |  11 +-
+ .../openaiCompatibleFactory/createVideo.ts    |   4 +
+ .../src/providers/hunyuan/createImage.ts      |  11 +-
+ .../src/providers/minimax/createImage.ts      |   3 +-
+ .../src/providers/minimax/createVideo.ts      |   5 +-
+ .../src/providers/qwen/createImage.ts         |   6 +
+ .../providers/volcengine/createImage.test.ts  |  76 +++++
+ .../src/providers/volcengine/createImage.ts   |   4 +-
+ .../volcengine/video/createVideo.test.ts      |  29 ++
+ .../providers/volcengine/video/createVideo.ts |   7 +-
+ .../src/providers/wenxin/createImage.ts       |   6 +-
+ .../src/providers/wenxin/createVideo.ts       |   5 +-
+ .../src/providers/zhipu/createVideo.ts        |  14 +-
+ src/locales/default/image.ts                  |   3 +
+ src/locales/default/video.ts                  |   3 +
+ .../image/features/PromptInput/index.tsx      |  70 ++++-
+ .../video/features/PromptInput/index.tsx      |  56 +++-
+ 31 files changed, 568 insertions(+), 184 deletions(-)
+
+diff --git a/locales/en-US/image.json b/locales/en-US/image.json
+index 662a2c9..7a37ef6 100644
+--- a/locales/en-US/image.json
++++ b/locales/en-US/image.json
+@@ -24,6 +24,7 @@
+   "config.size.label": "Size",
+   "config.steps.label": "Steps",
+   "config.title": "Configuration",
++  "config.webSearch.label": "Web Search",
+   "config.width.label": "Width",
+   "generation.actions.applySeed": "Apply Seed",
+   "generation.actions.copyError": "Copy Error Message",
+diff --git a/locales/en-US/video.json b/locales/en-US/video.json
+index d05c282..933e2ba 100644
+--- a/locales/en-US/video.json
++++ b/locales/en-US/video.json
+@@ -8,11 +8,14 @@
+   "config.imageUrl.label": "Start Frame",
+   "config.prompt.placeholder": "Describe the video you want to generate",
+   "config.prompt.placeholderWithRef": "Describe the scene you want to generate with the image",
++  "config.promptExtend.label": "Prompt Extend",
+   "config.referenceImage.label": "Reference Image",
+   "config.resolution.label": "Resolution",
+   "config.seed.label": "Seed",
+   "config.seed.random": "Random",
+   "config.size.label": "Size",
++  "config.watermark.label": "Watermark",
++  "config.webSearch.label": "Web Search",
+   "generation.actions.copyError": "Copy Error Message",
+   "generation.actions.errorCopied": "Error Message Copied to Clipboard",
+   "generation.actions.errorCopyFailed": "Failed to Copy Error Message",
+diff --git a/locales/zh-CN/image.json b/locales/zh-CN/image.json
+index 99075cf..ff7afd3 100644
+--- a/locales/zh-CN/image.json
++++ b/locales/zh-CN/image.json
+@@ -12,6 +12,7 @@
+   "config.model.label": "模型",
+   "config.prompt.placeholder": "描述你想要生成的内容",
+   "config.prompt.placeholderWithRef": "描述你想如何调整图片",
++  "config.promptExtend.label": "提示词扩展",
+   "config.quality.label": "图片质量",
+   "config.quality.options.hd": "高清",
+   "config.quality.options.standard": "标准",
+@@ -24,6 +25,8 @@
+   "config.size.label": "尺寸",
+   "config.steps.label": "步数",
+   "config.title": "配置",
++  "config.watermark.label": "水印",
++  "config.webSearch.label": "联网搜索",
+   "config.width.label": "宽度",
+   "generation.actions.applySeed": "应用种子",
+   "generation.actions.copyError": "复制错误信息",
+diff --git a/locales/zh-CN/video.json b/locales/zh-CN/video.json
+index a5af820..eafcc86 100644
+--- a/locales/zh-CN/video.json
++++ b/locales/zh-CN/video.json
+@@ -8,11 +8,14 @@
+   "config.imageUrl.label": "起始画面",
+   "config.prompt.placeholder": "描述你想生成的视频内容",
+   "config.prompt.placeholderWithRef": "结合图片，描述你想生成的画面",
++  "config.promptExtend.label": "提示词扩展",
+   "config.referenceImage.label": "参考图像",
+   "config.resolution.label": "分辨率",
+   "config.seed.label": "种子",
+   "config.seed.random": "随机",
+   "config.size.label": "尺寸",
++  "config.watermark.label": "水印",
++  "config.webSearch.label": "联网搜索",
+   "generation.actions.copyError": "复制错误信息",
+   "generation.actions.errorCopied": "错误信息已复制到剪贴板",
+   "generation.actions.errorCopyFailed": "复制错误信息失败",
+diff --git a/packages/model-bank/src/aiModels/hunyuan.ts b/packages/model-bank/src/aiModels/hunyuan.ts
+index aa3fec1..46f3632 100644
+--- a/packages/model-bank/src/aiModels/hunyuan.ts
++++ b/packages/model-bank/src/aiModels/hunyuan.ts
+@@ -528,6 +528,8 @@ const hunyuanImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 2048, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+diff --git a/packages/model-bank/src/aiModels/minimax.ts b/packages/model-bank/src/aiModels/minimax.ts
+index ed8a045..8af01ee 100644
+--- a/packages/model-bank/src/aiModels/minimax.ts
++++ b/packages/model-bank/src/aiModels/minimax.ts
+@@ -314,6 +314,8 @@ const minimaxImageModels: AIImageModelCard[] = [
+         default: '',
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-02-28',
+     type: 'image',
+@@ -334,6 +336,8 @@ const minimaxImageModels: AIImageModelCard[] = [
+         default: '',
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-02-28',
+     type: 'image',
+@@ -357,6 +361,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: '768P',
+         enum: ['768P', '1080P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -381,6 +387,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: '768P',
+         enum: ['768P', '1080P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -408,6 +416,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: '768P',
+         enum: ['512P', '768P', '1080P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -431,6 +441,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['720P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-02-11',
+     type: 'video',
+@@ -447,6 +459,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['720P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-02-11',
+     type: 'video',
+@@ -465,6 +479,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['720P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-03-03',
+     type: 'video',
+@@ -483,6 +499,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['720P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-03-03',
+     type: 'video',
+@@ -496,6 +514,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: null,
+       },
+       prompt: { default: '' },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-01-10',
+     type: 'video',
+@@ -511,6 +531,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['720P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-03-03',
+     type: 'video',
+diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
+index 5b1e597..1d81d76 100644
+--- a/packages/model-bank/src/aiModels/qwen.ts
++++ b/packages/model-bank/src/aiModels/qwen.ts
+@@ -2909,6 +2909,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 4096, min: 256, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -2934,6 +2936,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 4096, min: 256, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -2959,6 +2963,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 4096, min: 256, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -2972,7 +2978,6 @@ const qwenImageModels: AIImageModelCard[] = [
+       'Qwen Image Editing Model supports multi-image input and multi-image output, enabling precise in-image text editing, object addition, removal, or relocation, subject action modification, image style transfer, and enhanced visual detail.',
+     displayName: 'Qwen Image Edit Max',
+     id: 'qwen-image-edit-max',
+-    enabled: true,
+     organization: 'Qwen',
+     parameters: {
+       height: { default: 1536, max: 2048, min: 512, step: 1 },
+@@ -2984,6 +2989,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 2048, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -2996,7 +3003,6 @@ const qwenImageModels: AIImageModelCard[] = [
+     description:
+       'Qwen Image Editing Model supports multi-image input and multi-image output, enabling precise in-image text editing, object addition, removal, or relocation, subject action modification, image style transfer, and enhanced visual detail.',
+     displayName: 'Qwen Image Edit Plus',
+-    enabled: true,
+     id: 'qwen-image-edit-plus',
+     organization: 'Qwen',
+     parameters: {
+@@ -3009,6 +3015,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 2048, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3021,7 +3029,6 @@ const qwenImageModels: AIImageModelCard[] = [
+     description:
+       'Qwen Image Edit is an image-to-image model that edits images based on input images and text prompts, enabling precise adjustments and creative transformations.',
+     displayName: 'Qwen Image Edit',
+-    enabled: true,
+     id: 'qwen-image-edit',
+     organization: 'Qwen',
+     parameters: {
+@@ -3032,6 +3039,8 @@ const qwenImageModels: AIImageModelCard[] = [
+         default: '',
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3044,7 +3053,6 @@ const qwenImageModels: AIImageModelCard[] = [
+     description:
+       'Qwen Image Generation Model (Max series) delivers enhanced realism and visual naturalness compared with the Plus series, effectively reducing AI-generated artifacts, and demonstrating outstanding performance in human appearance, texture details, and text rendering.',
+     displayName: 'Qwen Image Max',
+-    enabled: true,
+     id: 'qwen-image-max',
+     organization: 'Qwen',
+     parameters: {
+@@ -3056,6 +3064,8 @@ const qwenImageModels: AIImageModelCard[] = [
+         default: '1664x928',
+         enum: ['1664x928', '1472x1140', '1328x1328', '1140x1472', '928x1664'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3068,7 +3078,6 @@ const qwenImageModels: AIImageModelCard[] = [
+     description:
+       'It supports a wide range of artistic styles and is particularly proficient at rendering complex text within images, enabling integrated image–text layout design.',
+     displayName: 'Qwen Image Plus',
+-    enabled: true,
+     id: 'qwen-image-plus',
+     organization: 'Qwen',
+     parameters: {
+@@ -3080,6 +3089,8 @@ const qwenImageModels: AIImageModelCard[] = [
+         default: '1664x928',
+         enum: ['1664x928', '1472x1140', '1328x1328', '1140x1472', '928x1664'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3092,7 +3103,6 @@ const qwenImageModels: AIImageModelCard[] = [
+     description:
+       'Qwen-Image is a general image generation model supporting multiple art styles and strong complex text rendering, especially Chinese and English. It supports multi-line layouts, paragraph-level text, and fine detail for complex text-image layouts.',
+     displayName: 'Qwen Image',
+-    enabled: true,
+     id: 'qwen-image',
+     organization: 'Qwen',
+     parameters: {
+@@ -3104,6 +3114,8 @@ const qwenImageModels: AIImageModelCard[] = [
+         default: '1328x1328',
+         enum: ['1664x928', '1472x1140', '1328x1328', '1140x1472', '928x1664'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3128,6 +3140,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 2048, max: 11_585, min: 271, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3152,6 +3166,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 2048, max: 5792, min: 271, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3176,6 +3192,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1280, max: 2880, min: 640, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3198,6 +3216,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1280, max: 2880, min: 640, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3221,6 +3241,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1280, max: 2560, min: 384, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3242,6 +3264,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1280, max: 2880, min: 640, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3263,6 +3287,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 1440, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3284,6 +3310,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 1440, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3305,6 +3333,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 1440, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3326,6 +3356,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 1440, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3347,6 +3379,8 @@ const qwenImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 1440, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3397,6 +3431,7 @@ const qwenImageModels: AIImageModelCard[] = [
+         default: '1k',
+         enum: ['1k', '2k'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3427,6 +3462,7 @@ const qwenImageModels: AIImageModelCard[] = [
+         default: '1k',
+         enum: ['1k', '2k', '4k'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3435,162 +3471,6 @@ const qwenImageModels: AIImageModelCard[] = [
+     releasedAt: '2026-03-26',
+     type: 'image',
+   },
+-  {
+-    description:
+-      'FLUX.1 [schnell] is the most advanced open-source few-step model, surpassing similar competitors and even strong non-distilled models like Midjourney v6.0 and DALL-E 3 (HD). It is finely tuned to preserve pretraining diversity, significantly improving visual quality, instruction following, size/aspect variation, font handling, and output diversity.',
+-    displayName: 'FLUX.1 [schnell]',
+-    id: 'flux-schnell',
+-    organization: 'Qwen',
+-    parameters: {
+-      prompt: {
+-        default: '',
+-      },
+-      seed: { default: null },
+-      size: {
+-        default: '1024x1024',
+-        enum: ['512x1024', '768x512', '768x1024', '1024x576', '576x1024', '1024x1024'],
+-      },
+-      steps: { default: 4, max: 12, min: 1 },
+-    },
+-    pricing: {
+-      currency: 'CNY',
+-      units: [{ name: 'imageGeneration', rate: 0, strategy: 'fixed', unit: 'image' }],
+-    },
+-    releasedAt: '2024-08-07',
+-    type: 'image',
+-  },
+-  {
+-    description:
+-      'FLUX.1 [dev] is an open-weights distilled model for non-commercial use. It keeps near-pro image quality and instruction following while running more efficiently, using resources better than same-size standard models.',
+-    displayName: 'FLUX.1 [dev]',
+-    id: 'flux-dev',
+-    organization: 'Qwen',
+-    parameters: {
+-      prompt: {
+-        default: '',
+-      },
+-      seed: { default: null },
+-      size: {
+-        default: '1024x1024',
+-        enum: ['512x1024', '768x512', '768x1024', '1024x576', '576x1024', '1024x1024'],
+-      },
+-      steps: { default: 50, max: 50, min: 1 },
+-    },
+-    pricing: {
+-      currency: 'CNY',
+-      units: [{ name: 'imageGeneration', rate: 0, strategy: 'fixed', unit: 'image' }],
+-    },
+-    releasedAt: '2024-08-07',
+-    type: 'image',
+-  },
+-  {
+-    description:
+-      'FLUX.1 [merged] combines the deep features explored in "DEV" with the high-speed advantages of "Schnell", extending performance limits and broadening applications.',
+-    displayName: 'FLUX.1 [merged]',
+-    id: 'flux-merged',
+-    organization: 'Qwen',
+-    parameters: {
+-      prompt: {
+-        default: '',
+-      },
+-      seed: { default: null },
+-      size: {
+-        default: '1024x1024',
+-        enum: ['512x1024', '768x512', '768x1024', '1024x576', '576x1024', '1024x1024'],
+-      },
+-      steps: { default: 30, max: 30, min: 1 },
+-    },
+-    pricing: {
+-      currency: 'CNY',
+-      units: [{ name: 'imageGeneration', rate: 0, strategy: 'fixed', unit: 'image' }],
+-    },
+-    releasedAt: '2024-08-22',
+-    type: 'image',
+-  },
+-  {
+-    description:
+-      'stable-diffusion-3.5-large is an 800M-parameter MMDiT text-to-image model with excellent quality and prompt alignment, supporting 1-megapixel images and efficient runs on consumer hardware.',
+-    displayName: 'StableDiffusion 3.5 Large',
+-    id: 'stable-diffusion-3.5-large',
+-    organization: 'Qwen',
+-    parameters: {
+-      height: { default: 1024, max: 1024, min: 512, step: 128 },
+-      prompt: {
+-        default: '',
+-      },
+-      steps: { default: 40, max: 500, min: 1 },
+-      width: { default: 1024, max: 1024, min: 512, step: 128 },
+-    },
+-    pricing: {
+-      currency: 'CNY',
+-      units: [{ name: 'imageGeneration', rate: 0, strategy: 'fixed', unit: 'image' }],
+-    },
+-    releasedAt: '2024-10-25',
+-    type: 'image',
+-  },
+-  {
+-    description:
+-      'stable-diffusion-3.5-large-turbo applies adversarial diffusion distillation (ADD) to stable-diffusion-3.5-large for faster speed.',
+-    displayName: 'StableDiffusion 3.5 Large Turbo',
+-    id: 'stable-diffusion-3.5-large-turbo',
+-    organization: 'Qwen',
+-    parameters: {
+-      height: { default: 1024, max: 1024, min: 512, step: 128 },
+-      prompt: {
+-        default: '',
+-      },
+-      steps: { default: 40, max: 500, min: 1 },
+-      width: { default: 1024, max: 1024, min: 512, step: 128 },
+-    },
+-    pricing: {
+-      currency: 'CNY',
+-      units: [{ name: 'imageGeneration', rate: 0, strategy: 'fixed', unit: 'image' }],
+-    },
+-    releasedAt: '2024-10-25',
+-    type: 'image',
+-  },
+-  {
+-    description:
+-      'stable-diffusion-xl brings major improvements over v1.5 and matches top open text-to-image results. Improvements include a 3x larger UNet backbone, a refinement module for better image quality, and more efficient training techniques.',
+-    displayName: 'StableDiffusion xl',
+-    id: 'stable-diffusion-xl',
+-    organization: 'Qwen',
+-    parameters: {
+-      height: { default: 1024, max: 1024, min: 512, step: 128 },
+-      prompt: {
+-        default: '',
+-      },
+-      steps: { default: 50, max: 500, min: 1 },
+-      width: { default: 1024, max: 1024, min: 512, step: 128 },
+-    },
+-    pricing: {
+-      currency: 'CNY',
+-      units: [{ name: 'imageGeneration', rate: 0, strategy: 'fixed', unit: 'image' }],
+-    },
+-    releasedAt: '2024-04-09',
+-    type: 'image',
+-  },
+-  {
+-    description:
+-      'stable-diffusion-v1.5 is initialized from the v1.2 checkpoint and fine-tuned for 595k steps on "laion-aesthetics v2 5+" at 512x512 resolution, reducing text conditioning by 10% to improve classifier-free guidance sampling.',
+-    displayName: 'StableDiffusion v1.5',
+-    id: 'stable-diffusion-v1.5',
+-    organization: 'Qwen',
+-    parameters: {
+-      height: { default: 512, max: 1024, min: 512, step: 128 },
+-      prompt: {
+-        default: '',
+-      },
+-      steps: { default: 50, max: 500, min: 1 },
+-      width: { default: 512, max: 1024, min: 512, step: 128 },
+-    },
+-    pricing: {
+-      currency: 'CNY',
+-      units: [{ name: 'imageGeneration', rate: 0, strategy: 'fixed', unit: 'image' }],
+-    },
+-    releasedAt: '2024-04-09',
+-    type: 'image',
+-  },
+ ];
+ 
+ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -3614,6 +3494,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['720P', '1080P'],
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3644,6 +3526,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['720P', '1080P'],
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3670,6 +3554,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['720P', '1080P'],
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3696,6 +3582,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['720P', '1080P'],
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3720,6 +3608,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['720P', '1080P'],
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3758,6 +3648,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         ],
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3794,6 +3686,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         ],
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3827,6 +3721,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         ],
+       },
+       seed: { default: null },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3850,6 +3746,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '1080P',
+         enum: ['480P', '720P', '1080P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3884,6 +3782,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1248x1632',
+         ],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3909,6 +3809,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['480P', '720P', '1080P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3934,6 +3836,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['720P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3957,6 +3861,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['480P', '720P', '1080P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -3980,6 +3886,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '1080P',
+         enum: ['480P', '1080P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4009,6 +3917,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1248x1632',
+         ],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4031,6 +3941,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['480P', '720P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4054,6 +3966,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '720P',
+         enum: ['720P'],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4082,6 +3996,8 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '832x1088',
+         ],
+       },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4098,10 +4014,12 @@ const qwenVideoModels: AIVideoModelCard[] = [
+     parameters: {
+       duration: { default: 5, enum: [5] },
+       prompt: { default: '' },
++      promptExtend: { default: false },
+       size: {
+         default: '1280x720',
+         enum: ['1280x720', '720x1280', '960x960', '1088x832', '832x1088'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4134,6 +4052,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '1080p',
+         enum: ['720p', '1080p'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4166,6 +4085,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         default: '1080p',
+         enum: ['720p', '1080p'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4208,6 +4128,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1238x1674',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4249,6 +4170,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1238x1674',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4289,6 +4211,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1238x1674',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4314,6 +4237,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4338,6 +4262,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4361,6 +4286,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4384,6 +4310,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4412,6 +4339,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4439,6 +4367,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4465,6 +4394,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4491,6 +4421,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4535,6 +4466,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1080x1920',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4579,6 +4511,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1080x1920',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4634,6 +4567,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1920x832',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4676,6 +4610,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1080x1920',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4701,6 +4636,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['360P', '540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4725,6 +4661,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['360P', '540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4753,6 +4690,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['360P', '540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4780,6 +4718,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+         enum: ['360P', '540P', '720P', '1080P'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -4826,6 +4765,7 @@ const qwenVideoModels: AIVideoModelCard[] = [
+           '1080x1920',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+diff --git a/packages/model-bank/src/aiModels/volcengine.ts b/packages/model-bank/src/aiModels/volcengine.ts
+index 4d228b3..d62de4e 100644
+--- a/packages/model-bank/src/aiModels/volcengine.ts
++++ b/packages/model-bank/src/aiModels/volcengine.ts
+@@ -1165,6 +1165,9 @@ const volcengineImageModels: AIImageModelCard[] = [
+       prompt: {
+         default: '',
+       },
++      promptExtend: { default: 'standard', enum: ['standard'] },
++      watermark: { default: false },
++      webSearch: { default: false },
+       width: { default: 2048, max: 16_384, min: 480, step: 1 },
+     },
+     pricing: {
+@@ -1186,6 +1189,8 @@ const volcengineImageModels: AIImageModelCard[] = [
+       prompt: {
+         default: '',
+       },
++      promptExtend: { default: 'standard', enum: ['standard'] },
++      watermark: { default: false },
+       width: { default: 2048, max: 16_384, min: 480, step: 1 },
+     },
+     pricing: {
+@@ -1213,6 +1218,8 @@ const volcengineImageModels: AIImageModelCard[] = [
+       prompt: {
+         default: '',
+       },
++      promptExtend: { default: 'standard', enum: ['standard', 'fast'] },
++      watermark: { default: false },
+       width: { default: 2048, max: 16_384, min: 240, step: 1 },
+     },
+     pricing: {
+@@ -1241,6 +1248,7 @@ const volcengineImageModels: AIImageModelCard[] = [
+         default: '',
+       },
+       seed: { default: null },
++      watermark: { default: false },
+       width: { default: 1024, max: 3549, min: 296, step: 1 },
+     },
+     pricing: {
+@@ -1267,6 +1275,7 @@ const volcengineImageModels: AIImageModelCard[] = [
+         default: '',
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     releasedAt: '2025-06-28',
+     type: 'image',
+@@ -1308,6 +1317,8 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+         default: '720p',
+         enum: ['480p', '720p'],
+       },
++      watermark: { default: false },
++      webSearch: { default: false },
+       seed: { default: null },
+     },
+     pricing: {
+@@ -1351,6 +1362,8 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+         default: '720p',
+         enum: ['480p', '720p'],
+       },
++      watermark: { default: false },
++      webSearch: { default: false },
+       seed: { default: null },
+     },
+     pricing: {
+@@ -1367,7 +1380,10 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+     enabled: true,
+     id: 'doubao-seedance-1-5-pro-251215',
+     organization: 'ByteDance',
+-    parameters: seedance15ProParams,
++    parameters: {
++      ...seedance15ProParams,
++      watermark: { default: false },
++    },
+     pricing: {
+       currency: 'CNY',
+       units: [
+@@ -1411,6 +1427,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+         enum: ['480p', '720p', '1080p'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1453,6 +1470,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+         enum: ['480p', '720p', '1080p'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1496,6 +1514,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+         enum: ['480p', '720p', '1080p'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1523,6 +1542,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+         enum: ['480p', '720p', '1080p'],
+       },
+       seed: { default: null },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+diff --git a/packages/model-bank/src/aiModels/wenxin.ts b/packages/model-bank/src/aiModels/wenxin.ts
+index afb30f4..6f6054c 100644
+--- a/packages/model-bank/src/aiModels/wenxin.ts
++++ b/packages/model-bank/src/aiModels/wenxin.ts
+@@ -1772,6 +1772,7 @@ const wenxinImageModels: AIImageModelCard[] = [
+           '1104x1472',
+         ],
+       },
++      promptExtend: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1791,6 +1792,7 @@ const wenxinImageModels: AIImageModelCard[] = [
+         default: '',
+       },
+       width: { default: 1024, max: 2048, min: 512, step: 1 },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1812,6 +1814,7 @@ const wenxinImageModels: AIImageModelCard[] = [
+         default: '',
+       },
+       width: { default: 1024, max: 2048, min: 512, step: 1 },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1834,6 +1837,8 @@ const wenxinImageModels: AIImageModelCard[] = [
+       seed: { default: null },
+       steps: { default: 25, max: 50, min: 1 },
+       width: { default: 1024, max: 2048, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1855,6 +1860,8 @@ const wenxinImageModels: AIImageModelCard[] = [
+       },
+       seed: { default: null },
+       width: { default: 1024, max: 2048, min: 512, step: 1 },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1876,6 +1883,7 @@ const wenxinImageModels: AIImageModelCard[] = [
+       seed: { default: null },
+       steps: { default: 25, max: 50, min: 1 },
+       width: { default: 1024, max: 2048, min: 512, step: 1 },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1899,6 +1907,8 @@ const wenxinVideoModels: AIVideoModelCard[] = [
+         default: null,
+       },
+       prompt: { default: '' },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1918,6 +1928,8 @@ const wenxinVideoModels: AIVideoModelCard[] = [
+         default: null,
+       },
+       prompt: { default: '' },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1937,6 +1949,8 @@ const wenxinVideoModels: AIVideoModelCard[] = [
+         default: null,
+       },
+       prompt: { default: '' },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1956,6 +1970,8 @@ const wenxinVideoModels: AIVideoModelCard[] = [
+         default: null,
+       },
+       prompt: { default: '' },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1974,6 +1990,8 @@ const wenxinVideoModels: AIVideoModelCard[] = [
+         default: null,
+       },
+       prompt: { default: '' },
++      promptExtend: { default: false },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+diff --git a/packages/model-bank/src/aiModels/zhipu.ts b/packages/model-bank/src/aiModels/zhipu.ts
+index ccb29d4..24c8510 100644
+--- a/packages/model-bank/src/aiModels/zhipu.ts
++++ b/packages/model-bank/src/aiModels/zhipu.ts
+@@ -1268,6 +1268,7 @@ const zhipuImageModels: AIImageModelCard[] = [
+           '960x1728',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1290,6 +1291,7 @@ const zhipuImageModels: AIImageModelCard[] = [
+         default: '1024x1024',
+         enum: ['1024x1024', '768x1344', '864x1152', '1344x768', '1152x864', '1440x720', '720x1440'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1312,6 +1314,7 @@ const zhipuImageModels: AIImageModelCard[] = [
+         default: '1024x1024',
+         enum: ['1024x1024', '768x1344', '864x1152', '1344x768', '1152x864', '1440x720', '720x1440'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1344,6 +1347,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+         default: '1280x720',
+         enum: ['1280x720'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1372,6 +1376,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+         default: '1920x1080',
+         enum: ['1920x1080'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1399,6 +1404,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+         default: '1920x1080',
+         enum: ['1920x1080'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1428,6 +1434,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+         default: '1920x1080',
+         enum: ['1920x1080'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1456,6 +1463,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+         default: '1920x1080',
+         enum: ['1920x1080'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1481,6 +1489,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+         default: '1920x1080',
+         enum: ['1920x1080'],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1517,6 +1526,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+           '3840x2160',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1549,6 +1559,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+           '3840x2160',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+@@ -1581,6 +1592,7 @@ const zhipuVideoModels: AIVideoModelCard[] = [
+           '3840x2160',
+         ],
+       },
++      watermark: { default: false },
+     },
+     pricing: {
+       currency: 'CNY',
+diff --git a/packages/model-bank/src/standard-parameters/index.test.ts b/packages/model-bank/src/standard-parameters/index.test.ts
+index f511af8..c70828a 100644
+--- a/packages/model-bank/src/standard-parameters/index.test.ts
++++ b/packages/model-bank/src/standard-parameters/index.test.ts
+@@ -11,7 +11,10 @@ describe('meta-schema', () => {
+         width: { default: 1024, min: 512, max: 2048, step: 64 },
+         height: { default: 1024, min: 512, max: 2048, step: 64 },
+         steps: { default: 20, min: 1, max: 50 },
++        promptExtend: { default: false },
++        watermark: { default: false },
+         seed: { default: null, min: 0 },
++        webSearch: { default: true },
+         cfg: { default: 7.5, min: 1, max: 20, step: 0.5 },
+         aspectRatio: { default: '1:1', enum: ['1:1', '16:9', '4:3'] },
+         size: { default: '1024x1024', enum: ['512x512', '1024x1024', '1536x1536'] },
+@@ -34,15 +37,21 @@ describe('meta-schema', () => {
+       const schema: ModelParamsSchema = {
+         prompt: {},
+         width: { default: 1024, min: 512, max: 2048 },
++        promptExtend: { default: 'standard', enum: ['standard', 'fast'] },
++        watermark: {},
+         seed: {},
++        webSearch: {},
+       };
+ 
+       const result = ModelParamsMetaSchema.parse(schema);
+ 
+       expect(result.prompt.default).toBe('');
+       expect(result.width?.step).toBe(1);
++      expect(result.promptExtend?.default).toBe('standard');
++      expect(result.watermark?.default).toBe(false);
+       expect(result.seed?.default).toBeNull();
+       expect(result.seed?.min).toBe(0);
++      expect(result.webSearch?.default).toBe(true);
+     });
+ 
+     it('should reject invalid parameter schemas', () => {
+@@ -148,6 +157,9 @@ describe('meta-schema', () => {
+         prompt: { default: 'test' },
+         width: { default: 1024, min: 512, max: 2048 },
+         seed: { default: 12345 },
++        promptExtend: { default: 'fast', enum: ['standard', 'fast'] },
++        watermark: { default: true },
++        webSearch: { default: false },
+         cfg: { default: 7.5, min: 1, max: 20, step: 0.5 },
+         aspectRatio: { default: '16:9', enum: ['1:1', '16:9', '4:3'] },
+         imageUrls: { default: ['test.jpg'] },
+@@ -159,6 +171,9 @@ describe('meta-schema', () => {
+       expect(typeof result.prompt).toBe('string');
+       expect(typeof result.width).toBe('number');
+       expect(typeof result.seed).toBe('number');
++      expect(typeof result.promptExtend).toBe('string');
++      expect(typeof result.watermark).toBe('boolean');
++      expect(typeof result.webSearch).toBe('boolean');
+       expect(typeof result.cfg).toBe('number');
+       expect(typeof result.aspectRatio).toBe('string');
+       expect(Array.isArray(result.imageUrls)).toBe(true);
+diff --git a/packages/model-bank/src/standard-parameters/index.ts b/packages/model-bank/src/standard-parameters/index.ts
+index 3a8bf3d..967fcc3 100644
+--- a/packages/model-bank/src/standard-parameters/index.ts
++++ b/packages/model-bank/src/standard-parameters/index.ts
+@@ -202,6 +202,31 @@ export const ModelParamsMetaSchema = z.object({
+     })
+     .optional(),
+ 
++  promptExtend: z
++    .object({
++      default: z.union([z.boolean(), z.string()]),
++      description: z.string().optional(),
++      enum: z.array(z.string()).optional(),
++      type: z.union([z.literal('boolean'), z.literal('string')]).optional(),
++    })
++    .optional(),
++
++  watermark: z
++    .object({
++      default: z.boolean().default(false),
++      description: z.string().optional(),
++      type: z.literal('boolean').optional(),
++    })
++    .optional(),
++
++  webSearch: z
++    .object({
++      default: z.boolean().default(true),
++      description: z.string().optional(),
++      type: z.literal('boolean').optional(),
++    })
++    .optional(),
++
+   seed: z
+     .object({
+       default: z.number().nullable().default(null),
+diff --git a/packages/model-bank/src/standard-parameters/video.test.ts b/packages/model-bank/src/standard-parameters/video.test.ts
+index cc7cd73..169093b 100644
+--- a/packages/model-bank/src/standard-parameters/video.test.ts
++++ b/packages/model-bank/src/standard-parameters/video.test.ts
+@@ -20,6 +20,9 @@ describe('video standard-parameters', () => {
+         duration: { default: 5, max: 10, min: 1, step: 1 },
+         endImageUrl: { default: null },
+         generateAudio: { default: true },
++        promptExtend: { default: 'standard', enum: ['standard', 'fast'] },
++        watermark: { default: false },
++        webSearch: { default: true },
+         imageUrl: { default: null },
+         prompt: { default: '' },
+         resolution: { default: '720p', enum: ['480p', '720p', '1080p'] },
+@@ -41,6 +44,9 @@ describe('video standard-parameters', () => {
+       const schema: VideoModelParamsSchema = {
+         cameraFixed: {},
+         generateAudio: {},
++        promptExtend: { default: true },
++        watermark: {},
++        webSearch: {},
+         prompt: {},
+         seed: {},
+       };
+@@ -50,6 +56,9 @@ describe('video standard-parameters', () => {
+       expect(result.prompt.default).toBe('');
+       expect(result.cameraFixed?.default).toBe(false);
+       expect(result.generateAudio?.default).toBe(true);
++      expect(result.promptExtend?.default).toBe(true);
++      expect(result.watermark?.default).toBe(false);
++      expect(result.webSearch?.default).toBe(true);
+       expect(result.seed?.default).toBeNull();
+       expect(result.seed?.max).toBe(MAX_VIDEO_SEED);
+       expect(result.seed?.min).toBe(-1);
+@@ -89,6 +98,9 @@ describe('video standard-parameters', () => {
+         cameraFixed: { default: true },
+         duration: { default: 5, max: 10, min: 1 },
+         generateAudio: { default: false },
++        promptExtend: { default: 'fast', enum: ['standard', 'fast'] },
++        watermark: { default: true },
++        webSearch: { default: false },
+         prompt: { default: 'test prompt' },
+         resolution: { default: '1080p', enum: ['720p', '1080p'] },
+         seed: { default: 42 },
+@@ -101,6 +113,9 @@ describe('video standard-parameters', () => {
+       expect(result.cameraFixed).toBe(true);
+       expect(result.duration).toBe(5);
+       expect(result.generateAudio).toBe(false);
++      expect(result.promptExtend).toBe('fast');
++      expect(result.watermark).toBe(true);
++      expect(result.webSearch).toBe(false);
+       expect(result.resolution).toBe('1080p');
+       expect(result.seed).toBe(42);
+     });
+@@ -132,6 +147,9 @@ describe('video standard-parameters', () => {
+       const schema: VideoModelParamsSchema = {
+         cameraFixed: { default: false },
+         generateAudio: { default: true },
++        promptExtend: { default: 'standard', enum: ['standard', 'fast'] },
++        watermark: { default: false },
++        webSearch: { default: true },
+         prompt: { default: 'hello' },
+         seed: { default: null },
+       };
+@@ -141,6 +159,9 @@ describe('video standard-parameters', () => {
+       expect(typeof result.prompt).toBe('string');
+       expect(typeof result.cameraFixed).toBe('boolean');
+       expect(typeof result.generateAudio).toBe('boolean');
++      expect(typeof result.promptExtend).toBe('string');
++      expect(typeof result.watermark).toBe('boolean');
++      expect(typeof result.webSearch).toBe('boolean');
+       expect(result.seed).toBeNull();
+     });
+   });
+@@ -172,6 +193,9 @@ describe('video standard-parameters', () => {
+       expect(params.prompt).toBe('required prompt');
+       expect(params.cameraFixed).toBeUndefined();
+       expect(params.generateAudio).toBeUndefined();
++      expect(params.promptExtend).toBeUndefined();
++      expect(params.watermark).toBeUndefined();
++      expect(params.webSearch).toBeUndefined();
+       expect(params.seed).toBeUndefined();
+     });
+   });
+diff --git a/packages/model-bank/src/standard-parameters/video.ts b/packages/model-bank/src/standard-parameters/video.ts
+index b03e5f0..73dfe35 100644
+--- a/packages/model-bank/src/standard-parameters/video.ts
++++ b/packages/model-bank/src/standard-parameters/video.ts
+@@ -124,6 +124,31 @@ export const VideoModelParamsMetaSchema = z.object({
+     })
+     .optional(),
+ 
++  promptExtend: z
++    .object({
++      default: z.union([z.boolean(), z.string()]),
++      description: z.string().optional(),
++      enum: z.array(z.string()).optional(),
++      type: z.union([z.literal('boolean'), z.literal('string')]).optional(),
++    })
++    .optional(),
++
++  watermark: z
++    .object({
++      default: z.boolean().default(false),
++      description: z.string().optional(),
++      type: z.literal('boolean').optional(),
++    })
++    .optional(),
++
++  webSearch: z
++    .object({
++      default: z.boolean().default(true),
++      description: z.string().optional(),
++      type: z.literal('boolean').optional(),
++    })
++    .optional(),
++
+   seed: z
+     .object({
+       default: z.number().nullable().default(null),
+diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createImage.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createImage.ts
+index 9ff6c13..0a1a417 100644
+--- a/packages/model-runtime/src/core/openaiCompatibleFactory/createImage.ts
++++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createImage.ts
+@@ -54,7 +54,10 @@ async function generateByImageMode(
+       // According to official docs, if there are multiple images, pass an array; if only one, pass a single File
+       userInput.image = imageFiles.length === 1 ? imageFiles[0] : imageFiles;
+     } catch (error) {
+-      throw new Error(`Failed to convert image URLs to File objects: ${error}`);
++      throw new Error(
++        `Failed to convert image URLs to File objects: ${error instanceof Error ? error.message : String(error)}`,
++        { cause: error },
++      );
+     }
+   } else {
+     delete userInput.image;
+@@ -77,6 +80,7 @@ async function generateByImageMode(
+     model,
+     ...defaultInput,
+     ...userInput,
++    ...(params.watermark && { watermark: params.watermark }), // Add watermark parameter if provided
+   });
+ 
+   log('options: %O', options);
+@@ -180,7 +184,10 @@ async function generateByChatModel(
+       });
+       log('Successfully processed image URL for chat input');
+     } catch (error) {
+-      throw new Error(`Failed to process image URL: ${error}`);
++      throw new Error(
++        `Failed to process image URL: ${error instanceof Error ? error.message : String(error)}`,
++        { cause: error },
++      );
+     }
+   }
+ 
+diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
+index 97b3a91..93dc058 100644
+--- a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
++++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
+@@ -153,6 +153,10 @@ export async function createOpenAICompatibleVideo(
+     body['input_reference'] = imageUrl;
+   }
+ 
++  if (params.watermark) {
++    body['watermark'] = params.watermark;
++  }
++
+   log('OpenAI-compatible video API request body: %O', body);
+ 
+   const response = await fetch(`${baseURL}/videos`, {
+diff --git a/packages/model-runtime/src/providers/hunyuan/createImage.ts b/packages/model-runtime/src/providers/hunyuan/createImage.ts
+index bea7d6f..f73f1e1 100644
+--- a/packages/model-runtime/src/providers/hunyuan/createImage.ts
++++ b/packages/model-runtime/src/providers/hunyuan/createImage.ts
+@@ -71,7 +71,8 @@ export async function createHunyuanImage(
+           ? { images: [params.imageUrl] }
+           : {}),
+       extra_body: {
+-        logo_add: 0, // Add Watermark: 0 disabled, 1 enabled
++        revise: params.promptExtend === true ? 1 : 0, // Prompt optimization switch, default is 0 (no optimization)
++        logo_add: params.watermark === true ? 1 : 0, // Watermark switch, default is 0 (no watermark)
+         ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
+       },
+     };
+@@ -92,7 +93,9 @@ export async function createHunyuanImage(
+       let errorData;
+       try {
+         errorData = await submitResponse.json();
+-      } catch {}
++      } catch (error) {
++        void error;
++      }
+ 
+       const errorMessage =
+         typeof errorData?.error?.message === 'string'
+@@ -202,7 +205,9 @@ export async function createHunyuanImage(
+           let errorData;
+           try {
+             errorData = await queryResponse.json();
+-          } catch {}
++          } catch (error) {
++            void error;
++          }
+ 
+           const errorMessage =
+             typeof errorData?.message === 'string'
+diff --git a/packages/model-runtime/src/providers/minimax/createImage.ts b/packages/model-runtime/src/providers/minimax/createImage.ts
+index 9d9fcfb..f2f3e10 100644
+--- a/packages/model-runtime/src/providers/minimax/createImage.ts
++++ b/packages/model-runtime/src/providers/minimax/createImage.ts
+@@ -39,7 +39,8 @@ export async function createMiniMaxImage(
+       model,
+       n: 1,
+       prompt: params.prompt,
+-      //prompt_optimizer: true, // Enable automatic prompt optimization
++      aigc_watermark: params.watermark ?? false,
++      prompt_optimizer: params.promptExtend ?? false,
+       ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
+     };
+ 
+diff --git a/packages/model-runtime/src/providers/minimax/createVideo.ts b/packages/model-runtime/src/providers/minimax/createVideo.ts
+index 0bbf9d2..bdb69f3 100644
+--- a/packages/model-runtime/src/providers/minimax/createVideo.ts
++++ b/packages/model-runtime/src/providers/minimax/createVideo.ts
+@@ -143,7 +143,8 @@ export async function createMiniMaxVideo(
+   const body: Record<string, unknown> = {
+     model,
+     prompt,
+-    aigc_watermark: false, // Disable watermark for better user experience
++    aigc_watermark: params.watermark ?? false,
++    prompt_optimizer: params.promptExtend ?? false,
+     ...(typeof duration === 'number' ? { duration } : {}),
+     ...(typeof resolution === 'string' ? { resolution } : {}),
+   };
+@@ -166,6 +167,8 @@ export async function createMiniMaxVideo(
+     body.last_frame_image = endImageUrl;
+   }
+ 
++  log('Creating video with MiniMax API - model: %s, params: %O', model, params);
++
+   const response = await fetch(`${baseURL}/video_generation`, {
+     body: JSON.stringify(body),
+     headers: {
+diff --git a/packages/model-runtime/src/providers/qwen/createImage.ts b/packages/model-runtime/src/providers/qwen/createImage.ts
+index b5b4322..b6a95cd 100644
+--- a/packages/model-runtime/src/providers/qwen/createImage.ts
++++ b/packages/model-runtime/src/providers/qwen/createImage.ts
+@@ -88,6 +88,8 @@ async function createLegacySynthesisTask(
+       : params.size
+         ? { size: params.size.replaceAll('x', '*') }
+         : { size: '1024*1024' }),
++    ...(params.promptExtend && { prompt_extend: params.promptExtend }),
++    ...(params.watermark && { watermark: params.watermark }),
+   };
+ 
+   if (endpoint === 'image2image') {
+@@ -178,6 +180,8 @@ async function createHTTPAsyncGenerationTask(
+       : params.size
+         ? { size: params.size.replaceAll('x', '*') }
+         : { size: '1024*1024' }),
++    ...(params.promptExtend && { prompt_extend: params.promptExtend }),
++    ...(params.watermark && { watermark: params.watermark }),
+   };
+ 
+   const response = await fetch(endpoint, {
+@@ -266,6 +270,8 @@ async function createHTTPSyncGeneration(
+       parameters: {
+         n: 1,
+         ...(typeof params.seed === 'number' ? { seed: params.seed } : {}),
++        ...(params.promptExtend && { prompt_extend: params.promptExtend }),
++        ...(params.watermark && { watermark: params.watermark }),
+       },
+     }),
+     headers: {
+diff --git a/packages/model-runtime/src/providers/volcengine/createImage.test.ts b/packages/model-runtime/src/providers/volcengine/createImage.test.ts
+index a9db7ce..85f0b29 100644
+--- a/packages/model-runtime/src/providers/volcengine/createImage.test.ts
++++ b/packages/model-runtime/src/providers/volcengine/createImage.test.ts
+@@ -124,6 +124,27 @@ describe('createVolcengineImage', () => {
+       });
+     });
+ 
++    it('should map promptExtend parameter to prompt_extend', async () => {
++      const mockResponse = {
++        data: [{ url: 'https://example.com/test.jpg' }],
++      };
++      mockGenerate.mockResolvedValue(mockResponse);
++
++      payload.params = {
++        prompt: 'test prompt',
++        promptExtend: 'standard',
++      };
++
++      await createVolcengineImage(payload, options);
++
++      expect(mockGenerate).toHaveBeenCalledWith({
++        model: 'doubao-seedream-3-0-t2i',
++        watermark: false,
++        prompt: 'test prompt',
++        prompt_extend: 'standard',
++      });
++    });
++
+     it('should map imageUrls parameter to image', async () => {
+       const mockResponse = {
+         data: [{ url: 'https://example.com/test.jpg' }],
+@@ -425,6 +446,61 @@ describe('createVolcengineImage', () => {
+         }),
+       );
+     });
++
++    it('should allow overriding watermark when watermark is provided', async () => {
++      const mockResponse = {
++        data: [{ url: 'https://example.com/test.jpg' }],
++      };
++      mockGenerate.mockResolvedValue(mockResponse);
++
++      payload.params = {
++        prompt: 'test prompt',
++        watermark: true,
++      };
++
++      await createVolcengineImage(payload, options);
++
++      expect(mockGenerate).toHaveBeenCalledWith(
++        expect.objectContaining({
++          watermark: true,
++        }),
++      );
++    });
++
++    it('should enable web search tool by default for Seedream 5.0', async () => {
++      const mockResponse = {
++        data: [{ url: 'https://example.com/test.jpg' }],
++      };
++      mockGenerate.mockResolvedValue(mockResponse);
++
++      payload.model = 'doubao-seedream-5-0-260128';
++
++      await createVolcengineImage(payload, options);
++
++      expect(mockGenerate).toHaveBeenCalledWith(
++        expect.objectContaining({
++          tools: [{ type: 'web_search' }],
++        }),
++      );
++    });
++
++    it('should disable web search tool when webSearch is false', async () => {
++      const mockResponse = {
++        data: [{ url: 'https://example.com/test.jpg' }],
++      };
++      mockGenerate.mockResolvedValue(mockResponse);
++
++      payload.model = 'doubao-seedream-5-0-260128';
++      payload.params.webSearch = false;
++
++      await createVolcengineImage(payload, options);
++
++      expect(mockGenerate).toHaveBeenCalledWith(
++        expect.not.objectContaining({
++          tools: [{ type: 'web_search' }],
++        }),
++      );
++    });
+   });
+ 
+   describe('size extraction', () => {
+diff --git a/packages/model-runtime/src/providers/volcengine/createImage.ts b/packages/model-runtime/src/providers/volcengine/createImage.ts
+index 3a53862..a5fc7e3 100644
+--- a/packages/model-runtime/src/providers/volcengine/createImage.ts
++++ b/packages/model-runtime/src/providers/volcengine/createImage.ts
+@@ -30,6 +30,7 @@ export async function createVolcengineImage(
+     ['imageUrls', 'image'],
+     ['imageUrl', 'image'],
+     ['cfg', 'guidance_scale'],
++    ['promptExtend', 'optimize_prompt_options.mode'],
+   ]);
+ 
+   const userInput: Record<string, any> = Object.fromEntries(
+@@ -71,7 +72,8 @@ export async function createVolcengineImage(
+   // Build request options
+   const requestOptions = {
+     model,
+-    watermark: false, // Default to no watermark
++    watermark: params.watermark ?? false, // Default to no watermark
++    ...(params.webSearch !== false && { tools: [{ type: 'web_search' }] }),
+     ...userInput,
+   };
+ 
+diff --git a/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts b/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
+index 80be911..44f0d25 100644
+--- a/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
++++ b/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
+@@ -162,6 +162,28 @@ describe('createVolcengineVideo', () => {
+       expect(body.generate_audio).toBe(true);
+     });
+ 
++    it('should map promptExtend to body.prompt_extend', async () => {
++      payload.params.promptExtend = 'standard';
++      await createVolcengineVideo(payload, options);
++      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
++      expect(body.prompt_extend).toBe('standard');
++    });
++
++    it('should enable web search tool by default for Seedance 2.0 models', async () => {
++      payload.model = 'doubao-seedance-2-0-fast-260128';
++      await createVolcengineVideo(payload, options);
++      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
++      expect(body.tools).toEqual([{ type: 'web_search' }]);
++    });
++
++    it('should disable web search tool when webSearch is false', async () => {
++      payload.model = 'doubao-seedance-2-0-fast-260128';
++      payload.params.webSearch = false;
++      await createVolcengineVideo(payload, options);
++      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
++      expect(body.tools).toBeUndefined();
++    });
++
+     it('should map seed to body.seed', async () => {
+       payload.params.seed = 42;
+       await createVolcengineVideo(payload, options);
+@@ -196,6 +218,13 @@ describe('createVolcengineVideo', () => {
+       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+       expect(body.callback_url).toBe('https://example.com/webhook');
+     });
++
++    it('should allow overriding watermark when watermark is provided', async () => {
++      payload.params.watermark = true;
++      await createVolcengineVideo(payload, options);
++      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
++      expect(body.watermark).toBe(true);
++    });
+   });
+ 
+   describe('client config', () => {
+diff --git a/packages/model-runtime/src/providers/volcengine/video/createVideo.ts b/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
+index 33e3781..2ba231c 100644
+--- a/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
++++ b/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
+@@ -22,6 +22,9 @@ export async function createVolcengineVideo(
+     aspectRatio,
+     duration,
+     generateAudio,
++    promptExtend,
++    webSearch,
++    watermark,
+     seed,
+     resolution,
+     cameraFixed,
+@@ -56,12 +59,14 @@ export async function createVolcengineVideo(
+   const body: Record<string, unknown> = {
+     content,
+     model,
+-    watermark: false,
++    watermark: watermark ?? false,
++    ...(webSearch !== false && { tools: [{ type: 'web_search' }] }),
+   };
+ 
+   if (aspectRatio !== undefined) body.ratio = aspectRatio;
+   if (duration !== undefined) body.duration = duration;
+   if (generateAudio !== undefined) body.generate_audio = generateAudio;
++  if (promptExtend !== undefined) body.prompt_extend = promptExtend;
+   if (seed !== undefined && seed !== null) body.seed = seed;
+   if (resolution !== undefined) body.resolution = resolution;
+   if (cameraFixed !== undefined) body.camera_fixed = cameraFixed;
+diff --git a/packages/model-runtime/src/providers/wenxin/createImage.ts b/packages/model-runtime/src/providers/wenxin/createImage.ts
+index 87c2cd3..5ac0257 100644
+--- a/packages/model-runtime/src/providers/wenxin/createImage.ts
++++ b/packages/model-runtime/src/providers/wenxin/createImage.ts
+@@ -56,6 +56,8 @@ export async function createWenxinImage(
+           : {}),
+       ...(params.steps !== undefined && { steps: params.steps }),
+       ...(model === 'ernie-irag-edit' && { feature: 'variation' }),
++      ...(params.promptExtend && { prompt_extend: params.promptExtend }),
++      ...(params.watermark && { watermark: params.watermark }),
+     };
+ 
+     const response = await fetch(endpoint, {
+@@ -71,7 +73,9 @@ export async function createWenxinImage(
+       let errorData;
+       try {
+         errorData = await response.json();
+-      } catch {}
++      } catch (error) {
++        void error;
++      }
+ 
+       const errorMessage =
+         typeof errorData?.error === 'string'
+diff --git a/packages/model-runtime/src/providers/wenxin/createVideo.ts b/packages/model-runtime/src/providers/wenxin/createVideo.ts
+index e3274f6..cc5e23f 100644
+--- a/packages/model-runtime/src/providers/wenxin/createVideo.ts
++++ b/packages/model-runtime/src/providers/wenxin/createVideo.ts
+@@ -91,7 +91,8 @@ export async function createWenxinVideo(
+   options: CreateVideoOptions,
+ ): Promise<CreateVideoResponse> {
+   const { model, params } = payload;
+-  const { prompt, imageUrl, aspectRatio, duration, generateAudio } = params;
++  const { prompt, imageUrl, aspectRatio, duration, generateAudio, promptExtend, watermark } =
++    params;
+ 
+   log('Creating video with Wenxin API - model: %s, params: %O', model, params);
+ 
+@@ -125,6 +126,8 @@ export async function createWenxinVideo(
+   if (aspectRatio) body.aspect_ratio = aspectRatio;
+   if (duration) body.duration = duration;
+   if (generateAudio !== undefined) body.generate_audio = generateAudio;
++  if (promptExtend) body.prompt_extend = promptExtend;
++  if (watermark) body.watermark = watermark;
+ 
+   log('Wenxin video API request body: %O', body);
+ 
+diff --git a/packages/model-runtime/src/providers/zhipu/createVideo.ts b/packages/model-runtime/src/providers/zhipu/createVideo.ts
+index 5e3164e..9890fe4 100644
+--- a/packages/model-runtime/src/providers/zhipu/createVideo.ts
++++ b/packages/model-runtime/src/providers/zhipu/createVideo.ts
+@@ -90,8 +90,17 @@ export async function createZhipuVideo(
+   options: CreateVideoOptions,
+ ): Promise<CreateVideoResponse> {
+   const { model, params } = payload;
+-  const { prompt, imageUrl, imageUrls, endImageUrl, aspectRatio, duration, generateAudio, size } =
+-    params;
++  const {
++    prompt,
++    imageUrl,
++    imageUrls,
++    endImageUrl,
++    aspectRatio,
++    duration,
++    generateAudio,
++    size,
++    watermark,
++  } = params;
+ 
+   log('Creating video with Zhipu API - model: %s, params: %O', model, params);
+ 
+@@ -124,6 +133,7 @@ export async function createZhipuVideo(
+   if (duration) body.duration = duration;
+   if (generateAudio !== undefined) body.with_audio = generateAudio;
+   if (size) body.size = size;
++  if (watermark !== undefined) body.watermark_enabled = watermark;
+ 
+   log('Zhipu video API request body: %O', body);
+ 
+diff --git a/src/locales/default/image.ts b/src/locales/default/image.ts
+index 355bac9..bf6c0c4 100644
+--- a/src/locales/default/image.ts
++++ b/src/locales/default/image.ts
+@@ -10,6 +10,7 @@ export default {
+   'config.imageUrl.label': 'Reference Image',
+   'config.imageUrls.label': 'Reference Images',
+   'config.model.label': 'Model',
++  'config.promptExtend.label': 'Prompt Extend',
+   'config.prompt.placeholder': 'Describe what you want to generate',
+   'config.prompt.placeholderWithRef': 'Describe how you want to adjust the image',
+   'config.quality.label': 'Image Quality',
+@@ -24,7 +25,9 @@ export default {
+   'config.size.label': 'Size',
+   'config.steps.label': 'Steps',
+   'config.title': 'Configuration',
++  'config.watermark.label': 'Watermark',
+   'config.width.label': 'Width',
++  'config.webSearch.label': 'Web Search',
+   'generation.actions.applySeed': 'Apply Seed',
+   'generation.actions.copyError': 'Copy Error Message',
+   'generation.actions.copyPrompt': 'Copy Prompt',
+diff --git a/src/locales/default/video.ts b/src/locales/default/video.ts
+index 5a99ded..b262832 100644
+--- a/src/locales/default/video.ts
++++ b/src/locales/default/video.ts
+@@ -6,6 +6,7 @@ export default {
+   'config.generateAudio.label': 'Generate Audio',
+   'config.header.title': 'Video',
+   'config.imageUrl.label': 'Start Frame',
++  'config.promptExtend.label': 'Prompt Extend',
+   'config.prompt.placeholder': 'Describe the video you want to generate',
+   'config.prompt.placeholderWithRef': 'Describe the scene you want to generate with the image',
+   'config.referenceImage.label': 'Reference Image',
+@@ -13,6 +14,8 @@ export default {
+   'config.seed.label': 'Seed',
+   'config.seed.random': 'Random',
+   'config.size.label': 'Size',
++  'config.watermark.label': 'Watermark',
++  'config.webSearch.label': 'Web Search',
+   'generation.actions.copyError': 'Copy Error Message',
+   'generation.actions.errorCopied': 'Error Message Copied to Clipboard',
+   'generation.actions.errorCopyFailed': 'Failed to Copy Error Message',
+diff --git a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
+index b57a1a5..499a00b 100644
+--- a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
++++ b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
+@@ -1,9 +1,10 @@
+ 'use client';
+ 
+ import { ModelIcon } from '@lobehub/icons';
+-import { ActionIcon, Flexbox, Text } from '@lobehub/ui';
++import { ActionIcon, Flexbox, Segmented, Text } from '@lobehub/ui';
++import { Divider, Switch } from 'antd';
+ import { Images } from 'lucide-react';
+-import { useCallback, useEffect, useMemo, useRef } from 'react';
++import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+ import { useTranslation } from 'react-i18next';
+ 
+ import { loginRequired } from '@/components/Error/loginRequiredNotification';
+@@ -49,6 +50,52 @@ interface PromptInputProps {
+ 
+ const isSupportedParamSelector = imageGenerationConfigSelectors.isSupportedParam;
+ 
++interface SwitchItemProps {
++  label: string;
++  paramName: 'watermark' | 'webSearch';
++}
++
++const SwitchItem = memo<SwitchItemProps>(({ label, paramName }) => {
++  const { value, setValue } = useGenerationConfigParam(paramName);
++
++  return (
++    <Flexbox horizontal align="center" justify="space-between" padding={'0 2px'}>
++      <Text weight={500}>{label}</Text>
++      <Switch checked={!!value} onChange={(checked) => setValue(checked as any)} />
++    </Flexbox>
++  );
++});
++
++const PromptExtendItem = () => {
++  const { t } = useTranslation('image');
++  const { value, setValue, enumValues } = useGenerationConfigParam('promptExtend');
++
++  if (enumValues && enumValues.length > 0) {
++    const options = enumValues.map((item) => ({ label: item, value: item }));
++
++    return (
++      <Flexbox gap={6}>
++        <Text fontSize={12}>{t('config.promptExtend.label')}</Text>
++        <Segmented
++          block
++          options={options}
++          style={{ width: '100%' }}
++          value={value as string}
++          variant="filled"
++          onChange={(next) => setValue(String(next) as any)}
++        />
++      </Flexbox>
++    );
++  }
++
++  return (
++    <Flexbox horizontal align="center" justify="space-between" padding={'0 2px'}>
++      <Text weight={500}>{t('config.promptExtend.label')}</Text>
++      <Switch checked={!!value} onChange={(checked) => setValue(checked as any)} />
++    </Flexbox>
++  );
++};
++
+ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+   const isDarkMode = useIsDark();
+   const { t } = useTranslation('image');
+@@ -75,6 +122,9 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+   const isSupportSeed = useImageStore(isSupportedParamSelector('seed'));
+   const isSupportSteps = useImageStore(isSupportedParamSelector('steps'));
+   const isSupportCfg = useImageStore(isSupportedParamSelector('cfg'));
++  const isSupportPromptExtend = useImageStore(isSupportedParamSelector('promptExtend'));
++  const isSupportWatermark = useImageStore(isSupportedParamSelector('watermark'));
++  const isSupportWebSearch = useImageStore(isSupportedParamSelector('webSearch'));
+   const isLogin = useUserStore(authSelectors.isLogin);
+   const enabledImageModelList = useAiInfraStore(aiProviderSelectors.enabledImageModelList);
+   const { showDimensionControl } = useDimensionControl();
+@@ -120,9 +170,13 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+       hasProcessedPrompt.current = true;
+       setPromptParam(null);
+ 
+-      setTimeout(async () => {
++      const timeoutId = window.setTimeout(async () => {
+         await createImage();
+       }, 100);
++
++      return () => {
++        window.clearTimeout(timeoutId);
++      };
+     }
+   }, [promptParam, isLogin, setValue, setPromptParam, createImage]);
+ 
+@@ -266,6 +320,16 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+                       <SeedNumberInput />
+                     </Flexbox>
+                   )}
++                  {(isSupportWatermark || isSupportPromptExtend || isSupportWebSearch) && (
++                    <Divider style={{ marginBlock: 4 }} />
++                  )}
++                  {isSupportWatermark && (
++                    <SwitchItem label={t('config.watermark.label')} paramName={'watermark'} />
++                  )}
++                  {isSupportPromptExtend && <PromptExtendItem />}
++                  {isSupportWebSearch && (
++                    <SwitchItem label={t('config.webSearch.label')} paramName={'webSearch'} />
++                  )}
+                 </Flexbox>
+               }
+             />
+diff --git a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
+index 7bed164..792017d 100644
+--- a/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
++++ b/src/routes/(main)/(create)/video/features/PromptInput/index.tsx
+@@ -153,7 +153,7 @@ const SeedItem = memo(() => {
+ 
+ interface SwitchItemProps {
+   label: string;
+-  paramName: 'cameraFixed' | 'generateAudio';
++  paramName: 'cameraFixed' | 'generateAudio' | 'watermark' | 'webSearch';
+ }
+ 
+ const SwitchItem = memo<SwitchItemProps>(({ label, paramName }) => {
+@@ -167,6 +167,36 @@ const SwitchItem = memo<SwitchItemProps>(({ label, paramName }) => {
+   );
+ });
+ 
++const PromptExtendItem = memo(() => {
++  const { t } = useTranslation('video');
++  const { value, setValue, enumValues } = useVideoGenerationConfigParam('promptExtend');
++
++  const options = enumValues?.map((item) => ({ label: item, value: item })) ?? [];
++
++  if (options.length > 0) {
++    return (
++      <Flexbox gap={6}>
++        <Text fontSize={12}>{t('config.promptExtend.label')}</Text>
++        <Segmented
++          block
++          options={options}
++          style={{ width: '100%' }}
++          value={value as string}
++          variant="filled"
++          onChange={(next) => setValue(String(next) as any)}
++        />
++      </Flexbox>
++    );
++  }
++
++  return (
++    <Flexbox horizontal align="center" justify="space-between" padding={'0 2px'}>
++      <Text weight={500}>{t('config.promptExtend.label')}</Text>
++      <Switch checked={!!value} onChange={(checked) => setValue(checked as any)} />
++    </Flexbox>
++  );
++});
++
+ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+   const isDarkMode = useIsDark();
+   const { t } = useTranslation('video');
+@@ -197,7 +227,10 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+   const isSupportDuration = useVideoStore(isSupportedParamSelector('duration'));
+   const isSupportSeed = useVideoStore(isSupportedParamSelector('seed'));
+   const isSupportGenerateAudio = useVideoStore(isSupportedParamSelector('generateAudio'));
++  const isSupportPromptExtend = useVideoStore(isSupportedParamSelector('promptExtend'));
++  const isSupportWatermark = useVideoStore(isSupportedParamSelector('watermark'));
+   const isSupportCameraFixed = useVideoStore(isSupportedParamSelector('cameraFixed'));
++  const isSupportWebSearch = useVideoStore(isSupportedParamSelector('webSearch'));
+   const isLogin = useUserStore(authSelectors.isLogin);
+   const { value: duration } = useVideoGenerationConfigParam('duration');
+   useFetchAiVideoConfig();
+@@ -226,9 +259,13 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+ 
+       setPromptParam(null);
+ 
+-      setTimeout(async () => {
++      const timeoutId = window.setTimeout(async () => {
+         await createVideo();
+       }, 100);
++
++      return () => {
++        window.clearTimeout(timeoutId);
++      };
+     }
+   }, [promptParam, isLogin, setValue, setPromptParam, createVideo]);
+ 
+@@ -378,9 +415,11 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+                         <SeedItem />
+                       </Flexbox>
+                     )}
+-                    {(isSupportGenerateAudio || isSupportCameraFixed) && (
+-                      <Divider style={{ marginBlock: 4 }} />
+-                    )}
++                    {(isSupportGenerateAudio ||
++                      isSupportCameraFixed ||
++                      isSupportWatermark ||
++                      isSupportPromptExtend ||
++                      isSupportWebSearch) && <Divider style={{ marginBlock: 4 }} />}
+                     {isSupportGenerateAudio && (
+                       <SwitchItem
+                         label={t('config.generateAudio.label')}
+@@ -390,6 +429,13 @@ const PromptInput = ({ showTitle = false }: PromptInputProps) => {
+                     {isSupportCameraFixed && (
+                       <SwitchItem label={t('config.cameraFixed.label')} paramName={'cameraFixed'} />
+                     )}
++                    {isSupportWatermark && (
++                      <SwitchItem label={t('config.watermark.label')} paramName={'watermark'} />
++                    )}
++                    {isSupportPromptExtend && <PromptExtendItem />}
++                    {isSupportWebSearch && (
++                      <SwitchItem label={t('config.webSearch.label')} paramName={'webSearch'} />
++                    )}
+                   </Flexbox>
+                 }
+               />
+-- 
+2.53.0
+
