@@ -1,17 +1,18 @@
-From 3c3251992b0fed392b0621e9c1e198696d9399d5 Mon Sep 17 00:00:00 2001
+From 7de30821108134c67f32fa5884cab5f3c9f5d1a6 Mon Sep 17 00:00:00 2001
 From: Zhijie He <hezhijie0327@hotmail.com>
 Date: Tue, 7 Apr 2026 07:52:19 +0800
 Subject: [PATCH] style: add watermark & prompt_extend & web_search support
 
+style: update minimax & seedream price
 ---
  locales/en-US/image.json                      |   1 +
  locales/en-US/video.json                      |   3 +
  locales/zh-CN/image.json                      |   3 +
  locales/zh-CN/video.json                      |   3 +
  packages/model-bank/src/aiModels/hunyuan.ts   |   2 +
- packages/model-bank/src/aiModels/minimax.ts   |  22 ++
+ packages/model-bank/src/aiModels/minimax.ts   |  30 ++
  packages/model-bank/src/aiModels/qwen.ts      | 264 +++++++-----------
- .../model-bank/src/aiModels/volcengine.ts     |  22 +-
+ .../model-bank/src/aiModels/volcengine.ts     |  46 +--
  packages/model-bank/src/aiModels/wenxin.ts    |  18 ++
  packages/model-bank/src/aiModels/zhipu.ts     |  12 +
  .../src/standard-parameters/index.test.ts     |  15 +
@@ -35,7 +36,7 @@ Subject: [PATCH] style: add watermark & prompt_extend & web_search support
  src/locales/default/video.ts                  |   3 +
  .../image/features/PromptInput/index.tsx      |  70 ++++-
  .../video/features/PromptInput/index.tsx      |  56 +++-
- 31 files changed, 568 insertions(+), 184 deletions(-)
+ 31 files changed, 581 insertions(+), 203 deletions(-)
 
 diff --git a/locales/en-US/image.json b/locales/en-US/image.json
 index 662a2c9..7a37ef6 100644
@@ -122,28 +123,36 @@ index aa3fec1..46f3632 100644
      pricing: {
        currency: 'CNY',
 diff --git a/packages/model-bank/src/aiModels/minimax.ts b/packages/model-bank/src/aiModels/minimax.ts
-index ed8a045..8af01ee 100644
+index ed8a045..5d1880f 100644
 --- a/packages/model-bank/src/aiModels/minimax.ts
 +++ b/packages/model-bank/src/aiModels/minimax.ts
-@@ -314,6 +314,8 @@ const minimaxImageModels: AIImageModelCard[] = [
+@@ -314,6 +314,12 @@ const minimaxImageModels: AIImageModelCard[] = [
          default: '',
        },
        seed: { default: null },
 +      promptExtend: { default: false },
 +      watermark: { default: false },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.025, strategy: 'fixed', unit: 'image' }],
      },
      releasedAt: '2025-02-28',
      type: 'image',
-@@ -334,6 +336,8 @@ const minimaxImageModels: AIImageModelCard[] = [
+@@ -334,6 +340,12 @@ const minimaxImageModels: AIImageModelCard[] = [
          default: '',
        },
        seed: { default: null },
 +      promptExtend: { default: false },
 +      watermark: { default: false },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.025, strategy: 'fixed', unit: 'image' }],
      },
      releasedAt: '2025-02-28',
      type: 'image',
-@@ -357,6 +361,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -357,6 +369,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: '768P',
          enum: ['768P', '1080P'],
        },
@@ -152,7 +161,7 @@ index ed8a045..8af01ee 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -381,6 +387,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -381,6 +395,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: '768P',
          enum: ['768P', '1080P'],
        },
@@ -161,7 +170,7 @@ index ed8a045..8af01ee 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -408,6 +416,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -408,6 +424,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: '768P',
          enum: ['512P', '768P', '1080P'],
        },
@@ -170,7 +179,7 @@ index ed8a045..8af01ee 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -431,6 +441,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -431,6 +449,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: '720P',
          enum: ['720P'],
        },
@@ -179,7 +188,7 @@ index ed8a045..8af01ee 100644
      },
      releasedAt: '2025-02-11',
      type: 'video',
-@@ -447,6 +459,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -447,6 +467,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: '720P',
          enum: ['720P'],
        },
@@ -188,7 +197,7 @@ index ed8a045..8af01ee 100644
      },
      releasedAt: '2025-02-11',
      type: 'video',
-@@ -465,6 +479,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -465,6 +487,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: '720P',
          enum: ['720P'],
        },
@@ -197,7 +206,7 @@ index ed8a045..8af01ee 100644
      },
      releasedAt: '2025-03-03',
      type: 'video',
-@@ -483,6 +499,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -483,6 +507,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: '720P',
          enum: ['720P'],
        },
@@ -206,7 +215,7 @@ index ed8a045..8af01ee 100644
      },
      releasedAt: '2025-03-03',
      type: 'video',
-@@ -496,6 +514,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -496,6 +522,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: null,
        },
        prompt: { default: '' },
@@ -215,7 +224,7 @@ index ed8a045..8af01ee 100644
      },
      releasedAt: '2025-01-10',
      type: 'video',
-@@ -511,6 +531,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
+@@ -511,6 +539,8 @@ const minimaxVideoModels: AIVideoModelCard[] = [
          default: '720P',
          enum: ['720P'],
        },
@@ -987,10 +996,10 @@ index 5b1e597..1d81d76 100644
      pricing: {
        currency: 'CNY',
 diff --git a/packages/model-bank/src/aiModels/volcengine.ts b/packages/model-bank/src/aiModels/volcengine.ts
-index 4d228b3..d62de4e 100644
+index 4d228b3..6295d7e 100644
 --- a/packages/model-bank/src/aiModels/volcengine.ts
 +++ b/packages/model-bank/src/aiModels/volcengine.ts
-@@ -1165,6 +1165,9 @@ const volcengineImageModels: AIImageModelCard[] = [
+@@ -1165,11 +1165,14 @@ const volcengineImageModels: AIImageModelCard[] = [
        prompt: {
          default: '',
        },
@@ -1000,6 +1009,12 @@ index 4d228b3..d62de4e 100644
        width: { default: 2048, max: 16_384, min: 480, step: 1 },
      },
      pricing: {
+       currency: 'CNY',
+-      units: [{ name: 'imageGeneration', rate: 0, strategy: 'fixed', unit: 'image' }],
++      units: [{ name: 'imageGeneration', rate: 0.22, strategy: 'fixed', unit: 'image' }],
+     },
+     releasedAt: '2026-01-28',
+     type: 'image',
 @@ -1186,6 +1189,8 @@ const volcengineImageModels: AIImageModelCard[] = [
        prompt: {
          default: '',
@@ -1009,7 +1024,20 @@ index 4d228b3..d62de4e 100644
        width: { default: 2048, max: 16_384, min: 480, step: 1 },
      },
      pricing: {
-@@ -1213,6 +1218,8 @@ const volcengineImageModels: AIImageModelCard[] = [
+@@ -1196,12 +1201,6 @@ const volcengineImageModels: AIImageModelCard[] = [
+     type: 'image',
+   },
+   {
+-    /*
+-    // TODO: AIImageModelCard does not support config.deploymentName
+-    config: {
+-      deploymentName: 'doubao-seedream-3-0-t2i-250415',
+-    },
+-    */
+     description:
+       'Seedream 4.0 is an image generation model from ByteDance Seed, supporting text and image inputs with highly controllable, high-quality image generation. It generates images from text prompts.',
+     displayName: 'Seedream 4.0',
+@@ -1213,6 +1212,8 @@ const volcengineImageModels: AIImageModelCard[] = [
        prompt: {
          default: '',
        },
@@ -1018,7 +1046,24 @@ index 4d228b3..d62de4e 100644
        width: { default: 2048, max: 16_384, min: 240, step: 1 },
      },
      pricing: {
-@@ -1241,6 +1248,7 @@ const volcengineImageModels: AIImageModelCard[] = [
+@@ -1223,16 +1224,9 @@ const volcengineImageModels: AIImageModelCard[] = [
+     type: 'image',
+   },
+   {
+-    /*
+-    // TODO: AIImageModelCard does not support config.deploymentName
+-    config: {
+-      deploymentName: 'doubao-seedream-3-0-t2i-250415',
+-    },
+-    */
+     description:
+       'Seedream 3.0 is an image generation model from ByteDance Seed, supporting text and image inputs with highly controllable, high-quality image generation. It generates images from text prompts.',
+     displayName: 'Seedream 3.0 Text-to-Image',
+-    enabled: true,
+     id: 'doubao-seedream-3-0-t2i-250415',
+     parameters: {
+       cfg: { default: 2.5, max: 10, min: 1, step: 0.1 },
+@@ -1241,6 +1235,7 @@ const volcengineImageModels: AIImageModelCard[] = [
          default: '',
        },
        seed: { default: null },
@@ -1026,15 +1071,35 @@ index 4d228b3..d62de4e 100644
        width: { default: 1024, max: 3549, min: 296, step: 1 },
      },
      pricing: {
-@@ -1267,6 +1275,7 @@ const volcengineImageModels: AIImageModelCard[] = [
+@@ -1250,15 +1245,10 @@ const volcengineImageModels: AIImageModelCard[] = [
+     releasedAt: '2025-04-15',
+     type: 'image',
+   },
+-  // Note: Doubao image-to-image and text-to-image models share the same Endpoint, currently switches to edit endpoint if imageUrl exists
+   {
+-    // config: {
+-    //   deploymentName: 'doubao-seededit-3-0-i2i-250628',
+-    // },
+     description:
+       'The Doubao image model from ByteDance Seed supports text and image inputs with highly controllable, high-quality image generation. It supports text-guided image editing, with output sizes between 512 and 1536 on the long side.',
+     displayName: 'SeedEdit 3.0 Image-to-Image',
+-    enabled: true,
+     id: 'doubao-seededit-3-0-i2i-250628',
+     parameters: {
+       cfg: { default: 5.5, max: 10, min: 1, step: 0.1 },
+@@ -1267,6 +1257,11 @@ const volcengineImageModels: AIImageModelCard[] = [
          default: '',
        },
        seed: { default: null },
 +      watermark: { default: false },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.259, strategy: 'fixed', unit: 'image' }],
      },
      releasedAt: '2025-06-28',
      type: 'image',
-@@ -1308,6 +1317,8 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+@@ -1308,6 +1303,8 @@ const volcengineVideoModels: AIVideoModelCard[] = [
          default: '720p',
          enum: ['480p', '720p'],
        },
@@ -1043,7 +1108,7 @@ index 4d228b3..d62de4e 100644
        seed: { default: null },
      },
      pricing: {
-@@ -1351,6 +1362,8 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+@@ -1351,6 +1348,8 @@ const volcengineVideoModels: AIVideoModelCard[] = [
          default: '720p',
          enum: ['480p', '720p'],
        },
@@ -1052,7 +1117,7 @@ index 4d228b3..d62de4e 100644
        seed: { default: null },
      },
      pricing: {
-@@ -1367,7 +1380,10 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+@@ -1367,7 +1366,10 @@ const volcengineVideoModels: AIVideoModelCard[] = [
      enabled: true,
      id: 'doubao-seedance-1-5-pro-251215',
      organization: 'ByteDance',
@@ -1064,7 +1129,7 @@ index 4d228b3..d62de4e 100644
      pricing: {
        currency: 'CNY',
        units: [
-@@ -1411,6 +1427,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+@@ -1411,6 +1413,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
          enum: ['480p', '720p', '1080p'],
        },
        seed: { default: null },
@@ -1072,7 +1137,7 @@ index 4d228b3..d62de4e 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -1453,6 +1470,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+@@ -1453,6 +1456,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
          enum: ['480p', '720p', '1080p'],
        },
        seed: { default: null },
@@ -1080,7 +1145,7 @@ index 4d228b3..d62de4e 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -1496,6 +1514,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+@@ -1496,6 +1500,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
          enum: ['480p', '720p', '1080p'],
        },
        seed: { default: null },
@@ -1088,7 +1153,7 @@ index 4d228b3..d62de4e 100644
      },
      pricing: {
        currency: 'CNY',
-@@ -1523,6 +1542,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
+@@ -1523,6 +1528,7 @@ const volcengineVideoModels: AIVideoModelCard[] = [
          enum: ['480p', '720p', '1080p'],
        },
        seed: { default: null },
