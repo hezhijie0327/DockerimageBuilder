@@ -2201,20 +2201,13 @@ index 3a5386207f7..57104be3e21 100644
    };
  
 diff --git a/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts b/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
-index 80be91141fe..d77ec033a73 100644
+index 80be91141fe..59bb9ef9b09 100644
 --- a/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
 +++ b/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
-@@ -162,6 +162,36 @@ describe('createVolcengineVideo', () => {
+@@ -162,6 +162,29 @@ describe('createVolcengineVideo', () => {
        expect(body.generate_audio).toBe(true);
      });
  
-+    it('should map promptExtend to body.prompt_extend', async () => {
-+      payload.params.promptExtend = 'standard';
-+      await createVolcengineVideo(payload, options);
-+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-+      expect(body.prompt_extend).toBe('standard');
-+    });
-+
 +    it('should disable web search tool by default when webSearch is undefined', async () => {
 +      payload.model = 'doubao-seedance-2-0-fast-260128';
 +      await createVolcengineVideo(payload, options);
@@ -2241,7 +2234,7 @@ index 80be91141fe..d77ec033a73 100644
      it('should map seed to body.seed', async () => {
        payload.params.seed = 42;
        await createVolcengineVideo(payload, options);
-@@ -196,6 +226,13 @@ describe('createVolcengineVideo', () => {
+@@ -196,6 +219,13 @@ describe('createVolcengineVideo', () => {
        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
        expect(body.callback_url).toBe('https://example.com/webhook');
      });
@@ -2256,10 +2249,10 @@ index 80be91141fe..d77ec033a73 100644
  
    describe('client config', () => {
 diff --git a/packages/model-runtime/src/providers/volcengine/video/createVideo.ts b/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
-index 02d9165cafb..20ae669435e 100644
+index 02d9165cafb..338a6788b6b 100644
 --- a/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
 +++ b/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
-@@ -17,10 +17,14 @@ export async function createVolcengineVideo(
+@@ -17,10 +17,13 @@ export async function createVolcengineVideo(
    const {
      prompt,
      imageUrl,
@@ -2268,13 +2261,12 @@ index 02d9165cafb..20ae669435e 100644
      aspectRatio,
      duration,
      generateAudio,
-+    promptExtend,
 +    webSearch,
 +    watermark,
      seed,
      resolution,
      cameraFixed,
-@@ -37,6 +41,16 @@ export async function createVolcengineVideo(
+@@ -37,6 +40,16 @@ export async function createVolcengineVideo(
      content.push({ image_url: { url: imageUrl }, role: 'first_frame', type: 'image_url' });
    }
  
@@ -2291,7 +2283,7 @@ index 02d9165cafb..20ae669435e 100644
    if (endImageUrl) {
      content.push({ image_url: { url: endImageUrl }, role: 'last_frame', type: 'image_url' });
    }
-@@ -45,12 +59,14 @@ export async function createVolcengineVideo(
+@@ -45,7 +58,8 @@ export async function createVolcengineVideo(
    const body: Record<string, unknown> = {
      content,
      model,
@@ -2301,12 +2293,6 @@ index 02d9165cafb..20ae669435e 100644
    };
  
    if (aspectRatio !== undefined) body.ratio = aspectRatio;
-   if (duration !== undefined) body.duration = duration;
-   if (generateAudio !== undefined) body.generate_audio = generateAudio;
-+  if (promptExtend !== undefined) body.prompt_extend = promptExtend;
-   if (seed !== undefined && seed !== null) body.seed = seed;
-   if (resolution !== undefined) body.resolution = resolution;
-   if (cameraFixed !== undefined) body.camera_fixed = cameraFixed;
 diff --git a/packages/model-runtime/src/providers/wenxin/createImage.ts b/packages/model-runtime/src/providers/wenxin/createImage.ts
 index 87c2cd36b53..5ac025789e5 100644
 --- a/packages/model-runtime/src/providers/wenxin/createImage.ts
