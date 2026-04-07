@@ -2077,38 +2077,10 @@ index 73900bf4f5d..cee4863ae94 100644
    }
  
 diff --git a/packages/model-runtime/src/providers/volcengine/createImage.test.ts b/packages/model-runtime/src/providers/volcengine/createImage.test.ts
-index a9db7ce7ef8..85f0b29843b 100644
+index a9db7ce7ef8..702375f907b 100644
 --- a/packages/model-runtime/src/providers/volcengine/createImage.test.ts
 +++ b/packages/model-runtime/src/providers/volcengine/createImage.test.ts
-@@ -124,6 +124,27 @@ describe('createVolcengineImage', () => {
-       });
-     });
- 
-+    it('should map promptExtend parameter to prompt_extend', async () => {
-+      const mockResponse = {
-+        data: [{ url: 'https://example.com/test.jpg' }],
-+      };
-+      mockGenerate.mockResolvedValue(mockResponse);
-+
-+      payload.params = {
-+        prompt: 'test prompt',
-+        promptExtend: 'standard',
-+      };
-+
-+      await createVolcengineImage(payload, options);
-+
-+      expect(mockGenerate).toHaveBeenCalledWith({
-+        model: 'doubao-seedream-3-0-t2i',
-+        watermark: false,
-+        prompt: 'test prompt',
-+        prompt_extend: 'standard',
-+      });
-+    });
-+
-     it('should map imageUrls parameter to image', async () => {
-       const mockResponse = {
-         data: [{ url: 'https://example.com/test.jpg' }],
-@@ -425,6 +446,61 @@ describe('createVolcengineImage', () => {
+@@ -425,6 +425,95 @@ describe('createVolcengineImage', () => {
          }),
        );
      });
@@ -2133,18 +2105,34 @@ index a9db7ce7ef8..85f0b29843b 100644
 +      );
 +    });
 +
-+    it('should enable web search tool by default for Seedream 5.0', async () => {
++    it('should enable web search tool when webSearch is true', async () => {
 +      const mockResponse = {
 +        data: [{ url: 'https://example.com/test.jpg' }],
 +      };
 +      mockGenerate.mockResolvedValue(mockResponse);
 +
 +      payload.model = 'doubao-seedream-5-0-260128';
++      payload.params.webSearch = true;
 +
 +      await createVolcengineImage(payload, options);
 +
 +      expect(mockGenerate).toHaveBeenCalledWith(
 +        expect.objectContaining({
++          tools: [{ type: 'web_search' }],
++        }),
++      );
++    });
++
++    it('should disable web search tool by default when webSearch is undefined', async () => {
++      const mockResponse = {
++        data: [{ url: 'https://example.com/test.jpg' }],
++      };
++      mockGenerate.mockResolvedValue(mockResponse);
++
++      await createVolcengineImage(payload, options);
++
++      expect(mockGenerate).toHaveBeenCalledWith(
++        expect.not.objectContaining({
 +          tools: [{ type: 'web_search' }],
 +        }),
 +      );
@@ -2156,47 +2144,67 @@ index a9db7ce7ef8..85f0b29843b 100644
 +      };
 +      mockGenerate.mockResolvedValue(mockResponse);
 +
-+      payload.model = 'doubao-seedream-5-0-260128';
-+      payload.params.webSearch = false;
++      payload.params = {
++        prompt: 'test prompt',
++        webSearch: false,
++      };
 +
 +      await createVolcengineImage(payload, options);
 +
-+      expect(mockGenerate).toHaveBeenCalledWith(
-+        expect.not.objectContaining({
-+          tools: [{ type: 'web_search' }],
-+        }),
-+      );
++      const requestOptions = mockGenerate.mock.calls[0]?.[0] as Record<string, unknown>;
++      expect(requestOptions.tools).toBeUndefined();
++      expect(requestOptions.webSearch).toBeUndefined();
++    });
++
++    it('should map promptExtend to optimize_prompt_options mode', async () => {
++      const mockResponse = {
++        data: [{ url: 'https://example.com/test.jpg' }],
++      };
++      mockGenerate.mockResolvedValue(mockResponse);
++
++      payload.params = {
++        prompt: 'test prompt',
++        promptExtend: 'fast',
++      };
++
++      await createVolcengineImage(payload, options);
++
++      const requestOptions = mockGenerate.mock.calls[0]?.[0] as Record<string, unknown>;
++      expect(requestOptions.optimize_prompt_options).toEqual({ mode: 'fast' });
++      expect(requestOptions.promptExtend).toBeUndefined();
 +    });
    });
  
    describe('size extraction', () => {
 diff --git a/packages/model-runtime/src/providers/volcengine/createImage.ts b/packages/model-runtime/src/providers/volcengine/createImage.ts
-index 3a5386207f7..a5fc7e3f49a 100644
+index 3a5386207f7..57104be3e21 100644
 --- a/packages/model-runtime/src/providers/volcengine/createImage.ts
 +++ b/packages/model-runtime/src/providers/volcengine/createImage.ts
-@@ -30,6 +30,7 @@ export async function createVolcengineImage(
-     ['imageUrls', 'image'],
-     ['imageUrl', 'image'],
-     ['cfg', 'guidance_scale'],
-+    ['promptExtend', 'optimize_prompt_options.mode'],
-   ]);
+@@ -68,10 +68,18 @@ export async function createVolcengineImage(
+     delete userInput.image;
+   }
  
-   const userInput: Record<string, any> = Object.fromEntries(
-@@ -71,7 +72,8 @@ export async function createVolcengineImage(
++  // Remove promptExtend and webSearch parameters that are not supported by Volcengine API
++  delete userInput.promptExtend;
++  delete userInput.webSearch;
++
    // Build request options
    const requestOptions = {
      model,
 -    watermark: false, // Default to no watermark
 +    watermark: params.watermark ?? false, // Default to no watermark
-+    ...(params.webSearch !== false && { tools: [{ type: 'web_search' }] }),
++    ...(params.webSearch && { tools: [{ type: 'web_search' }] }),
++    ...(params.promptExtend !== undefined && {
++      optimize_prompt_options: { mode: params.promptExtend },
++    }),
      ...userInput,
    };
  
 diff --git a/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts b/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
-index 80be91141fe..44f0d256ce9 100644
+index 80be91141fe..d77ec033a73 100644
 --- a/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
 +++ b/packages/model-runtime/src/providers/volcengine/video/createVideo.test.ts
-@@ -162,6 +162,28 @@ describe('createVolcengineVideo', () => {
+@@ -162,6 +162,36 @@ describe('createVolcengineVideo', () => {
        expect(body.generate_audio).toBe(true);
      });
  
@@ -2207,8 +2215,16 @@ index 80be91141fe..44f0d256ce9 100644
 +      expect(body.prompt_extend).toBe('standard');
 +    });
 +
-+    it('should enable web search tool by default for Seedance 2.0 models', async () => {
++    it('should disable web search tool by default when webSearch is undefined', async () => {
 +      payload.model = 'doubao-seedance-2-0-fast-260128';
++      await createVolcengineVideo(payload, options);
++      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
++      expect(body.tools).toBeUndefined();
++    });
++
++    it('should enable web search tool when webSearch is true', async () => {
++      payload.model = 'doubao-seedance-2-0-fast-260128';
++      payload.params.webSearch = true;
 +      await createVolcengineVideo(payload, options);
 +      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
 +      expect(body.tools).toEqual([{ type: 'web_search' }]);
@@ -2225,7 +2241,7 @@ index 80be91141fe..44f0d256ce9 100644
      it('should map seed to body.seed', async () => {
        payload.params.seed = 42;
        await createVolcengineVideo(payload, options);
-@@ -196,6 +218,13 @@ describe('createVolcengineVideo', () => {
+@@ -196,6 +226,13 @@ describe('createVolcengineVideo', () => {
        const body = JSON.parse(mockFetch.mock.calls[0][1].body);
        expect(body.callback_url).toBe('https://example.com/webhook');
      });
@@ -2240,7 +2256,7 @@ index 80be91141fe..44f0d256ce9 100644
  
    describe('client config', () => {
 diff --git a/packages/model-runtime/src/providers/volcengine/video/createVideo.ts b/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
-index 02d9165cafb..2ba231c5e04 100644
+index 02d9165cafb..20ae669435e 100644
 --- a/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
 +++ b/packages/model-runtime/src/providers/volcengine/video/createVideo.ts
 @@ -17,10 +17,14 @@ export async function createVolcengineVideo(
@@ -2281,7 +2297,7 @@ index 02d9165cafb..2ba231c5e04 100644
      model,
 -    watermark: false,
 +    watermark: watermark ?? false,
-+    ...(webSearch !== false && { tools: [{ type: 'web_search' }] }),
++    ...(webSearch && { tools: [{ type: 'web_search' }] }),
    };
  
    if (aspectRatio !== undefined) body.ratio = aspectRatio;
