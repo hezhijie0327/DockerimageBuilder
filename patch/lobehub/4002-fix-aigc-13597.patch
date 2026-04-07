@@ -1771,57 +1771,6 @@ index c6c4c7002b0..73dfe351f49 100644
  };
  
  export type RuntimeVideoGenParams = Pick<_StandardVideoGenerationParameters, 'prompt'> &
-diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createImage.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createImage.ts
-index 9ff6c137748..0a1a417d609 100644
---- a/packages/model-runtime/src/core/openaiCompatibleFactory/createImage.ts
-+++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createImage.ts
-@@ -54,7 +54,10 @@ async function generateByImageMode(
-       // According to official docs, if there are multiple images, pass an array; if only one, pass a single File
-       userInput.image = imageFiles.length === 1 ? imageFiles[0] : imageFiles;
-     } catch (error) {
--      throw new Error(`Failed to convert image URLs to File objects: ${error}`);
-+      throw new Error(
-+        `Failed to convert image URLs to File objects: ${error instanceof Error ? error.message : String(error)}`,
-+        { cause: error },
-+      );
-     }
-   } else {
-     delete userInput.image;
-@@ -77,6 +80,7 @@ async function generateByImageMode(
-     model,
-     ...defaultInput,
-     ...userInput,
-+    ...(params.watermark && { watermark: params.watermark }), // Add watermark parameter if provided
-   });
- 
-   log('options: %O', options);
-@@ -180,7 +184,10 @@ async function generateByChatModel(
-       });
-       log('Successfully processed image URL for chat input');
-     } catch (error) {
--      throw new Error(`Failed to process image URL: ${error}`);
-+      throw new Error(
-+        `Failed to process image URL: ${error instanceof Error ? error.message : String(error)}`,
-+        { cause: error },
-+      );
-     }
-   }
- 
-diff --git a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
-index 97b3a9159cf..93dc058c7e2 100644
---- a/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
-+++ b/packages/model-runtime/src/core/openaiCompatibleFactory/createVideo.ts
-@@ -153,6 +153,10 @@ export async function createOpenAICompatibleVideo(
-     body['input_reference'] = imageUrl;
-   }
- 
-+  if (params.watermark) {
-+    body['watermark'] = params.watermark;
-+  }
-+
-   log('OpenAI-compatible video API request body: %O', body);
- 
-   const response = await fetch(`${baseURL}/videos`, {
 diff --git a/packages/model-runtime/src/providers/google/createVideo.ts b/packages/model-runtime/src/providers/google/createVideo.ts
 index f169fae1dda..bd470172e57 100644
 --- a/packages/model-runtime/src/providers/google/createVideo.ts
@@ -1853,6 +1802,18 @@ index f169fae1dda..bd470172e57 100644
      log('Google video generation request params: %O', requestParams);
  
      const operation = await client.models.generateVideos(requestParams);
+diff --git a/packages/model-runtime/src/providers/hunyuan/createImage.test.ts b/packages/model-runtime/src/providers/hunyuan/createImage.test.ts
+index 688a9ef165e..d671694dfd2 100644
+--- a/packages/model-runtime/src/providers/hunyuan/createImage.test.ts
++++ b/packages/model-runtime/src/providers/hunyuan/createImage.test.ts
+@@ -67,6 +67,7 @@ describe('createHunyuanImage', () => {
+         size: '1024:1024',
+         extra_body: {
+           logo_add: 0,
++          revise: 0,
+         },
+       });
+ 
 diff --git a/packages/model-runtime/src/providers/hunyuan/createImage.ts b/packages/model-runtime/src/providers/hunyuan/createImage.ts
 index bea7d6f0f26..f73f1e13f13 100644
 --- a/packages/model-runtime/src/providers/hunyuan/createImage.ts
@@ -1889,6 +1850,64 @@ index bea7d6f0f26..f73f1e13f13 100644
  
            const errorMessage =
              typeof errorData?.message === 'string'
+diff --git a/packages/model-runtime/src/providers/minimax/createImage.test.ts b/packages/model-runtime/src/providers/minimax/createImage.test.ts
+index 8c39fb8433a..b01ccb822ae 100644
+--- a/packages/model-runtime/src/providers/minimax/createImage.test.ts
++++ b/packages/model-runtime/src/providers/minimax/createImage.test.ts
+@@ -66,6 +66,8 @@ describe('createMiniMaxImage', () => {
+           model: 'image-01',
+           n: 1,
+           prompt: 'A beautiful sunset over the mountains',
++          aigc_watermark: false,
++          prompt_optimizer: false,
+         }),
+       });
+ 
+@@ -113,6 +115,8 @@ describe('createMiniMaxImage', () => {
+             model: 'image-01',
+             n: 1,
+             prompt: 'Abstract digital art',
++            aigc_watermark: false,
++            prompt_optimizer: false,
+           }),
+         }),
+       );
+@@ -161,6 +165,8 @@ describe('createMiniMaxImage', () => {
+             model: 'image-01',
+             n: 1,
+             prompt: 'Reproducible image with seed',
++            aigc_watermark: false,
++            prompt_optimizer: false,
+             seed: 42,
+           }),
+         }),
+@@ -211,6 +217,8 @@ describe('createMiniMaxImage', () => {
+             model: 'image-01',
+             n: 1,
+             prompt: 'Image with seed 0',
++            aigc_watermark: false,
++            prompt_optimizer: false,
+             seed: 0,
+           }),
+         }),
+@@ -331,6 +339,8 @@ describe('createMiniMaxImage', () => {
+             model: 'image-01',
+             n: 1,
+             prompt: 'A girl looking into the distance from a library window',
++            aigc_watermark: false,
++            prompt_optimizer: false,
+             subject_reference: [
+               {
+                 type: 'character',
+@@ -389,6 +399,8 @@ describe('createMiniMaxImage', () => {
+             model: 'image-01',
+             n: 1,
+             prompt: 'A girl looking into the distance from a library window',
++            aigc_watermark: false,
++            prompt_optimizer: false,
+             subject_reference: referenceImageUrls.map((url) => ({
+               type: 'character',
+               image_file: url,
 diff --git a/packages/model-runtime/src/providers/minimax/createImage.ts b/packages/model-runtime/src/providers/minimax/createImage.ts
 index 9d9fcfbba81..f2f3e10704d 100644
 --- a/packages/model-runtime/src/providers/minimax/createImage.ts
@@ -2340,6 +2359,441 @@ index e3274f63584..cc5e23f7d51 100644
  
    log('Wenxin video API request body: %O', body);
  
+diff --git a/packages/model-runtime/src/providers/zhipu/createImage.test.ts b/packages/model-runtime/src/providers/zhipu/createImage.test.ts
+new file mode 100644
+index 00000000000..de920647653
+--- /dev/null
++++ b/packages/model-runtime/src/providers/zhipu/createImage.test.ts
+@@ -0,0 +1,293 @@
++// @vitest-environment node
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateImagePayload } from '../../types/image';
++import { createZhipuImage, pollZhipuImageStatus, queryZhipuImageStatus } from './createImage';
++
++vi.mock('debug', () => ({
++  default: vi.fn(() => vi.fn()),
++}));
++
++describe('createZhipuImage', () => {
++  const mockOptions: CreateImageOptions = {
++    apiKey: 'test-api-key',
++    baseURL: 'https://open.bigmodel.cn/api/paas/v4',
++    provider: 'zhipu',
++  };
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('should create image with basic prompt', async () => {
++    const mockTaskId = 'zhipu-task-123';
++    const mockImageUrl = 'https://cdn.zhipu.ai/image.png';
++
++    global.fetch = vi
++      .fn()
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({ id: mockTaskId }),
++      })
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          task_status: 'SUCCESS',
++          image_result: [{ url: mockImageUrl }],
++        }),
++      });
++
++    const payload: CreateImagePayload = {
++      model: 'cogview-3',
++      params: {
++        prompt: 'A cute cat',
++      },
++    };
++
++    const result = await createZhipuImage(payload, mockOptions);
++
++    expect(fetch).toHaveBeenNthCalledWith(
++      1,
++      'https://open.bigmodel.cn/api/paas/v4/async/images/generations',
++      expect.objectContaining({
++        method: 'POST',
++        headers: {
++          'Authorization': 'Bearer test-api-key',
++          'Content-Type': 'application/json',
++        },
++      }),
++    );
++
++    const submitBody = JSON.parse((fetch as any).mock.calls[0][1].body);
++    expect(submitBody).toEqual({
++      model: 'cogview-3',
++      prompt: 'A cute cat',
++      watermark: false,
++    });
++
++    expect(fetch).toHaveBeenNthCalledWith(
++      2,
++      'https://open.bigmodel.cn/api/paas/v4/async-result/zhipu-task-123',
++      expect.objectContaining({
++        method: 'GET',
++        headers: {
++          'Authorization': 'Bearer test-api-key',
++          'Content-Type': 'application/json',
++        },
++      }),
++    );
++
++    expect(result).toEqual({
++      imageUrl: mockImageUrl,
++    });
++  });
++
++  it('should convert width and height to size parameter', async () => {
++    global.fetch = vi
++      .fn()
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({ id: 'zhipu-task-456' }),
++      })
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          task_status: 'SUCCESS',
++          image_result: [{ url: 'https://cdn.zhipu.ai/size.png' }],
++        }),
++      });
++
++    const payload: CreateImagePayload = {
++      model: 'cogview-3',
++      params: {
++        prompt: 'Landscape',
++        height: 768,
++        width: 1024,
++      },
++    };
++
++    await createZhipuImage(payload, mockOptions);
++
++    const submitBody = JSON.parse((fetch as any).mock.calls[0][1].body);
++    expect(submitBody).toEqual({
++      model: 'cogview-3',
++      prompt: 'Landscape',
++      size: '1024x768',
++      watermark: false,
++    });
++  });
++
++  it('should respect explicit size and watermark parameter', async () => {
++    global.fetch = vi
++      .fn()
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({ id: 'zhipu-task-789' }),
++      })
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          task_status: 'SUCCESS',
++          image_result: [{ url: 'https://cdn.zhipu.ai/watermark.png' }],
++        }),
++      });
++
++    const payload: CreateImagePayload = {
++      model: 'cogview-3',
++      params: {
++        prompt: 'Poster',
++        size: '1024x1024',
++        watermark: true,
++        width: 512,
++        height: 512,
++      },
++    };
++
++    await createZhipuImage(payload, mockOptions);
++
++    const submitBody = JSON.parse((fetch as any).mock.calls[0][1].body);
++    expect(submitBody).toEqual({
++      model: 'cogview-3',
++      prompt: 'Poster',
++      size: '1024x1024',
++      watermark: true,
++    });
++  });
++
++  it('should throw on HTTP error', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: false,
++      status: 402,
++      text: async () => 'Insufficient credits',
++    });
++
++    const payload: CreateImagePayload = {
++      model: 'cogview-3',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createZhipuImage(payload, mockOptions)).rejects.toThrow(
++      'Zhipu image API error: 402 Insufficient credits',
++    );
++  });
++
++  it('should throw when response is missing id', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({}),
++    });
++
++    const payload: CreateImagePayload = {
++      model: 'cogview-3',
++      params: { prompt: 'Test' },
++    };
++
++    await expect(createZhipuImage(payload, mockOptions)).rejects.toThrow(
++      'Invalid response: missing task id',
++    );
++  });
++});
++
++describe('pollZhipuImageStatus', () => {
++  const options = {
++    apiKey: 'test-api-key',
++    baseURL: 'https://open.bigmodel.cn/api/paas/v4',
++  };
++
++  it('should return success when task succeeded', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_status: 'SUCCESS',
++        image_result: [{ url: 'https://cdn.zhipu.ai/success.png' }],
++      }),
++    });
++
++    const result = await pollZhipuImageStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'success',
++      imageUrl: 'https://cdn.zhipu.ai/success.png',
++    });
++  });
++
++  it('should return failed when task failed', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_status: 'FAIL',
++        error: { message: 'Content moderation failed' },
++      }),
++    });
++
++    const result = await pollZhipuImageStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Content moderation failed',
++    });
++  });
++
++  it('should return pending when task is still running', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_status: 'RUNNING',
++      }),
++    });
++
++    const result = await pollZhipuImageStatus('task-123', options);
++
++    expect(result).toEqual({ status: 'pending' });
++  });
++
++  it('should return failed when task succeeded but no image url', async () => {
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => ({
++        task_status: 'SUCCESS',
++        image_result: [],
++      }),
++    });
++
++    const result = await pollZhipuImageStatus('task-123', options);
++
++    expect(result).toEqual({
++      status: 'failed',
++      error: 'Task succeeded but no image URL found',
++    });
++  });
++});
++
++describe('queryZhipuImageStatus', () => {
++  it('should query status endpoint correctly', async () => {
++    const mockResponse = {
++      task_status: 'SUCCESS',
++      id: 'task-123',
++      request_id: 'req-456',
++    };
++
++    global.fetch = vi.fn().mockResolvedValueOnce({
++      ok: true,
++      json: async () => mockResponse,
++    });
++
++    const result = await queryZhipuImageStatus('task-123', {
++      apiKey: 'test-api-key',
++      baseURL: 'https://open.bigmodel.cn/api/paas/v4',
++    });
++
++    expect(fetch).toHaveBeenCalledWith(
++      'https://open.bigmodel.cn/api/paas/v4/async-result/task-123',
++      expect.objectContaining({
++        method: 'GET',
++        headers: {
++          'Authorization': 'Bearer test-api-key',
++          'Content-Type': 'application/json',
++        },
++      }),
++    );
++    expect(result).toEqual(mockResponse);
++  });
++});
+diff --git a/packages/model-runtime/src/providers/zhipu/createImage.ts b/packages/model-runtime/src/providers/zhipu/createImage.ts
+new file mode 100644
+index 00000000000..d7ec718c91f
+--- /dev/null
++++ b/packages/model-runtime/src/providers/zhipu/createImage.ts
+@@ -0,0 +1,130 @@
++import createDebug from 'debug';
++
++import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateImagePayload, CreateImageResponse } from '../../types/image';
++
++const log = createDebug('lobe-image:zhipu');
++
++interface ZhipuImageStatusResponse {
++  error?: {
++    code?: string;
++    message?: string;
++  };
++  id?: string;
++  image_result?: Array<{
++    b64_json?: string;
++    url?: string;
++  }>;
++  request_id?: string;
++  task_status?: string;
++}
++
++export async function queryZhipuImageStatus(
++  inferenceId: string,
++  options: { apiKey: string; baseURL: string },
++): Promise<ZhipuImageStatusResponse> {
++  const statusUrl = `${options.baseURL}/async-result/${inferenceId}`;
++
++  log('Querying image status for: %s', inferenceId);
++
++  const response = await fetch(statusUrl, {
++    headers: {
++      'Authorization': `Bearer ${options.apiKey}`,
++      'Content-Type': 'application/json',
++    },
++    method: 'GET',
++  });
++
++  if (!response.ok) {
++    const errorText = await response.text();
++    throw new Error(`Zhipu image status API error: ${response.status} ${errorText}`);
++  }
++
++  const data = (await response.json()) as ZhipuImageStatusResponse;
++  log('Image status response: %O', data);
++
++  return data;
++}
++
++export async function pollZhipuImageStatus(
++  inferenceId: string,
++  options: { apiKey: string; baseURL: string },
++): Promise<{ error?: string; imageUrl?: string; status: 'failed' | 'pending' | 'success' }> {
++  const response = await queryZhipuImageStatus(inferenceId, options);
++
++  if (response.task_status === 'SUCCESS') {
++    const imageUrl = response.image_result?.[0]?.url;
++    if (!imageUrl) {
++      return { error: 'Task succeeded but no image URL found', status: 'failed' };
++    }
++    return { status: 'success', imageUrl };
++  }
++
++  if (response.task_status === 'FAIL') {
++    return { error: response.error?.message || 'Image generation failed', status: 'failed' };
++  }
++
++  return { status: 'pending' };
++}
++
++/**
++ * Zhipu image generation implementation
++ * API docs: https://open.bigmodel.cn
++ */
++export async function createZhipuImage(
++  payload: CreateImagePayload,
++  options: CreateImageOptions,
++): Promise<CreateImageResponse> {
++  const { model, params } = payload;
++  const { prompt, size, watermark, width, height } = params;
++
++  log('Creating image with Zhipu API - model: %s, params: %O', model, params);
++
++  const baseURL = options.baseURL || 'https://open.bigmodel.cn/api/paas/v4';
++
++  const body: Record<string, unknown> = {
++    model,
++    prompt,
++  };
++
++  if (size) {
++    body.size = size;
++  } else if (width !== undefined && height !== undefined) {
++    body.size = `${width}x${height}`;
++  }
++
++  body.watermark = watermark ?? false;
++
++  const response = await fetch(`${baseURL}/async/images/generations`, {
++    body: JSON.stringify(body),
++    headers: {
++      'Authorization': `Bearer ${options.apiKey}`,
++      'Content-Type': 'application/json',
++    },
++    method: 'POST',
++  });
++
++  if (!response.ok) {
++    const errorText = await response.text();
++    log('Zhipu image API error: %s %s', response.status, errorText);
++    throw new Error(`Zhipu image API error: ${response.status} ${errorText}`);
++  }
++
++  const data = await response.json();
++  log('Zhipu image API response: %O', data);
++
++  if (!data.id) {
++    throw new Error('Invalid response: missing task id');
++  }
++
++  const pollResult = await pollZhipuImageStatus(data.id, {
++    apiKey: options.apiKey,
++    baseURL,
++  });
++
++  if (pollResult.status !== 'success' || !pollResult.imageUrl) {
++    throw new Error(pollResult.error || 'Image generation polling timeout');
++  }
++
++  return { imageUrl: pollResult.imageUrl };
++}
 diff --git a/packages/model-runtime/src/providers/zhipu/createVideo.ts b/packages/model-runtime/src/providers/zhipu/createVideo.ts
 index 9d96d60d4ed..9890fe41ec5 100644
 --- a/packages/model-runtime/src/providers/zhipu/createVideo.ts
@@ -2395,6 +2849,26 @@ index 9d96d60d4ed..9890fe41ec5 100644
  
    log('Zhipu video API request body: %O', body);
  
+diff --git a/packages/model-runtime/src/providers/zhipu/index.ts b/packages/model-runtime/src/providers/zhipu/index.ts
+index ae0f579fdf3..ad488514982 100644
+--- a/packages/model-runtime/src/providers/zhipu/index.ts
++++ b/packages/model-runtime/src/providers/zhipu/index.ts
+@@ -9,6 +9,7 @@ import { OpenAIStream } from '../../core/streams/openai';
+ import { convertIterableToStream } from '../../core/streams/protocol';
+ import { getModelMaxOutputs } from '../../utils/getModelMaxOutputs';
+ import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
++import { createZhipuImage } from './createImage';
+ import { createZhipuVideo } from './createVideo';
+ 
+ export interface ZhipuModelCard {
+@@ -142,6 +143,7 @@ export const params = {
+       });
+     },
+   },
++  createImage: createZhipuImage,
+   createVideo: createZhipuVideo,
+   handlePollVideoStatus: async (inferenceId, options) => {
+     const { pollZhipuVideoStatus } = await import('./createVideo');
 diff --git a/src/locales/default/image.ts b/src/locales/default/image.ts
 index 355bac9676e..bf6c0c4b2af 100644
 --- a/src/locales/default/image.ts
