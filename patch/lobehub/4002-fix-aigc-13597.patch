@@ -1066,14 +1066,14 @@ index dc26f782125..be26f811a2d 100644
      pricing: {
        currency: 'CNY',
 diff --git a/packages/model-bank/src/aiModels/volcengine.ts b/packages/model-bank/src/aiModels/volcengine.ts
-index db634a56a1b..6295d7e9efa 100644
+index db634a56a1b..e6efc5456dc 100644
 --- a/packages/model-bank/src/aiModels/volcengine.ts
 +++ b/packages/model-bank/src/aiModels/volcengine.ts
 @@ -1165,11 +1165,14 @@ const volcengineImageModels: AIImageModelCard[] = [
        prompt: {
          default: '',
        },
-+      promptExtend: { default: 'standard', enum: ['standard'] },
++      promptExtend: { default: 'off', enum: ['off', 'standard'] },
 +      watermark: { default: false },
 +      webSearch: { default: false },
        width: { default: 2048, max: 16_384, min: 480, step: 1 },
@@ -1089,7 +1089,7 @@ index db634a56a1b..6295d7e9efa 100644
        prompt: {
          default: '',
        },
-+      promptExtend: { default: 'standard', enum: ['standard'] },
++      promptExtend: { default: 'off', enum: ['off', 'standard'] },
 +      watermark: { default: false },
        width: { default: 2048, max: 16_384, min: 480, step: 1 },
      },
@@ -1111,7 +1111,7 @@ index db634a56a1b..6295d7e9efa 100644
        prompt: {
          default: '',
        },
-+      promptExtend: { default: 'standard', enum: ['standard', 'fast'] },
++      promptExtend: { default: 'off', enum: ['off', 'standard', 'fast'] },
 +      watermark: { default: false },
        width: { default: 2048, max: 16_384, min: 240, step: 1 },
      },
@@ -2171,10 +2171,10 @@ index 73900bf4f5d..63d2252f9e4 100644
      body: JSON.stringify({
        input,
 diff --git a/packages/model-runtime/src/providers/volcengine/createImage.test.ts b/packages/model-runtime/src/providers/volcengine/createImage.test.ts
-index a9db7ce7ef8..702375f907b 100644
+index a9db7ce7ef8..b9aa47fae8b 100644
 --- a/packages/model-runtime/src/providers/volcengine/createImage.test.ts
 +++ b/packages/model-runtime/src/providers/volcengine/createImage.test.ts
-@@ -425,6 +425,95 @@ describe('createVolcengineImage', () => {
+@@ -425,6 +425,128 @@ describe('createVolcengineImage', () => {
          }),
        );
      });
@@ -2250,7 +2250,7 @@ index a9db7ce7ef8..702375f907b 100644
 +      expect(requestOptions.webSearch).toBeUndefined();
 +    });
 +
-+    it('should map promptExtend to optimize_prompt_options mode', async () => {
++    it('should add optimize_prompt_options if promptExtend is provided and not "off"', async () => {
 +      const mockResponse = {
 +        data: [{ url: 'https://example.com/test.jpg' }],
 +      };
@@ -2267,14 +2267,47 @@ index a9db7ce7ef8..702375f907b 100644
 +      expect(requestOptions.optimize_prompt_options).toEqual({ mode: 'fast' });
 +      expect(requestOptions.promptExtend).toBeUndefined();
 +    });
++
++    it('should not add optimize_prompt_options if promptExtend is "off"', async () => {
++      const mockResponse = {
++        data: [{ url: 'https://example.com/test.jpg' }],
++      };
++      mockGenerate.mockResolvedValue(mockResponse);
++
++      payload.params = {
++        prompt: 'test prompt',
++        promptExtend: 'off',
++      };
++
++      await createVolcengineImage(payload, options);
++
++      const requestOptions = mockGenerate.mock.calls[0]?.[0] as Record<string, unknown>;
++      expect(requestOptions.optimize_prompt_options).toBeUndefined();
++    });
++
++    it('should not add optimize_prompt_options if promptExtend is undefined', async () => {
++      const mockResponse = {
++        data: [{ url: 'https://example.com/test.jpg' }],
++      };
++      mockGenerate.mockResolvedValue(mockResponse);
++
++      payload.params = {
++        prompt: 'test prompt',
++      };
++
++      await createVolcengineImage(payload, options);
++
++      const requestOptions = mockGenerate.mock.calls[0]?.[0] as Record<string, unknown>;
++      expect(requestOptions.optimize_prompt_options).toBeUndefined();
++    });
    });
  
    describe('size extraction', () => {
 diff --git a/packages/model-runtime/src/providers/volcengine/createImage.ts b/packages/model-runtime/src/providers/volcengine/createImage.ts
-index 3a5386207f7..57104be3e21 100644
+index 3a5386207f7..992441319ec 100644
 --- a/packages/model-runtime/src/providers/volcengine/createImage.ts
 +++ b/packages/model-runtime/src/providers/volcengine/createImage.ts
-@@ -68,10 +68,18 @@ export async function createVolcengineImage(
+@@ -68,10 +68,19 @@ export async function createVolcengineImage(
      delete userInput.image;
    }
  
@@ -2288,9 +2321,10 @@ index 3a5386207f7..57104be3e21 100644
 -    watermark: false, // Default to no watermark
 +    watermark: params.watermark ?? false, // Default to no watermark
 +    ...(params.webSearch && { tools: [{ type: 'web_search' }] }),
-+    ...(params.promptExtend !== undefined && {
-+      optimize_prompt_options: { mode: params.promptExtend },
-+    }),
++    ...(params.promptExtend &&
++      params.promptExtend !== 'off' && {
++        optimize_prompt_options: { mode: params.promptExtend },
++      }),
      ...userInput,
    };
  
