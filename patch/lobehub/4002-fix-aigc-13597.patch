@@ -2421,12 +2421,12 @@ index e3274f63584..cc5e23f7d51 100644
  
 diff --git a/packages/model-runtime/src/providers/zhipu/createImage.test.ts b/packages/model-runtime/src/providers/zhipu/createImage.test.ts
 new file mode 100644
-index 00000000000..0365a78aa9f
+index 00000000000..be4e33cb7bd
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/zhipu/createImage.test.ts
-@@ -0,0 +1,358 @@
+@@ -0,0 +1,367 @@
 +// @vitest-environment node
-+import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 +
 +import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
 +import type { CreateImagePayload } from '../../types/image';
@@ -2445,6 +2445,10 @@ index 00000000000..0365a78aa9f
 +
 +  beforeEach(() => {
 +    vi.clearAllMocks();
++  });
++
++  afterEach(() => {
++    vi.useRealTimers();
 +  });
 +
 +  it('should create image with basic prompt', async () => {
@@ -2699,12 +2703,11 @@ index 00000000000..0365a78aa9f
 +    const result = await pollZhipuImageStatus('task-123', options);
 +
 +    expect(result).toEqual({
-+      status: 'success',
 +      imageUrl: 'https://cdn.zhipu.ai/success.png',
 +    });
 +  });
 +
-+  it('should return failed when task failed', async () => {
++  it('should throw when task failed', async () => {
 +    global.fetch = vi.fn().mockResolvedValueOnce({
 +      ok: true,
 +      json: async () => ({
@@ -2713,28 +2716,37 @@ index 00000000000..0365a78aa9f
 +      }),
 +    });
 +
-+    const result = await pollZhipuImageStatus('task-123', options);
-+
-+    expect(result).toEqual({
-+      status: 'failed',
-+      error: 'Content moderation failed',
-+    });
++    await expect(pollZhipuImageStatus('task-123', options)).rejects.toThrow(
++      'Content moderation failed',
++    );
 +  });
 +
-+  it('should return pending when task is still running', async () => {
-+    global.fetch = vi.fn().mockResolvedValueOnce({
-+      ok: true,
-+      json: async () => ({
-+        task_status: 'RUNNING',
-+      }),
-+    });
++  it('should keep polling when task is pending then succeed', async () => {
++    vi.useFakeTimers();
 +
-+    const result = await pollZhipuImageStatus('task-123', options);
++    global.fetch = vi
++      .fn()
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({ task_status: 'RUNNING' }),
++      })
++      .mockResolvedValueOnce({
++        ok: true,
++        json: async () => ({
++          task_status: 'SUCCESS',
++          image_result: [{ url: 'https://cdn.zhipu.ai/polled-success.png' }],
++        }),
++      });
 +
-+    expect(result).toEqual({ status: 'pending' });
++    const resultPromise = pollZhipuImageStatus('task-123', options);
++    await vi.advanceTimersByTimeAsync(1000);
++    const result = await resultPromise;
++
++    expect(fetch).toHaveBeenCalledTimes(2);
++    expect(result).toEqual({ imageUrl: 'https://cdn.zhipu.ai/polled-success.png' });
 +  });
 +
-+  it('should return failed when task succeeded but no image url', async () => {
++  it('should throw when task succeeded but no image url', async () => {
 +    global.fetch = vi.fn().mockResolvedValueOnce({
 +      ok: true,
 +      json: async () => ({
@@ -2743,12 +2755,9 @@ index 00000000000..0365a78aa9f
 +      }),
 +    });
 +
-+    const result = await pollZhipuImageStatus('task-123', options);
-+
-+    expect(result).toEqual({
-+      status: 'failed',
-+      error: 'Task succeeded but no image URL found',
-+    });
++    await expect(pollZhipuImageStatus('task-123', options)).rejects.toThrow(
++      'Task succeeded but no image URL found',
++    );
 +  });
 +});
 +
@@ -2785,14 +2794,16 @@ index 00000000000..0365a78aa9f
 +});
 diff --git a/packages/model-runtime/src/providers/zhipu/createImage.ts b/packages/model-runtime/src/providers/zhipu/createImage.ts
 new file mode 100644
-index 00000000000..99e57d4f2a7
+index 00000000000..cad55a7b5a0
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/zhipu/createImage.ts
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,164 @@
 +import createDebug from 'debug';
 +
 +import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
 +import type { CreateImagePayload, CreateImageResponse } from '../../types/image';
++import type { TaskResult } from '../../utils/asyncifyPolling';
++import { asyncifyPolling } from '../../utils/asyncifyPolling';
 +
 +const log = createDebug('lobe-image:zhipu');
 +
@@ -2844,22 +2855,41 @@ index 00000000000..99e57d4f2a7
 +export async function pollZhipuImageStatus(
 +  inferenceId: string,
 +  options: { apiKey: string; baseURL: string },
-+): Promise<{ error?: string; imageUrl?: string; status: 'failed' | 'pending' | 'success' }> {
-+  const response = await queryZhipuImageStatus(inferenceId, options);
++): Promise<CreateImageResponse> {
++  return await asyncifyPolling<ZhipuImageStatusResponse, CreateImageResponse>({
++    backoffMultiplier: 1,
++    checkStatus: (taskStatus): TaskResult<CreateImageResponse> => {
++      if (taskStatus.task_status === 'SUCCESS') {
++        const imageUrl = taskStatus.image_result?.[0]?.url;
 +
-+  if (response.task_status === 'SUCCESS') {
-+    const imageUrl = response.image_result?.[0]?.url;
-+    if (!imageUrl) {
-+      return { error: 'Task succeeded but no image URL found', status: 'failed' };
-+    }
-+    return { status: 'success', imageUrl };
-+  }
++        if (!imageUrl) {
++          return {
++            error: new Error('Task succeeded but no image URL found'),
++            status: 'failed',
++          };
++        }
 +
-+  if (response.task_status === 'FAIL') {
-+    return { error: response.error?.message || 'Image generation failed', status: 'failed' };
-+  }
++        return {
++          data: { imageUrl },
++          status: 'success',
++        };
++      }
 +
-+  return { status: 'pending' };
++      if (taskStatus.task_status === 'FAIL') {
++        return {
++          error: new Error(taskStatus.error?.message || 'Image generation failed'),
++          status: 'failed',
++        };
++      }
++
++      return { status: 'pending' };
++    },
++    logger: {
++      debug: (message: any, ...args: any[]) => log(message, ...args),
++      error: (message: any, ...args: any[]) => log(message, ...args),
++    },
++    pollingQuery: () => queryZhipuImageStatus(inferenceId, options),
++  });
 +}
 +
 +/**
@@ -2927,16 +2957,10 @@ index 00000000000..99e57d4f2a7
 +    throw new Error('Invalid response: missing task id');
 +  }
 +
-+  const pollResult = await pollZhipuImageStatus(data.id, {
++  return await pollZhipuImageStatus(data.id, {
 +    apiKey: options.apiKey,
 +    baseURL,
 +  });
-+
-+  if (pollResult.status !== 'success' || !pollResult.imageUrl) {
-+    throw new Error(pollResult.error || 'Image generation polling timeout');
-+  }
-+
-+  return { imageUrl: pollResult.imageUrl };
 +}
 diff --git a/packages/model-runtime/src/providers/zhipu/createVideo.ts b/packages/model-runtime/src/providers/zhipu/createVideo.ts
 index 9d96d60d4ed..3fe27309a29 100644
