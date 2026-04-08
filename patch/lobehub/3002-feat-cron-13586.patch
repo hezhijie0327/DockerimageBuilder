@@ -205,10 +205,10 @@ index 81af0e502a2..6c9b9f856b5 100644
  // Execution conditions schema
  export const ExecutionConditionsSchema = z
 diff --git a/packages/types/src/serverConfig.ts b/packages/types/src/serverConfig.ts
-index 5e2592d018a..12a6794934f 100644
+index b6da2a5cc14..d8c220fd22e 100644
 --- a/packages/types/src/serverConfig.ts
 +++ b/packages/types/src/serverConfig.ts
-@@ -62,6 +62,7 @@ export interface GlobalServerConfig {
+@@ -68,6 +68,7 @@ export interface GlobalServerConfig {
    enableMarketTrustedClient?: boolean;
    enableUploadFileToServer?: boolean;
    image?: PartialDeep<UserImageConfig>;
@@ -319,7 +319,7 @@ index 00000000000..659bb98f539
 +  return NextResponse.json({ executed: true, success: true });
 +}
 diff --git a/src/envs/app.ts b/src/envs/app.ts
-index 74b8cf8b13d..6478787471d 100644
+index 3645593c78d..7004a6e638c 100644
 --- a/src/envs/app.ts
 +++ b/src/envs/app.ts
 @@ -17,13 +17,13 @@ const getVercelUrl = () => {
@@ -350,7 +350,7 @@ index 74b8cf8b13d..6478787471d 100644
      runtimeEnv: {
 @@ -123,6 +124,10 @@ export const getAppConfig = () => {
        AGENT_GATEWAY_SERVICE_TOKEN: process.env.AGENT_GATEWAY_SERVICE_TOKEN,
-       AGENT_GATEWAY_URL: process.env.AGENT_GATEWAY_URL || 'https://agent-gateway.lobehub.com',
+       AGENT_GATEWAY_URL: process.env.AGENT_GATEWAY_URL,
        enableQueueAgentRuntime: process.env.AGENT_RUNTIME_MODE === 'queue',
 +      isQStashConfigured:
 +        !!process.env.QSTASH_TOKEN &&
@@ -531,7 +531,7 @@ index 8f74cf14f8a..06282884ecb 100644
      telemetry: {},
    };
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index ae6c2c553cd..9e500cf1896 100644
+index 65ce017a762..b9e95961414 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
 @@ -84,6 +84,7 @@ export const getServerGlobalConfig = async () => {
@@ -540,8 +540,8 @@ index ae6c2c553cd..9e500cf1896 100644
      enableUploadFileToServer: !!fileEnv.S3_SECRET_ACCESS_KEY,
 +    isQStashConfigured: appEnv.isQStashConfigured,
  
-     image: cleanObject({
-       defaultImageNum: imageEnv.AI_IMAGE_DEFAULT_IMAGE_NUM,
+     // Expose Agent Gateway URL to client when queue-based agent runtime is enabled
+     ...(appEnv.enableQueueAgentRuntime && appEnv.AGENT_GATEWAY_URL
 diff --git a/src/server/routers/lambda/agentCronJob.ts b/src/server/routers/lambda/agentCronJob.ts
 index 6a47920142b..7003fb0b462 100644
 --- a/src/server/routers/lambda/agentCronJob.ts
