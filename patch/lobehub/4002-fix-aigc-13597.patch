@@ -1,11 +1,20 @@
 diff --git a/locales/en-US/image.json b/locales/en-US/image.json
-index 662a2c9300f..7a37ef69f5e 100644
+index 662a2c9300f..e0f0a835949 100644
 --- a/locales/en-US/image.json
 +++ b/locales/en-US/image.json
-@@ -24,6 +24,7 @@
+@@ -12,6 +12,7 @@
+   "config.model.label": "Model",
+   "config.prompt.placeholder": "Describe what you want to generate",
+   "config.prompt.placeholderWithRef": "Describe how you want to adjust the image",
++  "config.promptExtend.label": "Extended Prompt",
+   "config.quality.label": "Image Quality",
+   "config.quality.options.hd": "High Definition",
+   "config.quality.options.standard": "Standard",
+@@ -24,6 +25,8 @@
    "config.size.label": "Size",
    "config.steps.label": "Steps",
    "config.title": "Configuration",
++  "config.watermark.label": "Watermark",
 +  "config.webSearch.label": "Web Search",
    "config.width.label": "Width",
    "generation.actions.applySeed": "Apply Seed",
@@ -1990,7 +1999,7 @@ index b5b43222bb6..b6a95cd77dc 100644
      }),
      headers: {
 diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
-index 73900bf4f5d..63d2252f9e4 100644
+index 73900bf4f5d..b6ef0fd0f30 100644
 --- a/packages/model-runtime/src/providers/qwen/createVideo.ts
 +++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
 @@ -117,7 +117,7 @@ async function createVideoTask(
@@ -2039,22 +2048,46 @@ index 73900bf4f5d..63d2252f9e4 100644
      if (endImageUrl) {
        media.push({
          type: 'last_frame',
-@@ -185,6 +208,14 @@ async function createVideoTask(
+@@ -185,15 +208,22 @@ async function createVideoTask(
        input.media = media;
      }
    } else if (model.startsWith('pixverse/')) {
+-    if (imageUrl && !endImageUrl) {
+-      input.media = [
+-        {
++    const media = [];
 +    if (imageUrls && imageUrls.length > 0) {
 +      imageUrls.forEach((url) =>
-+        input.media.push({
-+          type: 'image_url',
++        media.push({
+           type: 'image_url',
+-          url: imageUrl,
+-        },
+-      ];
 +          url,
 +        }),
 +      );
 +    }
-     if (imageUrl && !endImageUrl) {
-       input.media = [
++    if (imageUrl && !endImageUrl) {
++      media.push({
++        type: 'image_url',
++        url: imageUrl,
++      });
+     } else if (imageUrl && endImageUrl) {
+-      input.media = [
++      media.push(
          {
-@@ -207,18 +238,18 @@ async function createVideoTask(
+           type: 'first_frame',
+           url: imageUrl,
+@@ -202,23 +232,26 @@ async function createVideoTask(
+           type: 'last_frame',
+           url: endImageUrl,
+         },
+-      ];
++      );
++    }
++    if (media.length > 0) {
++      input.media = media;
+     }
    } else if (model.startsWith('wan2.7')) {
      const media = [];
      if (imageUrl) {
@@ -2083,7 +2116,7 @@ index 73900bf4f5d..63d2252f9e4 100644
      }
      if (endImageUrl) {
        media.push({
-@@ -230,11 +261,20 @@ async function createVideoTask(
+@@ -230,11 +263,20 @@ async function createVideoTask(
        input.media = media;
      }
    } else if (matchesModelPattern(model, reference2VideoModels)) {
@@ -2108,7 +2141,7 @@ index 73900bf4f5d..63d2252f9e4 100644
      input.img_url = imageUrl;
    }
  
-@@ -273,6 +313,14 @@ async function createVideoTask(
+@@ -273,6 +315,14 @@ async function createVideoTask(
      }
    }
  
@@ -3269,7 +3302,7 @@ index de4dda508aa..8ac89faae57 100644
            <>
              <Flexbox
 diff --git a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
-index b57a1a5a97d..b95c1f35204 100644
+index b57a1a5a97d..5b585f07768 100644
 --- a/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
 +++ b/src/routes/(main)/(create)/image/features/PromptInput/index.tsx
 @@ -1,9 +1,10 @@
@@ -3305,7 +3338,7 @@ index b57a1a5a97d..b95c1f35204 100644
 +  );
 +});
 +
-+const PromptExtendItem = () => {
++const PromptExtendItem = memo(() => {
 +  const { t } = useTranslation('image');
 +  const { value, setValue, enumValues } = useGenerationConfigParam('promptExtend');
 +
@@ -3333,7 +3366,7 @@ index b57a1a5a97d..b95c1f35204 100644
 +      <Switch checked={!!value} onChange={(checked) => setValue(checked as any)} />
 +    </Flexbox>
 +  );
-+};
++});
 +
  const PromptInput = ({ showTitle = false }: PromptInputProps) => {
    const isDarkMode = useIsDark();
@@ -3380,102 +3413,6 @@ index b57a1a5a97d..b95c1f35204 100644
                  </Flexbox>
                }
              />
-diff --git a/src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx b/src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx
-new file mode 100644
-index 00000000000..454a78dad30
---- /dev/null
-+++ b/src/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload.tsx
-@@ -0,0 +1,82 @@
-+import { memo } from 'react';
-+
-+import { ImageUpload } from '@/routes/(main)/(create)/image/features/ConfigPanel';
-+import { useVideoGenerationConfigParam } from '@/store/video/slices/generationConfig/hooks';
-+
-+interface VideoFramesUploadProps {
-+  paramName: 'imageUrl' | 'imageUrls';
-+}
-+
-+const VideoFramesUpload = memo<VideoFramesUploadProps>(({ paramName }) => {
-+  const { value, setValue, maxFileSize, imageConstraints, maxCount } =
-+    useVideoGenerationConfigParam(paramName);
-+
-+  if (paramName === 'imageUrl') {
-+    const handleChange = (
-+      data?: string | { dimensions?: { height: number; width: number }; url: string },
-+    ) => {
-+      const url = typeof data === 'string' ? data : data?.url;
-+      setValue((url ?? null) as any);
-+    };
-+
-+    return (
-+      <ImageUpload
-+        imageConstraints={imageConstraints}
-+        maxFileSize={maxFileSize}
-+        placeholderHeight={120}
-+        value={value as string | null | undefined}
-+        onChange={handleChange}
-+      />
-+    );
-+  }
-+
-+  // For imageUrls
-+  const handleChange = (
-+    data?: string | { dimensions?: { height: number; width: number }; url: string },
-+  ) => {
-+    const url = typeof data === 'string' ? data : data?.url;
-+
-+    if (!url) {
-+      setValue([] as any);
-+      return;
-+    }
-+
-+    // When maxCount is 1, replace instead of append
-+    if (maxCount === 1) {
-+      setValue([url] as any);
-+    } else {
-+      // Append to existing array
-+      const currentArr = Array.isArray(value) ? value : [];
-+      setValue([...currentArr, url] as any);
-+    }
-+  };
-+
-+  // For imageUrls with maxCount 1, use single image upload
-+  if (maxCount === 1) {
-+    const currentValue = Array.isArray(value) ? value[0] : null;
-+    return (
-+      <ImageUpload
-+        imageConstraints={imageConstraints}
-+        maxFileSize={maxFileSize}
-+        placeholderHeight={120}
-+        value={currentValue}
-+        onChange={handleChange}
-+      />
-+    );
-+  }
-+
-+  // For imageUrls with maxCount > 1, also use ImageUpload for now
-+  // (could be upgraded to MultiImagesUpload in future)
-+  const firstImage = Array.isArray(value) ? value[0] : null;
-+  return (
-+    <ImageUpload
-+      imageConstraints={imageConstraints}
-+      maxFileSize={maxFileSize}
-+      placeholderHeight={120}
-+      value={firstImage}
-+      onChange={handleChange}
-+    />
-+  );
-+});
-+
-+export default VideoFramesUpload;
-diff --git a/src/routes/(main)/(create)/video/features/ConfigPanel/index.ts b/src/routes/(main)/(create)/video/features/ConfigPanel/index.ts
-index e7a745a354f..80b00abf49c 100644
---- a/src/routes/(main)/(create)/video/features/ConfigPanel/index.ts
-+++ b/src/routes/(main)/(create)/video/features/ConfigPanel/index.ts
-@@ -1,2 +1,3 @@
- export { default as FrameUpload } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/FrameUpload';
- export { default as VideoModelItem } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/ModelSelect/VideoModelItem';
-+export { default as VideoFramesUpload } from '@/routes/(main)/(create)/video/features/ConfigPanel/components/VideoFramesUpload';
 diff --git a/src/routes/(main)/(create)/video/features/GenerationFeed/BatchItem.tsx b/src/routes/(main)/(create)/video/features/GenerationFeed/BatchItem.tsx
 index 97636bb0700..5e342d805a9 100644
 --- a/src/routes/(main)/(create)/video/features/GenerationFeed/BatchItem.tsx
