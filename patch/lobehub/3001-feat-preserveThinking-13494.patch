@@ -1,0 +1,1354 @@
+diff --git a/locales/en-US/chat.json b/locales/en-US/chat.json
+index e6baf86be0e..ee4ef1784c9 100644
+--- a/locales/en-US/chat.json
++++ b/locales/en-US/chat.json
+@@ -73,6 +73,8 @@
+   "extendParams.enableReasoning.title": "Enable Deep Thinking",
+   "extendParams.imageAspectRatio.title": "Image Aspect Ratio",
+   "extendParams.imageResolution.title": "Image Resolution",
++  "extendParams.preserveThinking.desc": "When enabled, assistant historical reasoning will be sent back as context for compatible models. This may increase token usage.",
++  "extendParams.preserveThinking.title": "Preserve Historical Thinking",
+   "extendParams.reasoningBudgetToken.title": "Thinking Consumption Token",
+   "extendParams.reasoningEffort.title": "Reasoning Intensity",
+   "extendParams.textVerbosity.title": "Output Text Detail Level",
+diff --git a/locales/en-US/modelProvider.json b/locales/en-US/modelProvider.json
+index a13a52336d7..c43d9b55aff 100644
+--- a/locales/en-US/modelProvider.json
++++ b/locales/en-US/modelProvider.json
+@@ -230,6 +230,7 @@
+   "providerModels.item.modelConfig.extendParams.options.imageAspectRatio2.hint": "For Nano Banana 2; controls aspect ratio of generated images (supports extra-wide 1:4, 4:1, 1:8, 8:1).",
+   "providerModels.item.modelConfig.extendParams.options.imageResolution.hint": "For Gemini 3 image generation models; controls resolution of generated images.",
+   "providerModels.item.modelConfig.extendParams.options.imageResolution2.hint": "For Gemini 3.1 Flash Image models; controls resolution of generated images (supports 512px).",
++  "providerModels.item.modelConfig.extendParams.options.preserveThinking.hint": "For Qwen3.6 Plus, GLM-5 and GLM-4.7; sends historical assistant reasoning back to model context (preserve_thinking / clear_thinking=false).",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint": "For Claude, Qwen3 and similar; controls token budget for reasoning.",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint": "For GLM-5 and GLM-4.7; controls token budget for reasoning (max 32k).",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "For Qwen3 series; controls token budget for reasoning (max 80k).",
+diff --git a/locales/zh-CN/chat.json b/locales/zh-CN/chat.json
+index f486749d832..779ef57cb63 100644
+--- a/locales/zh-CN/chat.json
++++ b/locales/zh-CN/chat.json
+@@ -73,6 +73,8 @@
+   "extendParams.enableReasoning.title": "开启深度思考",
+   "extendParams.imageAspectRatio.title": "图片宽高比",
+   "extendParams.imageResolution.title": "图片分辨率",
++  "extendParams.preserveThinking.desc": "开启后会将历史助手思考过程作为上下文回传给模型，可能增加 Token 消耗。",
++  "extendParams.preserveThinking.title": "传递历史思考过程",
+   "extendParams.reasoningBudgetToken.title": "思考 Token 预算",
+   "extendParams.reasoningEffort.title": "推理强度",
+   "extendParams.textVerbosity.title": "输出详细程度",
+diff --git a/locales/zh-CN/modelProvider.json b/locales/zh-CN/modelProvider.json
+index 4219f516201..83acb629284 100644
+--- a/locales/zh-CN/modelProvider.json
++++ b/locales/zh-CN/modelProvider.json
+@@ -230,6 +230,7 @@
+   "providerModels.item.modelConfig.extendParams.options.imageAspectRatio2.hint": "适用于 Nano Banana 2；控制生成图像的宽高比（支持超宽 1:4、4:1、1:8、8:1）。",
+   "providerModels.item.modelConfig.extendParams.options.imageResolution.hint": "适用于 Gemini 3 图像生成模型；控制生成图像的分辨率。",
+   "providerModels.item.modelConfig.extendParams.options.imageResolution2.hint": "适用于 Gemini 3.1 Flash Image 模型；控制生成图像的分辨率（支持 512px）。",
++  "providerModels.item.modelConfig.extendParams.options.preserveThinking.hint": "适用于 Qwen3.6 Plus、GLM-5 与 GLM-4.7；将历史助手思考过程回传为模型上下文（preserve_thinking / clear_thinking=false）。",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint": "适用于 Claude、Qwen3 等模型；控制用于推理的 Token 预算。",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint": "适用于GLM-5和GLM-4.7；控制推理的令牌预算（最大32k）。",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "适用于Qwen3系列；控制推理的令牌预算（最大80k）。",
+diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
+index be26f811a2d..6a81b9ee29d 100644
+--- a/packages/model-bank/src/aiModels/qwen.ts
++++ b/packages/model-bank/src/aiModels/qwen.ts
+@@ -1502,6 +1502,61 @@ const qwenChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      video: true,
++      vision: true,
++    },
++    config: {
++      deploymentName: 'qwen3.6-plus', // Supports context caching
++    },
++    contextWindowTokens: 1_000_000,
++    description:
++      'Qwen3.6 Plus supports text, image, and video input. It delivers a balanced performance across quality, speed, and cost. Its multimodal capabilities are significantly improved compared to the Qwen3 VL series.',
++    displayName: 'Qwen3.6 Plus',
++    enabled: true,
++    id: 'qwen3.6-plus',
++    maxOutput: 65_536,
++    organization: 'Qwen',
++    pricing: {
++      currency: 'CNY',
++      units: [
++        {
++          lookup: {
++            prices: {
++              '[0, 0.256]': 2,
++              '[0.256, 1]': 8,
++            },
++            pricingParams: ['textInputRange'],
++          },
++          name: 'textInput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.256]': 12,
++              '[0.256, 1]': 48,
++            },
++            pricingParams: ['textInputRange'],
++          },
++          name: 'textOutput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2026-04-02',
++    settings: {
++      extendParams: ['enableReasoning', 'reasoningBudgetToken', 'preserveThinking'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -1517,7 +1572,6 @@ const qwenChatModels: AIChatModelCard[] = [
+     description:
+       'Qwen3.5 Plus supports text, image, and video input. Its performance on pure text tasks is comparable to Qwen3 Max, with better performance and lower cost. Its multimodal capabilities are significantly improved compared to the Qwen3 VL series.',
+     displayName: 'Qwen3.5 Plus',
+-    enabled: true,
+     id: 'qwen3.5-plus',
+     maxOutput: 65_536,
+     organization: 'Qwen',
+diff --git a/packages/model-bank/src/aiModels/zhipu.ts b/packages/model-bank/src/aiModels/zhipu.ts
+index 27daefb561c..2259dfc98a4 100644
+--- a/packages/model-bank/src/aiModels/zhipu.ts
++++ b/packages/model-bank/src/aiModels/zhipu.ts
+@@ -69,6 +69,68 @@ const zhipuChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++      video: true,
++      vision: true,
++    },
++    contextWindowTokens: 200_000,
++    description:
++      'GLM-5V-Turbo is Zhipu’s multimodal Coding foundation model for visual programming tasks. It natively handles images, video, text, and files, and is optimized for long-horizon planning, complex coding, and agent execution in multimodal workflows.',
++    displayName: 'GLM-5V-Turbo',
++    enabled: true,
++    id: 'glm-5v-turbo',
++    maxOutput: 131_072,
++    pricing: {
++      currency: 'CNY',
++      units: [
++        {
++          lookup: {
++            prices: {
++              '[0, 0.032]': 1.2,
++              '[0.032, infinity]': 1.8,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textInput_cacheRead',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.032]': 5,
++              '[0.032, infinity]': 7,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textInput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++        {
++          lookup: {
++            prices: {
++              '[0, 0.032]': 22,
++              '[0.032, infinity]': 26,
++            },
++            pricingParams: ['textInput'],
++          },
++          name: 'textOutput',
++          strategy: 'lookup',
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    settings: {
++      extendParams: ['enableReasoning'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -185,7 +247,7 @@ const zhipuChatModels: AIChatModelCard[] = [
+     },
+     releasedAt: '2026-02-12',
+     settings: {
+-      extendParams: ['enableReasoning'],
++      extendParams: ['enableReasoning', 'preserveThinking'],
+       searchImpl: 'params',
+     },
+     type: 'chat',
+@@ -248,7 +310,7 @@ const zhipuChatModels: AIChatModelCard[] = [
+     },
+     releasedAt: '2025-12-22',
+     settings: {
+-      extendParams: ['enableReasoning'],
++      extendParams: ['enableReasoning', 'preserveThinking'],
+       searchImpl: 'params',
+     },
+     type: 'chat',
+@@ -308,69 +370,6 @@ const zhipuChatModels: AIChatModelCard[] = [
+     },
+     type: 'chat',
+   },
+-  {
+-    abilities: {
+-      functionCall: true,
+-      reasoning: true,
+-      search: true,
+-      video: true,
+-      vision: true,
+-    },
+-    contextWindowTokens: 200_000,
+-    description:
+-      'GLM-5V-Turbo is Zhipu’s first multimodal coding foundation model, designed for visual programming tasks. It can natively process multimodal inputs such as images, videos, and text, while excelling in long-horizon planning, complex programming, and action execution. Deeply integrated with agent workflows, it can collaborate seamlessly with agents like Claude Code and OpenClaw to complete a full closed loop of “understanding the environment → planning actions → executing tasks.”',
+-    displayName: 'GLM-5V-Turbo',
+-    enabled: true,
+-    id: 'glm-5v-turbo',
+-    maxOutput: 131_072,
+-    pricing: {
+-      currency: 'CNY',
+-      units: [
+-        {
+-          lookup: {
+-            prices: {
+-              '[0, 0.032]': 1.2,
+-              '[0.032, infinity]': 1.8,
+-            },
+-            pricingParams: ['textInput'],
+-          },
+-          name: 'textInput_cacheRead',
+-          strategy: 'lookup',
+-          unit: 'millionTokens',
+-        },
+-        {
+-          lookup: {
+-            prices: {
+-              '[0, 0.032]': 5,
+-              '[0.032, infinity]': 7,
+-            },
+-            pricingParams: ['textInput'],
+-          },
+-          name: 'textInput',
+-          strategy: 'lookup',
+-          unit: 'millionTokens',
+-        },
+-        {
+-          lookup: {
+-            prices: {
+-              '[0, 0.032]': 22,
+-              '[0.032, infinity]': 26,
+-            },
+-            pricingParams: ['textInput'],
+-          },
+-          name: 'textOutput',
+-          strategy: 'lookup',
+-          unit: 'millionTokens',
+-        },
+-      ],
+-    },
+-    releasedAt: '2026-04-02',
+-    settings: {
+-      extendParams: ['enableReasoning'],
+-      searchImpl: 'params',
+-    },
+-    type: 'chat',
+-  },
+   {
+     abilities: {
+       functionCall: true,
+diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
+index d03fc577b0d..acae054d1c9 100644
+--- a/packages/model-bank/src/types/aiModel.ts
++++ b/packages/model-bank/src/types/aiModel.ts
+@@ -245,6 +245,7 @@ export type ExtendParamsType =
+   | 'reasoningBudgetToken32k'
+   | 'reasoningBudgetToken80k'
+   | 'enableReasoning'
++  | 'preserveThinking'
+   | 'enableAdaptiveThinking'
+   | 'disableContextCaching'
+   | 'effort'
+@@ -283,6 +284,7 @@ export const ExtendParamsTypeSchema = z.enum([
+   'reasoningBudgetToken32k',
+   'reasoningBudgetToken80k',
+   'enableReasoning',
++  'preserveThinking',
+   'enableAdaptiveThinking',
+   'disableContextCaching',
+   'effort',
+diff --git a/packages/model-runtime/src/providers/qwen/index.test.ts b/packages/model-runtime/src/providers/qwen/index.test.ts
+index eceb53768d5..2117e361452 100644
+--- a/packages/model-runtime/src/providers/qwen/index.test.ts
++++ b/packages/model-runtime/src/providers/qwen/index.test.ts
+@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
+ 
+ import type { LobeOpenAICompatibleRuntime } from '../../core/BaseAI';
+ import { testProvider } from '../../providerTestUtils';
+-import { LobeQwenAI } from './index';
++import { LobeQwenAI, params } from './index';
+ 
+ const provider = ModelProvider.Qwen;
+ const defaultBaseURL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+@@ -62,4 +62,117 @@ describe('LobeQwenAI - custom features', () => {
+       expect(calledPayload.thinking_budget).toBe(4096);
+     });
+   });
++
++  describe('preserve thinking mapping', () => {
++    it('should map preserveThinking to preserve_thinking for qwen3.6-plus', () => {
++      const payload = {
++        messages: [
++          { content: 'hello', role: 'user' },
++          {
++            content: 'answer',
++            reasoning: { content: 'reasoning content' },
++            role: 'assistant',
++          },
++        ],
++        model: 'qwen3.6-plus',
++        preserveThinking: true,
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.preserve_thinking).toBe(true);
++      expect(result.messages).toEqual([
++        { content: 'hello', role: 'user' },
++        {
++          content: 'answer',
++          reasoning_content: 'reasoning content',
++          role: 'assistant',
++        },
++      ]);
++    });
++
++    it('should set preserve_thinking=false when explicitly disabled on supported model', () => {
++      const payload = {
++        messages: [{ content: 'hello', role: 'user' }],
++        model: 'qwen3.6-plus',
++        preserveThinking: false,
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.preserve_thinking).toBe(false);
++    });
++
++    it('should map preserveThinking for deployment-name aliases when caller provides the param', () => {
++      const payload = {
++        messages: [
++          {
++            content: 'answer',
++            reasoning: { content: 'reasoning content' },
++            role: 'assistant',
++          },
++        ],
++        model: 'my-qwen3.6-plus-deployment',
++        preserveThinking: true,
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.preserve_thinking).toBe(true);
++      expect(result.messages).toEqual([
++        {
++          content: 'answer',
++          reasoning_content: 'reasoning content',
++          role: 'assistant',
++        },
++      ]);
++    });
++
++    it('should not set preserve_thinking when preserveThinking is absent but still keep reasoning_content', () => {
++      const payload = {
++        messages: [
++          {
++            content: 'answer',
++            reasoning: { content: 'reasoning content' },
++            role: 'assistant',
++          },
++        ],
++        model: 'qwen3.5-plus',
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.preserve_thinking).toBeUndefined();
++      expect(result.messages).toEqual([
++        {
++          content: 'answer',
++          reasoning_content: 'reasoning content',
++          role: 'assistant',
++        },
++      ]);
++    });
++
++    it('should keep caller-provided reasoning_content', () => {
++      const payload = {
++        messages: [
++          {
++            content: 'answer',
++            reasoning_content: 'existing reasoning content',
++            role: 'assistant',
++          },
++        ],
++        model: 'qwen3.5-plus',
++      } as any;
++
++      const result = params.chatCompletion!.handlePayload!(payload);
++
++      expect(result.messages).toEqual([
++        {
++          content: 'answer',
++          reasoning_content: 'existing reasoning content',
++          role: 'assistant',
++        },
++      ]);
++    });
++  });
+ });
+diff --git a/packages/model-runtime/src/providers/qwen/index.ts b/packages/model-runtime/src/providers/qwen/index.ts
+index 13f5833fea9..3d8aba82807 100644
+--- a/packages/model-runtime/src/providers/qwen/index.ts
++++ b/packages/model-runtime/src/providers/qwen/index.ts
+@@ -1,5 +1,6 @@
+ import { ModelProvider } from 'model-bank';
+ 
++import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+ import { resolveParameters } from '../../core/parameterResolver';
+ import { QwenAIStream } from '../../core/streams';
+@@ -23,12 +24,20 @@ export const QwenLegacyModels = new Set([
+   'qwen-1.8b-longcontext-chat',
+ ]);
+ 
+-export const LobeQwenAI = createOpenAICompatibleRuntime({
++export const params = {
+   baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+   chatCompletion: {
+     handlePayload: (payload) => {
+-      const { model, presence_penalty, temperature, thinking, top_p, enabledSearch, ...rest } =
+-        payload;
++      const {
++        model,
++        presence_penalty,
++        temperature,
++        thinking,
++        top_p,
++        enabledSearch,
++        preserveThinking,
++        ...rest
++      } = payload;
+ 
+       // Resolve parameters with model-specific constraints
+       const resolvedParams = resolveParameters(
+@@ -44,6 +53,26 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
+         },
+       );
+ 
++      const messages = (rest.messages || []).map((message: any) => {
++        const { reasoning, ...messageRest } = message;
++
++        const reasoningContent =
++          typeof messageRest.reasoning_content === 'string'
++            ? messageRest.reasoning_content
++            : typeof reasoning?.content === 'string'
++              ? reasoning.content
++              : undefined;
++
++        if (reasoningContent !== undefined) {
++          return {
++            ...messageRest,
++            reasoning_content: reasoningContent,
++          };
++        }
++
++        return messageRest;
++      });
++
+       return {
+         ...rest,
+         ...(model.includes('-thinking')
+@@ -61,7 +90,9 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
+                   thinking?.budget_tokens === 0 ? 0 : thinking?.budget_tokens || undefined,
+               }
+             : {}),
++        ...(typeof preserveThinking === 'boolean' && { preserve_thinking: preserveThinking }),
+         frequency_penalty: undefined,
++        messages,
+         model,
+         presence_penalty: resolvedParams.presence_penalty,
+         stream: true,
+@@ -101,4 +132,6 @@ export const LobeQwenAI = createOpenAICompatibleRuntime({
+     return processMultiProviderModelList(modelList, 'qwen');
+   },
+   provider: ModelProvider.Qwen,
+-});
++} satisfies OpenAICompatibleFactoryOptions;
++
++export const LobeQwenAI = createOpenAICompatibleRuntime(params);
+diff --git a/packages/model-runtime/src/providers/zhipu/index.test.ts b/packages/model-runtime/src/providers/zhipu/index.test.ts
+index 439190c7f70..ecc873fc34c 100644
+--- a/packages/model-runtime/src/providers/zhipu/index.test.ts
++++ b/packages/model-runtime/src/providers/zhipu/index.test.ts
+@@ -407,6 +407,96 @@ describe('LobeZhipuAI - custom features', () => {
+       });
+     });
+ 
++    describe('preserve thinking mapping', () => {
++      it('should map preserveThinking=true to clear_thinking=false and convert reasoning content', () => {
++        const payload = {
++          messages: [
++            { content: 'hello', role: 'user' },
++            {
++              content: 'answer',
++              reasoning: { content: 'reasoning content' },
++              role: 'assistant',
++            },
++          ],
++          model: 'glm-5',
++          preserveThinking: true,
++          thinking: { budget_tokens: 1024, type: 'enabled' },
++        } as any;
++
++        const result = params.chatCompletion.handlePayload(payload);
++
++        expect(result.thinking).toEqual({ clear_thinking: false, type: 'enabled' });
++        expect(result.messages).toEqual([
++          { content: 'hello', role: 'user' },
++          {
++            content: 'answer',
++            reasoning_content: 'reasoning content',
++            role: 'assistant',
++          },
++        ]);
++      });
++
++      it('should still convert reasoning to reasoning_content when preserveThinking is absent', () => {
++        const payload = {
++          messages: [
++            {
++              content: 'answer',
++              reasoning: { content: 'reasoning content' },
++              role: 'assistant',
++            },
++          ],
++          model: 'glm-5',
++        } as any;
++
++        const result = params.chatCompletion.handlePayload(payload);
++
++        expect(result.thinking).toBeUndefined();
++        expect(result.messages).toEqual([
++          {
++            content: 'answer',
++            reasoning_content: 'reasoning content',
++            role: 'assistant',
++          },
++        ]);
++      });
++
++      it('should map preserveThinking=false to clear_thinking=true', () => {
++        const payload = {
++          messages: [{ content: 'hello', role: 'user' }],
++          model: 'glm-4.7',
++          preserveThinking: false,
++        } as any;
++
++        const result = params.chatCompletion.handlePayload(payload);
++
++        expect(result.thinking).toEqual({ clear_thinking: true });
++      });
++
++      it('should keep caller-provided reasoning_content', () => {
++        const payload = {
++          messages: [
++            {
++              content: 'answer',
++              reasoning_content: 'existing reasoning content',
++              role: 'assistant',
++            },
++          ],
++          model: 'glm-5',
++          preserveThinking: true,
++        } as any;
++
++        const result = params.chatCompletion.handlePayload(payload);
++
++        expect(result.messages).toEqual([
++          {
++            content: 'answer',
++            reasoning_content: 'existing reasoning content',
++            role: 'assistant',
++          },
++        ]);
++      });
++    });
++
+     describe('Preserve other payload properties', () => {
+       it('should preserve all other properties', async () => {
+         await instance.chat({
+diff --git a/packages/model-runtime/src/providers/zhipu/index.ts b/packages/model-runtime/src/providers/zhipu/index.ts
+index 7b7b768f44b..d4f635186e6 100644
+--- a/packages/model-runtime/src/providers/zhipu/index.ts
++++ b/packages/model-runtime/src/providers/zhipu/index.ts
+@@ -26,6 +26,7 @@ export const params = {
+         enabledSearch,
+         max_tokens,
+         model,
++        preserveThinking,
+         stream,
+         temperature,
+         thinking,
+@@ -34,6 +35,35 @@ export const params = {
+         ...rest
+       } = payload;
+ 
++      const messages = (rest.messages || []).map((message: any) => {
++        const { reasoning, ...messageRest } = message;
++
++        const reasoningContent =
++          typeof messageRest.reasoning_content === 'string'
++            ? messageRest.reasoning_content
++            : typeof reasoning?.content === 'string'
++              ? reasoning.content
++              : undefined;
++
++        if (reasoningContent !== undefined) {
++          return {
++            ...messageRest,
++            reasoning_content: reasoningContent,
++          };
++        }
++
++        return messageRest;
++      });
++
++      const shouldSetClearThinking = typeof preserveThinking === 'boolean';
++      const thinkingPayload = thinking ? { type: thinking.type } : undefined;
++      const resolvedThinking = shouldSetClearThinking
++        ? {
++            ...thinkingPayload,
++            clear_thinking: !preserveThinking,
++          }
++        : thinkingPayload;
++
+       const zhipuTools = enabledSearch
+         ? [
+             ...(tools || []),
+@@ -78,9 +108,10 @@ export const params = {
+       return {
+         ...rest,
+         ...resolvedParams,
++        messages,
+         model,
+         stream,
+-        thinking: thinking ? { type: thinking.type } : undefined,
++        thinking: resolvedThinking,
+         tool_stream: stream && /^glm-(?:4\.(?:6|7)|5(?:\.1)?)$/.test(model) ? true : undefined,
+         tools: zhipuTools,
+       } as any;
+diff --git a/packages/model-runtime/src/types/chat.ts b/packages/model-runtime/src/types/chat.ts
+index 8328e67dabd..5d58ec83a8e 100644
+--- a/packages/model-runtime/src/types/chat.ts
++++ b/packages/model-runtime/src/types/chat.ts
+@@ -7,13 +7,13 @@ export type LLMRoleType = 'user' | 'system' | 'assistant' | 'function' | 'tool';
+ export type ChatResponseFormat =
+   | { type: 'json_object' }
+   | {
+-    json_schema: {
+-      name: string;
+-      schema: Record<string, any>;
+-      strict?: boolean;
++      json_schema: {
++        name: string;
++        schema: Record<string, any>;
++        strict?: boolean;
++      };
++      type: 'json_schema';
+     };
+-    type: 'json_schema';
+-  };
+ 
+ interface UserMessageContentPartThinking {
+   signature: string;
+@@ -51,6 +51,7 @@ export interface OpenAIChatMessage {
+     content?: string;
+     duration?: number;
+   };
++  reasoning_content?: string;
+   role: LLMRoleType;
+   tool_call_id?: string;
+   tool_calls?: MessageToolCall[];
+@@ -119,6 +120,7 @@ export interface ChatStreamPayload {
+    * @default 0
+    */
+   presence_penalty?: number;
++  preserveThinking?: boolean;
+   provider?: string;
+   reasoning?: {
+     effort?: string;
+diff --git a/packages/model-runtime/src/utils/modelParse.ts b/packages/model-runtime/src/utils/modelParse.ts
+index 4dc59cc6a57..996cb83f9c9 100644
+--- a/packages/model-runtime/src/utils/modelParse.ts
++++ b/packages/model-runtime/src/utils/modelParse.ts
+@@ -92,7 +92,7 @@ export const MODEL_LIST_CONFIGS = {
+       'qwen3',
+     ],
+     reasoningKeywords: ['qvq', 'qwq', 'qwen3', '!-instruct-', '!-coder-'],
+-    visionKeywords: ['qvq', '-vl', '-omni'],
++    visionKeywords: ['qvq', '-vl', '-omni', 'qwen3.'],
+   },
+   replicate: {
+     imageOutputKeywords: [
+diff --git a/packages/types/src/agent/chatConfig.ts b/packages/types/src/agent/chatConfig.ts
+index cd7ed80ec9c..3ec4602f4a8 100644
+--- a/packages/types/src/agent/chatConfig.ts
++++ b/packages/types/src/agent/chatConfig.ts
+@@ -95,6 +95,11 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig {
+    */
+   imageResolution2?: '512px' | '1K' | '2K' | '4K';
+   inputTemplate?: string;
++  /**
++   * Whether to preserve and pass historical thinking content to the model
++   * (provider support required, e.g. Qwen preserve_thinking)
++   */
++  preserveThinking?: boolean;
+   reasoningBudgetToken?: number;
+   /**
+    * Reasoning budget token for models with 32k max (GLM-5/GLM-4.7)
+@@ -193,6 +198,7 @@ export const AgentChatConfigSchema = z
+     imageResolution: z.enum(['1K', '2K', '4K']).optional(),
+     imageResolution2: z.enum(['512px', '1K', '2K', '4K']).optional(),
+     runtimeEnv: RuntimeEnvConfigSchema.optional(),
++    preserveThinking: z.boolean().optional(),
+     reasoningBudgetToken: z.number().optional(),
+     reasoningBudgetToken32k: z.number().optional(),
+     reasoningBudgetToken80k: z.number().optional(),
+diff --git a/packages/types/src/openai/chat.ts b/packages/types/src/openai/chat.ts
+index c6e318092b3..134d232c8f4 100644
+--- a/packages/types/src/openai/chat.ts
++++ b/packages/types/src/openai/chat.ts
+@@ -48,6 +48,11 @@ export interface OpenAIChatMessage {
+    */
+   function_call?: OpenAIFunctionCall;
+   name?: string;
++  reasoning?: {
++    content?: string;
++    duration?: number;
++  };
++  reasoning_content?: string;
+   /**
+    * Role
+    * @description Role of the message sender
+@@ -91,6 +96,7 @@ export interface ChatStreamPayload {
+    * @default 0
+    */
+   presence_penalty?: number;
++  preserveThinking?: boolean;
+   /**
+    * @default openai
+    */
+diff --git a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
+index e13fa387048..2de05f6c7ea 100644
+--- a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
++++ b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
+@@ -118,6 +118,18 @@ const ControlsForm = memo<ControlsFormProps>(({ model: modelProp, provider: prov
+       minWidth: undefined,
+       name: 'enableReasoning',
+     },
++    {
++      children: <Switch />,
++      desc: isNarrow ? (
++        <span style={descNarrow}>{t('extendParams.preserveThinking.desc')}</span>
++      ) : (
++        t('extendParams.preserveThinking.desc')
++      ),
++      label: t('extendParams.preserveThinking.title'),
++      layout: isNarrow ? 'vertical' : 'horizontal',
++      minWidth: undefined,
++      name: 'preserveThinking',
++    },
+     {
+       children: <Switch />,
+       desc: isNarrow ? (
+diff --git a/src/locales/default/chat.ts b/src/locales/default/chat.ts
+index 29b24f99a4b..6f3f8b8d9b7 100644
+--- a/src/locales/default/chat.ts
++++ b/src/locales/default/chat.ts
+@@ -84,6 +84,9 @@ export default {
+   'extendParams.enableReasoning.desc':
+     'Based on the Claude Thinking mechanism limit. <1>Learn more</1>',
+   'extendParams.enableReasoning.title': 'Enable Deep Thinking',
++  'extendParams.preserveThinking.desc':
++    'When enabled, assistant historical reasoning will be sent back as context for models. This may increase token usage.',
++  'extendParams.preserveThinking.title': 'Preserve Historical Thinking',
+   'extendParams.imageAspectRatio.title': 'Image Aspect Ratio',
+   'extendParams.imageResolution.title': 'Image Resolution',
+   'extendParams.reasoningBudgetToken.title': 'Thinking Consumption Token',
+diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
+index 9a70aa3ab54..9038df8540a 100644
+--- a/src/locales/default/modelProvider.ts
++++ b/src/locales/default/modelProvider.ts
+@@ -274,6 +274,8 @@ export default {
+     'For Gemini 3 image generation models; controls resolution of generated images.',
+   'providerModels.item.modelConfig.extendParams.options.imageResolution2.hint':
+     'For Gemini 3.1 Flash Image models; controls resolution of generated images (supports 512px).',
++  'providerModels.item.modelConfig.extendParams.options.preserveThinking.hint':
++    'For Qwen3.6 Plus, GLM-5 and GLM-4.7; sends historical assistant reasoning back to model context (preserve_thinking / clear_thinking=false).',
+   'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint':
+     'For Claude, Qwen3 and similar; controls token budget for reasoning.',
+   'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint':
+diff --git a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+index 08df7b02917..185a845e2d1 100644
+--- a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
++++ b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+@@ -47,6 +47,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.enableAdaptiveThinking.hint',
+     key: 'enableAdaptiveThinking',
+   },
++  {
++    hintKey: 'providerModels.item.modelConfig.extendParams.options.preserveThinking.hint',
++    key: 'preserveThinking',
++  },
+   {
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken.hint',
+     key: 'reasoningBudgetToken',
+@@ -155,6 +159,7 @@ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
+   gpt5_2ReasoningEffort: 'reasoningEffort',
+   grok4_20ReasoningEffort: 'reasoningEffort',
+   imageAspectRatio2: 'imageAspectRatio',
++  imageResolution2: 'imageResolution',
+   reasoningBudgetToken32k: 'reasoningBudgetToken',
+   reasoningBudgetToken80k: 'reasoningBudgetToken',
+   thinkingLevel2: 'thinkingLevel',
+@@ -201,6 +206,11 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
+   imageAspectRatio2: { labelSuffix: ' (Nano Banana 2)', previewWidth: 350, tag: 'aspect_ratio' },
+   imageResolution: { labelSuffix: '', previewWidth: 250, tag: 'resolution' },
+   imageResolution2: { labelSuffix: ' (512px+)', previewWidth: 280, tag: 'resolution' },
++  preserveThinking: {
++    labelSuffix: ' (Qwen3.6 / GLM-4.7+)',
++    previewWidth: 460,
++    tag: 'preserve_thinking',
++  },
+   reasoningBudgetToken: { previewWidth: 350, tag: 'thinking.budget_tokens' },
+   reasoningBudgetToken32k: {
+     labelSuffix: ' (32k)',
+@@ -320,6 +330,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
+       effort: <EffortSlider value="high" />,
+       enableAdaptiveThinking: <Switch checked disabled />,
+       enableReasoning: <Switch checked disabled />,
++      preserveThinking: <Switch checked disabled />,
+       gpt5ReasoningEffort: <GPT5ReasoningEffortSlider value="medium" />,
+       gpt5_1ReasoningEffort: <GPT51ReasoningEffortSlider value="none" />,
+       gpt5_2ProReasoningEffort: <GPT52ProReasoningEffortSlider value="medium" />,
+diff --git a/src/server/modules/AgentRuntime/RuntimeExecutors.ts b/src/server/modules/AgentRuntime/RuntimeExecutors.ts
+index 232e83be7d8..b40af864a05 100644
+--- a/src/server/modules/AgentRuntime/RuntimeExecutors.ts
++++ b/src/server/modules/AgentRuntime/RuntimeExecutors.ts
+@@ -367,6 +367,8 @@ export const createRuntimeExecutors = (
+ 
+     try {
+       type ContentPart = { text: string; type: 'text' } | { image: string; type: 'image' };
++      let shouldPersistAssistantReasoning = false;
++      let preserveThinkingForPayload: boolean | undefined;
+ 
+       // Process messages through serverMessagesEngine to inject system role, knowledge, etc.
+       // Rebuild params from agentConfig at execution time (capabilities built dynamically)
+@@ -375,6 +377,45 @@ export const createRuntimeExecutors = (
+       if (agentConfig) {
+         const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+ 
++        const preserveThinkingFromPayload = (llmPayload as { preserveThinking?: boolean })
++          .preserveThinking;
++        const preserveThinkingConfigured =
++          typeof preserveThinkingFromPayload === 'boolean'
++            ? preserveThinkingFromPayload
++            : typeof agentConfig.chatConfig?.preserveThinking === 'boolean'
++              ? agentConfig.chatConfig.preserveThinking
++              : undefined;
++        const preserveThinkingRequested = preserveThinkingConfigured === true;
++
++        const modelCard = LOBE_DEFAULT_MODEL_LIST.find(
++          (item) =>
++            item.providerId === provider &&
++            (item.id === model || item.config?.deploymentName === model),
++        );
++        const modelExtendParams =
++          modelCard &&
++          'settings' in modelCard &&
++          modelCard.settings &&
++          typeof modelCard.settings === 'object' &&
++          'extendParams' in modelCard.settings
++            ? (modelCard.settings as { extendParams?: string[] }).extendParams
++            : undefined;
++
++        const modelSupportsPreserveThinkingFromCard =
++          Array.isArray(modelExtendParams) && modelExtendParams.includes('preserveThinking');
++        const providerSupportsPreserveThinkingFallback =
++          provider === 'qwen' || provider === 'zhipu';
++        const modelSupportsPreserveThinking =
++          modelSupportsPreserveThinkingFromCard ||
++          (!modelCard && providerSupportsPreserveThinkingFallback);
++
++        shouldPersistAssistantReasoning =
++          preserveThinkingRequested && modelSupportsPreserveThinking;
++        preserveThinkingForPayload =
++          modelSupportsPreserveThinking && typeof preserveThinkingConfigured === 'boolean'
++            ? preserveThinkingConfigured
++            : undefined;
++
+         // Extract <refer_topic> tags from messages and fetch summaries.
+         // Skip if messages already contain injected topic_reference_context
+         // (e.g., from client-side contextEngineering preprocessing) to avoid double injection.
+@@ -626,7 +667,15 @@ export const createRuntimeExecutors = (
+ 
+       // Construct ChatStreamPayload
+       const stream = ctx.stream ?? true;
+-      const chatPayload = { messages: processedMessages, model, stream, tools };
++      const chatPayload = {
++        messages: processedMessages,
++        model,
++        stream,
++        tools,
++        ...(typeof preserveThinkingForPayload === 'boolean' && {
++          preserveThinking: preserveThinkingForPayload,
++        }),
++      };
+ 
+       // Buffer: accumulate text and reasoning, send every 50ms
+       const BUFFER_INTERVAL = 50;
+@@ -914,6 +963,8 @@ export const createRuntimeExecutors = (
+             };
+           }
+ 
++          const persistedReasoning = shouldPersistAssistantReasoning ? finalReasoning : undefined;
++
+           try {
+             // Build metadata object
+             const metadata: Record<string, any> = {};
+@@ -928,7 +979,7 @@ export const createRuntimeExecutors = (
+               content: finalContent,
+               imageList: imageList.length > 0 ? imageList : undefined,
+               metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+-              reasoning: finalReasoning,
++              reasoning: persistedReasoning,
+               search: grounding,
+               tools: toolsCalling.length > 0 ? toolsCalling : undefined,
+             });
+@@ -941,7 +992,7 @@ export const createRuntimeExecutors = (
+ 
+           newState.messages.push({
+             content,
+-            reasoning: finalReasoning,
++            reasoning: persistedReasoning,
+             role: 'assistant',
+             tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+           });
+diff --git a/src/server/modules/AgentRuntime/__tests__/RuntimeExecutors.test.ts b/src/server/modules/AgentRuntime/__tests__/RuntimeExecutors.test.ts
+index 7cb751b3198..1abfd13aad0 100644
+--- a/src/server/modules/AgentRuntime/__tests__/RuntimeExecutors.test.ts
++++ b/src/server/modules/AgentRuntime/__tests__/RuntimeExecutors.test.ts
+@@ -38,6 +38,12 @@ vi.mock('model-bank', () => ({
+       id: 'gpt-4',
+       providerId: 'openai',
+     },
++    {
++      abilities: { functionCall: true, video: true, vision: true },
++      id: 'qwen3.6-plus',
++      providerId: 'qwen',
++      settings: { extendParams: ['preserveThinking'] },
++    },
+     {
+       abilities: { functionCall: false, video: false, vision: false },
+       id: 'no-tools-model',
+@@ -287,51 +293,233 @@ describe('RuntimeExecutors', () => {
+       );
+     });
+ 
+-    it('should preserve reasoning in newState when assistant returns tool calls', async () => {
+-      const toolCallPayload = [
+-        {
+-          function: { arguments: '{}', name: 'search' },
+-          id: 'call_1',
+-          type: 'function',
+-        },
+-      ];
++    describe('reasoning persistence gate', () => {
++      it('should persist assistant reasoning with tool calls when preserveThinking is enabled on a supported model', async () => {
++        const toolCallPayload = [
++          {
++            function: { arguments: '{}', name: 'search' },
++            id: 'call_1',
++            type: 'function',
++          },
++        ];
+ 
+-      const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
+-        await options?.callback?.onThinking?.('Need to inspect the search results first.');
+-        await options?.callback?.onToolsCalling?.({ toolsCalling: toolCallPayload });
+-        await options?.callback?.onCompletion?.({
+-          usage: {
+-            totalInputTokens: 1,
+-            totalOutputTokens: 2,
+-            totalTokens: 3,
++        const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
++          await options?.callback?.onThinking?.('Need to inspect the search results first.');
++          await options?.callback?.onToolsCalling?.({ toolsCalling: toolCallPayload });
++          await options?.callback?.onCompletion?.({
++            usage: {
++              totalInputTokens: 1,
++              totalOutputTokens: 2,
++              totalTokens: 3,
++            },
++          });
++          return new Response('done');
++        });
++        vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
++
++        const ctxWithConfig: RuntimeExecutorContext = {
++          ...ctx,
++          agentConfig: {
++            chatConfig: { preserveThinking: true },
++            plugins: [],
++            systemRole: 'test',
++          },
++        };
++
++        const executors = createRuntimeExecutors(ctxWithConfig);
++        const state = createMockState({
++          modelRuntimeConfig: {
++            model: 'qwen3.6-plus',
++            provider: 'qwen',
+           },
+         });
+-        return new Response('done');
++
++        const instruction = {
++          payload: {
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'qwen3.6-plus',
++            provider: 'qwen',
++            tools: [],
++          },
++          type: 'call_llm' as const,
++        };
++
++        const result = await executors.call_llm!(instruction, state);
++
++        expect(result.newState.messages.at(-1)).toEqual(
++          expect.objectContaining({
++            reasoning: { content: 'Need to inspect the search results first.' },
++            role: 'assistant',
++            tool_calls: [expect.objectContaining({ id: 'call_1' })],
++          }),
++        );
++        expect(mockChat).toHaveBeenCalledWith(
++          expect.objectContaining({ preserveThinking: true }),
++          expect.anything(),
++        );
+       });
+-      vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
+ 
+-      const executors = createRuntimeExecutors(ctx);
+-      const state = createMockState();
++      it('should not persist assistant reasoning when preserveThinking is not enabled', async () => {
++        const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
++          await options?.callback?.onThinking?.('hidden reasoning');
++          await options?.callback?.onText?.('answer');
++          return new Response('done');
++        });
++        vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
+ 
+-      const instruction = {
+-        payload: {
+-          messages: [{ content: 'Hello', role: 'user' }],
+-          model: 'gpt-4',
+-          provider: 'openai',
+-          tools: [],
+-        },
+-        type: 'call_llm' as const,
+-      };
++        const executors = createRuntimeExecutors(ctx);
++        const state = createMockState();
+ 
+-      const result = await executors.call_llm!(instruction, state);
++        const instruction = {
++          payload: {
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'gpt-4',
++            provider: 'openai',
++          },
++          type: 'call_llm' as const,
++        };
+ 
+-      expect(result.newState.messages.at(-1)).toEqual(
+-        expect.objectContaining({
+-          reasoning: { content: 'Need to inspect the search results first.' },
+-          role: 'assistant',
+-          tool_calls: [expect.objectContaining({ id: 'call_1' })],
+-        }),
+-      );
++        const result = await executors.call_llm!(instruction, state);
++        const assistant = result.newState.messages.at(-1) as any;
++
++        expect(assistant.reasoning).toBeUndefined();
++      });
++
++      it('should persist assistant reasoning when preserveThinking is enabled on a supported model', async () => {
++        const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
++          await options?.callback?.onThinking?.('preserved reasoning');
++          await options?.callback?.onText?.('answer');
++          return new Response('done');
++        });
++        vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
++
++        const ctxWithConfig: RuntimeExecutorContext = {
++          ...ctx,
++          agentConfig: {
++            chatConfig: { preserveThinking: true },
++            plugins: [],
++            systemRole: 'test',
++          },
++        };
++
++        const executors = createRuntimeExecutors(ctxWithConfig);
++        const state = createMockState({
++          modelRuntimeConfig: {
++            model: 'qwen3.6-plus',
++            provider: 'qwen',
++          },
++        });
++
++        const instruction = {
++          payload: {
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'qwen3.6-plus',
++            provider: 'qwen',
++          },
++          type: 'call_llm' as const,
++        };
++
++        const result = await executors.call_llm!(instruction, state);
++        const assistant = result.newState.messages.at(-1) as any;
++
++        expect(assistant.reasoning).toEqual({
++          content: 'preserved reasoning',
++        });
++        expect(mockChat).toHaveBeenCalledWith(
++          expect.objectContaining({ preserveThinking: true }),
++          expect.anything(),
++        );
++      });
++
++      it('should persist reasoning for unknown custom deployments on supported providers', async () => {
++        const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
++          await options?.callback?.onThinking?.('custom deployment reasoning');
++          await options?.callback?.onText?.('answer');
++          return new Response('done');
++        });
++        vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
++
++        const ctxWithConfig: RuntimeExecutorContext = {
++          ...ctx,
++          agentConfig: {
++            chatConfig: { preserveThinking: true },
++            plugins: [],
++            systemRole: 'test',
++          },
++        };
++
++        const executors = createRuntimeExecutors(ctxWithConfig);
++        const state = createMockState({
++          modelRuntimeConfig: {
++            model: 'my-qwen-custom-deployment',
++            provider: 'qwen',
++          },
++        });
++
++        const instruction = {
++          payload: {
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'my-qwen-custom-deployment',
++            provider: 'qwen',
++          },
++          type: 'call_llm' as const,
++        };
++
++        const result = await executors.call_llm!(instruction, state);
++        const assistant = result.newState.messages.at(-1) as any;
++
++        expect(assistant.reasoning).toEqual({
++          content: 'custom deployment reasoning',
++        });
++        expect(mockChat).toHaveBeenCalledWith(
++          expect.objectContaining({ preserveThinking: true }),
++          expect.anything(),
++        );
++      });
++
++      it('should not persist reasoning when model does not declare preserveThinking capability', async () => {
++        const mockChat = vi.fn().mockImplementation(async (_payload, options) => {
++          await options?.callback?.onThinking?.('reasoning that should not be saved');
++          await options?.callback?.onText?.('answer');
++          return new Response('done');
++        });
++        vi.mocked(initModelRuntimeFromDB).mockResolvedValueOnce({ chat: mockChat } as any);
++
++        const ctxWithConfig: RuntimeExecutorContext = {
++          ...ctx,
++          agentConfig: {
++            chatConfig: { preserveThinking: true },
++            plugins: [],
++            systemRole: 'test',
++          },
++        };
++
++        const executors = createRuntimeExecutors(ctxWithConfig);
++        const state = createMockState({
++          modelRuntimeConfig: {
++            model: 'gpt-4',
++            provider: 'openai',
++          },
++        });
++
++        const instruction = {
++          payload: {
++            messages: [{ content: 'Hello', role: 'user' }],
++            model: 'gpt-4',
++            provider: 'openai',
++          },
++          type: 'call_llm' as const,
++        };
++
++        const result = await executors.call_llm!(instruction, state);
++        const assistant = result.newState.messages.at(-1) as any;
++
++        expect(assistant.reasoning).toBeUndefined();
++        expect(mockChat).toHaveBeenCalledWith(
++          expect.not.objectContaining({ preserveThinking: expect.any(Boolean) }),
++          expect.anything(),
++        );
++      });
+     });
+ 
+     it('should execute compress_context and return compression_result', async () => {
+@@ -2922,7 +3110,7 @@ describe('RuntimeExecutors', () => {
+ 
+         await vi.runOnlyPendingTimersAsync();
+ 
+-        const result = await resultPromise;
++        await resultPromise;
+ 
+         expect(mockChat).toHaveBeenCalledTimes(2);
+         expect(mockMessageModel.create).toHaveBeenCalledTimes(1);
+diff --git a/src/services/chat/mecha/modelParamsResolver.test.ts b/src/services/chat/mecha/modelParamsResolver.test.ts
+index c82beab6fb1..08197bab215 100644
+--- a/src/services/chat/mecha/modelParamsResolver.test.ts
++++ b/src/services/chat/mecha/modelParamsResolver.test.ts
+@@ -209,6 +209,51 @@ describe('resolveModelExtendParams', () => {
+     });
+   });
+ 
++  describe('preserve thinking', () => {
++    beforeEach(() => {
++      vi.spyOn(aiModelSelectors.aiModelSelectors, 'isModelHasExtendParams').mockReturnValue(
++        () => true,
++      );
++      vi.spyOn(aiModelSelectors.aiModelSelectors, 'modelExtendParams').mockReturnValue(() => [
++        'preserveThinking',
++      ]);
++    });
++
++    it('should set preserveThinking when supported and enabled', () => {
++      const result = resolveModelExtendParams({
++        chatConfig: {
++          preserveThinking: true,
++        } as any,
++        model: 'qwen3.6-plus',
++        provider: 'qwen',
++      });
++
++      expect(result.preserveThinking).toBe(true);
++    });
++
++    it('should set preserveThinking to false when explicitly disabled', () => {
++      const result = resolveModelExtendParams({
++        chatConfig: {
++          preserveThinking: false,
++        } as any,
++        model: 'qwen3.6-plus',
++        provider: 'qwen',
++      });
++
++      expect(result.preserveThinking).toBe(false);
++    });
++
++    it('should not set preserveThinking when not configured', () => {
++      const result = resolveModelExtendParams({
++        chatConfig: {} as any,
++        model: 'qwen3.6-plus',
++        provider: 'qwen',
++      });
++
++      expect(result.preserveThinking).toBeUndefined();
++    });
++  });
++
+   describe('reasoning effort variants', () => {
+     describe('reasoningEffort param', () => {
+       beforeEach(() => {
+diff --git a/src/services/chat/mecha/modelParamsResolver.ts b/src/services/chat/mecha/modelParamsResolver.ts
+index 8de006f7eb7..3443af6406a 100644
+--- a/src/services/chat/mecha/modelParamsResolver.ts
++++ b/src/services/chat/mecha/modelParamsResolver.ts
+@@ -20,6 +20,7 @@ export interface ModelExtendParams {
+   enabledContextCaching?: boolean;
+   imageAspectRatio?: string;
+   imageResolution?: string;
++  preserveThinking?: boolean;
+   reasoning_effort?: string;
+   thinking?: {
+     budget_tokens?: number;
+@@ -135,6 +136,14 @@ export const resolveModelExtendParams = (ctx: ModelParamsContext): ModelExtendPa
+     extendParams.enabledContextCaching = false;
+   }
+ 
++  // Preserve historical thinking content (provider support required)
++  if (
++    modelExtendParams.includes('preserveThinking') &&
++    typeof chatConfig.preserveThinking === 'boolean'
++  ) {
++    extendParams.preserveThinking = chatConfig.preserveThinking;
++  }
++
+   // Reasoning effort variants
+   if (modelExtendParams.includes('reasoningEffort') && chatConfig.reasoningEffort) {
+     extendParams.reasoning_effort = chatConfig.reasoningEffort;
