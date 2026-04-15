@@ -64,7 +64,10 @@ COPY --from=get_info /tmp/patch /qbittorrent/patches/qbittorrent/master/patch
 ENV \
     qbt_build_dir="/qbittorrent" \
     qbt_legacy_mode="yes" \
-    qbt_optimise_strip="yes"
+    qbt_optimise_strip="yes" \
+    qbt_libtorrent_master_jamfile="yes" \
+    qbt_libtorrent_tag="RC_2_0" \
+    qbt_qbittorrent_tag="master"
 
 RUN \
     apk update \
@@ -80,7 +83,7 @@ RUN \
     && bash ./qbt-nox-static.bash libtorrent \
     && bash ./qbt-nox-static.bash qtbase \
     && bash ./qbt-nox-static.bash qttools \
-    && bash ./qbt-nox-static.bash qbittorrent --qbittorrent-master
+    && bash ./qbt-nox-static.bash qbittorrent
 
 FROM scratch AS rebased_qbittorrent
 
