@@ -65,9 +65,11 @@ ENV \
     qbt_build_dir="/qbittorrent" \
     qbt_legacy_mode="yes" \
     qbt_optimise_strip="yes" \
+    qbt_skip_icu="no" \
     qbt_libtorrent_master_jamfile="yes" \
     qbt_libtorrent_tag="RC_2_0" \
-    qbt_qbittorrent_tag="master"
+    qbt_qbittorrent_tag="master" \
+    qbt_zlib_type="zlib-ng"
 
 RUN \
     apk update \
