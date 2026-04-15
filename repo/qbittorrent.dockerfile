@@ -61,17 +61,26 @@ WORKDIR /qbittorrent
 COPY --from=get_info /tmp/SYS_ARCH /qbittorrent/SYS_ARCH
 COPY --from=get_info /tmp/patch /qbittorrent/patches/qbittorrent/master/patch
 
+ENV \
+    qbt_build_dir="/qbittorrent" \
+    qbt_legacy_mode="yes" \
+    qbt_optimise_strip="yes"
+
 RUN \
     apk update \
     && apk add --no-cache bash \
     && export qbt_cross_name=$(cat "/qbittorrent/SYS_ARCH") \
-    && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/ba8fab01d2a2f9228df0593d287a644f9d5f42c5/qbittorrent-nox-static.sh \
-    && bash ./qbittorrent-nox-static.sh all \
-        --bootstrap-patches \
-        --build-directory /qbittorrent \
-        --libtorrent-master \
-        --qbittorrent-master \
-        --strip
+    && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbt-nox-static.bash \
+    && bash ./qbt-nox-static.bash bootstrap_deps \
+    && bash ./qbt-nox-static.bash --bootstrap-all \
+    && bash ./qbt-nox-static.bash zlib \
+    && bash ./qbt-nox-static.bash icu \
+    && bash ./qbt-nox-static.bash openssl \
+    && bash ./qbt-nox-static.bash boost \
+    && bash ./qbt-nox-static.bash libtorrent \
+    && bash ./qbt-nox-static.bash qtbase \
+    && bash ./qbt-nox-static.bash qttools \
+    && bash ./qbt-nox-static.bash qbittorrent --qbittorrent-master
 
 FROM scratch AS rebased_qbittorrent
 
