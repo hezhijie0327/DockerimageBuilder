@@ -30,6 +30,7 @@ RUN \
     && export JELLYFIN_CUSTOM_VERSION="${JELLYFIN_VERSION}-ZHIJIE-${JELLYFIN_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/JELLYFIN" \
     && git submodule update --init \
+    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/jellyfin/*.patch \
     && cd "${WORKDIR}/BUILDTMP/JELLYFIN_WEB" \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${JELLYFIN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/JELLYFIN_WEB/package.json" \
     && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "${WORKDIR}/BUILDTMP/JELLYFIN/SYS_ARCH" \
