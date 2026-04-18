@@ -205,7 +205,7 @@ index 81af0e502a2..6c9b9f856b5 100644
  // Execution conditions schema
  export const ExecutionConditionsSchema = z
 diff --git a/packages/types/src/serverConfig.ts b/packages/types/src/serverConfig.ts
-index b6da2a5cc14..d8c220fd22e 100644
+index d87a04670d3..f63b81e4d4d 100644
 --- a/packages/types/src/serverConfig.ts
 +++ b/packages/types/src/serverConfig.ts
 @@ -68,6 +68,7 @@ export interface GlobalServerConfig {
@@ -360,28 +360,28 @@ index 3645593c78d..7004a6e638c 100644
      },
    });
 diff --git a/src/routes/(main)/agent/_layout/Sidebar/Cron/index.tsx b/src/routes/(main)/agent/_layout/Sidebar/Cron/index.tsx
-index 9d42ce434d8..efc3bd377d0 100644
+index 16a013f13a2..a9c7f18f30b 100644
 --- a/src/routes/(main)/agent/_layout/Sidebar/Cron/index.tsx
 +++ b/src/routes/(main)/agent/_layout/Sidebar/Cron/index.tsx
-@@ -26,10 +26,10 @@ const CronTopicList = memo<CronTopicListProps>(({ itemKey }) => {
-     s.activeAgentId,
+@@ -28,10 +28,10 @@ const CronTopicList = memo<CronTopicListProps>(({ itemKey }) => {
      s.useFetchCronTopicsWithJobInfo,
    ]);
+   const isHeterogeneous = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
 -  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
 +  const enableCronJobs = useServerConfigStore(serverConfigSelectors.enableCronJobs);
    const { data: cronTopicsGroupsWithJobInfo = [], isLoading } = useFetchCronTopicsWithJobInfo(
      agentId,
--    enableBusinessFeatures,
-+    enableCronJobs,
+-    enableBusinessFeatures && !isHeterogeneous,
++    enableCronJobs && !isHeterogeneous,
    );
  
    const handleCreateCronJob = useCallback(() => {
-@@ -37,7 +37,7 @@ const CronTopicList = memo<CronTopicListProps>(({ itemKey }) => {
+@@ -39,7 +39,7 @@ const CronTopicList = memo<CronTopicListProps>(({ itemKey }) => {
      router.push(urlJoin('/agent', agentId, 'cron', 'new'));
    }, [agentId, router]);
  
--  if (!enableBusinessFeatures) return null;
-+  if (!enableCronJobs) return null;
+-  if (!enableBusinessFeatures || isHeterogeneous) return null;
++  if (!enableCronJobs || isHeterogeneous) return null;
  
    const addAction = (
      <ActionIcon
@@ -497,19 +497,19 @@ index f439a6bab15..b51afb5f568 100644
    if (!agentId) {
      return null;
 diff --git a/src/routes/(main)/agent/profile/features/ProfileEditor/index.tsx b/src/routes/(main)/agent/profile/features/ProfileEditor/index.tsx
-index 71355d9aa1a..265b5e9d4ac 100644
+index 636e6b04bc0..052013ef6c6 100644
 --- a/src/routes/(main)/agent/profile/features/ProfileEditor/index.tsx
 +++ b/src/routes/(main)/agent/profile/features/ProfileEditor/index.tsx
-@@ -19,7 +19,7 @@ import AgentTool from './AgentTool';
- const ProfileEditor = memo(() => {
+@@ -21,7 +21,7 @@ const ProfileEditor = memo(() => {
    const config = useAgentStore(agentSelectors.currentAgentConfig, isEqual);
    const updateConfig = useAgentStore((s) => s.updateAgentConfig);
+   const isHeterogeneous = useAgentStore(agentSelectors.isCurrentAgentHeterogeneous);
 -  const enableBusinessFeatures = useServerConfigStore(serverConfigSelectors.enableBusinessFeatures);
 +  const enableCronJobs = useServerConfigStore(serverConfigSelectors.enableCronJobs);
  
    return (
      <>
-@@ -55,7 +55,7 @@ const ProfileEditor = memo(() => {
+@@ -64,7 +64,7 @@ const ProfileEditor = memo(() => {
        {/* Main Content: Prompt Editor */}
        <EditorCanvas />
        {/* Agent Cron Jobs Display (only show if jobs exist) */}
