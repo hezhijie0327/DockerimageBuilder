@@ -49,7 +49,7 @@ COPY --from=get_info /tmp/BUILDTMP/SIYUAN/kernel /siyuan
 ENV CGO_ENABLED="1"
 
 RUN \
-    go build --tags fts5 -v -ldflags "-s -w"
+    go build -tags fts5 -v -ldflags "-s -w"
 
 FROM busybox:latest AS rebased_siyuan
 
