@@ -55,11 +55,11 @@ RUN \
         MALLOC="jemalloc" \
     && make install
 
-FROM scratch AS rebased_valkey
+FROM busybox:latest AS rebased_valkey
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_valkey /usr/local/bin/valkey-* /
+COPY --from=build_valkey /usr/local/bin/valkey-* /app/
 
 FROM scratch
 
@@ -67,4 +67,4 @@ COPY --from=rebased_valkey / /
 
 EXPOSE 6379/tcp
 
-ENTRYPOINT ["/valkey-server"]
+ENTRYPOINT ["/app/valkey-server"]
