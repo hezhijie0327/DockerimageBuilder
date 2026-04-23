@@ -70,7 +70,9 @@ RUN find /app/siyuan/ -name .git | xargs rm -rf
 
 FROM scratch
 
-ENV SIYUAN_ACCESS_AUTH_CODE_BYPASS="true"
+ENV \
+    RUN_IN_CONTAINER="true" \
+    SIYUAN_ACCESS_AUTH_CODE_BYPASS="true"
 
 COPY --from=rebased_siyuan / /
 
