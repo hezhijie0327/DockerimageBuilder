@@ -72,19 +72,20 @@ COPY --from=build_jellyfin /jellyfin/jellyfin-archive-keyring.gpg /usr/share/key
 COPY --from=build_jellyfin_web /jellyfin/dist /app/jellyfin-web
 
 RUN \
-    echo "deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/debian $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main unstable" > "/etc/apt/sources.list.d/jellyfin.list" \
-    && apt update \
-    && apt install -qy \
+    export LSBCodename=$( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) \
+    && echo "deb [signed-by=/usr/share/keyrings/jellyfin-archive-keyring.gpg] https://repo.jellyfin.org/debian ${LSBCodename} main unstable" > "/etc/apt/sources.list.d/jellyfin.list" \
+    && apt update -o Acquire::https::Verify-Peer=false \
+    && apt install -qy -o Acquire::https::Verify-Peer=false \
           jellyfin-ffmpeg7 \
           libssl-dev \
     && if [ "$(uname -m)" = "x86_64" ]; then \
-        apt install -qy \
+        apt install -qy -o Acquire::https::Verify-Peer=false \
           mesa-va-drivers; \
     fi \
-    && apt full-upgrade -qy \
+    && apt full-upgrade -qy -o Acquire::https::Verify-Peer=false \
     && apt autoremove -qy \
     && apt clean autoclean -qy \
-    && sed -i 's/http:/https:/g;s/deb.debian.org/mirrors.ustc.edu.cn/g;s|main|main contrib non-free non-free-firmware|g' "/etc/apt/sources.list.d/debian.sources" \
+    && sed -i "s/http:/https:/g;s/deb.debian.org/mirrors.ustc.edu.cn/g;s|main|main contrib non-free non-free-firmware|g;s/stable/${LSBCodename:-stable}/g" "/etc/apt/sources.list.d/debian.sources" \
     && sed -i 's/deb/# deb/g' "/etc/apt/sources.list.d/jellyfin.list" \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
