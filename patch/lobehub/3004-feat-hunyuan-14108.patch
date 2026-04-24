@@ -23,20 +23,20 @@ index 724ac72978a..c30914b497e 100644
    "providerModels.item.modelConfig.extendParams.options.imageAspectRatio2.hint": "适用于 Nano Banana 2；控制生成图像的宽高比（支持超宽 1:4、4:1、1:8、8:1）。",
    "providerModels.item.modelConfig.extendParams.options.imageResolution.hint": "适用于 Gemini 3 图像生成模型；控制生成图像的分辨率。",
 diff --git a/packages/model-bank/src/aiModels/hunyuan.ts b/packages/model-bank/src/aiModels/hunyuan.ts
-index 46f36323f24..3a765388cb8 100644
+index 46f36323f24..e22de633706 100644
 --- a/packages/model-bank/src/aiModels/hunyuan.ts
 +++ b/packages/model-bank/src/aiModels/hunyuan.ts
-@@ -1,17 +1,78 @@
+@@ -1,7 +1,70 @@
 -import type { AIChatModelCard, AIImageModelCard } from '../types/aiModel';
 +import type { AIChatModelCard, AIImageModelCard, AIVideoModelCard } from '../types/aiModel';
  
 -// https://cloud.tencent.com/document/product/1729/104753
++// https://cloud.tencent.com/document/product/1823/130051
  const hunyuanChatModels: AIChatModelCard[] = [
-   {
-     abilities: {
-       functionCall: true,
-       reasoning: true,
--      search: true,
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
 +      structuredOutput: true,
 +    },
 +    contextWindowTokens: 256_000,
@@ -96,10 +96,10 @@ index 46f36323f24..3a765388cb8 100644
 +    },
 +    type: 'chat',
 +  },
-+  {
-+    abilities: {
-+      functionCall: true,
-+      reasoning: true,
+   {
+     abilities: {
+       functionCall: true,
+@@ -10,8 +73,8 @@ const hunyuanChatModels: AIChatModelCard[] = [
      },
      contextWindowTokens: 128_000,
      description:
@@ -110,19 +110,7 @@ index 46f36323f24..3a765388cb8 100644
      enabled: true,
      id: 'hunyuan-2.0-thinking-20251109',
      maxOutput: 64_000,
-@@ -45,23 +106,19 @@ const hunyuanChatModels: AIChatModelCard[] = [
-       ],
-     },
-     releasedAt: '2025-11-09',
--    settings: {
--      searchImpl: 'params',
--    },
-     type: 'chat',
-   },
-   {
-     abilities: {
-       functionCall: true,
--      search: true,
+@@ -57,11 +120,11 @@ const hunyuanChatModels: AIChatModelCard[] = [
      },
      contextWindowTokens: 128_000,
      description:
@@ -137,13 +125,7 @@ index 46f36323f24..3a765388cb8 100644
      pricing: {
        currency: 'CNY',
        units: [
-@@ -92,423 +149,473 @@ const hunyuanChatModels: AIChatModelCard[] = [
-       ],
-     },
-     releasedAt: '2025-11-11',
--    settings: {
--      searchImpl: 'params',
--    },
+@@ -98,417 +161,470 @@ const hunyuanChatModels: AIChatModelCard[] = [
      type: 'chat',
    },
    {
@@ -843,7 +825,7 @@ index 46f36323f24..3a765388cb8 100644
      type: 'chat',
    },
  ];
-@@ -516,10 +623,10 @@ const hunyuanChatModels: AIChatModelCard[] = [
+@@ -516,10 +632,10 @@ const hunyuanChatModels: AIChatModelCard[] = [
  const hunyuanImageModels: AIImageModelCard[] = [
    {
      description:
@@ -856,7 +838,7 @@ index 46f36323f24..3a765388cb8 100644
      parameters: {
        height: { default: 1024, max: 2048, min: 512, step: 1 },
        imageUrls: { default: [], maxCount: 3 },
-@@ -535,11 +642,84 @@ const hunyuanImageModels: AIImageModelCard[] = [
+@@ -535,11 +651,84 @@ const hunyuanImageModels: AIImageModelCard[] = [
        currency: 'CNY',
        units: [{ name: 'imageGeneration', rate: 0.2, strategy: 'fixed', unit: 'image' }],
      },
@@ -2342,10 +2324,10 @@ index ee86455d106..a8e6cc34be2 100644
    });
  });
 diff --git a/packages/model-runtime/src/providers/hunyuan/index.ts b/packages/model-runtime/src/providers/hunyuan/index.ts
-index 20658476477..cb6b0247ec9 100644
+index 20658476477..95919458367 100644
 --- a/packages/model-runtime/src/providers/hunyuan/index.ts
 +++ b/packages/model-runtime/src/providers/hunyuan/index.ts
-@@ -1,85 +1,64 @@
+@@ -1,28 +1,52 @@
 -import type { ChatModelCard } from '@lobechat/types';
  import { ModelProvider } from 'model-bank';
  
@@ -2366,7 +2348,7 @@ index 20658476477..cb6b0247ec9 100644
 -      // eslint-disable-next-line unused-imports/no-unused-vars
 -      const { enabledSearch, frequency_penalty, model, presence_penalty, thinking, ...rest } =
 -        payload;
-+      const { model, thinking, ...rest } = payload;
++      const { enabledSearch, model, thinking, ...rest } = payload;
 +
 +      // Transform reasoning object to reasoning_content string for multi-turn conversations
 +      const messages = payload.messages.map((message: any) => {
@@ -2405,15 +2387,13 @@ index 20658476477..cb6b0247ec9 100644
          model,
          presence_penalty: undefined,
 -        stream: true,
--        ...(enabledSearch && {
--          citation: true,
--          enable_enhancement: true,
--          /*
--          enable_multimedia: true,
--          */
--          enable_speed_search: process.env.HUNYUAN_ENABLE_SPEED_SEARCH === '1',
--          search_info: true,
--        }),
+         ...(enabledSearch && {
+           citation: true,
+           enable_enhancement: true,
+@@ -32,54 +56,18 @@ export const params = {
+           enable_speed_search: process.env.HUNYUAN_ENABLE_SPEED_SEARCH === '1',
+           search_info: true,
+         }),
 -        ...(model === 'hunyuan-a13b' && {
 -          enable_thinking:
 -            thinking?.type === 'enabled' ? true : thinking?.type === 'disabled' ? false : undefined,
