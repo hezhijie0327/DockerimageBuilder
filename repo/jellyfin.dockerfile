@@ -59,7 +59,7 @@ ENV \
 RUN \
     dotnet publish Jellyfin.Server --disable-parallel --configuration Release --output="/jellyfin/output" --self-contained --runtime linux-$(cat "/jellyfin/SYS_ARCH") -p:DebugSymbols=false -p:DebugType=none
 
-FROM debian:bookworm-slim AS rebased_jellyfin
+FROM debian:stable-slim AS rebased_jellyfin
 
 ENV DEBIAN_FRONTEND="noninteractive"
 
