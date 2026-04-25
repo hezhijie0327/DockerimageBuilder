@@ -77,6 +77,7 @@ RUN \
     && apt update -o Acquire::https::Verify-Peer=false \
     && apt install -qy -o Acquire::https::Verify-Peer=false \
           jellyfin-ffmpeg7 \
+          libicu-dev \
           libssl-dev \
     && if [ "$(uname -m)" = "x86_64" ]; then \
         apt install -qy -o Acquire::https::Verify-Peer=false \
@@ -93,6 +94,7 @@ FROM scratch
 
 ENV \
     DEBIAN_FRONTEND="noninteractive" \
+    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT="1" \
     PGID="0" PUID="0" \
     NVIDIA_DRIVER_CAPABILITIES="all" NVIDIA_VISIBLE_DEVICES="all" \
     ROC_ENABLE_PRE_VEGA="1"
