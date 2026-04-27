@@ -1,0 +1,194 @@
+diff --git a/src/features/AgentBuilder/TopicSelector.tsx b/src/features/AgentBuilder/TopicSelector.tsx
+index dc5c01b4868..25f28afec72 100644
+--- a/src/features/AgentBuilder/TopicSelector.tsx
++++ b/src/features/AgentBuilder/TopicSelector.tsx
+@@ -1,9 +1,10 @@
+-import { type DropdownMenuCheckboxItem } from '@lobehub/ui';
+-import { ActionIcon, DropdownMenu, Flexbox } from '@lobehub/ui';
++import { type DropdownItem } from '@lobehub/ui';
++import { ActionIcon, DropdownMenu, Icon } from '@lobehub/ui';
++import { App } from 'antd';
+ import { createStaticStyles } from 'antd-style';
+ import dayjs from 'dayjs';
+-import { Clock3Icon, PlusIcon } from 'lucide-react';
+-import { memo, useMemo } from 'react';
++import { Clock3Icon, MoreHorizontalIcon, PlusIcon, Trash2 } from 'lucide-react';
++import { memo, useCallback, useMemo } from 'react';
+ import { useTranslation } from 'react-i18next';
+ 
+ import { DESKTOP_HEADER_ICON_SIZE } from '@/const/layoutTokens';
+@@ -32,15 +33,17 @@ interface TopicSelectorProps {
+ }
+ 
+ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
+-  const { t } = useTranslation('topic');
++  const { t } = useTranslation(['common', 'topic']);
++  const { modal } = App.useApp();
+ 
+   // Fetch topics for the agent builder
+   const useFetchTopics = useChatStore((s) => s.useFetchTopics);
+ 
+   useFetchTopics(true, { agentId });
+ 
+-  const [activeTopicId, switchTopic, topics] = useChatStore((s) => [
++  const [activeTopicId, removeTopic, switchTopic, topics] = useChatStore((s) => [
+     s.activeTopicId,
++    s.removeTopic,
+     s.switchTopic,
+     topicSelectors.getTopicsByAgentId(agentId)(s),
+   ]);
+@@ -51,33 +54,77 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
+     [topics, activeTopicId],
+   );
+ 
+-  const items = useMemo<DropdownMenuCheckboxItem[]>(
++  const handleDeleteTopic = useCallback(
++    (topicId: string, topicTitle: string) => {
++      modal.confirm({
++        cancelText: t('cancel', { ns: 'common' }),
++        centered: true,
++        content: t('actions.confirmRemoveTopic', {
++          ns: 'topic',
++          title: topicTitle,
++        }),
++        okButtonProps: { danger: true },
++        okText: t('delete', { ns: 'common' }),
++        onOk: async () => {
++          await removeTopic(topicId);
++        },
++        title: t('delete', { ns: 'common' }),
++      });
++    },
++    [modal, removeTopic, t],
++  );
++
++  const items = useMemo<DropdownItem[]>(
+     () =>
+       (topics || []).map((topic) => {
+-        const displayTime =
+-          dayjs().diff(dayjs(topic.updatedAt), 'd') < 7
+-            ? dayjs(topic.updatedAt).fromNow()
+-            : dayjs(topic.updatedAt).format('YYYY-MM-DD');
++        const topicActions: DropdownItem[] = [
++          {
++            danger: true,
++            icon: <Icon icon={Trash2} />,
++            key: `delete-${topic.id}`,
++            label: t('delete', { ns: 'common' }),
++            onClick: () => {
++              handleDeleteTopic(topic.id, topic.title);
++            },
++          },
++        ];
+ 
+         return {
+-          checked: topic.id === activeTopicId,
+-          closeOnClick: true,
++          extra: (
++            <span
++              onClick={(event) => {
++                event.stopPropagation();
++              }}
++            >
++              <DropdownMenu items={topicActions} placement="bottomRight">
++                <ActionIcon icon={MoreHorizontalIcon} size={'small'} />
++              </DropdownMenu>
++            </span>
++          ),
+           key: topic.id,
+           label: (
+-            <Flexbox horizontal align="center" gap={4} justify="space-between" width="100%">
++            <span
++              style={{
++                display: 'flex',
++                alignItems: 'center',
++                justifyContent: 'space-between',
++                width: '100%',
++              }}
++            >
+               <span className={styles.title}>{topic.title}</span>
+-              <span className={styles.time}>{displayTime}</span>
+-            </Flexbox>
++              <span className={styles.time}>
++                {dayjs().diff(dayjs(topic.updatedAt), 'd') < 7
++                  ? dayjs(topic.updatedAt).fromNow()
++                  : dayjs(topic.updatedAt).format('YYYY-MM-DD')}
++              </span>
++            </span>
+           ),
+-          onCheckedChange: (checked) => {
+-            if (checked) {
+-              switchTopic(topic.id);
+-            }
++          onClick: () => {
++            switchTopic(topic.id);
+           },
+-          type: 'checkbox',
+         };
+       }),
+-    [topics, switchTopic, styles, activeTopicId],
++    [handleDeleteTopic, switchTopic, styles.title, t, topics],
+   );
+   const isEmpty = !topics || topics.length === 0;
+ 
+@@ -92,7 +139,7 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
+           <ActionIcon
+             icon={PlusIcon}
+             size={DESKTOP_HEADER_ICON_SIZE}
+-            title={t('actions.addNewTopic')}
++            title={t('actions.addNewTopic', { ns: 'topic' })}
+             onClick={() => switchTopic()}
+           />
+           <DropdownMenu
+diff --git a/src/features/PageEditor/Copilot/Toolbar.tsx b/src/features/PageEditor/Copilot/Toolbar.tsx
+index 1c59483a436..cd5117d426d 100644
+--- a/src/features/PageEditor/Copilot/Toolbar.tsx
++++ b/src/features/PageEditor/Copilot/Toolbar.tsx
+@@ -77,6 +77,7 @@ const CopilotToolbar = memo(() => {
+                       key={topic.id}
+                       topicId={topic.id}
+                       topicTitle={topic.title}
++                      updatedAt={topic.updatedAt}
+                       onClose={() => setTopicPopoverOpen(false)}
+                       onTopicChange={(id) => switchTopic(id)}
+                     />
+diff --git a/src/features/PageEditor/Copilot/TopicSelector/TopicItem.tsx b/src/features/PageEditor/Copilot/TopicSelector/TopicItem.tsx
+index 81268d9a3ee..5e1513f5673 100644
+--- a/src/features/PageEditor/Copilot/TopicSelector/TopicItem.tsx
++++ b/src/features/PageEditor/Copilot/TopicSelector/TopicItem.tsx
+@@ -1,3 +1,5 @@
++import { Text } from '@lobehub/ui';
++import dayjs from 'dayjs';
+ import { memo } from 'react';
+ import { useTranslation } from 'react-i18next';
+ 
+@@ -13,11 +15,16 @@ interface TopicItemProps {
+   onTopicChange: (topicId: string) => void;
+   topicId: string;
+   topicTitle: string;
++  updatedAt: number;
+ }
+ 
+ const TopicItem = memo<TopicItemProps>(
+-  ({ active, onClose, onDelete, onTopicChange, topicId, topicTitle }) => {
++  ({ active, onClose, onDelete, onTopicChange, topicId, topicTitle, updatedAt }) => {
+     const { t } = useTranslation('topic');
++    const displayTime =
++      dayjs().diff(dayjs(updatedAt), 'd') < 7
++        ? dayjs(updatedAt).fromNow()
++        : dayjs(updatedAt).format('YYYY-MM-DD');
+ 
+     const dropdownMenu = useDropdownMenu({
+       onClose,
+@@ -33,6 +40,11 @@ const TopicItem = memo<TopicItemProps>(
+         contextMenuItems={dropdownMenu}
+         style={{ flexShrink: 0 }}
+         title={topicTitle || t('untitled', { defaultValue: 'Untitled' })}
++        extra={
++          <Text fontSize={12} type={'secondary'}>
++            {displayTime}
++          </Text>
++        }
+         onClick={() => {
+           onTopicChange(topicId);
+           onClose();
