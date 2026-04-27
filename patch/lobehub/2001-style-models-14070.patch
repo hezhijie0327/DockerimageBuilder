@@ -309,7 +309,7 @@ index 224aca3b0ac..43a1df6efde 100644
        approximatePricePerImage: 0.011,
        units: [
 diff --git a/packages/model-bank/src/aiModels/qwen.ts b/packages/model-bank/src/aiModels/qwen.ts
-index 3de9937c668..cf41c1cc758 100644
+index 3de9937c668..e7b07040cd7 100644
 --- a/packages/model-bank/src/aiModels/qwen.ts
 +++ b/packages/model-bank/src/aiModels/qwen.ts
 @@ -7,6 +7,30 @@ import {
@@ -675,7 +675,94 @@ index 3de9937c668..cf41c1cc758 100644
      organization: 'Qwen',
      parameters: {
        height: { default: 1024, max: 4096, min: 256, step: 1 },
-@@ -3724,8 +3987,37 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -3721,11 +3984,124 @@ const qwenImageModels: AIImageModelCard[] = [
+ ];
+ 
+ const qwenVideoModels: AIVideoModelCard[] = [
++  {
++    description:
++      'HappyHorse-1.0-I2V supports text-to-video generation, delivering highly faithful dynamic visuals. It can accurately understand textual semantics and produce high-quality videos that are smooth, natural, and rich in detail.',
++    displayName: 'HappyHorse-1.0-I2V',
++    enabled: true,
++    id: 'happyhorse-1.0-i2v',
++    parameters: {
++      duration: { default: 5, max: 15, min: 3 },
++      imageUrl: {
++        default: null,
++      },
++      prompt: { default: '' },
++      resolution: {
++        default: '1080P',
++        enum: ['720P', '1080P'],
++      },
++      seed: { default: null },
++      watermark: { default: false },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'videoGeneration', rate: 1.6, strategy: 'fixed', unit: 'second' }],
++    },
++    releasedAt: '2026-04-22',
++    type: 'video',
++  },
++  {
++    description:
++      'HappyHorse-1.0-R2V supports reference-based video generation, offering more stable subject and scene consistency. It supports up to 9 reference images, accurately preserves creative intent, and delivers enhanced expressive capability.',
++    displayName: 'HappyHorse-1.0-R2V',
++    enabled: true,
++    id: 'happyhorse-1.0-r2v',
++    parameters: {
++      aspectRatio: {
++        default: '16:9',
++        enum: ['16:9', '9:16', '1:1', '4:3', '3:4'],
++      },
++      duration: { default: 5, max: 10, min: 3 },
++      imageUrls: {
++        default: [],
++        maxCount: 9,
++      },
++      prompt: { default: '' },
++      resolution: {
++        default: '1080P',
++        enum: ['720P', '1080P'],
++      },
++      seed: { default: null },
++      watermark: { default: false },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'videoGeneration', rate: 1.6, strategy: 'fixed', unit: 'second' }],
++    },
++    releasedAt: '2026-04-26',
++    type: 'video',
++  },
++  {
++    description:
++      'HappyHorse-1.0-T2V supports text-to-video generation, delivering highly faithful dynamic visuals. It can accurately understand textual semantics and produce high-quality videos that are smooth, natural, and rich in detail.',
++    displayName: 'HappyHorse-1.0-T2V',
++    enabled: true,
++    id: 'happyhorse-1.0-t2v',
++    parameters: {
++      aspectRatio: {
++        default: '16:9',
++        enum: ['16:9', '9:16', '1:1', '4:3', '3:4'],
++      },
++      duration: { default: 5, max: 15, min: 3 },
++      prompt: { default: '' },
++      resolution: {
++        default: '1080P',
++        enum: ['720P', '1080P'],
++      },
++      seed: { default: null },
++      watermark: { default: false },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'videoGeneration', rate: 1.6, strategy: 'fixed', unit: 'second' }],
++    },
++    releasedAt: '2026-04-21',
++    type: 'video',
++  },
    {
      description:
        'Wanxiang 2.7 Image-to-Video delivers a comprehensive upgrade in performance capabilities. Dramatic scenes feature delicate and natural emotional expression, while action sequences are intense and impactful. Combined with more dynamic and rhythmically driven shot transitions, it achieves stronger overall performance and storytelling.',
@@ -714,7 +801,7 @@ index 3de9937c668..cf41c1cc758 100644
      id: 'wan2.7-i2v',
      parameters: {
        duration: { default: 5, max: 15, min: 2 },
-@@ -3786,8 +4078,35 @@ const qwenVideoModels: AIVideoModelCard[] = [
+@@ -3786,8 +4162,35 @@ const qwenVideoModels: AIVideoModelCard[] = [
    {
      description:
        'Wanxiang 2.7 Text-to-Video delivers a comprehensive upgrade in performance capabilities. Dramatic scenes feature delicate and natural emotional expression, while action sequences are intense and impactful. Enhanced with more dynamic and rhythmically driven shot transitions, it achieves stronger overall acting and storytelling performance.',
@@ -1233,6 +1320,19 @@ index 1c03f315350..a3fd9ea7cef 100644
          presence_penalty: undefined,
          stream: true,
        } as any;
+diff --git a/packages/model-runtime/src/providers/qwen/createVideo.ts b/packages/model-runtime/src/providers/qwen/createVideo.ts
+index b6ef0fd0f30..491e54f2b17 100644
+--- a/packages/model-runtime/src/providers/qwen/createVideo.ts
++++ b/packages/model-runtime/src/providers/qwen/createVideo.ts
+@@ -237,7 +237,7 @@ async function createVideoTask(
+     if (media.length > 0) {
+       input.media = media;
+     }
+-  } else if (model.startsWith('wan2.7')) {
++  } else if (model.startsWith('wan2.7') || model.startsWith('happyhorse')) {
+     const media = [];
+     if (imageUrl) {
+       media.push({
 diff --git a/packages/model-runtime/src/providers/wenxin/createImage.ts b/packages/model-runtime/src/providers/wenxin/createImage.ts
 index 5ac025789e5..9647f72e6c5 100644
 --- a/packages/model-runtime/src/providers/wenxin/createImage.ts
