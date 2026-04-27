@@ -265,10 +265,45 @@ index 747fcd74f81..667550607e2 100644
  export { default as opencodezen } from './opencodeZen';
  export { default as openrouter } from './openrouter';
 diff --git a/packages/model-bank/src/aiModels/longcat.ts b/packages/model-bank/src/aiModels/longcat.ts
-index 29c5ee37cf9..8bc4044e0b0 100644
+index 29c5ee37cf9..fe66c6db152 100644
 --- a/packages/model-bank/src/aiModels/longcat.ts
 +++ b/packages/model-bank/src/aiModels/longcat.ts
-@@ -27,10 +27,10 @@ const longcatModels: AIChatModelCard[] = [
+@@ -1,6 +1,26 @@
+ import type { AIChatModelCard } from '../types/aiModel';
+ 
+ const longcatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++    },
++    contextWindowTokens: 1_000_000,
++    description:
++      'The core features of LongCat-2.0-Preview are as follows: Designed for agent development scenarios, with native support for tool use, multi-step reasoning, and long-context tasks; Excels in code generation, automated workflows, and complex instruction execution; Deeply integrated with productivity tools such as Claude Code, OpenClaw, OpenCode, and Kilo Code.',
++    displayName: 'LongCat-2.0-Preview',
++    enabled: true,
++    id: 'LongCat-2.0-Preview',
++    maxOutput: 128_000,
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2026-04-20',
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+@@ -11,6 +31,7 @@ const longcatModels: AIChatModelCard[] = [
+     displayName: 'LongCat-Flash-Lite',
+     enabled: true,
+     id: 'LongCat-Flash-Lite',
++    maxOutput: 262_144,
+     pricing: {
+       units: [
+         { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+@@ -27,10 +48,11 @@ const longcatModels: AIChatModelCard[] = [
      },
      contextWindowTokens: 262_144,
      description:
@@ -279,10 +314,11 @@ index 29c5ee37cf9..8bc4044e0b0 100644
      enabled: true,
 -    id: 'LongCat-Flash-Thinking-2601',
 +    id: 'LongCat-Flash-Thinking',
++    maxOutput: 262_144,
      pricing: {
        units: [
          { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
-@@ -47,16 +47,16 @@ const longcatModels: AIChatModelCard[] = [
+@@ -47,16 +69,17 @@ const longcatModels: AIChatModelCard[] = [
      },
      contextWindowTokens: 262_144,
      description:
@@ -292,6 +328,7 @@ index 29c5ee37cf9..8bc4044e0b0 100644
 +      'The LongCat-Flash-Thinking-2601 model has been officially released. As an upgraded reasoning model built on a Mixture-of-Experts (MoE) architecture, it features a total of 560 billion parameters. While maintaining strong competitiveness across traditional reasoning benchmarks, it systematically enhances Agent-level reasoning capabilities through large-scale multi-environment reinforcement learning. Compared to the LongCat-Flash-Thinking model, the key upgrades are as follows: Extreme Robustness in Noisy Environments: Through systematic curriculum-style training targeting noise and uncertainty in real-world settings, the model demonstrates outstanding performance in Agent tool invocation, Agent-based search, and tool-integrated reasoning, with significantly improved generalization. Powerful Agent Capabilities: By constructing a tightly coupled dependency graph encompassing more than 60 tools, and scaling training through multi-environment expansion and large-scale exploratory learning, the model markedly improves its ability to generalize to complex and out-of-distribution real-world scenarios. Advanced Deep Thinking Mode: It expands the breadth of reasoning via parallel inference and deepens analytical capability through recursive feedback-driven summarization and abstraction mechanisms, effectively addressing highly challenging problems.',
 +    displayName: 'LongCat-Flash-Thinking-2601',
 +    id: 'LongCat-Flash-Thinking-2601',
++    maxOutput: 262_144,
      pricing: {
        units: [
          { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
@@ -303,6 +340,14 @@ index 29c5ee37cf9..8bc4044e0b0 100644
      type: 'chat',
    },
    {
+@@ -69,6 +92,7 @@ const longcatModels: AIChatModelCard[] = [
+     displayName: 'LongCat-Flash-Chat',
+     enabled: true,
+     id: 'LongCat-Flash-Chat',
++    maxOutput: 262_144,
+     pricing: {
+       units: [
+         { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
 diff --git a/packages/model-bank/src/aiModels/openai.ts b/packages/model-bank/src/aiModels/openai.ts
 index 8464d14e659..966259df13b 100644
 --- a/packages/model-bank/src/aiModels/openai.ts
@@ -998,6 +1043,34 @@ index 5af3aae6332..058c22dc0dd 100644
        } as any;
      },
    },
+diff --git a/packages/model-runtime/src/providers/longcat/index.ts b/packages/model-runtime/src/providers/longcat/index.ts
+index 1c03f315350..a3fd9ea7cef 100644
+--- a/packages/model-runtime/src/providers/longcat/index.ts
++++ b/packages/model-runtime/src/providers/longcat/index.ts
+@@ -1,16 +1,21 @@
+-import { ModelProvider } from 'model-bank';
++import { longcat as longchatCahtModels, ModelProvider } from 'model-bank';
+ 
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
++import { getModelMaxOutputs } from '../../utils/getModelMaxOutputs';
+ 
+ export const LobeLongCatAI = createOpenAICompatibleRuntime({
+   baseURL: 'https://api.longcat.chat/openai/v1',
+   chatCompletion: {
+     handlePayload: (payload) => {
+-      const { frequency_penalty, presence_penalty, ...rest } = payload;
++      const { frequency_penalty, max_tokens, presence_penalty, ...rest } = payload;
+ 
+       return {
+         ...rest,
+         frequency_penalty: undefined,
++        max_tokens:
++          max_tokens !== undefined
++            ? max_tokens
++            : getModelMaxOutputs(payload.model, longchatCahtModels),
+         presence_penalty: undefined,
+         stream: true,
+       } as any;
 diff --git a/packages/model-runtime/src/providers/wenxin/createImage.ts b/packages/model-runtime/src/providers/wenxin/createImage.ts
 index 5ac025789e5..9647f72e6c5 100644
 --- a/packages/model-runtime/src/providers/wenxin/createImage.ts
