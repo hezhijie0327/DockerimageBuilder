@@ -1,14 +1,14 @@
 diff --git a/src/features/AgentBuilder/TopicSelector.tsx b/src/features/AgentBuilder/TopicSelector.tsx
-index dc5c01b4868..923bc762491 100644
+index dc5c01b4868..e4eeac0c4da 100644
 --- a/src/features/AgentBuilder/TopicSelector.tsx
 +++ b/src/features/AgentBuilder/TopicSelector.tsx
-@@ -1,15 +1,18 @@
+@@ -1,22 +1,19 @@
 -import { type DropdownMenuCheckboxItem } from '@lobehub/ui';
 -import { ActionIcon, DropdownMenu, Flexbox } from '@lobehub/ui';
 +import { ActionIcon, type DropdownItem, DropdownMenu, Flexbox, Icon } from '@lobehub/ui';
 +import { App } from 'antd';
  import { createStaticStyles } from 'antd-style';
- import dayjs from 'dayjs';
+-import dayjs from 'dayjs';
 -import { Clock3Icon, PlusIcon } from 'lucide-react';
 -import { memo, useMemo } from 'react';
 +import { Clock3Icon, MoreHorizontalIcon, PlusIcon, Trash2 } from 'lucide-react';
@@ -23,9 +23,17 @@ index dc5c01b4868..923bc762491 100644
  import { topicSelectors } from '@/store/chat/slices/topic/selectors';
 +import { topicMapKey } from '@/store/chat/utils/topicMapKey';
  
- const styles = createStaticStyles(({ css, cssVar }) => ({
-   time: css`
-@@ -32,7 +35,8 @@ interface TopicSelectorProps {
+-const styles = createStaticStyles(({ css, cssVar }) => ({
+-  time: css`
+-    margin-inline-start: 6px;
+-    font-size: 12px;
+-    color: ${cssVar.colorTextTertiary};
+-  `,
++const styles = createStaticStyles(({ css }) => ({
+   title: css`
+     overflow: hidden;
+ 
+@@ -32,7 +29,8 @@ interface TopicSelectorProps {
  }
  
  const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
@@ -35,7 +43,7 @@ index dc5c01b4868..923bc762491 100644
  
    // Fetch topics for the agent builder
    const useFetchTopics = useChatStore((s) => s.useFetchTopics);
-@@ -51,7 +55,39 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
+@@ -51,33 +49,77 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
      [topics, activeTopicId],
    );
  
@@ -75,11 +83,10 @@ index dc5c01b4868..923bc762491 100644
 +  const items = useMemo<DropdownItem[]>(
      () =>
        (topics || []).map((topic) => {
-         const displayTime =
-@@ -59,9 +95,30 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
-             ? dayjs(topic.updatedAt).fromNow()
-             : dayjs(topic.updatedAt).format('YYYY-MM-DD');
- 
+-        const displayTime =
+-          dayjs().diff(dayjs(topic.updatedAt), 'd') < 7
+-            ? dayjs(topic.updatedAt).fromNow()
+-            : dayjs(topic.updatedAt).format('YYYY-MM-DD');
 +        const topicActions: DropdownItem[] = [
 +          {
 +            danger: true,
@@ -91,7 +98,7 @@ index dc5c01b4868..923bc762491 100644
 +            },
 +          },
 +        ];
-+
+ 
          return {
 -          checked: topic.id === activeTopicId,
 -          closeOnClick: true,
@@ -108,9 +115,10 @@ index dc5c01b4868..923bc762491 100644
 +          ),
            key: topic.id,
            label: (
-             <Flexbox horizontal align="center" gap={4} justify="space-between" width="100%">
-@@ -69,15 +126,12 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
-               <span className={styles.time}>{displayTime}</span>
+-            <Flexbox horizontal align="center" gap={4} justify="space-between" width="100%">
++            <Flexbox horizontal align="center" gap={4} width="100%">
+               <span className={styles.title}>{topic.title}</span>
+-              <span className={styles.time}>{displayTime}</span>
              </Flexbox>
            ),
 -          onCheckedChange: (checked) => {
@@ -128,7 +136,7 @@ index dc5c01b4868..923bc762491 100644
    );
    const isEmpty = !topics || topics.length === 0;
  
-@@ -92,7 +146,7 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
+@@ -92,7 +134,7 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
            <ActionIcon
              icon={PlusIcon}
              size={DESKTOP_HEADER_ICON_SIZE}
