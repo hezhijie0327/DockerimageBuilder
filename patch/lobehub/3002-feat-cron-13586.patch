@@ -385,66 +385,11 @@ index 16a013f13a2..a9c7f18f30b 100644
  
    const addAction = (
      <ActionIcon
-diff --git a/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts b/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
-index 5aba2ca4a43..d567092cf7b 100644
---- a/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
-+++ b/src/routes/(main)/agent/cron/[cronId]/CronConfig.ts
-@@ -1,4 +1,4 @@
--import { type Dayjs } from 'dayjs';
-+import type { Dayjs } from 'dayjs';
- 
- export type ScheduleType = 'daily' | 'hourly' | 'weekly';
- 
-@@ -100,13 +100,14 @@ export const parseCronPattern = (
-   }
- 
-   const [minute, hour, , , weekday] = parts;
--  const rawMinute = minute === '*' ? 0 : Number.parseInt(minute);
--  // Normalize to nearest 30-minute interval (0 or 30)
--  const triggerMinute = rawMinute >= 15 && rawMinute < 45 ? 30 : 0;
-+  const rawMinute = minute === '*' ? 0 : Number.parseInt(minute, 10);
-+  const safeMinute = Number.isFinite(rawMinute) && rawMinute >= 0 ? Math.min(rawMinute, 59) : 0;
-+  // Normalize to quarter-hour interval (0, 15, 30, 45)
-+  const triggerMinute = Math.floor(safeMinute / 15) * 15;
- 
-   // Hourly: 0 * * * * or 0 */N * * *
-   if (hour.startsWith('*/')) {
--    const interval = Number.parseInt(hour.slice(2));
-+    const interval = Number.parseInt(hour.slice(2), 10);
-     return {
-       hourlyInterval: interval,
-       scheduleType: 'hourly',
-@@ -123,11 +124,11 @@ export const parseCronPattern = (
-     };
-   }
- 
--  const triggerHour = Number.parseInt(hour);
-+  const triggerHour = Number.parseInt(hour, 10);
- 
-   // Weekly: has specific weekday(s)
-   if (weekday !== '*') {
--    const weekdays = weekday.split(',').map((d) => Number.parseInt(d));
-+    const weekdays = weekday.split(',').map((d) => Number.parseInt(d, 10));
-     return {
-       scheduleType: 'weekly',
-       triggerHour,
-@@ -155,8 +156,9 @@ export const buildCronPattern = (
-   weekdays?: number[],
- ): string => {
-   const rawMinute = triggerTime.minute();
--  // Normalize to 0 or 30
--  const minute = rawMinute >= 15 && rawMinute < 45 ? 30 : 0;
-+  const safeMinute = Number.isFinite(rawMinute) && rawMinute >= 0 ? Math.min(rawMinute, 59) : 0;
-+  // Normalize to 0, 15, 30, or 45
-+  const minute = Math.floor(safeMinute / 15) * 15;
-   const hour = triggerTime.hour();
- 
-   switch (scheduleType) {
 diff --git a/src/routes/(main)/agent/cron/[cronId]/index.tsx b/src/routes/(main)/agent/cron/[cronId]/index.tsx
-index c760c370f52..f893143a90e 100644
+index 82738fce31e..ca326afe25e 100644
 --- a/src/routes/(main)/agent/cron/[cronId]/index.tsx
 +++ b/src/routes/(main)/agent/cron/[cronId]/index.tsx
-@@ -87,7 +87,7 @@ const CronJobDetailPage = memo(() => {
+@@ -86,7 +86,7 @@ const CronJobDetailPage = memo(() => {
    const router = useQueryRoute();
    const { modal } = App.useApp();
    const enableRichRender = useUserStore(labPreferSelectors.enableInputMarkdown);
@@ -453,7 +398,7 @@ index c760c370f52..f893143a90e 100644
  
    const isNewJob = cronId === 'new';
  
-@@ -118,7 +118,7 @@ const CronJobDetailPage = memo(() => {
+@@ -117,7 +117,7 @@ const CronJobDetailPage = memo(() => {
    const cronListAgentId = activeAgentId || aid;
  
    const { data: cronJob, isLoading } = useSWR(
@@ -462,7 +407,7 @@ index c760c370f52..f893143a90e 100644
      async () => {
        if (!cronId || isNewJob) return null;
        const result = await agentCronJobService.getById(cronId);
-@@ -455,7 +455,7 @@ const CronJobDetailPage = memo(() => {
+@@ -454,7 +454,7 @@ const CronJobDetailPage = memo(() => {
      flushPendingSave();
    }, [cronJob, flushPendingSave]);
  
@@ -543,7 +488,7 @@ index 65ce017a762..b9e95961414 100644
      // Expose Agent Gateway URL to client when queue-based agent runtime is enabled
      ...(appEnv.enableQueueAgentRuntime && appEnv.AGENT_GATEWAY_URL
 diff --git a/src/server/routers/lambda/agentCronJob.ts b/src/server/routers/lambda/agentCronJob.ts
-index 6a47920142b..7003fb0b462 100644
+index 8c26cd51f9e..b3941ef1e9d 100644
 --- a/src/server/routers/lambda/agentCronJob.ts
 +++ b/src/server/routers/lambda/agentCronJob.ts
 @@ -4,8 +4,13 @@ import { TRPCError } from '@trpc/server';
@@ -560,8 +505,8 @@ index 6a47920142b..7003fb0b462 100644
  
  const agentCronJobProcedure = authedProcedure.use(serverDatabase);
  
-@@ -79,12 +84,43 @@ export const agentCronJobRouter = router({
-         const cronJobData = { ...input, userId };
+@@ -86,12 +91,43 @@ export const agentCronJobRouter = router({
+         const cronJobData = { ...cronJobInput, userId };
          const cronJob = await cronJobModel.create(cronJobData as InsertAgentCronJob);
  
 +        if (appEnv.isQStashConfigured && cronJob.enabled) {
@@ -604,7 +549,7 @@ index 6a47920142b..7003fb0b462 100644
          console.error('[agentCronJob:create]', error);
          throw new TRPCError({
            cause: error,
-@@ -105,6 +141,18 @@ export const agentCronJobRouter = router({
+@@ -112,6 +148,18 @@ export const agentCronJobRouter = router({
  
        try {
          const cronJobModel = new AgentCronJobModel(db, userId);
@@ -623,7 +568,7 @@ index 6a47920142b..7003fb0b462 100644
          const deleted = await cronJobModel.delete(id);
  
          if (!deleted) {
-@@ -300,6 +348,10 @@ export const agentCronJobRouter = router({
+@@ -307,6 +355,10 @@ export const agentCronJobRouter = router({
            });
          }
  
@@ -634,7 +579,7 @@ index 6a47920142b..7003fb0b462 100644
          return {
            data: cronJob,
            message: 'Execution counts reset successfully',
-@@ -333,6 +385,15 @@ export const agentCronJobRouter = router({
+@@ -340,6 +392,15 @@ export const agentCronJobRouter = router({
  
        try {
          const cronJobModel = new AgentCronJobModel(db, userId);
@@ -650,7 +595,7 @@ index 6a47920142b..7003fb0b462 100644
          const cronJob = await cronJobModel.update(id, data as UpdateAgentCronJob);
  
          if (!cronJob) {
-@@ -342,6 +403,12 @@ export const agentCronJobRouter = router({
+@@ -349,6 +410,12 @@ export const agentCronJobRouter = router({
            });
          }
  
