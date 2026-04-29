@@ -1,0 +1,181 @@
+diff --git a/packages/model-bank/src/aiModels/stepfun.ts b/packages/model-bank/src/aiModels/stepfun.ts
+index 920a3d409ba..9a30f4508bc 100644
+--- a/packages/model-bank/src/aiModels/stepfun.ts
++++ b/packages/model-bank/src/aiModels/stepfun.ts
+@@ -342,14 +342,39 @@ const stepfunChatModels: AIChatModelCard[] = [
+ ];
+ 
+ const stepfunImageModels: AIImageModelCard[] = [
+-  // https://platform.stepfun.com/docs/llm/image
++  {
++    description:
++      'A lightweight editing model from Stepfun’s latest iteration that supports both text-to-image generation and image editing within a single model. Despite having fewer than 6 billion parameters, it achieves state-of-the-art performance at its scale, rivaling open-source models in the 12B–20B parameter range across tiers. Each editing task takes only 1–2 seconds, redefining the experience of real-time interactive image editing.',
++    displayName: 'Step Image Edit 2',
++    enabled: true,
++    id: 'step-image-edit-2',
++    parameters: {
++      cfg: { default: 1, max: 10, min: 1, step: 0.1 },
++      imageUrl: { default: null },
++      prompt: {
++        default: '',
++      },
++      seed: { default: null },
++      size: {
++        default: '1024x1024',
++        enum: ['1024x1024', '768x1360', '896x1184', '1360x768', '1184x896'],
++      },
++      steps: { default: 8, max: 50, min: 1 },
++    },
++    pricing: {
++      currency: 'CNY',
++      units: [{ name: 'imageGeneration', rate: 0.02, strategy: 'fixed', unit: 'image' }],
++    },
++    releasedAt: '2026-04-28',
++    type: 'image',
++  },
+   {
+     description:
+       'A new-generation StepFun image model focused on image generation, producing high-quality images from text prompts. It delivers more realistic texture and stronger Chinese/English text rendering.',
+     displayName: 'Step 2X Large',
+-    enabled: true,
+     id: 'step-2x-large',
+     parameters: {
++      cfg: { default: 7.5, max: 10, min: 1, step: 0.1 },
+       prompt: {
+         default: '',
+       },
+@@ -374,6 +399,7 @@ const stepfunImageModels: AIImageModelCard[] = [
+     enabled: true,
+     id: 'step-1x-medium',
+     parameters: {
++      cfg: { default: 7.5, max: 10, min: 1, step: 0.1 },
+       prompt: {
+         default: '',
+       },
+@@ -398,6 +424,7 @@ const stepfunImageModels: AIImageModelCard[] = [
+     enabled: true,
+     id: 'step-1x-edit',
+     parameters: {
++      cfg: { default: 6, max: 10, min: 1, step: 0.1 },
+       imageUrl: { default: null },
+       prompt: {
+         default: '',
+diff --git a/packages/model-runtime/src/providers/stepfun/createImage.ts b/packages/model-runtime/src/providers/stepfun/createImage.ts
+new file mode 100644
+index 00000000000..b5052122ff6
+--- /dev/null
++++ b/packages/model-runtime/src/providers/stepfun/createImage.ts
+@@ -0,0 +1,93 @@
++import createDebug from 'debug';
++
++import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
++import type { CreateImagePayload, CreateImageResponse } from '../../types/image';
++import { AgentRuntimeError } from '../../utils/createError';
++
++const log = createDebug('lobe-image:stepfun');
++
++interface StepfunImageDataItem {
++  b64_json?: string;
++  finish_reason?: string;
++  seed?: number;
++  url?: string;
++}
++
++interface StepfunImageResponse {
++  created?: number;
++  data?: StepfunImageDataItem[];
++  id?: string;
++}
++
++export async function createStepfunImage(
++  payload: CreateImagePayload,
++  options: CreateImageOptions,
++): Promise<CreateImageResponse> {
++  const { apiKey, baseURL, provider } = options;
++  const { model, params } = payload;
++  const { cfg, imageUrl, prompt, seed, size, steps } = params;
++
++  try {
++    const endpoint = params.imageUrl ? 'edits' : 'generations';
++
++    const body: Record<string, any> = {
++      model,
++      prompt,
++      response_format: 'url',
++      ...(cfg ? { cfg_scale: cfg } : {}),
++      ...(imageUrl ? { image: imageUrl } : {}),
++      ...(seed ? { seed } : {}),
++      ...(size ? { size } : {}),
++      ...(steps ? { steps } : {}),
++      ...(model === 'step-image-edit-2' ? { text_mode: true } : {}),
++    };
++
++    log('Calling Stepfun image API: %s with body: %O', endpoint, body);
++
++    const res = await fetch(`${baseURL}/images/${endpoint}`, {
++      method: 'POST',
++      headers: {
++        'Authorization': `Bearer ${apiKey}`,
++        'Content-Type': 'application/json',
++      },
++      body: JSON.stringify(body),
++    });
++
++    if (!res.ok) {
++      let errBody: any = undefined;
++      try {
++        errBody = await res.json();
++      } catch {
++        // ignore
++      }
++      throw new Error(
++        `Stepfun image API error: ${res.status} ${res.statusText} ${
++          errBody ? JSON.stringify(errBody) : ''
++        }`,
++      );
++    }
++
++    const data: StepfunImageResponse = await res.json();
++    log('Stepfun image response: %O', data);
++
++    if (!data || !Array.isArray(data.data) || data.data.length === 0) {
++      throw new Error('No image data returned from Stepfun');
++    }
++
++    const first = data.data[0];
++    if (!first) throw new Error('Empty image item');
++
++    if (first.url) {
++      return { imageUrl: first.url };
++    }
++
++    throw new Error('Unsupported image response format from Stepfun');
++  } catch (error) {
++    log('Error creating Stepfun image: %O', error);
++    throw AgentRuntimeError.createImage({
++      error: error as any,
++      errorType: 'ProviderBizError',
++      provider,
++    });
++  }
++}
+diff --git a/packages/model-runtime/src/providers/stepfun/index.ts b/packages/model-runtime/src/providers/stepfun/index.ts
+index fcb87aaefd0..4890a656051 100644
+--- a/packages/model-runtime/src/providers/stepfun/index.ts
++++ b/packages/model-runtime/src/providers/stepfun/index.ts
+@@ -3,6 +3,7 @@ import { ModelProvider } from 'model-bank';
+ 
+ import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
++import { createStepfunImage } from './createImage';
+ 
+ export interface StepfunModelCard {
+   id: string;
+@@ -36,6 +37,7 @@ export const params = {
+   debug: {
+     chatCompletion: () => process.env.DEBUG_STEPFUN_CHAT_COMPLETION === '1',
+   },
++  createImage: createStepfunImage,
+   models: async ({ client }) => {
+     const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+ 
