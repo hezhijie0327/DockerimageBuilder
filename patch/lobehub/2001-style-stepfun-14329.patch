@@ -1,5 +1,5 @@
 diff --git a/packages/model-bank/src/aiModels/stepfun.ts b/packages/model-bank/src/aiModels/stepfun.ts
-index 920a3d409ba..9a30f4508bc 100644
+index 920a3d409ba..31363282063 100644
 --- a/packages/model-bank/src/aiModels/stepfun.ts
 +++ b/packages/model-bank/src/aiModels/stepfun.ts
 @@ -342,14 +342,39 @@ const stepfunChatModels: AIChatModelCard[] = [
@@ -44,15 +44,16 @@ index 920a3d409ba..9a30f4508bc 100644
        prompt: {
          default: '',
        },
-@@ -374,6 +399,7 @@ const stepfunImageModels: AIImageModelCard[] = [
+@@ -374,6 +399,8 @@ const stepfunImageModels: AIImageModelCard[] = [
      enabled: true,
      id: 'step-1x-medium',
      parameters: {
 +      cfg: { default: 7.5, max: 10, min: 1, step: 0.1 },
++      imageUrl: { default: null },
        prompt: {
          default: '',
        },
-@@ -398,6 +424,7 @@ const stepfunImageModels: AIImageModelCard[] = [
+@@ -398,6 +425,7 @@ const stepfunImageModels: AIImageModelCard[] = [
      enabled: true,
      id: 'step-1x-edit',
      parameters: {
@@ -62,10 +63,10 @@ index 920a3d409ba..9a30f4508bc 100644
          default: '',
 diff --git a/packages/model-runtime/src/providers/stepfun/createImage.ts b/packages/model-runtime/src/providers/stepfun/createImage.ts
 new file mode 100644
-index 00000000000..b5052122ff6
+index 00000000000..508850608f2
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/stepfun/createImage.ts
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,104 @@
 +import createDebug from 'debug';
 +
 +import type { CreateImageOptions } from '../../core/openaiCompatibleFactory';
@@ -96,19 +97,30 @@ index 00000000000..b5052122ff6
 +  const { cfg, imageUrl, prompt, seed, size, steps } = params;
 +
 +  try {
-+    const endpoint = params.imageUrl ? 'edits' : 'generations';
++    let endpoint = params.imageUrl ? 'edits' : 'generations';
 +
 +    const body: Record<string, any> = {
 +      model,
 +      prompt,
 +      response_format: 'url',
 +      ...(cfg ? { cfg_scale: cfg } : {}),
-+      ...(imageUrl ? { image: imageUrl } : {}),
 +      ...(seed ? { seed } : {}),
 +      ...(size ? { size } : {}),
 +      ...(steps ? { steps } : {}),
 +      ...(model === 'step-image-edit-2' ? { text_mode: true } : {}),
 +    };
++
++    if (imageUrl) {
++      if (model === 'step-1x-medium') {
++        // For step-1x-medium, endpoint is "image2image" and the imageUrl should be passed as "source_image" in the body
++        endpoint = 'image2image';
++        body.source_image = imageUrl;
++        body.source_weight = 0.5;
++      } else {
++        // For other models, the imageUrl should be passed as "image" in the body
++        body.image = imageUrl;
++      }
++    }
 +
 +    log('Calling Stepfun image API: %s with body: %O', endpoint, body);
 +
