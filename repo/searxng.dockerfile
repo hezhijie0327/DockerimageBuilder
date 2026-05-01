@@ -81,11 +81,13 @@ COPY --from=build_searxng /distroless /
 
 COPY --from=build_searxng /app /app
 
+COPY --from=build_searxng /app/searx/settings.yml /app/searx/limiter.toml /app/searx/favicons/favicons.toml /config/
+
 FROM scratch
 
 ENV \
     PYTHONPATH="/app" \
-    SEARXNG_SETTINGS_PATH="/app/searx/settings.yml"
+    SEARXNG_SETTINGS_PATH="/config/settings.yml"
 
 COPY --from=rebased_searxng / /
 
