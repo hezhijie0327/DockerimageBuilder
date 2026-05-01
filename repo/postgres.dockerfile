@@ -140,8 +140,8 @@ FROM scratch
 COPY --from=postgres_rebase / /
 
 ENV \
-    PGDATA="/var/lib/postgresql" \
-    PGPORT="5432" POSTGRES_DB="postgres" \
+    PGDATA="/data" PGPORT="5432" \
+    POSTGRES_DB="postgres" \
     POSTGRES_USER="postgres" \
     POSTGRES_PASSWORD="postgres"
 
