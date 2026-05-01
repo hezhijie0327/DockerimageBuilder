@@ -77,7 +77,7 @@ COPY --from=build_vaultwarden_web /vaultwarden/web-vault /web-vault
 FROM scratch
 
 ENV \
-    DATA_FOLDER="/etc/vaultwarden/data" \
+    DATA_FOLDER="/data" \
     EXPERIMENTAL_CLIENT_FEATURE_FLAGS="autofill-overlay,autofill-v2,browser-fileless-import,extension-refresh,fido2-vault-credentials,inline-menu-positioning-improvements,ssh-agent,ssh-key-vault-item" \
     ROCKET_ADDRESS="0.0.0.0" ROCKET_PORT="8000" \
     WEB_VAULT_ENABLED="true" WEB_VAULT_FOLDER="/web-vault"

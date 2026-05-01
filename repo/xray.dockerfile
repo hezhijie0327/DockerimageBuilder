@@ -42,6 +42,9 @@ COPY --from=build_xray /xray/xray /xray
 
 FROM scratch
 
+ENV \
+    XRAY_LOCATION_ASSET="/config"
+
 COPY --from=rebased_xray / /
 
 ENTRYPOINT ["/xray"]
