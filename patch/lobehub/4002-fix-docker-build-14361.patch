@@ -10,21 +10,6 @@ index 534b64337c3..af34bc584ba 100644
  COPY packages ./packages
  COPY patches ./patches
  # bring in desktop workspace manifest so pnpm can resolve it
-diff --git a/package.json b/package.json
-index 0264acd039e..5a190607c60 100644
---- a/package.json
-+++ b/package.json
-@@ -97,8 +97,8 @@
-     "reinstall:desktop": "rm -rf pnpm-lock.yaml && rm -rf node_modules && pnpm -r exec rm -rf node_modules && pnpm install --node-linker=hoisted",
-     "release": "semantic-release",
-     "release:branch": "tsx ./scripts/releaseWorkflow/index.ts",
--    "self-hosting:docker": "docker build -t lobehub:local .",
--    "self-hosting:docker-cn": "docker build -t lobehub-local --build-arg USE_CN_MIRROR=true .",
-+    "self-hosting:docker": "docker build -t lobehub:local --no-cache .",
-+    "self-hosting:docker-cn": "docker build -t lobehub-local --no-cache --build-arg USE_CN_MIRROR=true .",
-     "start": "next start -p 3210",
-     "stylelint": "stylelint \"src/**/*.{js,jsx,ts,tsx}\" --fix",
-     "test": "npm run test-app && npm run test-server",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
 index b6dbbacf737..abb004ac0e7 100644
 --- a/pnpm-workspace.yaml
@@ -46,67 +31,21 @@ index b6dbbacf737..abb004ac0e7 100644
    sharp: true
    unrs-resolver: true
 diff --git a/src/libs/next/config/define-config.ts b/src/libs/next/config/define-config.ts
-index d42ef95fa3d..706ccbff9d8 100644
+index d42ef95fa3d..959022da3b0 100644
 --- a/src/libs/next/config/define-config.ts
 +++ b/src/libs/next/config/define-config.ts
-@@ -75,6 +75,7 @@ interface CustomNextConfig {
- export function defineConfig(config: CustomNextConfig) {
-   const isProd = process.env.NODE_ENV === 'production';
-   const buildWithDocker = process.env.DOCKER === 'true';
-+  const useTurbopack = process.env.ENABLE_TURBOPACK === '1';
-   const { resolveAlias: customTurbopackResolveAlias, ...customTurbopackConfig } =
-     config.turbopack ?? {};
-   const turbopackRoot = getTurbopackRoot();
-@@ -427,27 +428,31 @@ export function defineConfig(config: CustomNextConfig) {
-     ],
+@@ -30,6 +30,14 @@ const getCommonDirectory = (paths: string[]) => {
+ };
  
-     transpilePackages: ['mermaid', 'better-auth-harmony'],
--    turbopack: {
--      ...customTurbopackConfig,
--      resolveAlias: {
--        ...createTurbopackPeerAliases(),
--        ...customTurbopackResolveAlias,
--      },
--      root: turbopackRoot,
--      rules: {
--        ...(isTest
--          ? void 0
--          : codeInspectorPlugin({
--              bundler: 'turbopack',
--              hotKeys: ['altKey', 'ctrlKey'],
--            })),
--        '*.md': {
--          as: '*.js',
--          loaders: ['raw-loader'],
--        },
--        ...customTurbopackConfig.rules,
--      },
--    },
-+    ...(useTurbopack
-+      ? {
-+          turbopack: {
-+            ...customTurbopackConfig,
-+            resolveAlias: {
-+              ...createTurbopackPeerAliases(),
-+              ...customTurbopackResolveAlias,
-+            },
-+            root: turbopackRoot,
-+            rules: {
-+              ...(isTest
-+                ? void 0
-+                : codeInspectorPlugin({
-+                    bundler: 'turbopack',
-+                    hotKeys: ['altKey', 'ctrlKey'],
-+                  })),
-+              '*.md': {
-+                as: '*.js',
-+                loaders: ['raw-loader'],
-+              },
-+              ...customTurbopackConfig.rules,
-+            },
-+          },
-+        }
-+      : {}),
+ const getTurbopackRoot = () => {
++  // During Docker builds the `next` package may be resolved from a different
++  // location (pnpm store or host paths). For Docker we prefer the project
++  // working directory so Turbopack can resolve `next/package.json` from the
++  // build context.
++  if (process.env.DOCKER === 'true') {
++    return realpathSync(process.cwd());
++  }
++
+   const nextPackageDirectory = dirname(require.resolve('next/package.json'));
  
-     typescript: {
-       ignoreBuildErrors: true,
+   return getCommonDirectory([realpathSync(process.cwd()), realpathSync(nextPackageDirectory)]);
