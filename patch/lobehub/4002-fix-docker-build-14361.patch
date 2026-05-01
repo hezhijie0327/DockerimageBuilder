@@ -46,21 +46,67 @@ index b6dbbacf737..abb004ac0e7 100644
    sharp: true
    unrs-resolver: true
 diff --git a/src/libs/next/config/define-config.ts b/src/libs/next/config/define-config.ts
-index d42ef95fa3d..e78890318a0 100644
+index d42ef95fa3d..706ccbff9d8 100644
 --- a/src/libs/next/config/define-config.ts
 +++ b/src/libs/next/config/define-config.ts
-@@ -1,4 +1,4 @@
--import { existsSync, realpathSync } from 'node:fs';
-+import { existsSync } from 'node:fs';
- import { createRequire } from 'node:module';
- import { dirname, relative, resolve, sep } from 'node:path';
+@@ -75,6 +75,7 @@ interface CustomNextConfig {
+ export function defineConfig(config: CustomNextConfig) {
+   const isProd = process.env.NODE_ENV === 'production';
+   const buildWithDocker = process.env.DOCKER === 'true';
++  const useTurbopack = process.env.ENABLE_TURBOPACK === '1';
+   const { resolveAlias: customTurbopackResolveAlias, ...customTurbopackConfig } =
+     config.turbopack ?? {};
+   const turbopackRoot = getTurbopackRoot();
+@@ -427,27 +428,31 @@ export function defineConfig(config: CustomNextConfig) {
+     ],
  
-@@ -32,7 +32,7 @@ const getCommonDirectory = (paths: string[]) => {
- const getTurbopackRoot = () => {
-   const nextPackageDirectory = dirname(require.resolve('next/package.json'));
+     transpilePackages: ['mermaid', 'better-auth-harmony'],
+-    turbopack: {
+-      ...customTurbopackConfig,
+-      resolveAlias: {
+-        ...createTurbopackPeerAliases(),
+-        ...customTurbopackResolveAlias,
+-      },
+-      root: turbopackRoot,
+-      rules: {
+-        ...(isTest
+-          ? void 0
+-          : codeInspectorPlugin({
+-              bundler: 'turbopack',
+-              hotKeys: ['altKey', 'ctrlKey'],
+-            })),
+-        '*.md': {
+-          as: '*.js',
+-          loaders: ['raw-loader'],
+-        },
+-        ...customTurbopackConfig.rules,
+-      },
+-    },
++    ...(useTurbopack
++      ? {
++          turbopack: {
++            ...customTurbopackConfig,
++            resolveAlias: {
++              ...createTurbopackPeerAliases(),
++              ...customTurbopackResolveAlias,
++            },
++            root: turbopackRoot,
++            rules: {
++              ...(isTest
++                ? void 0
++                : codeInspectorPlugin({
++                    bundler: 'turbopack',
++                    hotKeys: ['altKey', 'ctrlKey'],
++                  })),
++              '*.md': {
++                as: '*.js',
++                loaders: ['raw-loader'],
++              },
++              ...customTurbopackConfig.rules,
++            },
++          },
++        }
++      : {}),
  
--  return getCommonDirectory([realpathSync(process.cwd()), realpathSync(nextPackageDirectory)]);
-+  return getCommonDirectory([process.cwd(), nextPackageDirectory]);
- };
- 
- const resolvePackageDirectory = (packageName: string) => {
+     typescript: {
+       ignoreBuildErrors: true,
