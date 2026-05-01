@@ -1,0 +1,205 @@
+diff --git a/packages/model-bank/src/aiModels/xai.ts b/packages/model-bank/src/aiModels/xai.ts
+index db1d6d545ee..a6bb4813ce3 100644
+--- a/packages/model-bank/src/aiModels/xai.ts
++++ b/packages/model-bank/src/aiModels/xai.ts
+@@ -2,6 +2,55 @@ import type { AIChatModelCard, AIImageModelCard, AIVideoModelCard } from '../typ
+ 
+ // https://docs.x.ai/docs/models
+ const xaiChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      functionCall: true,
++      search: true,
++      structuredOutput: true,
++      vision: true,
++    },
++    contextWindowTokens: 1_000_000,
++    description: 'The most truth-seeking large language model in the world',
++    displayName: 'Grok 4.3',
++    enabled: true,
++    id: 'grok-4.3',
++    pricing: {
++      units: [
++        {
++          name: 'textInput_cacheRead',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 0.2, upTo: 0.2 },
++            { rate: 0.4, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++        {
++          name: 'textInput',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 1.25, upTo: 0.2 },
++            { rate: 2.5, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++        {
++          name: 'textOutput',
++          strategy: 'tiered',
++          tiers: [
++            { rate: 2.5, upTo: 0.2 },
++            { rate: 5, upTo: 'infinity' },
++          ],
++          unit: 'millionTokens',
++        },
++      ],
++    },
++    releasedAt: '2026-05-01',
++    settings: {
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
+   {
+     abilities: {
+       functionCall: true,
+diff --git a/packages/model-runtime/src/providers/xai/index.test.ts b/packages/model-runtime/src/providers/xai/index.test.ts
+index a4da0d8b0d2..31d1685517f 100644
+--- a/packages/model-runtime/src/providers/xai/index.test.ts
++++ b/packages/model-runtime/src/providers/xai/index.test.ts
+@@ -28,69 +28,22 @@ describe('LobeXAI - custom features', () => {
+     vi.spyOn(instance['client'].responses, 'create').mockResolvedValue(new ReadableStream() as any);
+   });
+ 
+-  describe('chatCompletion.handlePayload', () => {
+-    it('should remove unsupported penalty parameters for reasoning models', async () => {
+-      await instance.chat({
+-        apiMode: 'chatCompletion',
+-        frequency_penalty: 0.4,
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'grok-4',
+-        presence_penalty: 0.6,
+-      } as any);
+-
+-      const createCall = (instance['client'].chat.completions.create as Mock).mock.calls[0][0];
+-
+-      expect(createCall.frequency_penalty).toBeUndefined();
+-      expect(createCall.presence_penalty).toBeUndefined();
+-      expect(createCall.stream).toBe(true);
+-    });
+-
+-    it('should remove unsupported penalty parameters for grok-4.1 reasoning variants', async () => {
+-      await instance.chat({
+-        apiMode: 'chatCompletion',
+-        frequency_penalty: 0.4,
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'grok-4-1-fast-reasoning',
+-        presence_penalty: 0.6,
+-      } as any);
+-
+-      const createCall = (instance['client'].chat.completions.create as Mock).mock.calls[0][0];
+-
+-      expect(createCall.frequency_penalty).toBeUndefined();
+-      expect(createCall.presence_penalty).toBeUndefined();
+-      expect(createCall.stream).toBe(true);
+-    });
+-
+-    it('should remove unsupported penalty parameters for grok-4.20 non-reasoning variants', async () => {
++  describe('responses.handlePayload', () => {
++    it('should remove unsupported penalty parameters via Responses API', async () => {
+       await instance.chat({
+-        apiMode: 'chatCompletion',
++        apiMode: 'responses',
+         frequency_penalty: 0.4,
+         messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'grok-4.20-beta-0309-non-reasoning',
++        model: 'grok-4.3',
+         presence_penalty: 0.6,
+       } as any);
+ 
+-      const createCall = (instance['client'].chat.completions.create as Mock).mock.calls[0][0];
++      const createCall = (instance['client'].responses.create as Mock).mock.calls[0][0];
+ 
+       expect(createCall.frequency_penalty).toBeUndefined();
+       expect(createCall.presence_penalty).toBeUndefined();
+       expect(createCall.stream).toBe(true);
+     });
+-
+-    it('should preserve penalty parameters for non-reasoning models', async () => {
+-      await instance.chat({
+-        apiMode: 'chatCompletion',
+-        frequency_penalty: 0.4,
+-        messages: [{ content: 'Hello', role: 'user' }],
+-        model: 'grok-4-fast-non-reasoning',
+-        presence_penalty: 0.6,
+-      } as any);
+-
+-      const createCall = (instance['client'].chat.completions.create as Mock).mock.calls[0][0];
+-
+-      expect(createCall.frequency_penalty).toBe(0.4);
+-      expect(createCall.presence_penalty).toBe(0.6);
+-    });
+   });
+ 
+   describe('responses.handlePayload', () => {
+diff --git a/packages/model-runtime/src/providers/xai/index.ts b/packages/model-runtime/src/providers/xai/index.ts
+index f0fea9bce8d..37e07ce6593 100644
+--- a/packages/model-runtime/src/providers/xai/index.ts
++++ b/packages/model-runtime/src/providers/xai/index.ts
+@@ -1,7 +1,6 @@
+ import { ModelProvider } from 'model-bank';
+ 
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
+-import type { ChatStreamPayload } from '../../types';
+ import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
+ import { createXAIImage } from './createImage';
+ import { createXAIVideo } from './createVideo';
+@@ -10,35 +9,9 @@ export interface XAIModelCard {
+   id: string;
+ }
+ 
+-// Only these legacy non-reasoning models support presencePenalty/frequencyPenalty/stop.
+-// All newer models reject these params, so default to stripping.
+-const xaiPenaltySupportedModels = new Set([
+-  'grok-3',
+-  'grok-4-fast-non-reasoning',
+-  'grok-4-1-fast-non-reasoning',
+-]);
+-
+-const pruneUnsupportedReasoningParameters = (payload: ChatStreamPayload) => {
+-  if (xaiPenaltySupportedModels.has(payload.model)) return payload;
+-
+-  return {
+-    ...payload,
+-    // xAI reasoning models reject these parameters:
+-    // https://docs.x.ai/developers/model-capabilities/text/reasoning
+-    frequency_penalty: undefined,
+-    presence_penalty: undefined,
+-    stop: undefined,
+-  } as ChatStreamPayload;
+-};
+-
+ export const LobeXAI = createOpenAICompatibleRuntime({
+   baseURL: 'https://api.x.ai/v1',
+   chatCompletion: {
+-    handlePayload: (payload) =>
+-      ({
+-        ...pruneUnsupportedReasoningParameters(payload),
+-        stream: payload.stream ?? true,
+-      }) as any,
+     useResponse: true,
+   },
+   createImage: createXAIImage,
+@@ -63,7 +36,7 @@ export const LobeXAI = createOpenAICompatibleRuntime({
+   provider: ModelProvider.XAI,
+   responses: {
+     handlePayload: (payload) => {
+-      const { enabledSearch, tools, ...rest } = pruneUnsupportedReasoningParameters(payload);
++      const { enabledSearch, tools, ...rest } = payload;
+ 
+       const xaiTools = enabledSearch
+         ? [...(tools || []), { type: 'web_search' }, { type: 'x_search' }]
+@@ -71,6 +44,8 @@ export const LobeXAI = createOpenAICompatibleRuntime({
+ 
+       return {
+         ...rest,
++        frequency_penalty: undefined, // NOT SUPPORTED in Responses API
++        presence_penalty: undefined, // NOT SUPPORTED in Responses API
+         tools: xaiTools,
+         include: ['reasoning.encrypted_content'],
+       } as any;
