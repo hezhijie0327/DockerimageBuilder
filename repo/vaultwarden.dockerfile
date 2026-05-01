@@ -1,4 +1,4 @@
-ARG NODEJS_VERSION="24"
+ARG NODEJS_VERSION="22"
 ARG RUST_VERSION="1"
 
 FROM ghcr.io/hezhijie0327/base:alpine AS get_info
@@ -36,6 +36,7 @@ FROM node:${NODEJS_VERSION}-slim AS build_vaultwarden_web
 WORKDIR /vaultwarden
 
 ENV \
+    CHECKOUT_TAGS="false" \
     VAULT_FOLDER="bw_clients"
 
 COPY --from=get_info /tmp/BUILDTMP/VAULTWARDEN_WEB /vaultwarden
