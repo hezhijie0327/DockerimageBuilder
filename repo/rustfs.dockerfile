@@ -42,7 +42,7 @@ COPY --from=get_info /tmp/BUILDTMP/RUSTFS_WEB /rustfs
 RUN \
     npm i -g corepack@latest \
     && corepack enable \
-    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
+    && corepack use pnpm@11 \
     && pnpm i \
     && pnpm build
 
