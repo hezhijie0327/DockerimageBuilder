@@ -205,12 +205,12 @@ index 81af0e502a2..6c9b9f856b5 100644
  // Execution conditions schema
  export const ExecutionConditionsSchema = z
 diff --git a/packages/types/src/serverConfig.ts b/packages/types/src/serverConfig.ts
-index d87a04670d3..f63b81e4d4d 100644
+index b603ffd9ed6..7ae3ddb1f35 100644
 --- a/packages/types/src/serverConfig.ts
 +++ b/packages/types/src/serverConfig.ts
-@@ -68,6 +68,7 @@ export interface GlobalServerConfig {
-   enableMarketTrustedClient?: boolean;
+@@ -74,6 +74,7 @@ export interface GlobalServerConfig {
    enableUploadFileToServer?: boolean;
+   enableVisualUnderstanding?: boolean;
    image?: PartialDeep<UserImageConfig>;
 +  isQStashConfigured?: boolean;
    memory?: GlobalMemoryConfig;
@@ -476,17 +476,17 @@ index 8f74cf14f8a..06282884ecb 100644
      telemetry: {},
    };
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
-index 65ce017a762..b9e95961414 100644
+index 18e03be9163..a38431d48fd 100644
 --- a/src/server/globalConfig/index.ts
 +++ b/src/server/globalConfig/index.ts
-@@ -84,6 +84,7 @@ export const getServerGlobalConfig = async () => {
-       appEnv.MARKET_TRUSTED_CLIENT_SECRET && appEnv.MARKET_TRUSTED_CLIENT_ID
-     ),
-     enableUploadFileToServer: !!fileEnv.S3_SECRET_ACCESS_KEY,
+@@ -105,6 +105,7 @@ export const getServerGlobalConfig = async () => {
+     image: cleanObject({
+       defaultImageNum: imageEnv.AI_IMAGE_DEFAULT_IMAGE_NUM,
+     }),
 +    isQStashConfigured: appEnv.isQStashConfigured,
- 
-     // Expose Agent Gateway URL to client when queue-based agent runtime is enabled
-     ...(appEnv.enableQueueAgentRuntime && appEnv.AGENT_GATEWAY_URL
+     memory: {
+       userMemory: cleanObject(getPublicMemoryExtractionConfig()),
+     },
 diff --git a/src/server/routers/lambda/agentCronJob.ts b/src/server/routers/lambda/agentCronJob.ts
 index 8c26cd51f9e..b3941ef1e9d 100644
 --- a/src/server/routers/lambda/agentCronJob.ts
@@ -696,7 +696,7 @@ index 00000000000..e5ba3ac18c8
 +  }
 +};
 diff --git a/src/store/serverConfig/selectors.ts b/src/store/serverConfig/selectors.ts
-index b17d39e25a8..ad8aa289e0c 100644
+index 6d559727885..7b84cc0896b 100644
 --- a/src/store/serverConfig/selectors.ts
 +++ b/src/store/serverConfig/selectors.ts
 @@ -5,6 +5,8 @@ export const featureFlagsSelectors = (s: ServerConfigStore) => s.featureFlags;
