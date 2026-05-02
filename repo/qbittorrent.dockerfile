@@ -69,7 +69,8 @@ ENV \
     qbt_libtorrent_master_jamfile="yes" \
     qbt_libtorrent_tag="RC_2_0" \
     qbt_qbittorrent_tag="master" \
-    qbt_zlib_type="zlib-ng"
+    qbt_zlib_type="zlib-ng" \
+    qbt_workflow_files="yes"
 
 RUN \
     apk update \
