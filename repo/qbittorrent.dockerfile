@@ -39,7 +39,6 @@ RUN \
     && git commit -m "Update qBittorrent version to ${QBITTORRENT_CUSTOM_VERSION}" \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
     && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
-    && echo $(uname -m) > "${WORKDIR}/SYS_ARCH" \
     && cd "${WORKDIR}/BUILDTMP/VUETORRENT" \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${VUETORRENT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/VUETORRENT/package.json"
 
@@ -57,18 +56,17 @@ FROM alpine:latest AS build_qbittorrent
 
 WORKDIR /qbittorrent
 
-COPY --from=get_info /tmp/SYS_ARCH /qbittorrent/SYS_ARCH
 COPY --from=get_info /tmp/patch /qbittorrent/patches/qbittorrent/master/patch
 
 ENV \
     qbt_build_dir="/qbittorrent" \
     qbt_legacy_mode="yes" \
     qbt_optimise_strip="yes" \
-    qbt_skip_icu="yes" \
+    qbt_skip_icu="no" \
     qbt_libtorrent_master_jamfile="yes" \
     qbt_libtorrent_tag="RC_2_0" \
     qbt_qbittorrent_tag="master" \
-    qbt_openssl_tag="openssl-3.5.6" \
+    qbt_openssl_tag="lts" \
     qbt_zlib_type="zlib-ng" \
     qbt_linker_mold="yes" \
     qbt_workflow_files="no" \
@@ -77,7 +75,6 @@ ENV \
 RUN \
     apk update \
     && apk add --no-cache bash build-base \
-    && export qbt_cross_name=$(cat "/qbittorrent/SYS_ARCH") \
     && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbt-nox-static.bash \
     && bash ./qbt-nox-static.bash bootstrap_deps \
     && bash ./qbt-nox-static.bash --bootstrap-all \
