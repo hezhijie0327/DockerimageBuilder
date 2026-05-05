@@ -68,17 +68,21 @@ ENV \
     qbt_libtorrent_master_jamfile="yes" \
     qbt_libtorrent_tag="RC_2_0" \
     qbt_qbittorrent_tag="master" \
+    qbt_openssl_tag="openssl-3.5.6" \
     qbt_zlib_type="zlib-ng" \
-    qbt_workflow_files="yes"
+    qbt_linker_mold="yes" \
+    qbt_workflow_files="no" \
+    set_qbt_mcm_url="userdocs/musl-cross-make"
 
 RUN \
     apk update \
-    && apk add --no-cache bash \
+    && apk add --no-cache bash build-base \
     && export qbt_cross_name=$(cat "/qbittorrent/SYS_ARCH") \
     && wget https://raw.githubusercontent.com/userdocs/qbittorrent-nox-static/master/qbt-nox-static.bash \
     && bash ./qbt-nox-static.bash bootstrap_deps \
     && bash ./qbt-nox-static.bash --bootstrap-all \
     && bash ./qbt-nox-static.bash zlib \
+    && bash ./qbt-nox-static.bash icu \
     && bash ./qbt-nox-static.bash openssl \
     && bash ./qbt-nox-static.bash boost \
     && bash ./qbt-nox-static.bash libtorrent \
