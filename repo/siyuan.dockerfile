@@ -36,7 +36,9 @@ COPY --from=get_info /tmp/BUILDTMP/SIYUAN/app /siyuan
 RUN \
     apt update \
     && apt install git -qy \
-    && npm install -g pnpm \
+    && npm i -g corepack@latest \
+    && corepack enable \
+    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
     && pnpm i \
     && pnpm run build
 
