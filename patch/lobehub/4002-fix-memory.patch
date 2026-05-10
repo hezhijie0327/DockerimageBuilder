@@ -1,0 +1,130 @@
+diff --git a/src/server/globalConfig/parseMemoryExtractionConfig.ts b/src/server/globalConfig/parseMemoryExtractionConfig.ts
+index 266cd6f5a2c..8d3c770c17f 100644
+--- a/src/server/globalConfig/parseMemoryExtractionConfig.ts
++++ b/src/server/globalConfig/parseMemoryExtractionConfig.ts
+@@ -44,6 +44,8 @@ export interface MemoryExtractionPrivateConfig {
+   agentLayerExtractorPreferredModels?: string[];
+   agentLayerExtractorPreferredProviders?: string[];
+   agentPersonaWriter: MemoryAgentConfig;
++  agentPersonaWriterPreferredModels?: string[];
++  agentPersonaWriterPreferredProviders?: string[];
+   concurrency?: number;
+   embedding: MemoryAgentConfig;
+   embeddingPreferredModels?: string[];
+@@ -264,6 +266,12 @@ export const parseMemoryExtractionConfig = (): MemoryExtractionPrivateConfig =>
+   const agentLayerExtractorPreferredModels = parsePreferredList(
+     process.env.MEMORY_USER_MEMORY_LAYER_EXTRACTOR_PREFERRED_MODELS,
+   );
++  const agentPersonaWriterPreferredProviders = parsePreferredList(
++    process.env.MEMORY_USER_MEMORY_PERSONA_WRITER_PREFERRED_PROVIDERS,
++  );
++  const agentPersonaWriterPreferredModels = parsePreferredList(
++    process.env.MEMORY_USER_MEMORY_PERSONA_WRITER_PREFERRED_MODELS,
++  );
+ 
+   return {
+     agentGateKeeper,
+@@ -273,6 +281,8 @@ export const parseMemoryExtractionConfig = (): MemoryExtractionPrivateConfig =>
+     agentLayerExtractorPreferredModels,
+     agentLayerExtractorPreferredProviders,
+     agentPersonaWriter,
++    agentPersonaWriterPreferredModels,
++    agentPersonaWriterPreferredProviders,
+     concurrency,
+     embedding,
+     embeddingPreferredModels,
+diff --git a/src/server/services/memory/userMemory/persona/__tests__/service.test.ts b/src/server/services/memory/userMemory/persona/__tests__/service.test.ts
+index 9c8e48bc55e..f5e6922b50d 100644
+--- a/src/server/services/memory/userMemory/persona/__tests__/service.test.ts
++++ b/src/server/services/memory/userMemory/persona/__tests__/service.test.ts
+@@ -37,6 +37,8 @@ vi.mock('@/server/globalConfig/parseMemoryExtractionConfig', () => ({
+       model: 'gpt-mock',
+       provider: 'openai',
+     },
++    agentLayerExtractorPreferredModels: ['gpt-mock'],
++    agentLayerExtractorPreferredProviders: ['openai'],
+     agentPersonaWriter: {
+       apiKey: 'test-key',
+       baseURL: 'https://example.com',
+@@ -44,6 +46,8 @@ vi.mock('@/server/globalConfig/parseMemoryExtractionConfig', () => ({
+       model: 'gpt-mock',
+       provider: 'openai',
+     },
++    agentPersonaWriterPreferredModels: ['gpt-mock'],
++    agentPersonaWriterPreferredProviders: ['openai'],
+   }),
+ }));
+ 
+@@ -134,4 +138,20 @@ describe('UserPersonaService', () => {
+       }),
+     );
+   });
++
++  it('passes persona writer preferred lists to runtime resolution', async () => {
++    const service = new UserPersonaService(db);
++
++    await service.composeWriting({ userId, username: 'User' });
++
++    expect(aiInfraMocks.tryMatchingProviderFrom).toHaveBeenCalledWith(
++      expect.any(Object),
++      expect.objectContaining({
++        fallbackProvider: 'openai',
++        modelId: 'gpt-mock',
++        preferredModels: ['gpt-mock'],
++        preferredProviders: ['openai'],
++      }),
++    );
++  });
+ });
+diff --git a/src/server/services/memory/userMemory/persona/service.ts b/src/server/services/memory/userMemory/persona/service.ts
+index 3d4ee3108da..0b0d39a2b4e 100644
+--- a/src/server/services/memory/userMemory/persona/service.ts
++++ b/src/server/services/memory/userMemory/persona/service.ts
+@@ -51,13 +51,21 @@ export class UserPersonaService {
+   private readonly preferredLanguage?: string;
+   private readonly db: LobeChatDatabase;
+   private readonly agentConfig: MemoryAgentConfig;
++  private readonly preferredModels?: string[];
++  private readonly preferredProviders?: string[];
+ 
+   constructor(db: LobeChatDatabase) {
+-    const { agentPersonaWriter } = parseMemoryExtractionConfig();
++    const {
++      agentPersonaWriter,
++      agentPersonaWriterPreferredModels,
++      agentPersonaWriterPreferredProviders,
++    } = parseMemoryExtractionConfig();
+ 
+     this.db = db;
+     this.preferredLanguage = agentPersonaWriter.language;
+     this.agentConfig = agentPersonaWriter;
++    this.preferredModels = agentPersonaWriterPreferredModels;
++    this.preferredProviders = agentPersonaWriterPreferredProviders;
+   }
+ 
+   async composeWriting(payload: UserPersonaAgentPayload): Promise<UserPersonaAgentResult> {
+@@ -69,11 +77,22 @@ export class UserPersonaService {
+       fallbackProvider: this.agentConfig.provider,
+       label: 'persona writer',
+       modelId: this.agentConfig.model,
++      preferredModels: this.preferredModels,
++      preferredProviders: this.preferredProviders,
+     });
+ 
+-    const keyVaults: ProviderKeyVaultMap = Object.entries(runtimeState.runtimeConfig || {}).reduce(
++    const normalizedRuntimeConfig = Object.fromEntries(
++      Object.entries(runtimeState.runtimeConfig || {}).map(([provider, config]) => [
++        provider.toLowerCase(),
++        config,
++      ]),
++    );
++
++    const keyVaults: ProviderKeyVaultMap = Object.entries(normalizedRuntimeConfig).reduce(
+       (acc, [provider, config]) => {
+-        acc[provider.toLowerCase()] = config?.keyVaults;
++        if (provider !== providerId) return acc;
++
++        acc[provider] = config?.keyVaults;
+         return acc;
+       },
+       {} as ProviderKeyVaultMap,
