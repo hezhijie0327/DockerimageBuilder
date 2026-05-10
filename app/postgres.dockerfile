@@ -112,6 +112,7 @@ ARG \
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_custom_patch.sh
+COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/update_extensions.sh /usr/local/bin/update_extensions.sh
 
 COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
 COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/

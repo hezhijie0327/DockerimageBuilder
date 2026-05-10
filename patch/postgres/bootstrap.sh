@@ -1,7 +1,4 @@
 #!/bin/bash
-# shellcheck disable=SC2154
-
-# Executed at container start to bootstrap ParadeDB extensions and Postgres settings.
 
 # Exit on subcommand errors
 set -Eeuo pipefail
@@ -19,10 +16,10 @@ if [ "$POSTGRES_DB" != "paradedb" ]; then
   psql -d postgres -c "CREATE DATABASE paradedb;"
 fi
 
-# Load ParadeDB and third-party extensions into template1, paradedb, and $POSTGRES_DB
+# Load extensions into template1, paradedb, and $POSTGRES_DB
 # Creating extensions in template1 ensures that they are available in all new databases.
 for DB in template1 paradedb "$POSTGRES_DB"; do
-  echo "Loading ParadeDB extensions into $DB"
+  echo "Loading extensions into $DB"
   psql -d "$DB" <<-'EOSQL'
     CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
     CREATE EXTENSION IF NOT EXISTS pg_ivm;
@@ -39,4 +36,4 @@ for DB in template1 paradedb "$POSTGRES_DB"; do
   psql -d "$DB" -c "ALTER DATABASE \"$DB\" SET search_path TO public,paradedb;"
 done
 
-echo "PostgreSQL (ParadeDB) bootstrap completed!"
+echo "PostgreSQL bootstrap completed!"
