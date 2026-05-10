@@ -135,7 +135,8 @@ COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectors
 COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/share/postgresql/${POSTGRES_VERSION}/extension/* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
 RUN \
-    sed -i "2i export PATH=\"/usr/lib/postgresql/${POSTGRES_VERSION}/bin:\$PATH\"" "/usr/local/bin/docker-entrypoint.sh" \
+    mkdir -p /data \
+    && sed -i "2i export PATH=\"/usr/lib/postgresql/${POSTGRES_VERSION}/bin:\$PATH\"" "/usr/local/bin/docker-entrypoint.sh" \
     && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron'/" "/usr/share/postgresql/postgresql.conf.sample" \
     && echo "cron.database_name = 'postgres'" >> "/usr/share/postgresql/postgresql.conf.sample"
 
@@ -144,6 +145,7 @@ FROM scratch
 COPY --from=postgres_rebase / /
 
 ENV \
+    DEBIAN_FRONTEND="noninteractive" \
     PGDATA="/data" PGPORT="5432" \
     POSTGRES_DB="postgres" \
     POSTGRES_USER="postgres" \
