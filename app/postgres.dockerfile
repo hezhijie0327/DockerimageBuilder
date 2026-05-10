@@ -10,10 +10,15 @@ RUN \
 
 FROM postgres:${POSTGRES_VERSION} AS build_basic
 
+ARG \
+    POSTGRES_VERSION
+
 ENV \
     DEBIAN_FRONTEND="noninteractive" \
     PATH="/root/.cargo/bin:$PATH" \
-    PGX_HOME="/var/lib/postgresql"
+    PGX_HOME="/var/lib/postgresql/${POSTGRES_VERSION}" \
+    PG_CONFIG="/usr/bin/pg_config" \
+    POSTGRES_VERSION="${POSTGRES_VERSION}"
 
 WORKDIR /tmp
 
@@ -47,7 +52,6 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
-    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "main" --depth 1 "https://github.com/citusdata/pg_cron.git" "${WORKDIR}/pg_cron" \
     && cd "${WORKDIR}/pg_cron" \
     && echo "trusted = true" >> pg_cron.control \
@@ -57,7 +61,6 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
-    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "main" --depth 1 "https://github.com/sraoss/pg_ivm.git" "${WORKDIR}/pg_ivm" \
     && cd "${WORKDIR}/pg_ivm" \
     && echo "trusted = true" >> pg_ivm.control \
@@ -67,7 +70,6 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
-    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "master" --depth 1 "https://github.com/pgvector/pgvector.git" "${WORKDIR}/pgvector" \
     && cd "${WORKDIR}/pgvector" \
     && echo "trusted = true" >> vector.control \
@@ -75,18 +77,13 @@ RUN \
 
 FROM build_basic AS build_rust_plugin
 
-ARG \
-    POSTGRES_VERSION
-
 ENV \
-    POSTGRES_VERSION="${POSTGRES_VERSION}" \
     RUSTFLAGS="-C target-feature=-crt-static"
 
 WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
-    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "main" --depth 1 "https://github.com/paradedb/paradedb.git" "${WORKDIR}/paradedb" \
     && cd paradedb \
     && export PGRX_VERSION=$(cargo tree --depth 1 -i pgrx -p pg_search | head -n 1 | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/') \
@@ -99,7 +96,6 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
-    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "main" --depth 1 "https://github.com/timescale/pgvectorscale.git" "${WORKDIR}/pgvectorscale" \
     && cd pgvectorscale/pgvectorscale \
     && if [ "$(uname -m)" = "x86_64" ]; then \
@@ -111,7 +107,8 @@ RUN \
 
 FROM postgres:${POSTGRES_VERSION} AS postgres_rebase
 
-ARG POSTGRES_VERSION
+ARG \
+    POSTGRES_VERSION
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_custom_patch.sh
