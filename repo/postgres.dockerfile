@@ -8,10 +8,10 @@ RUN \
     export WORKDIR=$(pwd) \
     && git clone -b "main" --depth=1 "https://github.com/hezhijie0327/DockerimageBuilder.git" "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER"
 
-FROM postgres:${POSTGRES_VERSION}-alpine AS build_basic
+FROM postgres:${POSTGRES_VERSION} AS build_basic
 
 ENV \
-    CLANG_VERSION="19" \
+    DEBIAN_FRONTEND="noninteractive" \
     PATH="/root/.cargo/bin:$PATH" \
     PGX_HOME="/var/lib/postgresql"
 
@@ -20,37 +20,34 @@ WORKDIR /tmp
 RUN \
     export WORKDIR=$(pwd) \
     && mkdir -p "${WORKDIR}/BUILDTMP" \
-    && apk add --no-cache \
-        build-base \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
         curl \
         git \
         make \
         gcc \
         clang \
-        clang${CLANG_VERSION} \
         jq \
-        pkgconf \
-        openblas-dev \
-        postgresql-dev \
-        clang-libclang \
-        clang-static \
-        llvm-static \
-        clang${CLANG_VERSION}-libclang \
-        clang${CLANG_VERSION}-static \
-        llvm${CLANG_VERSION}-static \
-        openssl-libs-static \
+        pkg-config \
+        postgresql-server-dev-all \
+        libopenblas-dev \
+        libclang-dev \
+        llvm-dev \
+        libssl-dev \
     && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y
 
 FROM build_basic AS build_c_plugin
 
 ENV \
-    PG_CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter -Wno-sign-compare" \
-    PG_CONFIG="/usr/local/bin/pg_config"
+    PG_CFLAGS="-Wall -Wextra -Werror -Wno-unused-parameter -Wno-sign-compare"
 
 WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
+    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "main" --depth 1 "https://github.com/citusdata/pg_cron.git" "${WORKDIR}/pg_cron" \
     && cd "${WORKDIR}/pg_cron" \
     && echo "trusted = true" >> pg_cron.control \
@@ -60,6 +57,7 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
+    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "main" --depth 1 "https://github.com/sraoss/pg_ivm.git" "${WORKDIR}/pg_ivm" \
     && cd "${WORKDIR}/pg_ivm" \
     && echo "trusted = true" >> pg_ivm.control \
@@ -69,6 +67,7 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
+    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "master" --depth 1 "https://github.com/pgvector/pgvector.git" "${WORKDIR}/pgvector" \
     && cd "${WORKDIR}/pgvector" \
     && echo "trusted = true" >> vector.control \
@@ -87,53 +86,58 @@ WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
+    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "main" --depth 1 "https://github.com/paradedb/paradedb.git" "${WORKDIR}/paradedb" \
     && cd paradedb \
     && export PGRX_VERSION=$(cargo tree --depth 1 -i pgrx -p pg_search | head -n 1 | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/') \
     && cargo install --locked cargo-pgrx --version "${PGRX_VERSION}" \
-    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
+    && cargo pgrx init "--pg${POSTGRES_VERSION}=${PG_CONFIG}" \
     && cd pg_search \
-    && cargo pgrx package --pg-config "/usr/local/bin/pg_config"
+    && cargo pgrx package --pg-config "${PG_CONFIG}"
 
 WORKDIR /tmp/BUILDTMP
 
 RUN \
     export WORKDIR=$(pwd) \
+    && export PG_CONFIG="$(command -v pg_config)" \
     && git clone -b "main" --depth 1 "https://github.com/timescale/pgvectorscale.git" "${WORKDIR}/pgvectorscale" \
     && cd pgvectorscale/pgvectorscale \
     && if [ "$(uname -m)" = "x86_64" ]; then \
         export RUSTFLAGS="-C target-feature=-crt-static,+avx2,+fma"; \
     fi \
     && cargo install --locked cargo-pgrx --version $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "pgrx") | .version') \
-    && cargo pgrx init "--pg${POSTGRES_VERSION}=/usr/local/bin/pg_config" \
-    && cargo pgrx package --pg-config "/usr/local/bin/pg_config"
+    && cargo pgrx init "--pg${POSTGRES_VERSION}=${PG_CONFIG}" \
+    && cargo pgrx package --pg-config "${PG_CONFIG}"
 
-FROM postgres:${POSTGRES_VERSION}-alpine AS postgres_rebase
+FROM postgres:${POSTGRES_VERSION} AS postgres_rebase
+
+ARG POSTGRES_VERSION
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=get_info /tmp/BUILDTMP/DOCKERIMAGEBUILDER/patch/postgres/bootstrap.sh /docker-entrypoint-initdb.d/10_bootstrap_custom_patch.sh
 
-COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.so /usr/local/lib/postgresql/
-COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.sql /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_cron/*.sql /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
-COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.so /usr/local/lib/postgresql/
-COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.sql /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pg_ivm/*.sql /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
-COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/*.so /usr/local/lib/postgresql/
-COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/*.control /usr/local/share/postgresql/extension/
-COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/sql/*.sql /usr/local/share/postgresql/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/*.so /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/*.control /usr/share/postgresql/${POSTGRES_VERSION}/extension/
+COPY --from=build_c_plugin /tmp/BUILDTMP/pgvector/sql/*.sql /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
-COPY --from=build_rust_plugin /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
-COPY --from=build_rust_plugin /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
+COPY --from=build_rust_plugin /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/lib/postgresql/${POSTGRES_VERSION}/lib/* /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
+COPY --from=build_rust_plugin /tmp/BUILDTMP/paradedb/target/release/pg_search-pg*/usr/share/postgresql/${POSTGRES_VERSION}/extension/* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
-COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/lib/postgresql/* /usr/local/lib/postgresql/
-COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/local/share/postgresql/extension/* /usr/local/share/postgresql/extension/
+COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/lib/postgresql/${POSTGRES_VERSION}/lib/* /usr/lib/postgresql/${POSTGRES_VERSION}/lib/
+COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/share/postgresql/${POSTGRES_VERSION}/extension/* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
 RUN \
-    sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron'/" "/usr/local/share/postgresql/postgresql.conf.sample" \
-    && echo "cron.database_name = 'postgres'" >> "/usr/local/share/postgresql/postgresql.conf.sample"
+    sed -i "2i export PATH=\"/usr/lib/postgresql/${POSTGRES_VERSION}/bin:\$PATH\"" "/usr/local/bin/docker-entrypoint.sh" \
+    && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron'/" "/usr/share/postgresql/postgresql.conf.sample" \
+    && echo "cron.database_name = 'postgres'" >> "/usr/share/postgresql/postgresql.conf.sample"
 
 FROM scratch
 
