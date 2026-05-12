@@ -1,0 +1,123 @@
+diff --git a/packages/model-bank/src/aiModels/spark.ts b/packages/model-bank/src/aiModels/spark.ts
+index 005737c9801..2bafc8965a4 100644
+--- a/packages/model-bank/src/aiModels/spark.ts
++++ b/packages/model-bank/src/aiModels/spark.ts
+@@ -7,12 +7,37 @@ const sparkChatModels: AIChatModelCard[] = [
+       reasoning: true,
+       search: true,
+     },
++    config: {
++      deploymentName: 'spark-x',
++    },
++    contextWindowTokens: 262_144,
++    description:
++      'Spark X2-Flash adopts an MoE (Mixture of Experts) architecture with 30 billion total parameters and supports up to a 256K context window. It claims significant improvements in agentic and coding capabilities, and was trained on a cluster of Ascend 910B AI processors.',
++    displayName: 'Spark X2 Flash',
++    enabled: true,
++    id: 'spark-x2-flash',
++    maxOutput: 262_144,
++    settings: {
++      extendParams: ['thinking'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      search: true,
++    },
++    config: {
++      deploymentName: 'spark-x',
++    },
+     contextWindowTokens: 131_072,
+     description:
+       'X2 Capabilities Overview: 1. Introduces dynamic adjustment of reasoning mode, controlled via the `thinking` field. 2. Expanded context length: 64K input tokens and 128K output tokens. 3. Supports Function Call functionality.',
+     displayName: 'Spark X2',
+     enabled: true,
+-    id: 'spark-x',
++    id: 'spark-x2',
+     maxOutput: 131_072,
+     settings: {
+       extendParams: ['thinking'],
+@@ -26,11 +51,14 @@ const sparkChatModels: AIChatModelCard[] = [
+       reasoning: true,
+       search: true,
+     },
++    config: {
++      deploymentName: 'spark-x',
++    },
+     contextWindowTokens: 65_535,
+     description:
+       'X1.5 updates: (1) adds dynamic thinking mode controlled by the `thinking` field; (2) larger context length with 64K input and 64K output; (3) supports FunctionCall.',
+     displayName: 'Spark X1.5',
+-    id: 'x1',
++    id: 'spark-x1.5',
+     maxOutput: 65_535,
+     settings: {
+       extendParams: ['thinking'],
+diff --git a/packages/model-bank/src/modelProviders/spark.ts b/packages/model-bank/src/modelProviders/spark.ts
+index 7a2a189a475..b7a83ef2e53 100644
+--- a/packages/model-bank/src/modelProviders/spark.ts
++++ b/packages/model-bank/src/modelProviders/spark.ts
+@@ -17,6 +17,7 @@ const Spark: ModelProviderCard = {
+       text: 'smooth',
+     },
+     sdkType: 'openai',
++    showDeployName: true,
+     showModelFetcher: false,
+   },
+   url: 'https://www.xfyun.cn',
+diff --git a/packages/model-runtime/src/providers/spark/index.test.ts b/packages/model-runtime/src/providers/spark/index.test.ts
+index 3c1918cf660..1bfa3ee4812 100644
+--- a/packages/model-runtime/src/providers/spark/index.test.ts
++++ b/packages/model-runtime/src/providers/spark/index.test.ts
+@@ -6,7 +6,7 @@ import { testProvider } from '../../providerTestUtils';
+ import { LobeSparkAI, params } from './index';
+ 
+ const provider = ModelProvider.Spark;
+-const defaultBaseURL = 'https://spark-api-open.xf-yun.com/v2';
++const defaultBaseURL = 'https://spark-api-open.xf-yun.com/v1';
+ 
+ testProvider({
+   Runtime: LobeSparkAI,
+diff --git a/packages/model-runtime/src/providers/spark/index.ts b/packages/model-runtime/src/providers/spark/index.ts
+index 042772aaee6..4b872117716 100644
+--- a/packages/model-runtime/src/providers/spark/index.ts
++++ b/packages/model-runtime/src/providers/spark/index.ts
+@@ -6,18 +6,27 @@ import { SparkAIStream, transformSparkResponseToStream } from '../../core/stream
+ import type { ChatStreamPayload } from '../../types';
+ 
+ const getBaseURLByModel = (model: string): string => {
+-  const v1Regex = /^(?:lite|generalv3|pro-128k|generalv3\.5|max-32k|4\.0Ultra)$/i;
++  switch (model) {
++    case 'spark-x2-flash': {
++      return 'https://spark-api-open.xf-yun.com/agent/v1';
++    }
+ 
+-  // Legacy models via v1 endpoint
+-  if (v1Regex.test(model)) {
+-    return 'https://spark-api-open.xf-yun.com/v1';
+-  }
++    case 'spark-x2': {
++      return 'https://spark-api-open.xf-yun.com/x2';
++    }
++
++    case 'spark-x1.5': {
++      return 'https://spark-api-open.xf-yun.com/v2';
++    }
+ 
+-  return 'https://spark-api-open.xf-yun.com/v2';
++    default: {
++      return 'https://spark-api-open.xf-yun.com/v1';
++    }
++  }
+ };
+ 
+ export const params = {
+-  baseURL: 'https://spark-api-open.xf-yun.com/v2',
++  baseURL: 'https://spark-api-open.xf-yun.com/v1',
+   chatCompletion: {
+     handlePayload: (payload: ChatStreamPayload, options) => {
+       const { enabledSearch, thinking, tools, ...rest } = payload;
