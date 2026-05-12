@@ -83,10 +83,10 @@ index 3c1918cf660..1bfa3ee4812 100644
  testProvider({
    Runtime: LobeSparkAI,
 diff --git a/packages/model-runtime/src/providers/spark/index.ts b/packages/model-runtime/src/providers/spark/index.ts
-index 042772aaee6..4b872117716 100644
+index 042772aaee6..59a7d10931e 100644
 --- a/packages/model-runtime/src/providers/spark/index.ts
 +++ b/packages/model-runtime/src/providers/spark/index.ts
-@@ -6,18 +6,27 @@ import { SparkAIStream, transformSparkResponseToStream } from '../../core/stream
+@@ -6,23 +6,34 @@ import { SparkAIStream, transformSparkResponseToStream } from '../../core/stream
  import type { ChatStreamPayload } from '../../types';
  
  const getBaseURLByModel = (model: string): string => {
@@ -120,7 +120,24 @@ index 042772aaee6..4b872117716 100644
 +  baseURL: 'https://spark-api-open.xf-yun.com/v1',
    chatCompletion: {
      handlePayload: (payload: ChatStreamPayload, options) => {
-       const { enabledSearch, thinking, tools, ...rest } = payload;
+-      const { enabledSearch, thinking, tools, ...rest } = payload;
++      const { deploymentName, enabledSearch, model, thinking, tools, ...rest } = payload;
++
++      const requestModel = deploymentName ?? model;
+ 
+-      const baseURL = getBaseURLByModel(payload.model);
++      const baseURL = getBaseURLByModel(model);
+       if (options) options.baseURL = baseURL;
+ 
+       const sparkTools = enabledSearch
+@@ -43,6 +54,7 @@ export const params = {
+ 
+       return {
+         ...rest,
++        model: requestModel,
+         thinking: { type: thinking?.type },
+         tools: sparkTools,
+       } as any;
 diff --git a/src/server/globalConfig/index.ts b/src/server/globalConfig/index.ts
 index 928251a9079..fe85a72636c 100644
 --- a/src/server/globalConfig/index.ts
