@@ -1,16 +1,16 @@
 diff --git a/src/server/workflows-hono/index.ts b/src/server/workflows-hono/index.ts
-index 09c4071f34b..ac4e5bee9f4 100644
+index 09c4071f34b..65cc4a7b3ae 100644
 --- a/src/server/workflows-hono/index.ts
 +++ b/src/server/workflows-hono/index.ts
 @@ -3,9 +3,14 @@ import { Hono } from 'hono';
  import agentSignalApp from './agent-signal';
  import memoryUserMemoryApp from './memory-user-memory';
  import taskApp from './task';
-+import { ensureTaskDispatchSchedule } from './task/bootstrap';
++import { createTaskDispatchSchedule } from './task/bootstrap';
  
  const app = new Hono().basePath('/api/workflows');
  
-+void ensureTaskDispatchSchedule().catch((error) => {
++void createTaskDispatchSchedule().catch((error) => {
 +  console.error('[workflows-hono] Failed to ensure task dispatch schedule:', error);
 +});
 +
@@ -19,32 +19,47 @@ index 09c4071f34b..ac4e5bee9f4 100644
  app.route('/task', taskApp);
 diff --git a/src/server/workflows-hono/task/bootstrap.test.ts b/src/server/workflows-hono/task/bootstrap.test.ts
 new file mode 100644
-index 00000000000..227379c2288
+index 00000000000..3dd216eb9e6
 --- /dev/null
 +++ b/src/server/workflows-hono/task/bootstrap.test.ts
 @@ -0,0 +1,72 @@
 +// @vitest-environment node
 +import { beforeEach, describe, expect, it, vi } from 'vitest';
 +
-+import { ensureTaskDispatchSchedule } from './bootstrap';
++import { createTaskDispatchSchedule } from './bootstrap';
 +
-+describe('ensureTaskDispatchSchedule', () => {
++const env = vi.hoisted(() => ({
++  APP_URL: 'https://app.example.com',
++  INTERNAL_APP_URL: undefined as string | undefined,
++  enableQueueAgentRuntime: true,
++}));
++
++const create = vi.hoisted(() => vi.fn());
++
++vi.mock('@/envs/app', () => ({
++  appEnv: env,
++}));
++
++vi.mock('@/libs/qstash', () => ({
++  qstashClient: {
++    schedules: {
++      create,
++    },
++  },
++}));
++
++describe('createTaskDispatchSchedule', () => {
 +  beforeEach(() => {
-+    vi.restoreAllMocks();
++    create.mockReset();
++    env.APP_URL = 'https://app.example.com';
++    env.INTERNAL_APP_URL = undefined;
++    env.enableQueueAgentRuntime = true;
 +  });
 +
 +  it('creates the 10-minute dispatch schedule with a stable scheduleId', async () => {
-+    const create = vi.fn().mockResolvedValue({ scheduleId: 'task-schedule-dispatch' });
++    create.mockResolvedValue({ scheduleId: 'task-schedule-dispatch' });
 +
-+    await ensureTaskDispatchSchedule({
-+      appUrl: 'https://app.example.com/',
-+      enabled: true,
-+      qstash: {
-+        schedules: {
-+          create,
-+        },
-+      },
-+    });
++    await createTaskDispatchSchedule();
 +
 +    expect(create).toHaveBeenCalledWith({
 +      body: JSON.stringify({}),
@@ -60,33 +75,18 @@ index 00000000000..227379c2288
 +  });
 +
 +  it('skips schedule creation when task queue runtime is disabled', async () => {
-+    const create = vi.fn();
++    env.enableQueueAgentRuntime = false;
 +
-+    await ensureTaskDispatchSchedule({
-+      appUrl: 'https://app.example.com',
-+      enabled: false,
-+      qstash: {
-+        schedules: {
-+          create,
-+        },
-+      },
-+    });
++    await createTaskDispatchSchedule();
 +
 +    expect(create).not.toHaveBeenCalled();
 +  });
 +
 +  it('trims the trailing slash from the app url', async () => {
-+    const create = vi.fn().mockResolvedValue({ scheduleId: 'task-schedule-dispatch' });
++    create.mockResolvedValue({ scheduleId: 'task-schedule-dispatch' });
++    env.APP_URL = 'https://app.example.com/';
 +
-+    await ensureTaskDispatchSchedule({
-+      appUrl: 'https://app.example.com/',
-+      enabled: true,
-+      qstash: {
-+        schedules: {
-+          create,
-+        },
-+      },
-+    });
++    await createTaskDispatchSchedule();
 +
 +    expect(create).toHaveBeenCalledWith(
 +      expect.objectContaining({
@@ -97,10 +97,10 @@ index 00000000000..227379c2288
 +});
 diff --git a/src/server/workflows-hono/task/bootstrap.ts b/src/server/workflows-hono/task/bootstrap.ts
 new file mode 100644
-index 00000000000..0290b0f5a21
+index 00000000000..3812c1bc250
 --- /dev/null
 +++ b/src/server/workflows-hono/task/bootstrap.ts
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,41 @@
 +import debug from 'debug';
 +
 +import { appEnv } from '@/envs/app';
@@ -112,45 +112,18 @@ index 00000000000..0290b0f5a21
 +const TASK_DISPATCH_CRON = '*/10 * * * *';
 +const TASK_DISPATCH_PATH = '/api/workflows/task/schedule-dispatch';
 +
-+interface TaskDispatchScheduleCreateRequest {
-+  body?: BodyInit;
-+  cron: string;
-+  destination: string;
-+  headers?: HeadersInit;
-+  label?: string;
-+  method?: 'POST';
-+  scheduleId?: string;
-+}
++export const createTaskDispatchSchedule = async (): Promise<void> => {
++  const appUrl = appEnv.APP_URL ?? appEnv.INTERNAL_APP_URL;
 +
-+interface TaskDispatchQStashClient {
-+  schedules: {
-+    create: (request: TaskDispatchScheduleCreateRequest) => Promise<{ scheduleId: string }>;
-+  };
-+}
++  if (!appEnv.enableQueueAgentRuntime) return;
 +
-+export interface EnsureTaskDispatchScheduleOptions {
-+  appUrl?: string;
-+  enabled?: boolean;
-+  qstash?: TaskDispatchQStashClient;
-+}
-+
-+let ensureDefaultSchedulePromise: Promise<void> | null = null;
-+
-+const ensureTaskDispatchScheduleInternal = async (
-+  options: EnsureTaskDispatchScheduleOptions,
-+): Promise<void> => {
-+  const enabled = options.enabled ?? appEnv.enableQueueAgentRuntime;
-+  if (!enabled) return;
-+
-+  const appUrl = options.appUrl ?? appEnv.APP_URL ?? appEnv.INTERNAL_APP_URL;
 +  if (!appUrl) {
 +    throw new Error('APP_URL is required to create the task dispatch QStash schedule');
 +  }
 +
-+  const client = options.qstash ?? qstashClient;
 +  const destination = `${appUrl.replace(/\/$/, '')}${TASK_DISPATCH_PATH}`;
 +
-+  await client.schedules.create({
++  await qstashClient.schedules.create({
 +    body: JSON.stringify({}),
 +    cron: TASK_DISPATCH_CRON,
 +    destination,
@@ -168,21 +141,4 @@ index 00000000000..0290b0f5a21
 +    TASK_DISPATCH_CRON,
 +    destination,
 +  );
-+};
-+
-+export const ensureTaskDispatchSchedule = (
-+  options: EnsureTaskDispatchScheduleOptions = {},
-+): Promise<void> => {
-+  if (Object.keys(options).length > 0) {
-+    return ensureTaskDispatchScheduleInternal(options);
-+  }
-+
-+  if (ensureDefaultSchedulePromise) return ensureDefaultSchedulePromise;
-+
-+  ensureDefaultSchedulePromise = ensureTaskDispatchScheduleInternal(options).catch((error) => {
-+    ensureDefaultSchedulePromise = null;
-+    throw error;
-+  });
-+
-+  return ensureDefaultSchedulePromise;
 +};
