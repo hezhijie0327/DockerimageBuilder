@@ -13,30 +13,23 @@ RUN \
     && tar -xzvf qstash-server_*.tar.gz \
     && rm -rf qstash-server_*.tar.gz
 
-FROM debian:stable-slim AS build_baseos
-
-RUN \
-    mkdir -p /distroless/lib /distroless/usr/share/zoneinfo \
-    && cp /usr/lib/$(arch)-linux-gnu/libdl.so.2 /distroless/lib/libdl.so.2 \
-    && cp -rf /usr/share/zoneinfo/* /distroless/usr/share/zoneinfo/
-
-FROM busybox:latest AS rebased_qstash
+FROM debian:stable-slim AS rebased_qstash
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=get_info /tmp/BUILDTMP/QSTASH /app
 
-COPY --from=build_baseos /distroless/ /
-
 FROM scratch
 
 ENV \
+    QSTASH_DEV_PORT="8080" QSTASH_DEV_LOG_PORT="8081" \
+    QSTASH_DEV_QUOTA="pro" \
     QSTASH_CURRENT_SIGNING_KEY="" \
     QSTASH_NEXT_SIGNING_KEY="" \
     QSTASH_TOKEN=""
 
 COPY --from=rebased_qstash / /
 
-EXPOSE 8080/tcp
+EXPOSE 8080/tcp 8081/tcp
 
 ENTRYPOINT ["/app/qstash"]
