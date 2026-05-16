@@ -1,144 +1,60 @@
-diff --git a/src/server/workflows-hono/index.ts b/src/server/workflows-hono/index.ts
-index 09c4071f34b..40980baa04c 100644
---- a/src/server/workflows-hono/index.ts
-+++ b/src/server/workflows-hono/index.ts
-@@ -3,9 +3,14 @@ import { Hono } from 'hono';
- import agentSignalApp from './agent-signal';
- import memoryUserMemoryApp from './memory-user-memory';
- import taskApp from './task';
-+import { createTaskDispatchSchedule } from './task/bootstrap';
+diff --git a/scripts/serverLauncher/startServer.js b/scripts/serverLauncher/startServer.js
+index a3604451119..58ffc947b0d 100644
+--- a/scripts/serverLauncher/startServer.js
++++ b/scripts/serverLauncher/startServer.js
+@@ -163,6 +163,45 @@ const startGateway = async () => {
+   console.error('❌ Gateway: Failed to start after retries.');
+ };
  
- const app = new Hono().basePath('/api/workflows');
- 
-+void createTaskDispatchSchedule().catch((error) => {
-+  console.error('[workflows-hono] Failed to create task dispatch schedule:', error);
-+});
++// Function to create QStash schedule for dispatching workflow tasks every 10 minutes
++const createQstashSchedule = async () => {
++  const QSTASH_URL = process.env.QSTASH_URL;
++  if (!QSTASH_URL) return;
 +
- app.route('/agent-signal', agentSignalApp);
- app.route('/memory-user-memory', memoryUserMemoryApp);
- app.route('/task', taskApp);
-diff --git a/src/server/workflows-hono/task/bootstrap.test.ts b/src/server/workflows-hono/task/bootstrap.test.ts
-new file mode 100644
-index 00000000000..3dd216eb9e6
---- /dev/null
-+++ b/src/server/workflows-hono/task/bootstrap.test.ts
-@@ -0,0 +1,72 @@
-+// @vitest-environment node
-+import { beforeEach, describe, expect, it, vi } from 'vitest';
++  const QSTASH_TOKEN = process.env.QSTASH_TOKEN;
++  if (!QSTASH_TOKEN) return;
 +
-+import { createTaskDispatchSchedule } from './bootstrap';
++  const APP_URL = process.env.APP_URL;
++  const INTERNAL_APP_URL = process.env.INTERNAL_APP_URL;
++  if (!APP_URL && !INTERNAL_APP_URL) return;
 +
-+const env = vi.hoisted(() => ({
-+  APP_URL: 'https://app.example.com',
-+  INTERNAL_APP_URL: undefined as string | undefined,
-+  enableQueueAgentRuntime: true,
-+}));
++  const BASE_URL = INTERNAL_APP_URL || APP_URL;
 +
-+const create = vi.hoisted(() => vi.fn());
++  const url = `${QSTASH_URL}/v2/schedules/${BASE_URL}/api/workflows/task/schedule-dispatch`;
 +
-+vi.mock('@/envs/app', () => ({
-+  appEnv: env,
-+}));
-+
-+vi.mock('@/libs/qstash', () => ({
-+  qstashClient: {
-+    schedules: {
-+      create,
-+    },
-+  },
-+}));
-+
-+describe('createTaskDispatchSchedule', () => {
-+  beforeEach(() => {
-+    create.mockReset();
-+    env.APP_URL = 'https://app.example.com';
-+    env.INTERNAL_APP_URL = undefined;
-+    env.enableQueueAgentRuntime = true;
-+  });
-+
-+  it('creates the 10-minute dispatch schedule with a stable scheduleId', async () => {
-+    create.mockResolvedValue({ scheduleId: 'task-schedule-dispatch' });
-+
-+    await createTaskDispatchSchedule();
-+
-+    expect(create).toHaveBeenCalledWith({
-+      body: JSON.stringify({}),
-+      cron: '*/10 * * * *',
-+      destination: 'https://app.example.com/api/workflows/task/schedule-dispatch',
-+      headers: {
-+        'Content-Type': 'application/json',
-+      },
-+      label: 'task-schedule-dispatch',
++  try {
++    const res = await fetch(url, {
 +      method: 'POST',
-+      scheduleId: 'task-schedule-dispatch',
++      headers: {
++        'Authorization': `Bearer ${QSTASH_TOKEN}`,
++        'Content-Type': 'application/json',
++        'Upstash-Method': 'POST',
++        'Upstash-Cron': '*/10 * * * *',
++        'Upstash-Schedule-Id': 'task-schedule-dispatch',
++      },
++      body: JSON.stringify({}),
 +    });
-+  });
 +
-+  it('skips schedule creation when task queue runtime is disabled', async () => {
-+    env.enableQueueAgentRuntime = false;
-+
-+    await createTaskDispatchSchedule();
-+
-+    expect(create).not.toHaveBeenCalled();
-+  });
-+
-+  it('trims the trailing slash from the app url', async () => {
-+    create.mockResolvedValue({ scheduleId: 'task-schedule-dispatch' });
-+    env.APP_URL = 'https://app.example.com/';
-+
-+    await createTaskDispatchSchedule();
-+
-+    expect(create).toHaveBeenCalledWith(
-+      expect.objectContaining({
-+        destination: 'https://app.example.com/api/workflows/task/schedule-dispatch',
-+      }),
-+    );
-+  });
-+});
-diff --git a/src/server/workflows-hono/task/bootstrap.ts b/src/server/workflows-hono/task/bootstrap.ts
-new file mode 100644
-index 00000000000..3812c1bc250
---- /dev/null
-+++ b/src/server/workflows-hono/task/bootstrap.ts
-@@ -0,0 +1,41 @@
-+import debug from 'debug';
-+
-+import { appEnv } from '@/envs/app';
-+import { qstashClient } from '@/libs/qstash';
-+
-+const log = debug('lobe-server:workflows:task:bootstrap');
-+
-+const TASK_DISPATCH_SCHEDULE_ID = 'task-schedule-dispatch';
-+const TASK_DISPATCH_CRON = '*/10 * * * *';
-+const TASK_DISPATCH_PATH = '/api/workflows/task/schedule-dispatch';
-+
-+export const createTaskDispatchSchedule = async (): Promise<void> => {
-+  const appUrl = appEnv.APP_URL ?? appEnv.INTERNAL_APP_URL;
-+
-+  if (!appEnv.enableQueueAgentRuntime) return;
-+
-+  if (!appUrl) {
-+    throw new Error('APP_URL is required to create the task dispatch QStash schedule');
++    if (res.ok) {
++      console.log('✅ QStash: Schedule created successfully.');
++    } else {
++      console.error(`❌ QStash: Failed to create schedule. Status ${res.status}`);
++    }
++  } catch (err) {
++    console.error('❌ QStash: Error creating schedule:', err);
 +  }
-+
-+  const destination = `${appUrl.replace(/\/$/, '')}${TASK_DISPATCH_PATH}`;
-+
-+  await qstashClient.schedules.create({
-+    body: JSON.stringify({}),
-+    cron: TASK_DISPATCH_CRON,
-+    destination,
-+    headers: {
-+      'Content-Type': 'application/json',
-+    },
-+    label: TASK_DISPATCH_SCHEDULE_ID,
-+    method: 'POST',
-+    scheduleId: TASK_DISPATCH_SCHEDULE_ID,
-+  });
-+
-+  log(
-+    'Ensured task dispatch schedule id=%s cron=%s destination=%s',
-+    TASK_DISPATCH_SCHEDULE_ID,
-+    TASK_DISPATCH_CRON,
-+    destination,
-+  );
 +};
++
+ // Main function to run the server with optional proxy
+ const runServer = async () => {
+   const PROXY_URL = process.env.PROXY_URL || ''; // Default empty string to avoid undefined errors
+@@ -204,6 +243,9 @@ const runServer = async () => {
+   // Start gateway in background after server is ready
+   startGateway();
+ 
++  // Create QStash schedule for workflow task dispatching
++  createQstashSchedule();
++
+   // Run the server in either database or non-database mode
+   await runServer();
+ })();
