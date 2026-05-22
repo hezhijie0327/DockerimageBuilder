@@ -53,7 +53,7 @@ RUN \
     corepack enable \
     && corepack use pnpm@10 \
     && pnpm i \
-    && pnpm add puppeteer-extra-plugin-adblocker
+    && pnpm add @ghostery/adblocker-puppeteer
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
@@ -71,10 +71,6 @@ RUN \
     && pnpm run build:function \
     && pnpm run install:debugger \
     && pnpm prune --prod \
-    && jq 'map(.enabled = true)' /app/extensions/ublocklite/rulesets/ruleset-details.json > /app/extensions/ublocklite/rulesets/ruleset-details.json.patched \
-    && mv /app/extensions/ublocklite/rulesets/ruleset-details.json.patched /app/extensions/ublocklite/rulesets/ruleset-details.json \
-    && jq '.declarative_net_request.rule_resources |= map(.enabled = false)' /app/extensions/ublocklite/manifest.json > /app/extensions/ublocklite/manifest.json.patched \
-    && jq --argjson ids '["ublock-filters", "easylist", "easyprivacy", "pgl", "annoyances-cookies", "annoyances-overlays", "annoyances-social", "annoyances-widgets", "annoyances-others", "ubol-tests", "chn-0"]' '.declarative_net_request.rule_resources |= map(if .id as $id | ($ids | index($id)) then .enabled = true else . end)' /app/extensions/ublocklite/manifest.json.patched > /app/extensions/ublocklite/manifest.json \
     && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto \
     && find /app/build -type f -name "*.ts" -exec rm -f {} \;
 
