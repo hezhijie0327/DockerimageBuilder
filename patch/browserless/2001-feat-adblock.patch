@@ -1,5 +1,5 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 5408265fc93..e3ef20320a7 100644
+index 5408265fc93..bbf70487151 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
 @@ -9,11 +9,15 @@ import {
@@ -23,34 +23,28 @@ index 5408265fc93..e3ef20320a7 100644
    protected executablePath = playwright.chromium.executablePath();
    protected keepUntilMS = 0;
 +  // Ghostery blocker 实例（或正在创建的 Promise）
-+  protected blocker: Promise<PuppeteerBlocker> | null = null;
++  protected blocker: Promise<PuppeteerBlocker | null> | null = null;
  
    constructor({
      blockAds,
-@@ -54,6 +60,22 @@ export class ChromiumCDP extends EventEmitter {
+@@ -54,6 +60,16 @@ export class ChromiumCDP extends EventEmitter {
      this.blockAds = blockAds;
      this.logger = logger;
  
 +    // stealth 模式下，创建 Ghostery PuppeteerBlocker（屏蔽广告与追踪）
 +    if (blockAds) {
-+      // 使用预置的 ads+tracking 规则
-+      // `fromPrebuiltAdsAndTracking` 需要一个 fetch 实现；Node 18+ 有全局 fetch
-+      try {
-+        this.blocker = (PuppeteerBlocker as any).fromPrebuiltAdsAndTracking(
-+          // @ts-ignore - global fetch
-+          fetch,
-+        );
-+      } catch (e) {
-+        // 保持不抛出，以免阻止启动；记录错误并继续
-+        this.logger.warn(`Failed to initialize PuppeteerBlocker: ${e}`);
-+        this.blocker = null;
-+      }
++      this.blocker = (PuppeteerBlocker as any)
++        .fromPrebuiltAdsAndTracking(fetch as any)
++        .catch((e: unknown) => {
++          this.logger.warn(`Failed to initialize PuppeteerBlocker: ${e}`);
++          return null; // 或视需求选择重新抛出
++        });
 +    }
 +
      this.logger.info(`Starting new ${this.constructor.name} instance`);
    }
  
-@@ -135,6 +157,19 @@ export class ChromiumCDP extends EventEmitter {
+@@ -135,6 +151,19 @@ export class ChromiumCDP extends EventEmitter {
            }
          });
  
@@ -70,7 +64,7 @@ index 5408265fc93..e3ef20320a7 100644
          this.emit('newPage', page);
        }
      }
-@@ -197,6 +232,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -197,6 +226,8 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
@@ -79,7 +73,7 @@ index 5408265fc93..e3ef20320a7 100644
        this.blockAds ? ublockLitePath : null,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
-@@ -221,6 +258,29 @@ export class ChromiumCDP extends EventEmitter {
+@@ -221,6 +252,29 @@ export class ChromiumCDP extends EventEmitter {
        }
      }
  
@@ -109,7 +103,7 @@ index 5408265fc93..e3ef20320a7 100644
      const finalOptions = {
        ...options,
        args: [
-@@ -229,6 +289,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -229,6 +283,8 @@ export class ChromiumCDP extends EventEmitter {
          // Playwright 1.57+ uses Chrome For Test, which has stricter security than Chromium.
          // This is needed to allow WebSocket connections to localhost.
          `--disable-features=LocalNetworkAccessChecks`,
