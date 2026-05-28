@@ -106,11 +106,82 @@ index 88f14d607ff..8eb57066d4b 100644
    name: 'InternLM',
    settings: {
      disableBrowserRequest: true,
+diff --git a/packages/model-runtime/src/providers/internlm/index.test.ts b/packages/model-runtime/src/providers/internlm/index.test.ts
+index abc4603e386..a57f4fcb9b6 100644
+--- a/packages/model-runtime/src/providers/internlm/index.test.ts
++++ b/packages/model-runtime/src/providers/internlm/index.test.ts
+@@ -53,66 +53,6 @@ describe('LobeInternLMAI - custom features', () => {
+     });
+   });
+ 
+-  describe('handlePayload', () => {
+-    it('should disable streaming when tools are present', () => {
+-      const payload = {
+-        model: 'internlm2_5-7b-chat',
+-        messages: [{ role: 'user' as const, content: 'Hello' }],
+-        stream: true,
+-        tools: [
+-          {
+-            type: 'function' as const,
+-            function: {
+-              name: 'test',
+-              description: 'test function',
+-            },
+-          },
+-        ],
+-      };
+-
+-      const result = params.chatCompletion.handlePayload!(payload);
+-      expect(result.stream).toBe(false);
+-    });
+-
+-    it('should enable streaming when no tools are present', () => {
+-      const payload = {
+-        model: 'internlm2_5-7b-chat',
+-        messages: [{ role: 'user' as const, content: 'Hello' }],
+-        stream: true,
+-      };
+-
+-      const result = params.chatCompletion.handlePayload!(payload);
+-      expect(result.stream).toBe(true);
+-    });
+-
+-    it('should keep streaming disabled when initially false and no tools', () => {
+-      const payload = {
+-        model: 'internlm2_5-7b-chat',
+-        messages: [{ role: 'user' as const, content: 'Hello' }],
+-        stream: false,
+-      };
+-
+-      const result = params.chatCompletion.handlePayload!(payload);
+-      expect(result.stream).toBe(true);
+-    });
+-
+-    it('should preserve other payload properties', () => {
+-      const payload = {
+-        model: 'internlm2_5-7b-chat',
+-        messages: [{ role: 'user' as const, content: 'Hello' }],
+-        stream: true,
+-        temperature: 0.7,
+-        max_tokens: 100,
+-      };
+-
+-      const result = params.chatCompletion.handlePayload!(payload);
+-      expect(result.model).toBe('internlm2_5-7b-chat');
+-      expect(result.messages).toEqual(payload.messages);
+-      expect(result.temperature).toBe(0.7);
+-      expect(result.max_tokens).toBe(100);
+-    });
+-  });
+-
+   describe('models', () => {
+     it('should fetch and process models', async () => {
+       const mockClient = {
 diff --git a/packages/model-runtime/src/providers/internlm/index.ts b/packages/model-runtime/src/providers/internlm/index.ts
-index 78a0ed6aa4c..8231d389e79 100644
+index 78a0ed6aa4c..298cd5fbd5b 100644
 --- a/packages/model-runtime/src/providers/internlm/index.ts
 +++ b/packages/model-runtime/src/providers/internlm/index.ts
-@@ -12,9 +12,14 @@ export const params = {
+@@ -12,9 +12,13 @@ export const params = {
    baseURL: 'https://chat.intern-ai.org.cn/api/v1',
    chatCompletion: {
      handlePayload: (payload) => {
@@ -118,15 +189,15 @@ index 78a0ed6aa4c..8231d389e79 100644
 +
        return {
 -        ...payload,
+-        stream: !payload.tools,
 +        ...rest,
-         stream: !payload.tools,
 +        ...(thinking.type !== undefined && {
 +          thinking_mode: thinking.type === 'enabled',
 +        }),
        } as any;
      },
    },
-@@ -24,9 +29,9 @@ export const params = {
+@@ -24,9 +28,9 @@ export const params = {
    models: async ({ client }) => {
      const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
  
