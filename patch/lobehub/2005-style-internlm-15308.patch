@@ -186,9 +186,19 @@ index abc4603e386..a57f4fcb9b6 100644
      it('should fetch and process models', async () => {
        const mockClient = {
 diff --git a/packages/model-runtime/src/providers/internlm/index.ts b/packages/model-runtime/src/providers/internlm/index.ts
-index 78a0ed6aa4c..85eda88df04 100644
+index 78a0ed6aa4c..f4c5490db05 100644
 --- a/packages/model-runtime/src/providers/internlm/index.ts
 +++ b/packages/model-runtime/src/providers/internlm/index.ts
+@@ -1,8 +1,8 @@
+-import type { ChatModelCard } from '@lobechat/types';
+ import { ModelProvider } from 'model-bank';
+ 
+ import type { OpenAICompatibleFactoryOptions } from '../../core/openaiCompatibleFactory';
+ import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
++import { MODEL_LIST_CONFIGS, processModelList } from '../../utils/modelParse';
+ 
+ export interface InternLMModelCard {
+   id: string;
 @@ -12,9 +12,13 @@ export const params = {
    baseURL: 'https://chat.intern-ai.org.cn/api/v1',
    chatCompletion: {
@@ -205,15 +215,59 @@ index 78a0ed6aa4c..85eda88df04 100644
        } as any;
      },
    },
-@@ -24,9 +28,9 @@ export const params = {
+@@ -22,38 +26,10 @@ export const params = {
+     chatCompletion: () => process.env.DEBUG_INTERNLM_CHAT_COMPLETION === '1',
+   },
    models: async ({ client }) => {
-     const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
- 
+-    const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+-
 -    const functionCallKeywords = ['internlm'];
-+    const functionCallKeywords = ['internlm', 'intern-s'];
- 
+-
 -    const visionKeywords = ['internvl'];
-+    const visionKeywords = ['internvl', 'intern-s'];
- 
+-
      const modelsPage = (await client.models.list()) as any;
      const modelList: InternLMModelCard[] = modelsPage.data;
+ 
+-    return modelList
+-      .filter((model) => model && model.id)
+-      .map((model) => {
+-        const knownModel = LOBE_DEFAULT_MODEL_LIST.find(
+-          (m) => model.id.toLowerCase() === m.id.toLowerCase(),
+-        );
+-
+-        return {
+-          contextWindowTokens: knownModel?.contextWindowTokens ?? undefined,
+-          displayName: knownModel?.displayName ?? undefined,
+-          enabled: knownModel?.enabled || false,
+-          functionCall:
+-            functionCallKeywords.some((keyword) => model.id.toLowerCase().includes(keyword)) ||
+-            knownModel?.abilities?.functionCall ||
+-            false,
+-          id: model.id,
+-          reasoning: knownModel?.abilities?.reasoning || false,
+-          vision:
+-            visionKeywords.some((keyword) => model.id.toLowerCase().includes(keyword)) ||
+-            knownModel?.abilities?.vision ||
+-            false,
+-        };
+-      }) as ChatModelCard[];
++    return processModelList(modelList, MODEL_LIST_CONFIGS.internlm, 'internlm');
+   },
+   provider: ModelProvider.InternLM,
+ } satisfies OpenAICompatibleFactoryOptions;
+diff --git a/packages/model-runtime/src/utils/modelParse.ts b/packages/model-runtime/src/utils/modelParse.ts
+index 8480f59a552..cd72555bbfa 100644
+--- a/packages/model-runtime/src/utils/modelParse.ts
++++ b/packages/model-runtime/src/utils/modelParse.ts
+@@ -56,6 +56,11 @@ export const MODEL_LIST_CONFIGS = {
+     reasoningKeywords: ['ring-'],
+     visionKeywords: ['ming-'],
+   },
++  internlm: {
++    functionCallKeywords: ['internlm', 'intern-s'],
++    reasoningKeywords: ['intern-s'],
++    visionKeywords: ['internvl', 'intern-s'],
++  },
+   llama: {
+     functionCallKeywords: ['llama-3.2', 'llama-3.3', 'llama-4'],
+     reasoningKeywords: [],
