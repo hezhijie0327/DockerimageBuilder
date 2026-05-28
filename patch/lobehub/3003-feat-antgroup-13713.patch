@@ -1,3 +1,15 @@
+diff --git a/locales/en-US/modelProvider.json b/locales/en-US/modelProvider.json
+index 1bf1100d269..aadfaf809bd 100644
+--- a/locales/en-US/modelProvider.json
++++ b/locales/en-US/modelProvider.json
+@@ -238,6 +238,7 @@
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint": "For GLM-5 and GLM-4.7; controls token budget for reasoning (max 32k).",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "For Qwen3 series; controls token budget for reasoning (max 80k).",
+   "providerModels.item.modelConfig.extendParams.options.reasoningEffort.hint": "For OpenAI and other reasoning-capable models; controls reasoning effort.",
++  "providerModels.item.modelConfig.extendParams.options.ring2_6ReasoningEffort.hint": "For Ring 2.6 series; controls reasoning intensity.",
+   "providerModels.item.modelConfig.extendParams.options.textVerbosity.hint": "For GPT-5+ series; controls output verbosity.",
+   "providerModels.item.modelConfig.extendParams.options.thinking.hint": "For some Doubao models; allow model to decide whether to think deeply.",
+   "providerModels.item.modelConfig.extendParams.options.thinkingBudget.hint": "For Gemini series; controls thinking budget.",
 diff --git a/locales/en-US/providers.json b/locales/en-US/providers.json
 index ece32d67261..910fac22227 100644
 --- a/locales/en-US/providers.json
@@ -10,6 +22,18 @@ index ece32d67261..910fac22227 100644
    "anthropic.description": "Anthropic builds advanced language models like Claude 3.5 Sonnet, Claude 3 Sonnet, Claude 3 Opus, and Claude 3 Haiku, balancing intelligence, speed, and cost for workloads from enterprise to rapid-response use cases.",
    "azure.description": "Azure offers advanced AI models, including GPT-3.5 and GPT-4 series, for diverse data types and complex tasks with a focus on safe, reliable, and sustainable AI.",
    "azureai.description": "Azure provides advanced AI models, including GPT-3.5 and GPT-4 series, for diverse data types and complex tasks with a focus on safe, reliable, and sustainable AI.",
+diff --git a/locales/zh-CN/modelProvider.json b/locales/zh-CN/modelProvider.json
+index a559cb88b13..dd06d3ca79b 100644
+--- a/locales/zh-CN/modelProvider.json
++++ b/locales/zh-CN/modelProvider.json
+@@ -238,6 +238,7 @@
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken32k.hint": "适用于GLM-5和GLM-4.7；控制推理的令牌预算（最大32k）。",
+   "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "适用于Qwen3系列；控制推理的令牌预算（最大80k）。",
+   "providerModels.item.modelConfig.extendParams.options.reasoningEffort.hint": "适用于 OpenAI 及其他具备推理能力的模型；控制推理力度。",
++  "providerModels.item.modelConfig.extendParams.options.ring2_6ReasoningEffort.hint": "适用于 Ring 2.6 系列；控制推理强度。",
+   "providerModels.item.modelConfig.extendParams.options.textVerbosity.hint": "适用于 GPT-5+ 系列；控制输出内容的详尽程度。",
+   "providerModels.item.modelConfig.extendParams.options.thinking.hint": "适用于部分豆包模型；允许模型自行决定是否进行深度思考。",
+   "providerModels.item.modelConfig.extendParams.options.thinkingBudget.hint": "适用于 Gemini 系列；控制思考预算。",
 diff --git a/locales/zh-CN/providers.json b/locales/zh-CN/providers.json
 index 1e2c3bf58e9..7fc5c833574 100644
 --- a/locales/zh-CN/providers.json
@@ -36,13 +60,38 @@ index 485d2eee0f2..dbdd5b75787 100644
      "./azure": "./src/aiModels/azure.ts",
 diff --git a/packages/model-bank/src/aiModels/antgroup.ts b/packages/model-bank/src/aiModels/antgroup.ts
 new file mode 100644
-index 00000000000..01abb72bc6a
+index 00000000000..04b574c01cb
 --- /dev/null
 +++ b/packages/model-bank/src/aiModels/antgroup.ts
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,125 @@
 +import { type AIChatModelCard } from '../types/aiModel';
 +
 +const antgroupChatModels: AIChatModelCard[] = [
++  {
++    abilities: {
++      reasoning: true,
++      search: true,
++    },
++    contextWindowTokens: 262_144,
++    description:
++      'Ring-2.6-1T is a trillion-parameter-scale reasoning model that activates approximately 63B parameters per inference. Designed for Agent workflows, it focuses on agent capabilities, tool use, and long-horizon task execution, achieving leading performance on benchmarks such as PinchBench, ClawEval, TAU2-Bench, and GAIA2-search. The model is optimized across execution quality, latency, and cost, making it well suited for advanced coding agents, complex reasoning pipelines, and large-scale autonomous systems.',
++    displayName: 'Ring-2.6-1T',
++    enabled: true,
++    id: 'Ring-2.6-1T',
++    pricing: {
++      currency: 'CNY',
++      units: [
++        { name: 'textInput', rate: 4.5, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 18, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2026-05-15',
++    settings: {
++      extendParams: ['ring2_6ReasoningEffort'],
++      searchImpl: 'params',
++    },
++    type: 'chat',
++  },
 +  {
 +    abilities: {
 +      reasoning: true,
@@ -52,7 +101,6 @@ index 00000000000..01abb72bc6a
 +    description:
 +      'Compared to the previously released Ring-1T, Ring-2.5-1T achieves significant improvements across three key dimensions: generation efficiency, reasoning depth, and long-horizon task execution capability: Generation Efficiency**: By leveraging a high proportion of linear attention mechanisms, Ring-2.5-1T reduces memory access overhead by more than 10×. When processing sequences exceeding 32K tokens, it delivers over 3× higher generation throughput, making it particularly well-suited for deep reasoning and long-horizon task execution. Deep Reasoning**: Building on RLVR, a dense reward mechanism is introduced to provide feedback on the rigor of the reasoning process. This enables Ring-2.5-1T to achieve gold-medal-level performance in both IMO 2025 and CMO 2025 (self-evaluated). Long-Horizon Task Execution**: Through large-scale fully asynchronous agent-based reinforcement learning training, the model significantly enhances its ability to autonomously execute complex tasks over extended periods. This allows Ring-2.5-1T to seamlessly integrate with agent programming frameworks such as Claude Code and OpenClaw personal AI assistants.',
 +    displayName: 'Ring-2.5-1T',
-+    enabled: true,
 +    id: 'Ring-2.5-1T',
 +    pricing: {
 +      currency: 'CNY',
@@ -69,22 +117,23 @@ index 00000000000..01abb72bc6a
 +  },
 +  {
 +    abilities: {
-+      reasoning: true,
++      functionCall: true,
 +      search: true,
 +    },
-+    contextWindowTokens: 131_072,
++    contextWindowTokens: 262_144, // Model can support 1M context window but API only release 256K
 +    description:
-+      'Ring-1T is the world’s first open-source trillion-parameter reasoning model and the flagship model in the Bailing Mixture-of-Experts (MoE) reasoning series, representing the largest scale and strongest reasoning capability within the Ring family. Built on the IcePop methodology for RLVR training, the model demonstrates outstanding natural language reasoning abilities. It achieves state-of-the-art (SOTA) performance across multiple benchmarks, including AIME 2025, Codeforces, HMMT 2025, LiveCodeBench, and ARC-AGI v1, ranking among the top open-source models on numerous metrics.',
-+    displayName: 'Ring-1T',
-+    id: 'Ring-1T',
++      'The latest flagship large language model, featuring support for a 1M-token context window and enabling an end-to-end workflow from logical reasoning to task execution.',
++    displayName: 'Ling-2.6',
++    enabled: true,
++    id: 'Ling-2.6',
 +    pricing: {
 +      currency: 'CNY',
 +      units: [
-+        { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-+        { name: 'textOutput', rate: 16, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textInput', rate: 4.5, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 18, strategy: 'fixed', unit: 'millionTokens' },
 +      ],
 +    },
-+    releasedAt: '2025-10-28',
++    releasedAt: '2026-04-29',
 +    settings: {
 +      searchImpl: 'params',
 +    },
@@ -123,7 +172,6 @@ index 00000000000..01abb72bc6a
 +    description:
 +      'As the latest flagship real-time model in the Ling series, Ling-2.5-1T introduces comprehensive upgrades in model architecture, token efficiency, and preference alignment, aiming to elevate the quality of accessible AI to a new level.',
 +    displayName: 'Ling-2.5-1T',
-+    enabled: true,
 +    id: 'Ling-2.5-1T',
 +    pricing: {
 +      currency: 'CNY',
@@ -133,29 +181,6 @@ index 00000000000..01abb72bc6a
 +      ],
 +    },
 +    releasedAt: '2026-02-16',
-+    settings: {
-+      searchImpl: 'params',
-+    },
-+    type: 'chat',
-+  },
-+  {
-+    abilities: {
-+      functionCall: true,
-+      search: true,
-+    },
-+    contextWindowTokens: 131_072,
-+    description:
-+      'Ling-1T is a flagship trillion-parameter natural language model in the Bailing Mixture-of-Experts (MoE) architecture series, pre-trained on over 20T high-quality tokens. As one of the latest released open-source models at the trillion-parameter scale, it delivers strong performance across a wide range of benchmarks. It is well-suited as a next-generation open foundation model, offering excellent usability and a superior overall user experience.',
-+    displayName: 'Ling-1T',
-+    id: 'Ling-1T',
-+    pricing: {
-+      currency: 'CNY',
-+      units: [
-+        { name: 'textInput', rate: 4, strategy: 'fixed', unit: 'millionTokens' },
-+        { name: 'textOutput', rate: 16, strategy: 'fixed', unit: 'millionTokens' },
-+      ],
-+    },
-+    releasedAt: '2025-11-04',
 +    settings: {
 +      searchImpl: 'params',
 +    },
@@ -257,6 +282,26 @@ index ba6b2c1355f..cb3a2e2fc61 100644
  export { default as AnthropicProviderCard } from './anthropic';
  export { default as AzureProviderCard } from './azure';
  export { default as AzureAIProviderCard } from './azureai';
+diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
+index abeacdb2fa0..59f8158a97e 100644
+--- a/packages/model-bank/src/types/aiModel.ts
++++ b/packages/model-bank/src/types/aiModel.ts
+@@ -269,6 +269,7 @@ export type ExtendParamsType =
+   | 'grok4_20ReasoningEffort'
+   | 'grok4_3ReasoningEffort'
+   | 'hy3ReasoningEffort'
++  | 'ring2_6ReasoningEffort'
+   | 'codexMaxReasoningEffort'
+   | 'opus47Effort'
+   | 'textVerbosity'
+@@ -318,6 +319,7 @@ export const ExtendParamsTypeSchema = z.enum([
+   'grok4_20ReasoningEffort',
+   'grok4_3ReasoningEffort',
+   'hy3ReasoningEffort',
++  'ring2_6ReasoningEffort',
+   'codexMaxReasoningEffort',
+   'opus47Effort',
+   'textVerbosity',
 diff --git a/packages/model-runtime/src/index.ts b/packages/model-runtime/src/index.ts
 index 7227675937d..f14b6b07419 100644
 --- a/packages/model-runtime/src/index.ts
@@ -271,10 +316,10 @@ index 7227675937d..f14b6b07419 100644
  export { LobeAzureOpenAI } from './providers/azureOpenai';
 diff --git a/packages/model-runtime/src/providers/antgroup/index.ts b/packages/model-runtime/src/providers/antgroup/index.ts
 new file mode 100644
-index 00000000000..31069824646
+index 00000000000..d25ee275538
 --- /dev/null
 +++ b/packages/model-runtime/src/providers/antgroup/index.ts
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,25 @@
 +import { ModelProvider } from 'model-bank';
 +
 +import { createOpenAICompatibleRuntime } from '../../core/openaiCompatibleFactory';
@@ -283,10 +328,11 @@ index 00000000000..31069824646
 +  baseURL: 'https://api.tbox.cn/api/llm/v1',
 +  chatCompletion: {
 +    handlePayload: (payload) => {
-+      const { enabledSearch, ...rest } = payload;
++      const { enabledSearch, reasoning_effort, ...rest } = payload;
 +
 +      return {
 +        ...rest,
++        ...(reasoning_effort && { reasoning: { effort: reasoning_effort } }),
 +        ...(enabledSearch && {
 +          enable_search: true,
 +          // search_options: { forced_search: true },
@@ -319,6 +365,26 @@ index 52670476577..b829c7579a5 100644
    anthropic: LobeAnthropicAI,
    bailiancodingplan: LobeBailianCodingPlanAI,
    azure: LobeAzureOpenAI,
+diff --git a/packages/types/src/agent/chatConfig.ts b/packages/types/src/agent/chatConfig.ts
+index f51150cd57f..46df0bc29ba 100644
+--- a/packages/types/src/agent/chatConfig.ts
++++ b/packages/types/src/agent/chatConfig.ts
+@@ -123,6 +123,7 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
+    */
+   reasoningBudgetToken80k?: number;
+   reasoningEffort?: 'low' | 'medium' | 'high';
++  ring2_6ReasoningEffort?: 'high' | 'xhigh';
+   /**
+    * Runtime environment configuration (desktop only)
+    */
+@@ -220,6 +221,7 @@ export const AgentChatConfigSchema = z
+     grok4_20ReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
+     grok4_3ReasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
+     hy3ReasoningEffort: z.enum(['no_think', 'low', 'high']).optional(),
++    ring2_6ReasoningEffort: z.enum(['high', 'xhigh']).optional(),
+     historyCount: z.number().optional(),
+     imageAspectRatio: z.string().optional(),
+     imageAspectRatio2: z.string().optional(),
 diff --git a/src/envs/llm.ts b/src/envs/llm.ts
 index 27a541b3ced..b7b1e5aeb1b 100644
 --- a/src/envs/llm.ts
@@ -343,3 +409,134 @@ index 27a541b3ced..b7b1e5aeb1b 100644
      },
    });
  };
+diff --git a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
+index b2ffb620b12..2e9f45eb2ff 100644
+--- a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
++++ b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
+@@ -33,6 +33,7 @@ import ReasoningEffortSlider from './ReasoningEffortSlider';
+ import ReasoningTokenSlider from './ReasoningTokenSlider';
+ import ReasoningTokenSlider32k from './ReasoningTokenSlider32k';
+ import ReasoningTokenSlider80k from './ReasoningTokenSlider80k';
++import Ring26ReasoningEffortSlider from './Ring26ReasoningEffortSlider';
+ import TextVerbositySlider from './TextVerbositySlider';
+ import ThinkingBudgetSlider from './ThinkingBudgetSlider';
+ import ThinkingLevel2Slider from './ThinkingLevel2Slider';
+@@ -315,6 +316,17 @@ const ControlsForm = memo<ControlsFormProps>(
+           paddingBottom: 0,
+         },
+       },
++      {
++        children: <Ring26ReasoningEffortSlider />,
++        desc: 'reasoning_effort',
++        label: t('extendParams.reasoningEffort.title'),
++        layout: 'vertical',
++        minWidth: undefined,
++        name: 'ring2_6ReasoningEffort',
++        style: {
++          paddingBottom: 0,
++        },
++      },
+       {
+         children: <CodexMaxReasoningEffortSlider />,
+         desc: 'reasoning_effort',
+diff --git a/src/features/ModelSwitchPanel/components/ControlsForm/Ring26ReasoningEffort.tsx b/src/features/ModelSwitchPanel/components/ControlsForm/Ring26ReasoningEffort.tsx
+new file mode 100644
+index 00000000000..c41e8788adc
+--- /dev/null
++++ b/src/features/ModelSwitchPanel/components/ControlsForm/Ring26ReasoningEffort.tsx
+@@ -0,0 +1,16 @@
++import { type CreatedLevelSliderProps } from './createLevelSlider';
++import { createLevelSliderComponent } from './createLevelSlider';
++
++const RING2_6_REASONING_EFFORT_LEVELS = ['high', 'xhigh'] as const;
++type Ring26ReasoningEffort = (typeof RING2_6_REASONING_EFFORT_LEVELS)[number];
++
++export type Ring26ReasoningEffortSliderProps = CreatedLevelSliderProps<Ring26ReasoningEffort>;
++
++const Ring26ReasoningEffortSlider = createLevelSliderComponent<Ring26ReasoningEffort>({
++  configKey: 'ring2_6ReasoningEffort',
++  defaultValue: 'high',
++  levels: RING2_6_REASONING_EFFORT_LEVELS,
++  style: { minWidth: 200 },
++});
++
++export default Ring26ReasoningEffortSlider;
+diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
+index e7c4172f3df..2152d49347c 100644
+--- a/src/locales/default/modelProvider.ts
++++ b/src/locales/default/modelProvider.ts
+@@ -271,6 +271,8 @@ export default {
+     'For Grok 4.3 series; controls reasoning intensity.',
+   'providerModels.item.modelConfig.extendParams.options.hy3ReasoningEffort.hint':
+     'For Hy3 models; controls reasoning intensity. no_think (ultra-fast response), low (quick reasoning), and high (deep reasoning)—to accommodate varying latency and depth requirements, from high-frequency interactions to complex engineering tasks.',
++  'providerModels.item.modelConfig.extendParams.options.ring2_6ReasoningEffort.hint':
++    'For Ring 2.6 series; controls reasoning intensity.',
+   'providerModels.item.modelConfig.extendParams.options.deepseekV4ReasoningEffort.hint':
+     'For DeepSeek V4 thinking mode; controls reasoning intensity. `high` is the default, `max` unlocks the deepest reasoning used by complex agent workflows.',
+   'providerModels.item.modelConfig.extendParams.options.imageAspectRatio.hint':
+diff --git a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+index 579d126b599..09f7b73d26d 100644
+--- a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
++++ b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
+@@ -24,6 +24,7 @@ import ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/Contro
+ import ReasoningTokenSlider from '@/features/ModelSwitchPanel/components/ControlsForm/ReasoningTokenSlider';
+ import ReasoningTokenSlider32k from '@/features/ModelSwitchPanel/components/ControlsForm/ReasoningTokenSlider32k';
+ import ReasoningTokenSlider80k from '@/features/ModelSwitchPanel/components/ControlsForm/ReasoningTokenSlider80k';
++import Ring26ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/Ring26ReasoningEffort';
+ import TextVerbositySlider from '@/features/ModelSwitchPanel/components/ControlsForm/TextVerbositySlider';
+ import ThinkingBudgetSlider from '@/features/ModelSwitchPanel/components/ControlsForm/ThinkingBudgetSlider';
+ import ThinkingLevel2Slider from '@/features/ModelSwitchPanel/components/ControlsForm/ThinkingLevel2Slider';
+@@ -106,6 +107,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.hy3ReasoningEffort.hint',
+     key: 'hy3ReasoningEffort',
+   },
++  {
++    hintKey: 'providerModels.item.modelConfig.extendParams.options.ring2_6ReasoningEffort.hint',
++    key: 'ring2_6ReasoningEffort',
++  },
+   {
+     hintKey: 'providerModels.item.modelConfig.extendParams.options.codexMaxReasoningEffort.hint',
+     key: 'codexMaxReasoningEffort',
+@@ -172,6 +177,7 @@ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
+   grok4_20ReasoningEffort: 'reasoningEffort',
+   grok4_3ReasoningEffort: 'reasoningEffort',
+   hy3ReasoningEffort: 'reasoningEffort',
++  ring2_6ReasoningEffort: 'reasoningEffort',
+   imageAspectRatio2: 'imageAspectRatio',
+   opus47Effort: 'effort',
+   reasoningBudgetToken32k: 'reasoningBudgetToken',
+@@ -230,6 +236,11 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
+     previewWidth: 300,
+     tag: 'reasoning_effort',
+   },
++  ring2_6ReasoningEffort: {
++    labelSuffix: ' (Ring 2.6)',
++    previewWidth: 300,
++    tag: 'reasoning_effort',
++  },
+   imageAspectRatio: { labelSuffix: '', previewWidth: 350, tag: 'aspect_ratio' },
+   imageAspectRatio2: { labelSuffix: ' (Nano Banana 2)', previewWidth: 350, tag: 'aspect_ratio' },
+   imageResolution: { labelSuffix: '', previewWidth: 250, tag: 'resolution' },
+@@ -361,6 +372,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
+       grok4_20ReasoningEffort: <Grok420ReasoningEffortSlider value="medium" />,
+       grok4_3ReasoningEffort: <Grok43ReasoningEffortSlider value="low" />,
+       hy3ReasoningEffort: <Hy3ReasoningEffortSlider value="high" />,
++      ring2_6ReasoningEffort: <Ring26ReasoningEffortSlider value="high" />,
+       imageAspectRatio: <ImageAspectRatioSelect value="1:1" />,
+       imageAspectRatio2: <ImageAspectRatio2Select value="1:1" />,
+       imageResolution: <ImageResolutionSlider value="1K" />,
+diff --git a/src/services/chat/mecha/modelParamsResolver.ts b/src/services/chat/mecha/modelParamsResolver.ts
+index a4a4e69c489..d4845dc8945 100644
+--- a/src/services/chat/mecha/modelParamsResolver.ts
++++ b/src/services/chat/mecha/modelParamsResolver.ts
+@@ -224,6 +224,10 @@ export const resolveModelExtendParams = (ctx: ModelParamsContext): ModelExtendPa
+     extendParams.reasoning_effort = chatConfig.hy3ReasoningEffort;
+   }
+ 
++  if (modelExtendParams.includes('ring2_6ReasoningEffort') && chatConfig.ring2_6ReasoningEffort) {
++    extendParams.reasoning_effort = chatConfig.ring2_6ReasoningEffort;
++  }
++
+   if (modelExtendParams.includes('codexMaxReasoningEffort') && chatConfig.codexMaxReasoningEffort) {
+     extendParams.reasoning_effort = chatConfig.codexMaxReasoningEffort;
+   }
