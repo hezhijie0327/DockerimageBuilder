@@ -1,0 +1,140 @@
+diff --git a/packages/model-bank/src/aiModels/internlm.ts b/packages/model-bank/src/aiModels/internlm.ts
+index d184354381d..35580277f95 100644
+--- a/packages/model-bank/src/aiModels/internlm.ts
++++ b/packages/model-bank/src/aiModels/internlm.ts
+@@ -11,7 +11,7 @@ const internlmChatModels: AIChatModelCard[] = [
+     },
+     contextWindowTokens: 262_144,
+     description:
+-      'By default, it points to our latest released Intern series model, currently set to intern-s1-pro.',
++      'By default, it points to our latest released Intern series model, currently set to intern-s2-preview.',
+     displayName: 'Intern',
+     id: 'intern-latest',
+     pricing: {
+@@ -20,7 +20,34 @@ const internlmChatModels: AIChatModelCard[] = [
+         { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
+       ],
+     },
+-    releasedAt: '2026-02-04',
++    releasedAt: '2026-05-22',
++    settings: {
++      extendParams: ['enableReasoning'],
++    },
++    type: 'chat',
++  },
++  {
++    abilities: {
++      functionCall: true,
++      reasoning: true,
++      vision: true,
++    },
++    contextWindowTokens: 262_144,
++    description:
++      'Our newly released 35B-A3B scientific multimodal reasoning model supports a 256K context window. Through task scaling and architectural optimization, it is specifically designed to enhance scientific discovery and general-purpose agent capabilities.',
++    displayName: 'Intern-S2-Preview',
++    enabled: true,
++    id: 'intern-s2-preview',
++    pricing: {
++      units: [
++        { name: 'textInput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
++        { name: 'textOutput', rate: 0, strategy: 'fixed', unit: 'millionTokens' },
++      ],
++    },
++    releasedAt: '2026-05-22',
++    settings: {
++      extendParams: ['enableReasoning'],
++    },
+     type: 'chat',
+   },
+   {
+@@ -42,6 +69,9 @@ const internlmChatModels: AIChatModelCard[] = [
+       ],
+     },
+     releasedAt: '2026-02-04',
++    settings: {
++      extendParams: ['enableReasoning'],
++    },
+     type: 'chat',
+   },
+   {
+@@ -63,6 +93,9 @@ const internlmChatModels: AIChatModelCard[] = [
+       ],
+     },
+     releasedAt: '2025-07-26',
++    settings: {
++      extendParams: ['enableReasoning'],
++    },
+     type: 'chat',
+   },
+   {
+@@ -84,6 +117,9 @@ const internlmChatModels: AIChatModelCard[] = [
+       ],
+     },
+     releasedAt: '2025-08-20',
++    settings: {
++      extendParams: ['enableReasoning'],
++    },
+     type: 'chat',
+   },
+   {
+@@ -112,7 +148,6 @@ const internlmChatModels: AIChatModelCard[] = [
+     description:
+       'Our newly released multimodal large model features enhanced image-and-text understanding and long-sequence image comprehension capabilities, achieving performance comparable to leading closed-source models.',
+     displayName: 'InternVL3.5-241B-A28B',
+-    enabled: true,
+     id: 'internvl3.5-241b-a28b',
+     pricing: {
+       units: [
+diff --git a/packages/model-bank/src/modelProviders/internlm.ts b/packages/model-bank/src/modelProviders/internlm.ts
+index 88f14d607ff..8eb57066d4b 100644
+--- a/packages/model-bank/src/modelProviders/internlm.ts
++++ b/packages/model-bank/src/modelProviders/internlm.ts
+@@ -2,14 +2,11 @@ import type { ModelProviderCard } from '@/types/llm';
+ 
+ const InternLM: ModelProviderCard = {
+   chatModels: [],
+-  checkModel: 'internlm2.5-latest',
++  checkModel: 'intern-latest',
+   description:
+     'An open-source organization focused on large-model research and tooling, providing an efficient, easy-to-use platform that makes cutting-edge models and algorithms accessible.',
+-  disableBrowserRequest: true,
+   id: 'internlm',
+-  modelList: { showModelFetcher: true },
+-  modelsUrl:
+-    'https://internlm.intern-ai.org.cn/doc/docs/Models#%E8%8E%B7%E5%8F%96%E6%A8%A1%E5%9E%8B%E5%88%97%E8%A1%A8',
++  modelsUrl: 'https://internlm.intern-ai.org.cn/api/document',
+   name: 'InternLM',
+   settings: {
+     disableBrowserRequest: true,
+diff --git a/packages/model-runtime/src/providers/internlm/index.ts b/packages/model-runtime/src/providers/internlm/index.ts
+index 78a0ed6aa4c..8231d389e79 100644
+--- a/packages/model-runtime/src/providers/internlm/index.ts
++++ b/packages/model-runtime/src/providers/internlm/index.ts
+@@ -12,9 +12,14 @@ export const params = {
+   baseURL: 'https://chat.intern-ai.org.cn/api/v1',
+   chatCompletion: {
+     handlePayload: (payload) => {
++      const { thinking, ...rest } = payload as any;
++
+       return {
+-        ...payload,
++        ...rest,
+         stream: !payload.tools,
++        ...(thinking.type !== undefined && {
++          thinking_mode: thinking.type === 'enabled',
++        }),
+       } as any;
+     },
+   },
+@@ -24,9 +29,9 @@ export const params = {
+   models: async ({ client }) => {
+     const { LOBE_DEFAULT_MODEL_LIST } = await import('model-bank');
+ 
+-    const functionCallKeywords = ['internlm'];
++    const functionCallKeywords = ['internlm', 'intern-s'];
+ 
+-    const visionKeywords = ['internvl'];
++    const visionKeywords = ['internvl', 'intern-s'];
+ 
+     const modelsPage = (await client.models.list()) as any;
+     const modelList: InternLMModelCard[] = modelsPage.data;
