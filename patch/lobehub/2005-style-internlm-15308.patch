@@ -115,7 +115,7 @@ index 88f14d607ff..8eb57066d4b 100644
    settings: {
      disableBrowserRequest: true,
 diff --git a/packages/model-runtime/src/providers/internlm/index.test.ts b/packages/model-runtime/src/providers/internlm/index.test.ts
-index abc4603e386..a57f4fcb9b6 100644
+index abc4603e386..699ad690893 100644
 --- a/packages/model-runtime/src/providers/internlm/index.test.ts
 +++ b/packages/model-runtime/src/providers/internlm/index.test.ts
 @@ -53,66 +53,6 @@ describe('LobeInternLMAI - custom features', () => {
@@ -185,6 +185,15 @@ index abc4603e386..a57f4fcb9b6 100644
    describe('models', () => {
      it('should fetch and process models', async () => {
        const mockClient = {
+@@ -229,7 +169,7 @@ describe('LobeInternLMAI - custom features', () => {
+ 
+       expect(model.id).toBe('custom-model');
+       expect(model.contextWindowTokens).toBeUndefined();
+-      expect(model.displayName).toBeUndefined();
++      expect(model.displayName).toBe('custom-model');
+       expect(model.enabled).toBe(false);
+       expect(model.functionCall).toBe(false);
+       expect(model.vision).toBe(false);
 diff --git a/packages/model-runtime/src/providers/internlm/index.ts b/packages/model-runtime/src/providers/internlm/index.ts
 index 78a0ed6aa4c..f4c5490db05 100644
 --- a/packages/model-runtime/src/providers/internlm/index.ts
@@ -256,7 +265,7 @@ index 78a0ed6aa4c..f4c5490db05 100644
    provider: ModelProvider.InternLM,
  } satisfies OpenAICompatibleFactoryOptions;
 diff --git a/packages/model-runtime/src/utils/modelParse.ts b/packages/model-runtime/src/utils/modelParse.ts
-index 8480f59a552..cd72555bbfa 100644
+index 8480f59a552..6e6b4ccb560 100644
 --- a/packages/model-runtime/src/utils/modelParse.ts
 +++ b/packages/model-runtime/src/utils/modelParse.ts
 @@ -56,6 +56,11 @@ export const MODEL_LIST_CONFIGS = {
@@ -271,3 +280,22 @@ index 8480f59a552..cd72555bbfa 100644
    llama: {
      functionCallKeywords: ['llama-3.2', 'llama-3.3', 'llama-4'],
      reasoningKeywords: [],
+@@ -159,6 +164,7 @@ export const MODEL_OWNER_DETECTION_CONFIG = {
+   deepseek: ['deepseek'],
+   google: ['gemini', 'imagen', 'gemma'],
+   inclusionai: ['ling-', 'ming-', 'ring-'],
++  internlm: ['internvl', 'internlm', 'intern-'],
+   llama: ['llama', 'llava'],
+   longcat: ['longcat'],
+   minimax: ['minimax'],
+@@ -664,6 +670,10 @@ export const processModelList = async (
+ 
+   return Promise.all(
+     modelList.map(async (model) => {
++      if (!model?.id) {
++        return undefined;
++      }
++
+       let knownModel: any = null;
+ 
+       // If provider is provided, prioritize using provider-specific configuration
