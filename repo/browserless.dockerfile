@@ -66,15 +66,36 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /ap
 
 RUN \
     apt-get update \
-    && apt-get install -qy jq \
+    && apt-get install -qy \
+        jq \
     && pnpm run build \
     && pnpm run build:function \
     && pnpm run install:debugger \
     && pnpm prune --prod \
-    && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/fonts/truetype/noto \
+    && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && find /app/build -type f -name "*.ts" -exec rm -f {} \;
 
 COPY --from=get_info /tmp/BUILDTMP/privacy_badger /app/extensions/privacy_badger
+
+RUN \
+    echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections \
+    && sed -i "s|main|main contrib non-free non-free-firmware|g;s/stable/${LSBCodename:-stable}/g" "/etc/apt/sources.list.d/debian.sources" \
+    && apt-get update \
+    && apt-get install -qy \
+        fonts-freefont-ttf \
+        fonts-gfs-neohellenic \
+        fonts-indic \
+        fonts-ipafont-gothic \
+        fonts-kacst \
+        fonts-liberation \
+        fonts-noto-cjk \
+        fonts-noto-color-emoji \
+        fonts-roboto \
+        fonts-thai-tlwg \
+        fonts-ubuntu \
+        fonts-wqy-zenhei \
+        fonts-open-sans \
+        ttf-mscorefonts-installer
 
 FROM node:${NODEJS_VERSION}-slim AS rebased_browserless
 
