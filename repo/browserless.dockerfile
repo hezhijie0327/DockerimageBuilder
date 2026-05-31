@@ -89,7 +89,6 @@ RUN \
         fonts-kacst \
         fonts-liberation \
         fonts-noto-cjk \
-        fonts-noto-cjk-extra \
         fonts-noto-color-emoji \
         fonts-roboto \
         fonts-thai-tlwg \
