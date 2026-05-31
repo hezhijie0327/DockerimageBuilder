@@ -119,6 +119,7 @@ COPY --from=build_browserless /app/external /app/external
 COPY --from=build_browserless /app/node_modules /app/node_modules
 COPY --from=build_browserless /app/static /app/static
 
+COPY --from=build_browserless /usr/share/fonts/opentype/ /usr/share/fonts/opentype/
 COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truetype/
 
 RUN \
