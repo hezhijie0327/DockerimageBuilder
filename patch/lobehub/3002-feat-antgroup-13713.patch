@@ -1,5 +1,5 @@
 diff --git a/locales/en-US/modelProvider.json b/locales/en-US/modelProvider.json
-index 1bf1100d269..aadfaf809bd 100644
+index ac2d08ba538..c0487b825f6 100644
 --- a/locales/en-US/modelProvider.json
 +++ b/locales/en-US/modelProvider.json
 @@ -238,6 +238,7 @@
@@ -7,9 +7,9 @@ index 1bf1100d269..aadfaf809bd 100644
    "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "For Qwen3 series; controls token budget for reasoning (max 80k).",
    "providerModels.item.modelConfig.extendParams.options.reasoningEffort.hint": "For OpenAI and other reasoning-capable models; controls reasoning effort.",
 +  "providerModels.item.modelConfig.extendParams.options.ring2_6ReasoningEffort.hint": "For Ring 2.6 series; controls reasoning intensity.",
+   "providerModels.item.modelConfig.extendParams.options.step3_5ReasoningEffort.hint": "For Step 3.5 series; controls reasoning intensity.",
    "providerModels.item.modelConfig.extendParams.options.textVerbosity.hint": "For GPT-5+ series; controls output verbosity.",
    "providerModels.item.modelConfig.extendParams.options.thinking.hint": "For some Doubao models; allow model to decide whether to think deeply.",
-   "providerModels.item.modelConfig.extendParams.options.thinkingBudget.hint": "For Gemini series; controls thinking budget.",
 diff --git a/locales/en-US/providers.json b/locales/en-US/providers.json
 index ece32d67261..910fac22227 100644
 --- a/locales/en-US/providers.json
@@ -23,7 +23,7 @@ index ece32d67261..910fac22227 100644
    "azure.description": "Azure offers advanced AI models, including GPT-3.5 and GPT-4 series, for diverse data types and complex tasks with a focus on safe, reliable, and sustainable AI.",
    "azureai.description": "Azure provides advanced AI models, including GPT-3.5 and GPT-4 series, for diverse data types and complex tasks with a focus on safe, reliable, and sustainable AI.",
 diff --git a/locales/zh-CN/modelProvider.json b/locales/zh-CN/modelProvider.json
-index a559cb88b13..dd06d3ca79b 100644
+index 6a42d3ed211..f090d0f354d 100644
 --- a/locales/zh-CN/modelProvider.json
 +++ b/locales/zh-CN/modelProvider.json
 @@ -238,6 +238,7 @@
@@ -31,9 +31,9 @@ index a559cb88b13..dd06d3ca79b 100644
    "providerModels.item.modelConfig.extendParams.options.reasoningBudgetToken80k.hint": "适用于Qwen3系列；控制推理的令牌预算（最大80k）。",
    "providerModels.item.modelConfig.extendParams.options.reasoningEffort.hint": "适用于 OpenAI 及其他具备推理能力的模型；控制推理力度。",
 +  "providerModels.item.modelConfig.extendParams.options.ring2_6ReasoningEffort.hint": "适用于 Ring 2.6 系列；控制推理强度。",
+   "providerModels.item.modelConfig.extendParams.options.step3_5ReasoningEffort.hint": "适用于 Step 3.5 系列；控制推理强度。",
    "providerModels.item.modelConfig.extendParams.options.textVerbosity.hint": "适用于 GPT-5+ 系列；控制输出内容的详尽程度。",
    "providerModels.item.modelConfig.extendParams.options.thinking.hint": "适用于部分豆包模型；允许模型自行决定是否进行深度思考。",
-   "providerModels.item.modelConfig.extendParams.options.thinkingBudget.hint": "适用于 Gemini 系列；控制思考预算。",
 diff --git a/locales/zh-CN/providers.json b/locales/zh-CN/providers.json
 index 1e2c3bf58e9..7fc5c833574 100644
 --- a/locales/zh-CN/providers.json
@@ -286,7 +286,7 @@ index ba6b2c1355f..cb3a2e2fc61 100644
  export { default as AzureProviderCard } from './azure';
  export { default as AzureAIProviderCard } from './azureai';
 diff --git a/packages/model-bank/src/types/aiModel.ts b/packages/model-bank/src/types/aiModel.ts
-index abeacdb2fa0..59f8158a97e 100644
+index ca24e83468b..5c75bf8fc8d 100644
 --- a/packages/model-bank/src/types/aiModel.ts
 +++ b/packages/model-bank/src/types/aiModel.ts
 @@ -269,6 +269,7 @@ export type ExtendParamsType =
@@ -296,20 +296,20 @@ index abeacdb2fa0..59f8158a97e 100644
 +  | 'ring2_6ReasoningEffort'
    | 'codexMaxReasoningEffort'
    | 'opus47Effort'
-   | 'textVerbosity'
-@@ -318,6 +319,7 @@ export const ExtendParamsTypeSchema = z.enum([
+   | 'step3_5ReasoningEffort'
+@@ -319,6 +320,7 @@ export const ExtendParamsTypeSchema = z.enum([
    'grok4_20ReasoningEffort',
    'grok4_3ReasoningEffort',
    'hy3ReasoningEffort',
 +  'ring2_6ReasoningEffort',
    'codexMaxReasoningEffort',
    'opus47Effort',
-   'textVerbosity',
+   'step3_5ReasoningEffort',
 diff --git a/packages/model-runtime/src/index.ts b/packages/model-runtime/src/index.ts
-index 7227675937d..f14b6b07419 100644
+index 8947a6d9806..17f5369c470 100644
 --- a/packages/model-runtime/src/index.ts
 +++ b/packages/model-runtime/src/index.ts
-@@ -28,6 +28,7 @@ export {
+@@ -33,6 +33,7 @@ export {
  } from './errors';
  export * from './helpers';
  export { LobeAkashChatAI } from './providers/akashchat';
@@ -369,7 +369,7 @@ index 52670476577..b829c7579a5 100644
    bailiancodingplan: LobeBailianCodingPlanAI,
    azure: LobeAzureOpenAI,
 diff --git a/packages/types/src/agent/chatConfig.ts b/packages/types/src/agent/chatConfig.ts
-index f51150cd57f..46df0bc29ba 100644
+index 052a690bfd7..e650786ee4c 100644
 --- a/packages/types/src/agent/chatConfig.ts
 +++ b/packages/types/src/agent/chatConfig.ts
 @@ -123,6 +123,7 @@ export interface LobeAgentChatConfig extends AgentMemoryChatConfig, AgentSelfIte
@@ -380,7 +380,7 @@ index f51150cd57f..46df0bc29ba 100644
    /**
     * Runtime environment configuration (desktop only)
     */
-@@ -220,6 +221,7 @@ export const AgentChatConfigSchema = z
+@@ -222,6 +223,7 @@ export const AgentChatConfigSchema = z
      grok4_20ReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
      grok4_3ReasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
      hy3ReasoningEffort: z.enum(['no_think', 'low', 'high']).optional(),
@@ -413,7 +413,7 @@ index 27a541b3ced..b7b1e5aeb1b 100644
    });
  };
 diff --git a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
-index b2ffb620b12..2e9f45eb2ff 100644
+index 76eeecefbc3..1d0f2c7dad3 100644
 --- a/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
 +++ b/src/features/ModelSwitchPanel/components/ControlsForm/ControlsForm.tsx
 @@ -33,6 +33,7 @@ import ReasoningEffortSlider from './ReasoningEffortSlider';
@@ -421,10 +421,10 @@ index b2ffb620b12..2e9f45eb2ff 100644
  import ReasoningTokenSlider32k from './ReasoningTokenSlider32k';
  import ReasoningTokenSlider80k from './ReasoningTokenSlider80k';
 +import Ring26ReasoningEffortSlider from './Ring26ReasoningEffortSlider';
+ import Step3_5ReasoningEffortSlider from './Step3_5ReasoningEffortSlider';
  import TextVerbositySlider from './TextVerbositySlider';
  import ThinkingBudgetSlider from './ThinkingBudgetSlider';
- import ThinkingLevel2Slider from './ThinkingLevel2Slider';
-@@ -315,6 +316,17 @@ const ControlsForm = memo<ControlsFormProps>(
+@@ -316,6 +317,17 @@ const ControlsForm = memo<ControlsFormProps>(
            paddingBottom: 0,
          },
        },
@@ -465,7 +465,7 @@ index 00000000000..c41e8788adc
 +
 +export default Ring26ReasoningEffortSlider;
 diff --git a/src/locales/default/modelProvider.ts b/src/locales/default/modelProvider.ts
-index e7c4172f3df..2152d49347c 100644
+index df4743f09b3..d6c85c5cd48 100644
 --- a/src/locales/default/modelProvider.ts
 +++ b/src/locales/default/modelProvider.ts
 @@ -271,6 +271,8 @@ export default {
@@ -478,7 +478,7 @@ index e7c4172f3df..2152d49347c 100644
      'For DeepSeek V4 thinking mode; controls reasoning intensity. `high` is the default, `max` unlocks the deepest reasoning used by complex agent workflows.',
    'providerModels.item.modelConfig.extendParams.options.imageAspectRatio.hint':
 diff --git a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
-index 579d126b599..0697e2be075 100644
+index fd7881b182d..3dd4bde4535 100644
 --- a/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
 +++ b/src/routes/(main)/settings/provider/features/ModelList/CreateNewModelModal/ExtendParamsSelect.tsx
 @@ -24,6 +24,7 @@ import ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/Contro
@@ -486,10 +486,10 @@ index 579d126b599..0697e2be075 100644
  import ReasoningTokenSlider32k from '@/features/ModelSwitchPanel/components/ControlsForm/ReasoningTokenSlider32k';
  import ReasoningTokenSlider80k from '@/features/ModelSwitchPanel/components/ControlsForm/ReasoningTokenSlider80k';
 +import Ring26ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/Ring26ReasoningEffortSlider';
+ import Step3_5ReasoningEffortSlider from '@/features/ModelSwitchPanel/components/ControlsForm/Step3_5ReasoningEffortSlider';
  import TextVerbositySlider from '@/features/ModelSwitchPanel/components/ControlsForm/TextVerbositySlider';
  import ThinkingBudgetSlider from '@/features/ModelSwitchPanel/components/ControlsForm/ThinkingBudgetSlider';
- import ThinkingLevel2Slider from '@/features/ModelSwitchPanel/components/ControlsForm/ThinkingLevel2Slider';
-@@ -106,6 +107,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
+@@ -107,6 +108,10 @@ const EXTEND_PARAMS_OPTIONS: ExtendParamsOption[] = [
      hintKey: 'providerModels.item.modelConfig.extendParams.options.hy3ReasoningEffort.hint',
      key: 'hy3ReasoningEffort',
    },
@@ -500,7 +500,7 @@ index 579d126b599..0697e2be075 100644
    {
      hintKey: 'providerModels.item.modelConfig.extendParams.options.codexMaxReasoningEffort.hint',
      key: 'codexMaxReasoningEffort',
-@@ -172,6 +177,7 @@ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
+@@ -177,6 +182,7 @@ const TITLE_KEY_ALIASES: Partial<Record<ExtendParamsType, ExtendParamsType>> = {
    grok4_20ReasoningEffort: 'reasoningEffort',
    grok4_3ReasoningEffort: 'reasoningEffort',
    hy3ReasoningEffort: 'reasoningEffort',
@@ -508,7 +508,7 @@ index 579d126b599..0697e2be075 100644
    imageAspectRatio2: 'imageAspectRatio',
    opus47Effort: 'effort',
    reasoningBudgetToken32k: 'reasoningBudgetToken',
-@@ -230,6 +236,11 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
+@@ -236,6 +242,11 @@ const PREVIEW_META: Partial<Record<ExtendParamsType, PreviewMeta>> = {
      previewWidth: 300,
      tag: 'reasoning_effort',
    },
@@ -520,7 +520,7 @@ index 579d126b599..0697e2be075 100644
    imageAspectRatio: { labelSuffix: '', previewWidth: 350, tag: 'aspect_ratio' },
    imageAspectRatio2: { labelSuffix: ' (Nano Banana 2)', previewWidth: 350, tag: 'aspect_ratio' },
    imageResolution: { labelSuffix: '', previewWidth: 250, tag: 'resolution' },
-@@ -361,6 +372,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
+@@ -372,6 +383,7 @@ const ExtendParamsSelect = memo<ExtendParamsSelectProps>(({ value, onChange }) =
        grok4_20ReasoningEffort: <Grok420ReasoningEffortSlider value="medium" />,
        grok4_3ReasoningEffort: <Grok43ReasoningEffortSlider value="low" />,
        hy3ReasoningEffort: <Hy3ReasoningEffortSlider value="high" />,
@@ -529,7 +529,7 @@ index 579d126b599..0697e2be075 100644
        imageAspectRatio2: <ImageAspectRatio2Select value="1:1" />,
        imageResolution: <ImageResolutionSlider value="1K" />,
 diff --git a/src/services/chat/mecha/modelParamsResolver.ts b/src/services/chat/mecha/modelParamsResolver.ts
-index a4a4e69c489..d4845dc8945 100644
+index 878e42d5186..59217cfa3d9 100644
 --- a/src/services/chat/mecha/modelParamsResolver.ts
 +++ b/src/services/chat/mecha/modelParamsResolver.ts
 @@ -224,6 +224,10 @@ export const resolveModelExtendParams = (ctx: ModelParamsContext): ModelExtendPa
