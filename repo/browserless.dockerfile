@@ -50,34 +50,6 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/tsconfig.json /app/tsconfig.json
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/startServer.cjs /app/startServer.cjs
 
 RUN \
-    corepack enable \
-    && corepack use pnpm@10 \
-    && pnpm i \
-    && pnpm add @ghostery/adblocker-puppeteer
-
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
-
-RUN \
-    rm -rf /app/src/routes/
-
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management/
-COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}/
-
-RUN \
-    apt-get update \
-    && apt-get install -qy \
-        jq \
-    && pnpm run build \
-    && pnpm run build:function \
-    && pnpm run install:debugger \
-    && pnpm prune --prod \
-    && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* \
-    && find /app/build -type f -name "*.ts" -exec rm -f {} \;
-
-COPY --from=get_info /tmp/BUILDTMP/privacy_badger /app/extensions/privacy_badger
-
-RUN \
     echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections \
     && sed -i "s|main|main contrib non-free non-free-firmware|g;s/stable/${LSBCodename:-stable}/g" "/etc/apt/sources.list.d/debian.sources" \
     && apt-get update \
@@ -95,7 +67,34 @@ RUN \
         fonts-ubuntu \
         fonts-wqy-zenhei \
         fonts-open-sans \
-        ttf-mscorefonts-installer
+        ttf-mscorefonts-installer \
+        jq \
+        unzip
+
+RUN \
+    corepack enable \
+    && corepack use pnpm@10 \
+    && pnpm i \
+    && pnpm add @ghostery/adblocker-puppeteer
+
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
+
+RUN \
+    rm -rf /app/src/routes/
+
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/routes/management/
+COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}/
+
+RUN \
+    pnpm run build \
+    && pnpm run build:function \
+    && pnpm run install:debugger \
+    && pnpm prune --prod \
+    && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* \
+    && find /app/build -type f -name "*.ts" -exec rm -f {} \;
+
+COPY --from=get_info /tmp/BUILDTMP/privacy_badger /app/extensions/privacy_badger
 
 FROM node:${NODEJS_VERSION}-slim AS rebased_browserless
 
