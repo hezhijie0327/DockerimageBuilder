@@ -1,5 +1,5 @@
 diff --git a/src/features/AgentBuilder/TopicSelector.tsx b/src/features/AgentBuilder/TopicSelector.tsx
-index 1fc8b2bbd69..bd22fc3a257 100644
+index 9c87c3f6643..9f9ef5f5deb 100644
 --- a/src/features/AgentBuilder/TopicSelector.tsx
 +++ b/src/features/AgentBuilder/TopicSelector.tsx
 @@ -1,22 +1,19 @@
@@ -33,17 +33,17 @@ index 1fc8b2bbd69..bd22fc3a257 100644
    title: css`
      overflow: hidden;
  
-@@ -32,7 +29,8 @@ interface TopicSelectorProps {
+@@ -33,7 +30,8 @@ interface TopicSelectorProps {
  }
  
- const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
+ const TopicSelector = memo<TopicSelectorProps>(({ agentId, disabled }) => {
 -  const { t } = useTranslation('topic');
 +  const { t } = useTranslation(['common', 'topic']);
 +  const { modal } = App.useApp();
  
    // Fetch topics for the agent builder
    const useFetchTopics = useChatStore((s) => s.useFetchTopics);
-@@ -51,33 +49,77 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
+@@ -52,34 +50,78 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId, disabled }) => {
      [topics, activeTopicId],
    );
  
@@ -122,31 +122,35 @@ index 1fc8b2bbd69..bd22fc3a257 100644
              </Flexbox>
            ),
 -          onCheckedChange: (checked) => {
++          onClick: () => {
+             if (disabled) return;
 -            if (checked) {
 -              switchTopic(topic.id);
 -            }
-+          onClick: () => {
 +            switchTopic(topic.id);
            },
 -          type: 'checkbox',
          };
        }),
 -    [topics, switchTopic, styles, activeTopicId],
-+    [topics, switchTopic, styles, t, handleDeleteTopic],
++    [topics, switchTopic, styles, t, handleDeleteTopic, disabled],
    );
    const isEmpty = !topics || topics.length === 0;
  
-@@ -92,7 +134,7 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
-           <ActionIcon
+@@ -95,10 +137,9 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId, disabled }) => {
+             disabled={disabled}
              icon={PlusIcon}
              size={DESKTOP_HEADER_ICON_SMALL_SIZE}
 -            title={t('actions.addNewTopic')}
 +            title={t('actions.addNewTopic', { ns: 'topic' })}
-             onClick={() => switchTopic()}
+             onClick={() => {
+               if (disabled) return;
+-
+               switchTopic();
+             }}
            />
-           <DropdownMenu
 diff --git a/src/routes/(main)/group/profile/features/AgentBuilder/TopicSelector.tsx b/src/routes/(main)/group/profile/features/AgentBuilder/TopicSelector.tsx
-index 02b256b7a4e..a2463da7442 100644
+index 36ee3fb0ba9..cae409fef14 100644
 --- a/src/routes/(main)/group/profile/features/AgentBuilder/TopicSelector.tsx
 +++ b/src/routes/(main)/group/profile/features/AgentBuilder/TopicSelector.tsx
 @@ -1,14 +1,17 @@
@@ -170,7 +174,16 @@ index 02b256b7a4e..a2463da7442 100644
  
  interface TopicSelectorProps {
    agentId: string;
-@@ -40,21 +43,79 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId }) => {
+@@ -16,7 +19,7 @@ interface TopicSelectorProps {
+ }
+ 
+ const TopicSelector = memo<TopicSelectorProps>(({ agentId, disabled }) => {
+-  const { t } = useTranslation('topic');
++  const { t } = useTranslation(['common', 'topic']);
+ 
+   // Fetch topics for the group agent builder
+   useChatStore((s) => s.useFetchTopics)(true, { agentId });
+@@ -41,22 +44,80 @@ const TopicSelector = memo<TopicSelectorProps>(({ agentId, disabled }) => {
      [topics, activeTopicId],
    );
  
@@ -182,6 +195,7 @@ index 02b256b7a4e..a2463da7442 100644
 -        key: topic.id,
 -        label: topic.title,
 -        onCheckedChange: (checked) => {
+-          if (disabled) return;
 -          if (checked) {
 -            handleSwitchTopic(topic.id);
 +  const { modal } = App.useApp();
@@ -217,7 +231,7 @@ index 02b256b7a4e..a2463da7442 100644
 +        title: t('delete', { ns: 'common' }),
 +      });
 +    },
-+    [agentId, modal, t],
++    [agentId, activeTopicId, handleSwitchTopic, modal, t],
 +  );
 +
 +  const items = useMemo<DropdownItem[]>(
@@ -252,6 +266,7 @@ index 02b256b7a4e..a2463da7442 100644
 +          key: topic.id,
 +          label: topic.title,
 +          onCheckedChange: (checked) => {
++            if (disabled) return;
 +            if (checked) {
 +              handleSwitchTopic(topic.id);
 +            }
@@ -259,7 +274,7 @@ index 02b256b7a4e..a2463da7442 100644
 +          type: 'checkbox',
 +        };
 +      }),
-+    [topics, handleSwitchTopic, activeTopicId, handleDeleteTopic, t],
++    [topics, handleSwitchTopic, activeTopicId, disabled, handleDeleteTopic, t],
    );
    const isEmpty = !topics || topics.length === 0;
  
