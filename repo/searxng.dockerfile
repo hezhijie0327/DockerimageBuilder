@@ -59,7 +59,7 @@ RUN \
     && pip install --no-cache -r requirements.txt \
     && pip install --no-cache \
         tzdata \
-        httpx[socks] httpx_curl_cffi \
+        httpx[socks] \
         searxng-bm25-reranker \
     && python3 -m compileall -q searx \
     && find searx/static \( -name '*.html' -o -name '*.css' -o -name '*.js' \
