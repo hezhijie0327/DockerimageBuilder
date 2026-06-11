@@ -1,8 +1,154 @@
+diff --git a/searx/__init__.py b/searx/__init__.py
+index 8977bac67c18..abb1c4283e02 100644
+--- a/searx/__init__.py
++++ b/searx/__init__.py
+@@ -56,12 +56,7 @@ def init_settings():
+         logging.getLogger('werkzeug').setLevel(level=LOG_LEVEL_PROD)
+         logger.info(msg)
+ 
+-    # log max_request_timeout
+-    max_request_timeout: int | None = settings['outgoing']['max_request_timeout']
+-    if max_request_timeout is None:
+-        logger.info('max_request_timeout=%s', repr(max_request_timeout))
+-    else:
+-        logger.info('max_request_timeout=%i second(s)', max_request_timeout)
++    logger.info("max_request_timeout: %s (sec)", get_setting("outgoing.max_request_timeout"))
+ 
+     if settings['server']['public_instance']:
+         logger.warning(
+diff --git a/searx/engines/__init__.py b/searx/engines/__init__.py
+index 1b1574b8bf7b..4301e943a69b 100644
+--- a/searx/engines/__init__.py
++++ b/searx/engines/__init__.py
+@@ -17,7 +17,7 @@
+ import types
+ import inspect
+ 
+-from searx import logger, settings
++from searx import logger, get_setting
+ from searx.utils import load_module
+ 
+ if t.TYPE_CHECKING:
+@@ -28,25 +28,22 @@
+ 
+ # Defaults for the namespace of an engine module, see load_engine()
+ ENGINE_DEFAULT_ARGS: dict[str, int | str | list[t.Any] | dict[str, t.Any] | bool] = {
+-    # Common options in the engine module
+     "engine_type": "online",
+     "paging": False,
+     "time_range_support": False,
+     "safesearch": False,
+-    # settings.yml
+     "categories": ["general"],
+-    "enable_http": False,
+     "shortcut": "-",
+-    "timeout": settings["outgoing"]["request_timeout"],
++    "timeout": get_setting("outgoing.request_timeout"),
+     "display_error_messages": True,
+     "disabled": False,
+     "inactive": False,
+     "about": {},
+-    "using_tor_proxy": False,
+     "send_accept_language_header": True,
+     "tokens": [],
+     "max_page": 0,
+ }
++
+ # set automatically when an engine does not have any tab category
+ DEFAULT_CATEGORY = 'other'
+ 
+@@ -150,7 +147,7 @@ def load_engine(engine_data: dict[str, t.Any]) -> "Engine | types.ModuleType | N
+     if not call_engine_setup(engine, engine_data):
+         return None
+ 
+-    if not any(cat in settings['categories_as_tabs'] for cat in engine.categories):
++    if not any(cat in get_setting("categories_as_tabs") for cat in engine.categories):
+         engine.categories.append(DEFAULT_CATEGORY)
+ 
+     return engine
+@@ -158,7 +155,7 @@ def load_engine(engine_data: dict[str, t.Any]) -> "Engine | types.ModuleType | N
+ 
+ def set_loggers(engine: "Engine|types.ModuleType", engine_name: str):
+     # set the logger for engine
+-    engine.logger = logger.getChild(engine_name)
++    engine.logger = logger.getChild(engine_name)  # type: ignore
+     # the engine may have load some other engines
+     # may sure the logger is initialized
+     # use sys.modules.copy() to avoid "RuntimeError: dictionary changed size during iteration"
+@@ -194,16 +191,13 @@ def update_engine_attributes(engine: "Engine | types.ModuleType", engine_data: d
+ 
+ 
+ def update_attributes_for_tor(engine: "Engine | types.ModuleType"):
+-    if using_tor_proxy(engine) and hasattr(engine, 'onion_url'):
+-        engine.search_url = engine.onion_url + getattr(engine, 'search_path', '')  # type: ignore
+-        engine.timeout += settings['outgoing'].get('extra_proxy_timeout', 0)  # type: ignore
++    if is_using_tor_proxy(engine):
++        engine.timeout += get_setting("outgoing.extra_proxy_timeout")  # type: ignore
+ 
+ 
+ def is_missing_required_attributes(engine: "Engine | types.ModuleType"):
+     """An attribute is required when its name doesn't start with ``_`` (underline).
+-    Required attributes must not be ``None``.
+-
+-    """
++    Required attributes must not be ``None``."""
+     missing = False
+     for engine_attr in dir(engine):
+         if not engine_attr.startswith('_') and getattr(engine, engine_attr) is None:
+@@ -212,9 +206,9 @@ def is_missing_required_attributes(engine: "Engine | types.ModuleType"):
+     return missing
+ 
+ 
+-def using_tor_proxy(engine: "Engine | types.ModuleType"):
++def is_using_tor_proxy(engine: "Engine | types.ModuleType") -> bool:
+     """Return True if the engine configuration declares to use Tor."""
+-    return settings['outgoing'].get('using_tor_proxy') or getattr(engine, 'using_tor_proxy', False)
++    return bool(get_setting("outgoing.using_tor_proxy", None) or getattr(engine, "using_tor_proxy", False))
+ 
+ 
+ def is_engine_active(engine: "Engine | types.ModuleType"):
+@@ -223,7 +217,7 @@ def is_engine_active(engine: "Engine | types.ModuleType"):
+         return False
+ 
+     # exclude onion engines if not using tor
+-    if 'onions' in engine.categories and not using_tor_proxy(engine):
++    if "onions" in engine.categories and not is_using_tor_proxy(engine):
+         return False
+ 
+     return True
+diff --git a/searx/engines/aol.py b/searx/engines/aol.py
+index b63098451918..a5b690e987fb 100644
+--- a/searx/engines/aol.py
++++ b/searx/engines/aol.py
+@@ -88,6 +88,7 @@ def request(query: str, params: "OnlineParams") -> None:
+ 
+     params["cookies"]["sB"] = f"vm={safesearch_map[params['safesearch']]}"
+     params["url"] = f"{base_url}/aol/{search_type}?{urlencode(args)}"
++    params["allow_redirects"] = True
+     logger.debug(params)
+ 
+ 
+diff --git a/searx/engines/mojeek.py b/searx/engines/mojeek.py
+index b04c9a9c5b5b..cfa83d020a17 100644
+--- a/searx/engines/mojeek.py
++++ b/searx/engines/mojeek.py
+@@ -77,6 +77,11 @@ def request(query, params):
+ 
+     params["url"] = f"{base_url}/search?{urlencode(args)}"
+ 
++    if search_type == "images":
++        # At least in the impersonate mode we have to overwrite the "Accept" header
++        # from curl_cffi default headers:
++        params["headers"]["Accept"] = "*/*"
++
+     return params
+ 
+ 
 diff --git a/searx/network/client.py b/searx/network/client.py
-index c7c07c385b9..9629fc99fad 100644
+index 024eb2567026..caff26fba19b 100644
 --- a/searx/network/client.py
 +++ b/searx/network/client.py
-@@ -11,11 +11,16 @@
+@@ -11,10 +11,17 @@
  import threading
  
  import httpx
@@ -12,15 +158,16 @@ index c7c07c385b9..9629fc99fad 100644
  from python_socks import parse_proxy_url, ProxyConnectionError, ProxyTimeoutError, ProxyError
  
  from searx import logger
- 
++from searx import get_setting
++
 +if t.TYPE_CHECKING:
 +    from curl_cffi import BrowserTypeLiteral
++    from curl_cffi import CurlOpt
 +
-+
+ 
  CertTypes = str | tuple[str, str] | tuple[str, str, str]
  SslContextKeyType = tuple[str | None, CertTypes | None, bool, bool]
- 
-@@ -94,7 +99,7 @@ async def __aexit__(
+@@ -94,7 +101,7 @@ async def __aexit__(
          pass
  
  
@@ -29,7 +176,7 @@ index c7c07c385b9..9629fc99fad 100644
      """Fix httpx_socks.AsyncProxyTransport
  
      Map python_socks exceptions to httpx.ProxyError exceptions
-@@ -112,7 +117,7 @@ async def handle_async_request(self, request: httpx.Request):
+@@ -112,7 +119,7 @@ async def handle_async_request(self, request: httpx.Request):
  
  
  def get_transport_for_socks_proxy(
@@ -38,7 +185,7 @@ index c7c07c385b9..9629fc99fad 100644
  ):
      # support socks5h (requests compatibility):
      # https://requests.readthedocs.io/en/master/user/advanced/#socks
-@@ -143,7 +148,7 @@ def get_transport_for_socks_proxy(
+@@ -143,7 +150,7 @@ def get_transport_for_socks_proxy(
  
  
  def get_transport(
@@ -47,7 +194,7 @@ index c7c07c385b9..9629fc99fad 100644
  ):
      _verify = get_sslcontexts(None, None, verify, True) if verify is True else verify
      return httpx.AsyncHTTPTransport(
-@@ -159,6 +164,7 @@ def get_transport(
+@@ -159,6 +166,7 @@ def get_transport(
  
  def new_client(
      # pylint: disable=too-many-arguments
@@ -55,7 +202,7 @@ index c7c07c385b9..9629fc99fad 100644
      enable_http: bool,
      verify: bool,
      enable_http2: bool,
-@@ -166,7 +172,7 @@ def new_client(
+@@ -166,7 +174,7 @@ def new_client(
      max_keepalive_connections: int,
      keepalive_expiry: float,
      proxies: dict[str, str],
@@ -64,27 +211,34 @@ index c7c07c385b9..9629fc99fad 100644
      retries: int,
      max_redirects: int,
      hook_log_response: t.Callable[..., t.Any] | None,
-@@ -176,13 +182,31 @@ def new_client(
+@@ -176,13 +184,37 @@ def new_client(
          max_keepalive_connections=max_keepalive_connections,
          keepalive_expiry=keepalive_expiry,
      )
 +
      # See https://www.python-httpx.org/advanced/#routing
-     mounts = {}
+-    mounts = {}
      mounts: None | (dict[str, t.Any | None]) = {}
 +
 +    # build transport object
++    curl_options: dict["CurlOpt", t.Any] = {}
++    # required for parallel requests, see curl_cffi issues below
++    curl_options[httpx_curl_cffi.CurlOpt.FRESH_CONNECT] = True
++    # if sxng_debug:
++    #    curl_options[httpx_curl_cffi.CurlOpt.DEBUGFUNCTION] = True
++    #    curl_options[httpx_curl_cffi.CurlOpt.VERBOSE] = 1
 +
      for pattern, proxy_url in proxies.items():
          if not enable_http and pattern.startswith('http://'):
              continue
 -        if proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://'):
 +        if impersonate:
++
 +            mounts[pattern] = httpx_curl_cffi.AsyncCurlTransport(
 +                impersonate=impersonate,
 +                default_headers=True,
-+                # required for parallel requests, see curl_cffi issues below
-+                curl_options={httpx_curl_cffi.CurlOpt.FRESH_CONNECT: True},
++                debug=get_setting("general.debug"),
++                curl_options=curl_options,
 +                http_version=(
 +                    httpx_curl_cffi.CurlHttpVersion.V3 if enable_http2 else httpx_curl_cffi.CurlHttpVersion.V1_1
 +                ),
@@ -97,7 +251,7 @@ index c7c07c385b9..9629fc99fad 100644
              mounts[pattern] = get_transport_for_socks_proxy(
                  verify, enable_http2, local_address, proxy_url, limit, retries
              )
-@@ -192,12 +216,26 @@ def new_client(
+@@ -192,12 +224,26 @@ def new_client(
      if not enable_http:
          mounts['http://'] = AsyncHTTPTransportNoHttp()
  
@@ -107,8 +261,8 @@ index c7c07c385b9..9629fc99fad 100644
 +        transport = httpx_curl_cffi.AsyncCurlTransport(
 +            impersonate=impersonate,
 +            default_headers=True,
-+            # required for parallel requests, see curl_cffi issues below
-+            curl_options={httpx_curl_cffi.CurlOpt.FRESH_CONNECT: True},
++            debug=get_setting("general.debug"),
++            curl_options=curl_options,
 +            http_version=httpx_curl_cffi.CurlHttpVersion.V3 if enable_http2 else httpx_curl_cffi.CurlHttpVersion.V1_1,
 +            local_address=local_address,
 +        )
@@ -126,7 +280,7 @@ index c7c07c385b9..9629fc99fad 100644
          transport=transport,
          mounts=mounts,
 diff --git a/searx/network/network.py b/searx/network/network.py
-index eb53afb7f08..a15de747a49 100644
+index eb53afb7f085..f1d27f8052ec 100644
 --- a/searx/network/network.py
 +++ b/searx/network/network.py
 @@ -1,5 +1,5 @@
@@ -136,7 +290,13 @@ index eb53afb7f08..a15de747a49 100644
  # pylint: disable=missing-module-docstring, missing-class-docstring
  
  __all__ = ["get_network"]
-@@ -20,6 +20,8 @@
+@@ -15,11 +15,13 @@
+ 
+ import httpx
+ 
+-from searx import logger, sxng_debug
++from searx import logger, sxng_debug, get_setting
+ from searx.extended_types import SXNG_Response
  from .client import new_client, get_loop, AsyncHTTPTransportNoHttp
  from .raise_for_httperror import raise_for_httperror
  
@@ -242,7 +402,7 @@ index eb53afb7f08..a15de747a49 100644
              )
              if self.using_tor_proxy and not await self.check_tor_proxy(client, proxies):
                  await client.aclose()
-@@ -274,10 +259,21 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
+@@ -274,15 +259,27 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
          was_disconnected = False
          do_raise_for_httperror = Network.extract_do_raise_for_httperror(kwargs)
          kwargs_clients = Network.extract_kwargs_clients(kwargs)
@@ -265,3 +425,312 @@ index eb53afb7f08..a15de747a49 100644
              try:
                  if stream:
                      return client.stream(method, url, **kwargs)
+ 
+                 response = await client.request(method, url, **kwargs)
++                logger.debug("response headers from %s -> %s", url, response.headers)
+                 if self.is_valid_response(response) or retries <= 0:
+                     return self.patch_response(response, do_raise_for_httperror)
+             except httpx.RemoteProtocolError as e:
+@@ -333,91 +330,109 @@ async def check():
+         raise RuntimeError("Invalid network configuration")
+ 
+ 
++def get_default_network_params() -> dict[str, t.Any]:
++    # default parameters for AsyncHTTPTransport
++    # see https://github.com/encode/httpx/blob/e05a5372eb6172287458b37447c30f650047e1b8/httpx/_transports/default.py#L108-L121  # pylint: disable=line-too-long
++    s: dict[str, t.Any] = get_setting("outgoing")
++    return {
++        "enable_http": False,
++        "retry_on_http_error": False,
++        # values mapped from outgoing section in the settings.yml to httpx params
++        "retries": s["retries"],
++        "enable_http2": s["enable_http2"],
++        "max_redirects": s["max_redirects"],
++        "max_keepalive_connections": s["pool_maxsize"],
++        "max_connections": s["pool_connections"],
++        "keepalive_expiry": s["keepalive_expiry"],
++        "verify": s["verify"],
++        "local_addresses": s["source_ips"],
++        "proxies": s["proxies"],
++        "using_tor_proxy": s["using_tor_proxy"],
++    }
++
++
+ def initialize(
+-    settings_engines: list[dict[str, t.Any]] = None,  # pyright: ignore[reportArgumentType]
+-    settings_outgoing: dict[str, t.Any] = None,  # pyright: ignore[reportArgumentType]
++    settings_engines: list[dict[str, t.Any]],
+ ) -> None:
+     # pylint: disable=import-outside-toplevel)
+     from searx.engines import engines
+-    from searx import settings
+ 
+     # pylint: enable=import-outside-toplevel)
+ 
+-    settings_engines = settings_engines or settings['engines']
+-    settings_outgoing = settings_outgoing or settings['outgoing']
+-
+-    # default parameters for AsyncHTTPTransport
+-    # see https://github.com/encode/httpx/blob/e05a5372eb6172287458b37447c30f650047e1b8/httpx/_transports/default.py#L108-L121  # pylint: disable=line-too-long
+-    default_params: dict[str, t.Any] = {
+-        'enable_http': False,
+-        'verify': settings_outgoing['verify'],
+-        'enable_http2': settings_outgoing['enable_http2'],
+-        'max_connections': settings_outgoing['pool_connections'],
+-        'max_keepalive_connections': settings_outgoing['pool_maxsize'],
+-        'keepalive_expiry': settings_outgoing['keepalive_expiry'],
+-        'local_addresses': settings_outgoing['source_ips'],
+-        'using_tor_proxy': settings_outgoing['using_tor_proxy'],
+-        'proxies': settings_outgoing['proxies'],
+-        'max_redirects': settings_outgoing['max_redirects'],
+-        'retries': settings_outgoing['retries'],
+-        'retry_on_http_error': False,
+-    }
++    default_network_params = get_default_network_params()
+ 
+-    def new_network(params: dict[str, t.Any], logger_name: str | None = None):
+-        nonlocal default_params
++    def new_network(network_params: dict[str, t.Any], logger_name: str | None = None):
++        nonlocal default_network_params
+         result = {}
+-        result.update(default_params)  # pyright: ignore[reportUnknownMemberType]
+-        result.update(params)  # pyright: ignore[reportUnknownMemberType]
++        result.update(default_network_params)  # pyright: ignore[reportUnknownMemberType]
++        result.update(network_params)  # pyright: ignore[reportUnknownMemberType]
+         if logger_name:
+-            result['logger_name'] = logger_name
+-        return Network(**result)  # type: ignore
++            result["logger_name"] = logger_name
++        return Network(**result)  # pyright: ignore[reportUnknownArgumentType]
+ 
+     def iter_networks():
+         nonlocal settings_engines
+         for engine_spec in settings_engines:
+-            engine_name = engine_spec['name']
+-            engine = engines.get(engine_name)
+-            if engine is None:
++            name: str = engine_spec["name"]
++            engine = engines.get(name)
++            if engine is None and not engine_spec.get("inactive"):
++                logger.warning("engine '%s' does not exists, check settings.yml", name)
+                 continue
+-            network = getattr(engine, 'network', None)
+-            yield engine_name, engine, network
++            network: dict[str, t.Any] | str | None = getattr(engine, "network", None)
++            yield name, engine, network
+ 
+     if NETWORKS:
+         done()
+     NETWORKS.clear()
+-    NETWORKS[DEFAULT_NAME] = new_network({}, logger_name='default')
+-    NETWORKS['ipv4'] = new_network({'local_addresses': '0.0.0.0'}, logger_name='ipv4')
+-    NETWORKS['ipv6'] = new_network({'local_addresses': '::'}, logger_name='ipv6')
+ 
+-    # define networks from outgoing.networks
+-    for network_name, network in settings_outgoing['networks'].items():
+-        NETWORKS[network_name] = new_network(network, logger_name=network_name)
++    # prepare default networks, incl. defaukt networks for IPv4 and IPv6
++    NETWORKS[DEFAULT_NAME] = new_network({}, logger_name="default")
++    NETWORKS["ipv4"] = new_network({"local_addresses": "0.0.0.0"}, logger_name="ipv4")
++    NETWORKS['ipv6'] = new_network({"local_addresses": "::"}, logger_name="ipv6")
+ 
+-    # define networks from engines.[i].network (except references)
++    # prepare networks from the "outgoing.networks" settings
++    for network_name, network_params in get_setting("outgoing.networks").items():
++        NETWORKS[network_name] = new_network(network_params, logger_name=network_name)
++
++    # prepare networks from engines.[i].network (except references)
+     for engine_name, engine, network in iter_networks():
++
++        if isinstance(network, str):
++            # network is refered by the network-name / we will create them below
++            continue
++
+         if network is None:
+-            network = {}
+-            for attribute_name, attribute_value in default_params.items():
+-                if hasattr(engine, attribute_name):
+-                    network[attribute_name] = getattr(engine, attribute_name)
+-                else:
+-                    network[attribute_name] = attribute_value
+-            NETWORKS[engine_name] = new_network(network, logger_name=engine_name)
++            # update network params from engine module
++            network_params: dict[str, t.Any] = {}
++            for param_name, param_value in default_network_params.items():
++                if hasattr(engine, param_name):
++                    network_params[param_name] = getattr(engine, param_name)
++                    logger.debug(
++                        "engine %s: updates (default) network_param '%s': '%s' --> '%s'",
++                        engine_name,
++                        param_name,
++                        param_value,
++                        network_params[param_name],
++                    )
++            NETWORKS[engine_name] = new_network(network_params, logger_name=engine_name)
++
+         elif isinstance(network, dict):
+             NETWORKS[engine_name] = new_network(network, logger_name=engine_name)
++        else:
++            raise TypeError(f"engine {engine_name}: network setting isn't of type str or dict ({type(network)})")
+ 
+-    # define networks from engines.[i].network (references)
++    # After all networks have been instantiated, the references can be assigned.
+     for engine_name, engine, network in iter_networks():
+         if isinstance(network, str):
+             NETWORKS[engine_name] = NETWORKS[network]
+ 
+-    # the /image_proxy endpoint has a dedicated network.
+-    # same parameters than the default network, but HTTP/2 is disabled.
+-    # It decreases the CPU load average, and the total time is more or less the same
+-    if 'image_proxy' not in NETWORKS:
+-        image_proxy_params = default_params.copy()
+-        image_proxy_params['enable_http2'] = False
+-        NETWORKS['image_proxy'] = new_network(image_proxy_params, logger_name='image_proxy')
++    # The /image_proxy endpoint has a dedicated network.  Same parameters than
++    # the default network, but HTTP/2 is disabled.  It decreases the CPU load
++    # average, and the total time is more or less the same
++    if "image_proxy" not in NETWORKS:
++        network_params = get_default_network_params()
++        network_params["enable_http2"] = False
++        NETWORKS["image_proxy"] = new_network(network_params, logger_name="image_proxy")
+ 
+ 
+ @atexit.register
+diff --git a/searx/search/__init__.py b/searx/search/__init__.py
+index 45ab8350996f..00654efc6853 100644
+--- a/searx/search/__init__.py
++++ b/searx/search/__init__.py
+@@ -12,7 +12,7 @@
+ from flask import copy_current_request_context
+ 
+ from searx import logger
+-from searx import settings
++from searx import get_setting
+ import searx.answerers
+ import searx.plugins
+ from searx.engines import load_engines
+@@ -31,13 +31,13 @@
+ 
+ 
+ def initialize(
+-    settings_engines: list[dict[str, t.Any]] = None,  # pyright: ignore[reportArgumentType]
+     check_network: bool = False,
+     enable_metrics: bool = True,
+ ):
+-    settings_engines = settings_engines or settings['engines']
++
++    settings_engines: list[dict[str, t.Any]] = get_setting("engines")
+     load_engines(settings_engines)
+-    initialize_network(settings_engines, settings['outgoing'])
++    initialize_network(settings_engines)
+     if check_network:
+         check_network_configuration()
+     initialize_metrics([engine['name'] for engine in settings_engines], enable_metrics)
+@@ -108,20 +108,20 @@ def _get_requests(self) -> tuple[list[tuple[str, str, RequestParams]], float]:
+             default_timeout = max(default_timeout, processor.engine.timeout)
+ 
+         # adjust timeout
+-        max_request_timeout = settings['outgoing']['max_request_timeout']
++        max_request_timeout = get_setting("outgoing.max_request_timeout")
+         actual_timeout = default_timeout
+         query_timeout = self.search_query.timeout_limit
+ 
+-        if max_request_timeout is None and query_timeout is None:
++        if not max_request_timeout and query_timeout is None:
+             # No max, no user query: default_timeout
+             pass
+-        elif max_request_timeout is None and query_timeout is not None:
++        elif not max_request_timeout and query_timeout is not None:
+             # No max, but user query: From user query except if above default
+             actual_timeout = min(default_timeout, query_timeout)
+-        elif max_request_timeout is not None and query_timeout is None:
++        elif not max_request_timeout and query_timeout is None:
+             # Max, no user query: Default except if above max
+             actual_timeout = min(default_timeout, max_request_timeout)
+-        elif max_request_timeout is not None and query_timeout is not None:
++        elif max_request_timeout and query_timeout is not None:
+             # Max & user query: From user query except if above max
+             actual_timeout = min(query_timeout, max_request_timeout)
+ 
+diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
+index 2b82dce1444a..4dfb752e4585 100644
+--- a/searx/settings_defaults.py
++++ b/searx/settings_defaults.py
+@@ -247,22 +247,20 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
+         'lock': SettingsValue(list, []),
+     },
+     'outgoing': {
+-        'useragent_suffix': SettingsValue(str, ''),
+-        'request_timeout': SettingsValue(numbers.Real, 3.0),
+-        'enable_http2': SettingsValue(bool, True),
+-        'verify': SettingsValue((bool, str), True),
+-        'max_request_timeout': SettingsValue((None, numbers.Real), None),
+-        'pool_connections': SettingsValue(int, 100),
+-        'pool_maxsize': SettingsValue(int, 10),
+-        'keepalive_expiry': SettingsValue(numbers.Real, 5.0),
+-        # default maximum redirect
+-        # from https://github.com/psf/requests/blob/8c211a96cdbe9fe320d63d9e1ae15c5c07e179f8/requests/models.py#L55
+-        'max_redirects': SettingsValue(int, 30),
+-        'retries': SettingsValue(int, 0),
+-        'proxies': SettingsValue((None, str, dict), None),
+-        'source_ips': SettingsValue((None, str, list), None),
++        "useragent_suffix": SettingsValue(str, ""),
++        "request_timeout": SettingsValue(numbers.Real, 3.0),
++        "max_request_timeout": SettingsValue((None, numbers.Real), None),
++        "retries": SettingsValue(int, 0),
++        "max_redirects": SettingsValue(int, 30),
++        "enable_http2": SettingsValue(bool, True),
++        "pool_maxsize": SettingsValue(int, 10),
++        "pool_connections": SettingsValue(int, 100),
++        "keepalive_expiry": SettingsValue(numbers.Real, 5.0),
++        "verify": SettingsValue((bool, str), True),
++        "source_ips": SettingsValue((None, str, list), None),
++        "proxies": SettingsValue((None, str, dict), None),
+         # Tor configuration
+-        'using_tor_proxy': SettingsValue(bool, False),
++        "using_tor_proxy": SettingsValue(bool, False),
+         'extra_proxy_timeout': SettingsValue(int, 0),
+         'networks': {},
+     },
+diff --git a/searx/utils.py b/searx/utils.py
+index 9a7968ab7cae..806da799a3a8 100644
+--- a/searx/utils.py
++++ b/searx/utils.py
+@@ -24,7 +24,7 @@
+ from lxml.etree import XPath, XPathError, XPathSyntaxError
+ from lxml.etree import ElementBase, _Element  # pyright: ignore[reportPrivateUsage]
+ 
+-from searx import settings
++from searx import settings, get_setting
+ from searx.data import USER_AGENTS, gsa_useragents_loader
+ from searx.version import VERSION_TAG
+ from searx.exceptions import SearxXPathSyntaxException, SearxEngineXPathException
+@@ -67,7 +67,7 @@ class _NotSetClass:  # pylint: disable=too-few-public-methods
+ 
+ def searxng_useragent() -> str:
+     """Return the SearXNG User Agent"""
+-    return f"SearXNG/{VERSION_TAG} {settings['outgoing']['useragent_suffix']}".strip()
++    return f"SearXNG/{VERSION_TAG} {get_setting('outgoing.useragent_suffix')}".strip()
+ 
+ 
+ def gen_useragent(os_string: str | None = None) -> str:
+diff --git a/tests/unit/test_engines_init.py b/tests/unit/test_engines_init.py
+index bcd6ad0846de..0340682e3a94 100644
+--- a/tests/unit/test_engines_init.py
++++ b/tests/unit/test_engines_init.py
+@@ -40,7 +40,6 @@ def test_initialize_engines_include_onions(self):
+                 'shortcut': 'e1',
+                 'categories': 'general',
+                 'timeout': 20.0,
+-                'onion_url': 'http://engine1.onion',
+             },
+             {'engine': 'dummy', 'name': 'engine2', 'shortcut': 'e2', 'categories': 'onions'},
+         ]
+@@ -50,7 +49,6 @@ def test_initialize_engines_include_onions(self):
+         self.assertIn('engine1', engines.engines)
+         self.assertIn('engine2', engines.engines)
+         self.assertIn('onions', engines.categories)
+-        self.assertIn('http://engine1.onion', engines.engines['engine1'].search_url)
+         self.assertEqual(engines.engines['engine1'].timeout, 120.0)
+ 
+     def test_missing_name_field(self):
