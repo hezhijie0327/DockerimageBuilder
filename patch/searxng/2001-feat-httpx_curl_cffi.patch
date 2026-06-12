@@ -1,30 +1,121 @@
 diff --git a/searx/network/client.py b/searx/network/client.py
-index 024eb2567026..af6e4699fa32 100644
+index 024eb2567026..82149f53e2eb 100644
 --- a/searx/network/client.py
 +++ b/searx/network/client.py
-@@ -16,6 +16,15 @@
+@@ -12,14 +12,30 @@
+ 
+ import httpx
+ from httpx_socks import AsyncProxyTransport
+-from python_socks import parse_proxy_url, ProxyConnectionError, ProxyTimeoutError, ProxyError
++from python_socks import (
++    parse_proxy_url,
++    ProxyConnectionError,
++    ProxyTimeoutError,
++    ProxyError,
++)
  
  from searx import logger
  
 +try:
 +    from httpx_curl_cffi import AsyncCurlTransport, CurlOpt
++    from curl_cffi.const import CurlHttpVersion
 +
 +    HAS_CURL_CFFI = True
 +except ImportError:
 +    HAS_CURL_CFFI = False
 +    AsyncCurlTransport = None  # type: ignore
 +    CurlOpt = None  # type: ignore
++    CurlHttpVersion = None  # type: ignore
 +
  CertTypes = str | tuple[str, str] | tuple[str, str, str]
  SslContextKeyType = tuple[str | None, CertTypes | None, bool, bool]
  
-@@ -143,8 +152,34 @@ def get_transport_for_socks_proxy(
+-logger = logger.getChild('searx.network.client')
++logger = logger.getChild("searx.network.client")
+ LOOP: asyncio.AbstractEventLoop = None  # pyright: ignore[reportAssignmentType]
+ 
+ SSLCONTEXTS: dict[SslContextKeyType, SSLContext] = {}
+@@ -49,7 +65,10 @@ def shuffle_ciphers(ssl_context: SSLContext):
+ 
+ 
+ def get_sslcontexts(
+-    proxy_url: str | None = None, cert: CertTypes | None = None, verify: bool = True, trust_env: bool = True
++    proxy_url: str | None = None,
++    cert: CertTypes | None = None,
++    verify: bool = True,
++    trust_env: bool = True,
+ ) -> SSLContext:
+     key: SslContextKeyType = (proxy_url, cert, verify, trust_env)
+     if key not in SSLCONTEXTS:
+@@ -77,7 +96,7 @@ def __init__(self, *args, **kwargs):  # type: ignore
+         pass
+ 
+     async def handle_async_request(self, request: httpx.Request):
+-        raise httpx.UnsupportedProtocol('HTTP protocol is disabled')
++        raise httpx.UnsupportedProtocol("HTTP protocol is disabled")
+ 
+     async def aclose(self) -> None:
+         pass
+@@ -104,28 +123,43 @@ async def handle_async_request(self, request: httpx.Request):
+         try:
+             return await super().handle_async_request(request)
+         except ProxyConnectionError as e:
+-            raise httpx.ProxyError("ProxyConnectionError: " + str(e.strerror), request=request) from e
++            raise httpx.ProxyError(
++                "ProxyConnectionError: " + str(e.strerror), request=request
++            ) from e
+         except ProxyTimeoutError as e:
+-            raise httpx.ProxyError("ProxyTimeoutError: " + str(e.args[0]), request=request) from e
++            raise httpx.ProxyError(
++                "ProxyTimeoutError: " + str(e.args[0]), request=request
++            ) from e
+         except ProxyError as e:
+-            raise httpx.ProxyError("ProxyError: " + str(e.args[0]), request=request) from e
++            raise httpx.ProxyError(
++                "ProxyError: " + str(e.args[0]), request=request
++            ) from e
+ 
+ 
+ def get_transport_for_socks_proxy(
+-    verify: bool, http2: bool, local_address: str, proxy_url: str, limit: httpx.Limits, retries: int
++    verify: bool,
++    http2: bool,
++    local_address: str,
++    proxy_url: str,
++    limit: httpx.Limits,
++    retries: int,
+ ):
+     # support socks5h (requests compatibility):
+     # https://requests.readthedocs.io/en/master/user/advanced/#socks
+     # socks5://   hostname is resolved on client side
+     # socks5h://  hostname is resolved on proxy side
+     rdns = False
+-    socks5h = 'socks5h://'
++    socks5h = "socks5h://"
+     if proxy_url.startswith(socks5h):
+-        proxy_url = 'socks5://' + proxy_url[len(socks5h) :]
++        proxy_url = "socks5://" + proxy_url[len(socks5h) :]
+         rdns = True
+ 
+-    proxy_type, proxy_host, proxy_port, proxy_username, proxy_password = parse_proxy_url(proxy_url)
+-    _verify = get_sslcontexts(proxy_url, None, verify, True) if verify is True else verify
++    proxy_type, proxy_host, proxy_port, proxy_username, proxy_password = (
++        parse_proxy_url(proxy_url)
++    )
++    _verify = (
++        get_sslcontexts(proxy_url, None, verify, True) if verify is True else verify
++    )
+     return AsyncProxyTransportFixed(
+         proxy_type=proxy_type,
+         proxy_host=proxy_host,
+@@ -143,15 +177,59 @@ def get_transport_for_socks_proxy(
  
  
  def get_transport(
 -    verify: bool, http2: bool, local_address: str, proxy_url: str | None, limit: httpx.Limits, retries: int
 +    verify: bool,
 +    http2: bool,
++    enable_http3: bool,
 +    local_address: str,
 +    proxy_url: str | None,
 +    limit: httpx.Limits,
@@ -34,12 +125,21 @@ index 024eb2567026..af6e4699fa32 100644
 +    if curl_cffi_impersonate and HAS_CURL_CFFI:
 +        # Use curl_cffi transport for browser TLS fingerprint impersonation.
 +        # curl_cffi manages TLS internally (BoringSSL/NSS), so SSLContext/cipher shuffling is bypassed.
-+        _verify: bool | str = verify if isinstance(verify, bool) or isinstance(verify, str) else True
-+        logger.debug("using curl_cffi transport impersonating %s (proxy=%s)", curl_cffi_impersonate, proxy_url)
++        _verify: bool | str = (
++            verify if isinstance(verify, bool) or isinstance(verify, str) else True
++        )
++        _http_version = CurlHttpVersion.V3 if enable_http3 else None
++        logger.debug(
++            "using curl_cffi transport impersonating %s (proxy=%s, http3=%s)",
++            curl_cffi_impersonate,
++            proxy_url,
++            enable_http3,
++        )
 +        return AsyncCurlTransport(
 +            impersonate=curl_cffi_impersonate,
 +            verify=_verify,
 +            proxy=proxy_url,
++            http_version=_http_version,
 +            # FRESH_CONNECT ensures each request uses a fresh curl handle,
 +            # avoiding connection reuse issues in async parallel requests.
 +            curl_options={CurlOpt.FRESH_CONNECT: True},
@@ -51,10 +151,34 @@ index 024eb2567026..af6e4699fa32 100644
 +            "Install it with: pip install httpx_curl_cffi",
 +            curl_cffi_impersonate,
 +        )
++    if enable_http3 and not (curl_cffi_impersonate and HAS_CURL_CFFI):
++        logger.warning(
++            "enable_http3 is set but HTTP/3 requires curl_cffi_impersonate. "
++            "Standard httpx transport does not support HTTP/3. "
++            "Set curl_cffi_impersonate to enable HTTP/3 via curl_cffi."
++        )
      _verify = get_sslcontexts(None, None, verify, True) if verify is True else verify
      return httpx.AsyncHTTPTransport(
          # pylint: disable=protected-access
-@@ -170,6 +205,7 @@ def new_client(
+         verify=_verify,
+         http2=http2,
+         limits=limit,
+-        proxy=httpx._config.Proxy(proxy_url) if proxy_url else None,  # pyright: ignore[reportPrivateUsage]
++        proxy=(
++            httpx._config.Proxy(proxy_url) if proxy_url else None
++        ),  # pyright: ignore[reportPrivateUsage]
+         local_address=local_address,
+         retries=retries,
+     )
+@@ -162,6 +240,7 @@ def new_client(
+     enable_http: bool,
+     verify: bool,
+     enable_http2: bool,
++    enable_http3: bool,
+     max_connections: int,
+     max_keepalive_connections: int,
+     keepalive_expiry: float,
+@@ -170,6 +249,7 @@ def new_client(
      retries: int,
      max_redirects: int,
      hook_log_response: t.Callable[..., t.Any] | None,
@@ -62,9 +186,12 @@ index 024eb2567026..af6e4699fa32 100644
  ) -> httpx.AsyncClient:
      limit = httpx.Limits(
          max_connections=max_connections,
-@@ -182,7 +218,22 @@ def new_client(
+@@ -180,23 +260,58 @@ def new_client(
+     mounts = {}
+     mounts: None | (dict[str, t.Any | None]) = {}
      for pattern, proxy_url in proxies.items():
-         if not enable_http and pattern.startswith('http://'):
+-        if not enable_http and pattern.startswith('http://'):
++        if not enable_http and pattern.startswith("http://"):
              continue
 -        if proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://'):
 +        if curl_cffi_impersonate and HAS_CURL_CFFI:
@@ -74,6 +201,7 @@ index 024eb2567026..af6e4699fa32 100644
 +            mounts[pattern] = get_transport(
 +                verify,
 +                enable_http2,
++                enable_http3,
 +                local_address,
 +                proxy_url,
 +                limit,
@@ -81,43 +209,171 @@ index 024eb2567026..af6e4699fa32 100644
 +                curl_cffi_impersonate=curl_cffi_impersonate,
 +            )
 +        elif (
-+            proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://')
++            proxy_url.startswith("socks4://")
++            or proxy_url.startswith("socks5://")
++            or proxy_url.startswith("socks5h://")
 +        ):
              mounts[pattern] = get_transport_for_socks_proxy(
                  verify, enable_http2, local_address, proxy_url, limit, retries
              )
-@@ -192,7 +243,9 @@ def new_client(
-     if not enable_http:
-         mounts['http://'] = AsyncHTTPTransportNoHttp()
+         else:
+-            mounts[pattern] = get_transport(verify, enable_http2, local_address, proxy_url, limit, retries)
++            mounts[pattern] = get_transport(
++                verify,
++                enable_http2,
++                enable_http3,
++                local_address,
++                proxy_url,
++                limit,
++                retries,
++            )
  
+     if not enable_http:
+-        mounts['http://'] = AsyncHTTPTransportNoHttp()
+-
 -    transport = get_transport(verify, enable_http2, local_address, None, limit, retries)
++        mounts["http://"] = AsyncHTTPTransportNoHttp()
++
 +    transport = get_transport(
-+        verify, enable_http2, local_address, None, limit, retries, curl_cffi_impersonate=curl_cffi_impersonate
++        verify,
++        enable_http2,
++        enable_http3,
++        local_address,
++        None,
++        limit,
++        retries,
++        curl_cffi_impersonate=curl_cffi_impersonate,
 +    )
  
      event_hooks = None
      if hook_log_response:
+-        event_hooks = {'response': [hook_log_response]}
++        event_hooks = {"response": [hook_log_response]}
+ 
+     return httpx.AsyncClient(
+         transport=transport,
+@@ -213,13 +328,13 @@ def get_loop() -> asyncio.AbstractEventLoop:
+ def init():
+     # log
+     for logger_name in (
+-        'httpx',
+-        'httpcore.proxy',
+-        'httpcore.connection',
+-        'httpcore.http11',
+-        'httpcore.http2',
+-        'hpack.hpack',
+-        'hpack.table',
++        "httpx",
++        "httpcore.proxy",
++        "httpcore.connection",
++        "httpcore.http11",
++        "httpcore.http2",
++        "hpack.hpack",
++        "hpack.table",
+     ):
+         logging.getLogger(logger_name).setLevel(logging.WARNING)
+ 
+@@ -231,7 +346,7 @@ def loop_thread():
+ 
+     thread = threading.Thread(
+         target=loop_thread,
+-        name='asyncio_loop',
++        name="asyncio_loop",
+         daemon=True,
+     )
+     thread.start()
 diff --git a/searx/network/network.py b/searx/network/network.py
-index eb53afb7f085..f4bc4cc96c5b 100644
+index eb53afb7f085..f93ff06ba836 100644
 --- a/searx/network/network.py
 +++ b/searx/network/network.py
-@@ -20,7 +20,6 @@
+@@ -20,47 +20,48 @@
  from .client import new_client, get_loop, AsyncHTTPTransportNoHttp
  from .raise_for_httperror import raise_for_httperror
  
 -
- logger = logger.getChild('network')
- DEFAULT_NAME = '__DEFAULT__'
+-logger = logger.getChild('network')
+-DEFAULT_NAME = '__DEFAULT__'
++logger = logger.getChild("network")
++DEFAULT_NAME = "__DEFAULT__"
  NETWORKS: dict[str, "Network"] = {}
-@@ -57,6 +56,7 @@ class Network:
-         'max_redirects',
-         'retries',
-         'retry_on_http_error',
-+        'curl_cffi_impersonate',
-         '_local_addresses_cycle',
-         '_proxies_cycle',
-         '_clients',
-@@ -81,6 +81,7 @@ def __init__(
+ # requests compatibility when reading proxy settings from settings.yml
+ PROXY_PATTERN_MAPPING = {
+-    'http': 'http://',
+-    'https': 'https://',
+-    'socks4': 'socks4://',
+-    'socks5': 'socks5://',
+-    'socks5h': 'socks5h://',
+-    'http:': 'http://',
+-    'https:': 'https://',
+-    'socks4:': 'socks4://',
+-    'socks5:': 'socks5://',
+-    'socks5h:': 'socks5h://',
++    "http": "http://",
++    "https": "https://",
++    "socks4": "socks4://",
++    "socks5": "socks5://",
++    "socks5h": "socks5h://",
++    "http:": "http://",
++    "https:": "https://",
++    "socks4:": "socks4://",
++    "socks5:": "socks5://",
++    "socks5h:": "socks5h://",
+ }
+ 
+-ADDRESS_MAPPING = {'ipv4': '0.0.0.0', 'ipv6': '::'}
++ADDRESS_MAPPING = {"ipv4": "0.0.0.0", "ipv6": "::"}
+ 
+ 
+ @t.final
+ class Network:
+ 
+     __slots__ = (
+-        'enable_http',
+-        'verify',
+-        'enable_http2',
+-        'max_connections',
+-        'max_keepalive_connections',
+-        'keepalive_expiry',
+-        'local_addresses',
+-        'proxies',
+-        'using_tor_proxy',
+-        'max_redirects',
+-        'retries',
+-        'retry_on_http_error',
+-        '_local_addresses_cycle',
+-        '_proxies_cycle',
+-        '_clients',
+-        '_logger',
++        "enable_http",
++        "verify",
++        "enable_http2",
++        "enable_http3",
++        "max_connections",
++        "max_keepalive_connections",
++        "keepalive_expiry",
++        "local_addresses",
++        "proxies",
++        "using_tor_proxy",
++        "max_redirects",
++        "retries",
++        "retry_on_http_error",
++        "curl_cffi_impersonate",
++        "_local_addresses_cycle",
++        "_proxies_cycle",
++        "_clients",
++        "_logger",
+     )
+ 
+     _TOR_CHECK_RESULT = {}
+@@ -71,6 +72,7 @@ def __init__(
+         enable_http: bool = True,
+         verify: bool = True,
+         enable_http2: bool = False,
++        enable_http3: bool = False,
+         max_connections: int = None,  # pyright: ignore[reportArgumentType]
+         max_keepalive_connections: int = None,  # pyright: ignore[reportArgumentType]
+         keepalive_expiry: float = None,  # pyright: ignore[reportArgumentType]
+@@ -81,11 +83,13 @@ def __init__(
          retry_on_http_error: bool = False,
          max_redirects: int = 30,
          logger_name: str = None,  # pyright: ignore[reportArgumentType]
@@ -125,7 +381,13 @@ index eb53afb7f085..f4bc4cc96c5b 100644
      ):
  
          self.enable_http = enable_http
-@@ -95,6 +96,7 @@ def __init__(
+         self.verify = verify
+         self.enable_http2 = enable_http2
++        self.enable_http3 = enable_http3
+         self.max_connections = max_connections
+         self.max_keepalive_connections = max_keepalive_connections
+         self.keepalive_expiry = keepalive_expiry
+@@ -95,6 +99,7 @@ def __init__(
          self.retries = retries
          self.retry_on_http_error = retry_on_http_error
          self.max_redirects = max_redirects
@@ -133,16 +395,104 @@ index eb53afb7f085..f4bc4cc96c5b 100644
          self._local_addresses_cycle = self.get_ipaddress_cycle()
          self._proxies_cycle = self.get_proxy_cycles()
          self._clients = {}
-@@ -192,7 +194,7 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
+@@ -103,13 +108,13 @@ def __init__(
+ 
+     def check_parameters(self):
+         for address in self.iter_ipaddresses():
+-            if '/' in address:
++            if "/" in address:
+                 ipaddress.ip_network(address, False)
+             else:
+                 ipaddress.ip_address(address)
+ 
+         if self.proxies is not None and not isinstance(self.proxies, (str, dict)):
+-            raise ValueError('proxies type has to be str, dict or None')
++            raise ValueError("proxies type has to be str, dict or None")
+ 
+     def iter_ipaddresses(self) -> Generator[str]:
+         local_addresses = self.local_addresses
+@@ -123,7 +128,7 @@ def get_ipaddress_cycle(self):
+         while True:
+             count = 0
+             for address in self.iter_ipaddresses():
+-                if '/' in address:
++                if "/" in address:
+                     for a in ipaddress.ip_network(address, False).hosts():
+                         yield str(a)
+                         count += 1
+@@ -139,7 +144,7 @@ def iter_proxies(self) -> Generator[tuple[str, list[str]]]:
+             return
+         # https://www.python-httpx.org/compatibility/#proxy-keys
+         if isinstance(self.proxies, str):
+-            yield 'all://', [self.proxies]
++            yield "all://", [self.proxies]
+         else:
+             for pattern, proxy_url in self.proxies.items():
+                 pattern: str = PROXY_PATTERN_MAPPING.get(pattern, pattern)
+@@ -147,21 +152,28 @@ def iter_proxies(self) -> Generator[tuple[str, list[str]]]:
+                     proxy_url = [proxy_url]
+                 yield pattern, proxy_url
+ 
+-    def get_proxy_cycles(self) -> Generator[tuple[tuple[str, str], ...], str, str]:  # not sure type is correct
++    def get_proxy_cycles(
++        self,
++    ) -> Generator[tuple[tuple[str, str], ...], str, str]:  # not sure type is correct
+         proxy_settings: dict[str, t.Any] = {}
+         for pattern, proxy_urls in self.iter_proxies():
+             proxy_settings[pattern] = cycle(proxy_urls)
+         while True:
+             # pylint: disable=stop-iteration-return
+-            yield tuple((pattern, next(proxy_url_cycle)) for pattern, proxy_url_cycle in proxy_settings.items())
++            yield tuple(
++                (pattern, next(proxy_url_cycle))
++                for pattern, proxy_url_cycle in proxy_settings.items()
++            )
+ 
+     async def log_response(self, response: httpx.Response):
+         request = response.request
+         status = f"{response.status_code} {response.reason_phrase}"
+         response_line = f"{response.http_version} {status}"
+         content_type = response.headers.get("Content-Type")
+-        content_type = f' ({content_type})' if content_type else ''
+-        self._logger.debug(f'HTTP Request: {request.method} {request.url} "{response_line}"{content_type}')
++        content_type = f" ({content_type})" if content_type else ""
++        self._logger.debug(
++            f'HTTP Request: {request.method} {request.url} "{response_line}"{content_type}'
++        )
+ 
+     @staticmethod
+     async def check_tor_proxy(client: httpx.AsyncClient, proxies) -> bool:
+@@ -187,18 +199,27 @@ async def check_tor_proxy(client: httpx.AsyncClient, proxies) -> bool:
+         Network._TOR_CHECK_RESULT[proxies] = result
+         return result
+ 
+-    async def get_client(self, verify: bool | None = None, max_redirects: int | None = None) -> httpx.AsyncClient:
++    async def get_client(
++        self, verify: bool | None = None, max_redirects: int | None = None
++    ) -> httpx.AsyncClient:
+         verify = self.verify if verify is None else verify
          max_redirects = self.max_redirects if max_redirects is None else max_redirects
          local_address = next(self._local_addresses_cycle)
          proxies = next(self._proxies_cycle)  # is a tuple so it can be part of the key
 -        key = (verify, max_redirects, local_address, proxies)
-+        key = (verify, max_redirects, local_address, proxies, self.curl_cffi_impersonate)
++        key = (
++            verify,
++            max_redirects,
++            local_address,
++            proxies,
++            self.curl_cffi_impersonate,
++        )
          hook_log_response = self.log_response if sxng_debug else None
          if key not in self._clients or self._clients[key].is_closed:
              client = new_client(
-@@ -207,6 +209,7 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
+                 self.enable_http,
+                 verify,
+                 self.enable_http2,
++                self.enable_http3,
+                 self.max_connections,
+                 self.max_keepalive_connections,
+                 self.keepalive_expiry,
+@@ -207,10 +228,11 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
                  0,
                  max_redirects,
                  hook_log_response,
@@ -150,16 +500,233 @@ index eb53afb7f085..f4bc4cc96c5b 100644
              )
              if self.using_tor_proxy and not await self.check_tor_proxy(client, proxies):
                  await client.aclose()
-@@ -361,6 +364,7 @@ def initialize(
-         'max_redirects': settings_outgoing['max_redirects'],
-         'retries': settings_outgoing['retries'],
-         'retry_on_http_error': False,
-+        'curl_cffi_impersonate': settings_outgoing.get('curl_cffi_impersonate'),
+-                raise httpx.ProxyError('Network configuration problem: not using Tor')
++                raise httpx.ProxyError("Network configuration problem: not using Tor")
+             self._clients[key] = client
+         return self._clients[key]
+ 
+@@ -221,29 +243,34 @@ async def close_client(client):
+             except httpx.HTTPError:
+                 pass
+ 
+-        await asyncio.gather(*[close_client(client) for client in self._clients.values()], return_exceptions=False)
++        await asyncio.gather(
++            *[close_client(client) for client in self._clients.values()],
++            return_exceptions=False,
++        )
+ 
+     @staticmethod
+     def extract_kwargs_clients(kwargs: dict[str, t.Any]) -> dict[str, t.Any]:
+         kwargs_clients: dict[str, t.Any] = {}
+-        if 'verify' in kwargs:
+-            kwargs_clients['verify'] = kwargs.pop('verify')
+-        if 'max_redirects' in kwargs:
+-            kwargs_clients['max_redirects'] = kwargs.pop('max_redirects')
+-        if 'allow_redirects' in kwargs:
++        if "verify" in kwargs:
++            kwargs_clients["verify"] = kwargs.pop("verify")
++        if "max_redirects" in kwargs:
++            kwargs_clients["max_redirects"] = kwargs.pop("max_redirects")
++        if "allow_redirects" in kwargs:
+             # see https://github.com/encode/httpx/pull/1808
+-            kwargs['follow_redirects'] = kwargs.pop('allow_redirects')
++            kwargs["follow_redirects"] = kwargs.pop("allow_redirects")
+         return kwargs_clients
+ 
+     @staticmethod
+     def extract_do_raise_for_httperror(kwargs: dict[str, t.Any]):
+         do_raise_for_httperror = True
+-        if 'raise_for_httperror' in kwargs:
+-            do_raise_for_httperror = kwargs['raise_for_httperror']
+-            del kwargs['raise_for_httperror']
++        if "raise_for_httperror" in kwargs:
++            do_raise_for_httperror = kwargs["raise_for_httperror"]
++            del kwargs["raise_for_httperror"]
+         return do_raise_for_httperror
+ 
+-    def patch_response(self, response: httpx.Response, do_raise_for_httperror: bool) -> SXNG_Response:
++    def patch_response(
++        self, response: httpx.Response, do_raise_for_httperror: bool
++    ) -> SXNG_Response:
+         if isinstance(response, httpx.Response):
+             response = t.cast(SXNG_Response, response)
+             # requests compatibility (response is not streamed)
+@@ -255,7 +282,9 @@ def patch_response(self, response: httpx.Response, do_raise_for_httperror: bool)
+                 try:
+                     raise_for_httperror(response)
+                 except:
+-                    self._logger.warning(f"HTTP Request failed: {response.request.method} {response.request.url}")
++                    self._logger.warning(
++                        f"HTTP Request failed: {response.request.method} {response.request.url}"
++                    )
+                     raise
+         return response
+ 
+@@ -263,13 +292,21 @@ def is_valid_response(self, response: httpx.Response):
+         # pylint: disable=too-many-boolean-expressions
+         if (
+             (self.retry_on_http_error is True and 400 <= response.status_code <= 599)
+-            or (isinstance(self.retry_on_http_error, list) and response.status_code in self.retry_on_http_error)
+-            or (isinstance(self.retry_on_http_error, int) and response.status_code == self.retry_on_http_error)
++            or (
++                isinstance(self.retry_on_http_error, list)
++                and response.status_code in self.retry_on_http_error
++            )
++            or (
++                isinstance(self.retry_on_http_error, int)
++                and response.status_code == self.retry_on_http_error
++            )
+         ):
+             return False
+         return True
+ 
+-    async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any) -> SXNG_Response:
++    async def call_client(
++        self, stream: bool, method: str, url: str, **kwargs: t.Any
++    ) -> SXNG_Response:
+         retries = self.retries
+         was_disconnected = False
+         do_raise_for_httperror = Network.extract_do_raise_for_httperror(kwargs)
+@@ -291,7 +328,9 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
+                     # try again without decreasing the retries variable & with a new HTTP client
+                     was_disconnected = True
+                     await client.aclose()
+-                    self._logger.warning('httpx.RemoteProtocolError: the server has disconnected, retrying')
++                    self._logger.warning(
++                        "httpx.RemoteProtocolError: the server has disconnected, retrying"
++                    )
+                     continue
+                 if retries <= 0:
+                     raise e
+@@ -308,7 +347,10 @@ async def stream(self, method: str, url: str, **kwargs):
+ 
+     @classmethod
+     async def aclose_all(cls):
+-        await asyncio.gather(*[network.aclose() for network in NETWORKS.values()], return_exceptions=False)
++        await asyncio.gather(
++            *[network.aclose() for network in NETWORKS.values()],
++            return_exceptions=False,
++        )
+ 
+ 
+ def get_network(name: str | None = None) -> "Network":
+@@ -323,7 +365,9 @@ async def check():
+                 try:
+                     await network.get_client()
+                 except Exception:  # pylint: disable=broad-except
+-                    network._logger.exception('Error')  # pylint: disable=protected-access
++                    network._logger.exception(
++                        "Error"
++                    )  # pylint: disable=protected-access
+                     exception_count += 1
+         return exception_count
+ 
+@@ -334,7 +378,9 @@ async def check():
+ 
+ 
+ def initialize(
+-    settings_engines: list[dict[str, t.Any]] = None,  # pyright: ignore[reportArgumentType]
++    settings_engines: list[
++        dict[str, t.Any]
++    ] = None,  # pyright: ignore[reportArgumentType]
+     settings_outgoing: dict[str, t.Any] = None,  # pyright: ignore[reportArgumentType]
+ ) -> None:
+     # pylint: disable=import-outside-toplevel)
+@@ -343,24 +389,26 @@ def initialize(
+ 
+     # pylint: enable=import-outside-toplevel)
+ 
+-    settings_engines = settings_engines or settings['engines']
+-    settings_outgoing = settings_outgoing or settings['outgoing']
++    settings_engines = settings_engines or settings["engines"]
++    settings_outgoing = settings_outgoing or settings["outgoing"]
+ 
+     # default parameters for AsyncHTTPTransport
+     # see https://github.com/encode/httpx/blob/e05a5372eb6172287458b37447c30f650047e1b8/httpx/_transports/default.py#L108-L121  # pylint: disable=line-too-long
+     default_params: dict[str, t.Any] = {
+-        'enable_http': False,
+-        'verify': settings_outgoing['verify'],
+-        'enable_http2': settings_outgoing['enable_http2'],
+-        'max_connections': settings_outgoing['pool_connections'],
+-        'max_keepalive_connections': settings_outgoing['pool_maxsize'],
+-        'keepalive_expiry': settings_outgoing['keepalive_expiry'],
+-        'local_addresses': settings_outgoing['source_ips'],
+-        'using_tor_proxy': settings_outgoing['using_tor_proxy'],
+-        'proxies': settings_outgoing['proxies'],
+-        'max_redirects': settings_outgoing['max_redirects'],
+-        'retries': settings_outgoing['retries'],
+-        'retry_on_http_error': False,
++        "enable_http": False,
++        "verify": settings_outgoing["verify"],
++        "enable_http2": settings_outgoing["enable_http2"],
++        "enable_http3": settings_outgoing.get("enable_http3", False),
++        "max_connections": settings_outgoing["pool_connections"],
++        "max_keepalive_connections": settings_outgoing["pool_maxsize"],
++        "keepalive_expiry": settings_outgoing["keepalive_expiry"],
++        "local_addresses": settings_outgoing["source_ips"],
++        "using_tor_proxy": settings_outgoing["using_tor_proxy"],
++        "proxies": settings_outgoing["proxies"],
++        "max_redirects": settings_outgoing["max_redirects"],
++        "retries": settings_outgoing["retries"],
++        "retry_on_http_error": False,
++        "curl_cffi_impersonate": settings_outgoing.get("curl_cffi_impersonate"),
      }
  
      def new_network(params: dict[str, t.Any], logger_name: str | None = None):
+@@ -369,28 +417,28 @@ def new_network(params: dict[str, t.Any], logger_name: str | None = None):
+         result.update(default_params)  # pyright: ignore[reportUnknownMemberType]
+         result.update(params)  # pyright: ignore[reportUnknownMemberType]
+         if logger_name:
+-            result['logger_name'] = logger_name
++            result["logger_name"] = logger_name
+         return Network(**result)  # type: ignore
+ 
+     def iter_networks():
+         nonlocal settings_engines
+         for engine_spec in settings_engines:
+-            engine_name = engine_spec['name']
++            engine_name = engine_spec["name"]
+             engine = engines.get(engine_name)
+             if engine is None:
+                 continue
+-            network = getattr(engine, 'network', None)
++            network = getattr(engine, "network", None)
+             yield engine_name, engine, network
+ 
+     if NETWORKS:
+         done()
+     NETWORKS.clear()
+-    NETWORKS[DEFAULT_NAME] = new_network({}, logger_name='default')
+-    NETWORKS['ipv4'] = new_network({'local_addresses': '0.0.0.0'}, logger_name='ipv4')
+-    NETWORKS['ipv6'] = new_network({'local_addresses': '::'}, logger_name='ipv6')
++    NETWORKS[DEFAULT_NAME] = new_network({}, logger_name="default")
++    NETWORKS["ipv4"] = new_network({"local_addresses": "0.0.0.0"}, logger_name="ipv4")
++    NETWORKS["ipv6"] = new_network({"local_addresses": "::"}, logger_name="ipv6")
+ 
+     # define networks from outgoing.networks
+-    for network_name, network in settings_outgoing['networks'].items():
++    for network_name, network in settings_outgoing["networks"].items():
+         NETWORKS[network_name] = new_network(network, logger_name=network_name)
+ 
+     # define networks from engines.[i].network (except references)
+@@ -414,10 +462,12 @@ def iter_networks():
+     # the /image_proxy endpoint has a dedicated network.
+     # same parameters than the default network, but HTTP/2 is disabled.
+     # It decreases the CPU load average, and the total time is more or less the same
+-    if 'image_proxy' not in NETWORKS:
++    if "image_proxy" not in NETWORKS:
+         image_proxy_params = default_params.copy()
+-        image_proxy_params['enable_http2'] = False
+-        NETWORKS['image_proxy'] = new_network(image_proxy_params, logger_name='image_proxy')
++        image_proxy_params["enable_http2"] = False
++        NETWORKS["image_proxy"] = new_network(
++            image_proxy_params, logger_name="image_proxy"
++        )
+ 
+ 
+ @atexit.register
 diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
-index c23ebd956874..a81539996027 100644
+index c23ebd956874..1846459a3d07 100644
 --- a/searx/settings_defaults.py
 +++ b/searx/settings_defaults.py
 @@ -1,5 +1,6 @@
@@ -169,17 +736,318 @@ index c23ebd956874..a81539996027 100644
  from __future__ import annotations
  
  import typing as t
-@@ -264,6 +265,10 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
+@@ -19,29 +20,29 @@
+ 
+ searx_dir = abspath(dirname(__file__))
+ 
+-logger = logging.getLogger('searx')
+-OUTPUT_FORMATS = ['html', 'csv', 'json', 'rss']
+-SXNG_LOCALE_TAGS = ['all', 'auto'] + list(l[0] for l in sxng_locales)
+-SIMPLE_STYLE = ('auto', 'light', 'dark', 'black')
++logger = logging.getLogger("searx")
++OUTPUT_FORMATS = ["html", "csv", "json", "rss"]
++SXNG_LOCALE_TAGS = ["all", "auto"] + list(l[0] for l in sxng_locales)
++SIMPLE_STYLE = ("auto", "light", "dark", "black")
+ CATEGORIES_AS_TABS: dict[str, dict[str, t.Any]] = {
+-    'general': {},
+-    'images': {},
+-    'videos': {},
+-    'news': {},
+-    'map': {},
+-    'music': {},
+-    'it': {},
+-    'science': {},
+-    'files': {},
+-    'social media': {},
++    "general": {},
++    "images": {},
++    "videos": {},
++    "news": {},
++    "map": {},
++    "music": {},
++    "it": {},
++    "science": {},
++    "files": {},
++    "social media": {},
+ }
+ STR_TO_BOOL = {
+-    '0': False,
+-    'false': False,
+-    'off': False,
+-    '1': True,
+-    'true': True,
+-    'on': True,
++    "0": False,
++    "false": False,
++    "off": False,
++    "1": True,
++    "true": True,
++    "on": True,
+ }
+ _UNDEFINED = object()
+ 
+@@ -71,22 +72,31 @@ def __init__(
+         environ_name: str | None = None,
+     ):
+         self.type_definition: TypeDefinition = (
+-            type_definition_arg if isinstance(type_definition_arg, tuple) else (type_definition_arg,)
++            type_definition_arg
++            if isinstance(type_definition_arg, tuple)
++            else (type_definition_arg,)
+         )
+         self.default: t.Any = default
+         self.environ_name: str | None = environ_name
+ 
+     @property
+     def type_definition_repr(self):
+-        types_str = [td.__name__ if isinstance(td, type) else repr(td) for td in self.type_definition]
+-        return ', '.join(types_str)
++        types_str = [
++            td.__name__ if isinstance(td, type) else repr(td)
++            for td in self.type_definition
++        ]
++        return ", ".join(types_str)
+ 
+     def check_type_definition(self, value: t.Any) -> None:
+         if value in self.type_definition:
+             return
+         type_list = tuple(t for t in self.type_definition if isinstance(t, type))
+         if not isinstance(value, type_list):
+-            raise ValueError('The value has to be one of these types/values: {}'.format(self.type_definition_repr))
++            raise ValueError(
++                "The value has to be one of these types/values: {}".format(
++                    self.type_definition_repr
++                )
++            )
+ 
+     def __call__(self, value: t.Any) -> t.Any:
+         if value == _UNDEFINED:
+@@ -107,10 +117,10 @@ class SettingSublistValue(SettingsValue):
+     @override
+     def check_type_definition(self, value: list[t.Any]) -> None:
+         if not isinstance(value, list):
+-            raise ValueError('The value has to a list')
++            raise ValueError("The value has to a list")
+         for item in value:
+             if not item in self.type_definition[0]:
+-                raise ValueError('{} not in {}'.format(item, self.type_definition))
++                raise ValueError("{} not in {}".format(item, self.type_definition))
+ 
+ 
+ class SettingsDirectoryValue(SettingsValue):
+@@ -124,7 +134,7 @@ def check_type_definition(self, value: t.Any) -> t.Any:
+ 
+     @override
+     def __call__(self, value: t.Any) -> t.Any:
+-        if value == '':
++        if value == "":
+             value = self.default
+         return super().__call__(value)
+ 
+@@ -139,7 +149,9 @@ def __call__(self, value: t.Any) -> t.Any:
+         return super().__call__(value)
+ 
+ 
+-def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list: list[str]):
++def apply_schema(
++    settings: dict[str, t.Any], schema: dict[str, t.Any], path_list: list[str]
++):
+     error = False
+     for key, value in schema.items():
+         if isinstance(value, type) and issubclass(value, msgspec.Struct):
+@@ -171,7 +183,9 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
+                 logger.error(msg)
+                 error = True
+         elif isinstance(value, dict):
+-            error = error or apply_schema(settings.setdefault(key, {}), schema[key], [*path_list, key])
++            error = error or apply_schema(
++                settings.setdefault(key, {}), schema[key], [*path_list, key]
++            )
+         else:
+             settings.setdefault(key, value)
+     if len(path_list) == 0 and error:
+@@ -180,94 +194,105 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
+ 
+ 
+ SCHEMA: dict[str, t.Any] = {
+-    'general': {
+-        'debug': SettingsValue(bool, False, 'SEARXNG_DEBUG'),
+-        'instance_name': SettingsValue(str, 'SearXNG'),
+-        'privacypolicy_url': SettingsValue((None, False, str), None),
+-        'contact_url': SettingsValue((None, False, str), None),
+-        'donation_url': SettingsValue((bool, str), "https://docs.searxng.org/donate.html"),
+-        'enable_metrics': SettingsValue(bool, True),
+-        'open_metrics': SettingsValue(str, ''),
++    "general": {
++        "debug": SettingsValue(bool, False, "SEARXNG_DEBUG"),
++        "instance_name": SettingsValue(str, "SearXNG"),
++        "privacypolicy_url": SettingsValue((None, False, str), None),
++        "contact_url": SettingsValue((None, False, str), None),
++        "donation_url": SettingsValue(
++            (bool, str), "https://docs.searxng.org/donate.html"
++        ),
++        "enable_metrics": SettingsValue(bool, True),
++        "open_metrics": SettingsValue(str, ""),
+     },
+-    'brand': SettingsBrand,
+-    'search': {
+-        'safe_search': SettingsValue((0, 1, 2), 0),
+-        'autocomplete': SettingsValue(str, ''),
+-        'autocomplete_min': SettingsValue(int, 4),
+-        'favicon_resolver': SettingsValue(str, ''),
+-        'default_lang': SettingsValue(tuple(SXNG_LOCALE_TAGS + ['']), ''),
+-        'languages': SettingSublistValue(SXNG_LOCALE_TAGS, SXNG_LOCALE_TAGS),  # type: ignore
+-        'ban_time_on_fail': SettingsValue(numbers.Real, 5),
+-        'max_ban_time_on_fail': SettingsValue(numbers.Real, 120),
+-        'suspended_times': {
+-            'SearxEngineAccessDenied': SettingsValue(numbers.Real, 86400),
+-            'SearxEngineCaptcha': SettingsValue(numbers.Real, 86400),
+-            'SearxEngineTooManyRequests': SettingsValue(numbers.Real, 3600),
+-            'cf_SearxEngineCaptcha': SettingsValue(numbers.Real, 1296000),
+-            'cf_SearxEngineAccessDenied': SettingsValue(numbers.Real, 86400),
+-            'recaptcha_SearxEngineCaptcha': SettingsValue(numbers.Real, 604800),
++    "brand": SettingsBrand,
++    "search": {
++        "safe_search": SettingsValue((0, 1, 2), 0),
++        "autocomplete": SettingsValue(str, ""),
++        "autocomplete_min": SettingsValue(int, 4),
++        "favicon_resolver": SettingsValue(str, ""),
++        "default_lang": SettingsValue(tuple(SXNG_LOCALE_TAGS + [""]), ""),
++        "languages": SettingSublistValue(SXNG_LOCALE_TAGS, SXNG_LOCALE_TAGS),  # type: ignore
++        "ban_time_on_fail": SettingsValue(numbers.Real, 5),
++        "max_ban_time_on_fail": SettingsValue(numbers.Real, 120),
++        "suspended_times": {
++            "SearxEngineAccessDenied": SettingsValue(numbers.Real, 86400),
++            "SearxEngineCaptcha": SettingsValue(numbers.Real, 86400),
++            "SearxEngineTooManyRequests": SettingsValue(numbers.Real, 3600),
++            "cf_SearxEngineCaptcha": SettingsValue(numbers.Real, 1296000),
++            "cf_SearxEngineAccessDenied": SettingsValue(numbers.Real, 86400),
++            "recaptcha_SearxEngineCaptcha": SettingsValue(numbers.Real, 604800),
+         },
+-        'formats': SettingsValue(list, OUTPUT_FORMATS),
+-        'max_page': SettingsValue(int, 0),
++        "formats": SettingsValue(list, OUTPUT_FORMATS),
++        "max_page": SettingsValue(int, 0),
+     },
+-    'server': {
+-        'port': SettingsValue((int, str), 8888, 'SEARXNG_PORT'),
+-        'bind_address': SettingsValue(str, '127.0.0.1', 'SEARXNG_BIND_ADDRESS'),
+-        'limiter': SettingsValue(bool, False, 'SEARXNG_LIMITER'),
+-        'public_instance': SettingsValue(bool, False, 'SEARXNG_PUBLIC_INSTANCE'),
+-        'secret_key': SettingsValue(str, environ_name='SEARXNG_SECRET'),
+-        'base_url': SettingsValue((False, str), False, 'SEARXNG_BASE_URL'),
+-        'image_proxy': SettingsValue(bool, False, 'SEARXNG_IMAGE_PROXY'),
+-        'http_protocol_version': SettingsValue(('1.0', '1.1'), '1.0'),
+-        'method': SettingsValue(('POST', 'GET'), 'POST', 'SEARXNG_METHOD'),
+-        'default_http_headers': SettingsValue(dict, {}),
++    "server": {
++        "port": SettingsValue((int, str), 8888, "SEARXNG_PORT"),
++        "bind_address": SettingsValue(str, "127.0.0.1", "SEARXNG_BIND_ADDRESS"),
++        "limiter": SettingsValue(bool, False, "SEARXNG_LIMITER"),
++        "public_instance": SettingsValue(bool, False, "SEARXNG_PUBLIC_INSTANCE"),
++        "secret_key": SettingsValue(str, environ_name="SEARXNG_SECRET"),
++        "base_url": SettingsValue((False, str), False, "SEARXNG_BASE_URL"),
++        "image_proxy": SettingsValue(bool, False, "SEARXNG_IMAGE_PROXY"),
++        "http_protocol_version": SettingsValue(("1.0", "1.1"), "1.0"),
++        "method": SettingsValue(("POST", "GET"), "POST", "SEARXNG_METHOD"),
++        "default_http_headers": SettingsValue(dict, {}),
+     },
+     # redis is deprecated ..
+-    'redis': {
+-        'url': SettingsValue((None, False, str), False, 'SEARXNG_REDIS_URL'),
++    "redis": {
++        "url": SettingsValue((None, False, str), False, "SEARXNG_REDIS_URL"),
+     },
+-    'valkey': {
+-        'url': SettingsValue((None, False, str), False, 'SEARXNG_VALKEY_URL'),
++    "valkey": {
++        "url": SettingsValue((None, False, str), False, "SEARXNG_VALKEY_URL"),
+     },
+-    'ui': {
+-        'static_path': SettingsDirectoryValue(str, os.path.join(searx_dir, 'static')),
+-        'templates_path': SettingsDirectoryValue(str, os.path.join(searx_dir, 'templates')),
+-        'default_theme': SettingsValue(str, 'simple'),
+-        'default_locale': SettingsValue(str, ''),
+-        'theme_args': {
+-            'simple_style': SettingsValue(SIMPLE_STYLE, 'auto'),
++    "ui": {
++        "static_path": SettingsDirectoryValue(str, os.path.join(searx_dir, "static")),
++        "templates_path": SettingsDirectoryValue(
++            str, os.path.join(searx_dir, "templates")
++        ),
++        "default_theme": SettingsValue(str, "simple"),
++        "default_locale": SettingsValue(str, ""),
++        "theme_args": {
++            "simple_style": SettingsValue(SIMPLE_STYLE, "auto"),
+         },
+-        'center_alignment': SettingsValue(bool, False),
+-        'results_on_new_tab': SettingsValue(bool, False),
+-        'query_in_title': SettingsValue(bool, False),
+-        'cache_url': SettingsValue(str, 'https://web.archive.org/web/'),
+-        'search_on_category_select': SettingsValue(bool, True),
+-        'hotkeys': SettingsValue(('default', 'vim'), 'default'),
+-        'url_formatting': SettingsValue(('pretty', 'full', 'host'), 'pretty'),
++        "center_alignment": SettingsValue(bool, False),
++        "results_on_new_tab": SettingsValue(bool, False),
++        "query_in_title": SettingsValue(bool, False),
++        "cache_url": SettingsValue(str, "https://web.archive.org/web/"),
++        "search_on_category_select": SettingsValue(bool, True),
++        "hotkeys": SettingsValue(("default", "vim"), "default"),
++        "url_formatting": SettingsValue(("pretty", "full", "host"), "pretty"),
+     },
+     "preferences": SettingsPref,
+-    'outgoing': {
+-        'useragent_suffix': SettingsValue(str, ''),
+-        'request_timeout': SettingsValue(numbers.Real, 3.0),
+-        'enable_http2': SettingsValue(bool, True),
+-        'verify': SettingsValue((bool, str), True),
+-        'max_request_timeout': SettingsValue((None, numbers.Real), None),
+-        'pool_connections': SettingsValue(int, 100),
+-        'pool_maxsize': SettingsValue(int, 10),
+-        'keepalive_expiry': SettingsValue(numbers.Real, 5.0),
++    "outgoing": {
++        "useragent_suffix": SettingsValue(str, ""),
++        "request_timeout": SettingsValue(numbers.Real, 3.0),
++        "enable_http2": SettingsValue(bool, True),
++        # Enable HTTP/3 (QUIC). Only effective when curl_cffi_impersonate is set
++        # and httpx_curl_cffi is installed. Uses HTTP/3 with fallback to HTTP/2 / HTTP/1.1.
++        "enable_http3": SettingsValue(bool, False),
++        "verify": SettingsValue((bool, str), True),
++        "max_request_timeout": SettingsValue((None, numbers.Real), None),
++        "pool_connections": SettingsValue(int, 100),
++        "pool_maxsize": SettingsValue(int, 10),
++        "keepalive_expiry": SettingsValue(numbers.Real, 5.0),
+         # default maximum redirect
+         # from https://github.com/psf/requests/blob/8c211a96cdbe9fe320d63d9e1ae15c5c07e179f8/requests/models.py#L55
+-        'max_redirects': SettingsValue(int, 30),
+-        'retries': SettingsValue(int, 0),
+-        'proxies': SettingsValue((None, str, dict), None),
+-        'source_ips': SettingsValue((None, str, list), None),
++        "max_redirects": SettingsValue(int, 30),
++        "retries": SettingsValue(int, 0),
++        "proxies": SettingsValue((None, str, dict), None),
++        "source_ips": SettingsValue((None, str, list), None),
          # Tor configuration
-         'using_tor_proxy': SettingsValue(bool, False),
-         'extra_proxy_timeout': SettingsValue(int, 0),
+-        'using_tor_proxy': SettingsValue(bool, False),
+-        'extra_proxy_timeout': SettingsValue(int, 0),
+-        'networks': {},
++        "using_tor_proxy": SettingsValue(bool, False),
++        "extra_proxy_timeout": SettingsValue(int, 0),
 +        # curl_cffi TLS fingerprint impersonation target (None = disabled, use standard httpx transport)
 +        # Supported values: "chrome", "firefox", "edge", "safari", "chrome110", "safari15_5", etc.
 +        # See https://github.com/lexiforest/curl_cffi for the full list.
-+        'curl_cffi_impersonate': SettingsValue((None, str), None),
-         'networks': {},
++        "curl_cffi_impersonate": SettingsValue((None, str), None),
++        "networks": {},
      },
-     'plugins': SettingsValue(dict, {}),
+-    'plugins': SettingsValue(dict, {}),
+-    'categories_as_tabs': SettingsValue(dict, CATEGORIES_AS_TABS),
+-    'engines': SettingsValue(list, []),
+-    'doi_resolvers': {},
++    "plugins": SettingsValue(dict, {}),
++    "categories_as_tabs": SettingsValue(dict, CATEGORIES_AS_TABS),
++    "engines": SettingsValue(list, []),
++    "doi_resolvers": {},
+ }
 diff --git a/utils/compare_curl_cffi.py b/utils/compare_curl_cffi.py
 new file mode 100644
 index 000000000000..9a253db4dd59
