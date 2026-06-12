@@ -1,0 +1,372 @@
+diff --git a/searx/network/client.py b/searx/network/client.py
+index 024eb2567026..af6e4699fa32 100644
+--- a/searx/network/client.py
++++ b/searx/network/client.py
+@@ -16,6 +16,15 @@
+ 
+ from searx import logger
+ 
++try:
++    from httpx_curl_cffi import AsyncCurlTransport, CurlOpt
++
++    HAS_CURL_CFFI = True
++except ImportError:
++    HAS_CURL_CFFI = False
++    AsyncCurlTransport = None  # type: ignore
++    CurlOpt = None  # type: ignore
++
+ CertTypes = str | tuple[str, str] | tuple[str, str, str]
+ SslContextKeyType = tuple[str | None, CertTypes | None, bool, bool]
+ 
+@@ -143,8 +152,34 @@ def get_transport_for_socks_proxy(
+ 
+ 
+ def get_transport(
+-    verify: bool, http2: bool, local_address: str, proxy_url: str | None, limit: httpx.Limits, retries: int
++    verify: bool,
++    http2: bool,
++    local_address: str,
++    proxy_url: str | None,
++    limit: httpx.Limits,
++    retries: int,
++    curl_cffi_impersonate: str | None = None,
+ ):
++    if curl_cffi_impersonate and HAS_CURL_CFFI:
++        # Use curl_cffi transport for browser TLS fingerprint impersonation.
++        # curl_cffi manages TLS internally (BoringSSL/NSS), so SSLContext/cipher shuffling is bypassed.
++        _verify: bool | str = verify if isinstance(verify, bool) or isinstance(verify, str) else True
++        logger.debug("using curl_cffi transport impersonating %s (proxy=%s)", curl_cffi_impersonate, proxy_url)
++        return AsyncCurlTransport(
++            impersonate=curl_cffi_impersonate,
++            verify=_verify,
++            proxy=proxy_url,
++            # FRESH_CONNECT ensures each request uses a fresh curl handle,
++            # avoiding connection reuse issues in async parallel requests.
++            curl_options={CurlOpt.FRESH_CONNECT: True},
++        )
++    if curl_cffi_impersonate and not HAS_CURL_CFFI:
++        logger.warning(
++            "curl_cffi_impersonate is set to '%s' but httpx_curl_cffi is not installed. "
++            "Falling back to standard httpx transport. "
++            "Install it with: pip install httpx_curl_cffi",
++            curl_cffi_impersonate,
++        )
+     _verify = get_sslcontexts(None, None, verify, True) if verify is True else verify
+     return httpx.AsyncHTTPTransport(
+         # pylint: disable=protected-access
+@@ -170,6 +205,7 @@ def new_client(
+     retries: int,
+     max_redirects: int,
+     hook_log_response: t.Callable[..., t.Any] | None,
++    curl_cffi_impersonate: str | None = None,
+ ) -> httpx.AsyncClient:
+     limit = httpx.Limits(
+         max_connections=max_connections,
+@@ -182,7 +218,22 @@ def new_client(
+     for pattern, proxy_url in proxies.items():
+         if not enable_http and pattern.startswith('http://'):
+             continue
+-        if proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://'):
++        if curl_cffi_impersonate and HAS_CURL_CFFI:
++            # When curl_cffi impersonation is enabled, route ALL proxy types through
++            # AsyncCurlTransport. curl_cffi (libcurl) natively supports http, https,
++            # socks4, socks5, and socks5h proxies.
++            mounts[pattern] = get_transport(
++                verify,
++                enable_http2,
++                local_address,
++                proxy_url,
++                limit,
++                retries,
++                curl_cffi_impersonate=curl_cffi_impersonate,
++            )
++        elif (
++            proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://')
++        ):
+             mounts[pattern] = get_transport_for_socks_proxy(
+                 verify, enable_http2, local_address, proxy_url, limit, retries
+             )
+@@ -192,7 +243,9 @@ def new_client(
+     if not enable_http:
+         mounts['http://'] = AsyncHTTPTransportNoHttp()
+ 
+-    transport = get_transport(verify, enable_http2, local_address, None, limit, retries)
++    transport = get_transport(
++        verify, enable_http2, local_address, None, limit, retries, curl_cffi_impersonate=curl_cffi_impersonate
++    )
+ 
+     event_hooks = None
+     if hook_log_response:
+diff --git a/searx/network/network.py b/searx/network/network.py
+index eb53afb7f085..f4bc4cc96c5b 100644
+--- a/searx/network/network.py
++++ b/searx/network/network.py
+@@ -20,7 +20,6 @@
+ from .client import new_client, get_loop, AsyncHTTPTransportNoHttp
+ from .raise_for_httperror import raise_for_httperror
+ 
+-
+ logger = logger.getChild('network')
+ DEFAULT_NAME = '__DEFAULT__'
+ NETWORKS: dict[str, "Network"] = {}
+@@ -57,6 +56,7 @@ class Network:
+         'max_redirects',
+         'retries',
+         'retry_on_http_error',
++        'curl_cffi_impersonate',
+         '_local_addresses_cycle',
+         '_proxies_cycle',
+         '_clients',
+@@ -81,6 +81,7 @@ def __init__(
+         retry_on_http_error: bool = False,
+         max_redirects: int = 30,
+         logger_name: str = None,  # pyright: ignore[reportArgumentType]
++        curl_cffi_impersonate: str | None = None,
+     ):
+ 
+         self.enable_http = enable_http
+@@ -95,6 +96,7 @@ def __init__(
+         self.retries = retries
+         self.retry_on_http_error = retry_on_http_error
+         self.max_redirects = max_redirects
++        self.curl_cffi_impersonate = curl_cffi_impersonate
+         self._local_addresses_cycle = self.get_ipaddress_cycle()
+         self._proxies_cycle = self.get_proxy_cycles()
+         self._clients = {}
+@@ -192,7 +194,7 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
+         max_redirects = self.max_redirects if max_redirects is None else max_redirects
+         local_address = next(self._local_addresses_cycle)
+         proxies = next(self._proxies_cycle)  # is a tuple so it can be part of the key
+-        key = (verify, max_redirects, local_address, proxies)
++        key = (verify, max_redirects, local_address, proxies, self.curl_cffi_impersonate)
+         hook_log_response = self.log_response if sxng_debug else None
+         if key not in self._clients or self._clients[key].is_closed:
+             client = new_client(
+@@ -207,6 +209,7 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
+                 0,
+                 max_redirects,
+                 hook_log_response,
++                curl_cffi_impersonate=self.curl_cffi_impersonate,
+             )
+             if self.using_tor_proxy and not await self.check_tor_proxy(client, proxies):
+                 await client.aclose()
+@@ -361,6 +364,7 @@ def initialize(
+         'max_redirects': settings_outgoing['max_redirects'],
+         'retries': settings_outgoing['retries'],
+         'retry_on_http_error': False,
++        'curl_cffi_impersonate': settings_outgoing.get('curl_cffi_impersonate'),
+     }
+ 
+     def new_network(params: dict[str, t.Any], logger_name: str | None = None):
+diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
+index c23ebd956874..a81539996027 100644
+--- a/searx/settings_defaults.py
++++ b/searx/settings_defaults.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Implementation of the default settings."""
++
+ from __future__ import annotations
+ 
+ import typing as t
+@@ -264,6 +265,10 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
+         # Tor configuration
+         'using_tor_proxy': SettingsValue(bool, False),
+         'extra_proxy_timeout': SettingsValue(int, 0),
++        # curl_cffi TLS fingerprint impersonation target (None = disabled, use standard httpx transport)
++        # Supported values: "chrome", "firefox", "edge", "safari", "chrome110", "safari15_5", etc.
++        # See https://github.com/lexiforest/curl_cffi for the full list.
++        'curl_cffi_impersonate': SettingsValue((None, str), None),
+         'networks': {},
+     },
+     'plugins': SettingsValue(dict, {}),
+diff --git a/utils/compare_curl_cffi.py b/utils/compare_curl_cffi.py
+new file mode 100644
+index 000000000000..9a253db4dd59
+--- /dev/null
++++ b/utils/compare_curl_cffi.py
+@@ -0,0 +1,184 @@
++#!/usr/bin/env python3
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""Compare TLS fingerprint with and without curl_cffi impersonation.
++
++Usage:
++  python utils/compare_curl_cffi.py                 # compare fingerprints
++  python utils/compare_curl_cffi.py --url https://example.com  # test specific URL
++  python utils/compare_curl_cffi.py --impersonate safari15_5   # use different browser
++"""
++
++import asyncio
++import json
++import sys
++import argparse
++
++import httpx
++
++FINGERPRINT_CHECK_URLS = [
++    "https://tls.peet.ws/api/all",  # JA3/JA4 + HTTP/2 fingerprints
++    "https://tools.scrapfly.io/api/fp/ja3",  # JA3 fingerprint + headers
++]
++
++
++def print_section(title: str):
++    print(f"\n{'='*60}")
++    print(f"  {title}")
++    print(f"{'='*60}")
++
++
++async def test_standard_httpx(url: str):
++    """Test with standard httpx transport (no impersonation)."""
++    print_section("Standard httpx (no impersonation)")
++
++    try:
++        async with httpx.AsyncClient(http2=True, timeout=15) as client:
++            resp = await client.get(url)
++            print(f"Status: {resp.status_code}")
++            print(f"HTTP Version: {resp.http_version}")
++            _print_json_response(resp)
++    except Exception as e:
++        print(f"Error: {e}")
++
++
++async def test_curl_cffi(url: str, impersonate: str):
++    """Test with curl_cffi transport (browser TLS fingerprint impersonation)."""
++    print_section(f"curl_cffi impersonating '{impersonate}'")
++
++    try:
++        from httpx_curl_cffi import AsyncCurlTransport, CurlOpt
++    except ImportError:
++        print("ERROR: httpx_curl_cffi is not installed. Run: pip install httpx_curl_cffi")
++        return
++
++    try:
++        transport = AsyncCurlTransport(
++            impersonate=impersonate,
++            verify=True,
++            curl_options={CurlOpt.FRESH_CONNECT: True},
++        )
++        async with httpx.AsyncClient(transport=transport, timeout=15) as client:
++            resp = await client.get(url)
++            print(f"Status: {resp.status_code}")
++            print(f"HTTP Version: {resp.http_version}")
++            _print_json_response(resp)
++    except Exception as e:
++        print(f"Error: {e}")
++
++
++async def test_curl_cffi_no_impersonation(url: str):
++    """Test with curl_cffi transport WITHOUT impersonation (raw curl fingerprint)."""
++    print_section("curl_cffi transport (NO impersonation)")
++
++    try:
++        from httpx_curl_cffi import AsyncCurlTransport, CurlOpt
++    except ImportError:
++        print("ERROR: httpx_curl_cffi is not installed. Run: pip install httpx_curl_cffi")
++        return
++
++    try:
++        transport = AsyncCurlTransport(
++            verify=True,
++            curl_options={CurlOpt.FRESH_CONNECT: True},
++        )
++        async with httpx.AsyncClient(transport=transport, timeout=15) as client:
++            resp = await client.get(url)
++            print(f"Status: {resp.status_code}")
++            print(f"HTTP Version: {resp.http_version}")
++            _print_json_response(resp)
++    except Exception as e:
++        print(f"Error: {e}")
++
++
++def _print_json_response(resp: httpx.Response):
++    """Pretty-print JSON response, focusing on fingerprint-related fields."""
++    try:
++        data = resp.json()
++    except Exception:
++        # Not JSON, print first 500 chars of text
++        print(resp.text[:500])
++        return
++
++    # Extract key fingerprint fields for comparison
++    _extract_and_print(data, "ja3", "JA3 Fingerprint")
++    _extract_and_print(data, "ja3_hash", "JA3 Hash")
++    _extract_and_print(data, "ja4", "JA4 Fingerprint")
++    _extract_and_print(data, "akamai", "Akamai Fingerprint")
++    _extract_and_print(data, "peetprint", "PeetPrint (HTTP/2)")
++    _extract_and_print(data, "http_version", "HTTP Version")
++    _extract_and_print(data, "tls", "TLS Info")
++    _extract_and_print(data, "user_agent", "User-Agent")
++
++    # Fallback: print the whole response
++    if not any(k in str(data).lower() for k in ["ja3", "ja4", "tls"]):
++        print(json.dumps(data, indent=2)[:2000])
++
++
++def _extract_and_print(data, key: str, label: str):
++    """Extract and print a specific key from the response data."""
++    if isinstance(data, dict):
++        if key in data:
++            value = data[key]
++            if isinstance(value, (dict, list)):
++                print(f"\n{label}:")
++                print(json.dumps(value, indent=2))
++            else:
++                print(f"{label}: {value}")
++    elif isinstance(data, list):
++        for item in data:
++            if isinstance(item, dict) and key in item:
++                print(f"{label}: {item[key]}")
++
++
++async def main():
++    parser = argparse.ArgumentParser(description="Compare TLS fingerprints with and without curl_cffi impersonation")
++    parser.add_argument(
++        "--url",
++        default=None,
++        help="URL to test (default: use fingerprint-checking endpoints)",
++    )
++    parser.add_argument(
++        "--impersonate",
++        default="chrome",
++        help="Browser fingerprint to impersonate (default: chrome)",
++    )
++    parser.add_argument(
++        "--all",
++        action="store_true",
++        help="Test all built-in fingerprint check URLs",
++    )
++    args = parser.parse_args()
++
++    urls = [args.url] if args.url else FINGERPRINT_CHECK_URLS
++
++    for url in urls:
++        print(f"\n{'#'*60}")
++        print(f"  Target: {url}")
++        print(f"{'#'*60}")
++
++        # Test 1: Standard httpx (no curl_cffi)
++        await test_standard_httpx(url)
++
++        # Test 2: curl_cffi without impersonation (raw curl fingerprint)
++        await test_curl_cffi_no_impersonation(url)
++
++        # Test 3: curl_cffi with browser impersonation
++        await test_curl_cffi(url, args.impersonate)
++
++        if not args.all:
++            break
++
++    print_section("Summary")
++    print("""
++Key comparison points:
++  1. JA3/JA4 hash: should differ between standard httpx and curl_cffi
++  2. curl_cffi with impersonation: JA3 should match a real browser
++  3. HTTP/2 fingerprint (PeetPrint/Akamai): curl_cffi mimics real browser H2 settings
++
++If JA3 hashes are different between the three tests, curl_cffi is working correctly.
++If JA3 is the same between tests 1 & 2, curl_cffi's transport is active but not impersonating.
++""")
++
++
++if __name__ == "__main__":
++    asyncio.run(main())
