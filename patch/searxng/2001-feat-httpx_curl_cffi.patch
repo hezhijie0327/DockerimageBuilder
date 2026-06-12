@@ -1,5 +1,5 @@
 diff --git a/searx/network/client.py b/searx/network/client.py
-index 024eb2567026..82149f53e2eb 100644
+index 024eb2567026..dae474b3b32b 100644
 --- a/searx/network/client.py
 +++ b/searx/network/client.py
 @@ -12,14 +12,30 @@
@@ -56,24 +56,7 @@ index 024eb2567026..82149f53e2eb 100644
  
      async def aclose(self) -> None:
          pass
-@@ -104,28 +123,43 @@ async def handle_async_request(self, request: httpx.Request):
-         try:
-             return await super().handle_async_request(request)
-         except ProxyConnectionError as e:
--            raise httpx.ProxyError("ProxyConnectionError: " + str(e.strerror), request=request) from e
-+            raise httpx.ProxyError(
-+                "ProxyConnectionError: " + str(e.strerror), request=request
-+            ) from e
-         except ProxyTimeoutError as e:
--            raise httpx.ProxyError("ProxyTimeoutError: " + str(e.args[0]), request=request) from e
-+            raise httpx.ProxyError(
-+                "ProxyTimeoutError: " + str(e.args[0]), request=request
-+            ) from e
-         except ProxyError as e:
--            raise httpx.ProxyError("ProxyError: " + str(e.args[0]), request=request) from e
-+            raise httpx.ProxyError(
-+                "ProxyError: " + str(e.args[0]), request=request
-+            ) from e
+@@ -112,16 +131,21 @@ async def handle_async_request(self, request: httpx.Request):
  
  
  def get_transport_for_socks_proxy(
@@ -97,18 +80,8 @@ index 024eb2567026..82149f53e2eb 100644
 +        proxy_url = "socks5://" + proxy_url[len(socks5h) :]
          rdns = True
  
--    proxy_type, proxy_host, proxy_port, proxy_username, proxy_password = parse_proxy_url(proxy_url)
--    _verify = get_sslcontexts(proxy_url, None, verify, True) if verify is True else verify
-+    proxy_type, proxy_host, proxy_port, proxy_username, proxy_password = (
-+        parse_proxy_url(proxy_url)
-+    )
-+    _verify = (
-+        get_sslcontexts(proxy_url, None, verify, True) if verify is True else verify
-+    )
-     return AsyncProxyTransportFixed(
-         proxy_type=proxy_type,
-         proxy_host=proxy_host,
-@@ -143,15 +177,59 @@ def get_transport_for_socks_proxy(
+     proxy_type, proxy_host, proxy_port, proxy_username, proxy_password = parse_proxy_url(proxy_url)
+@@ -143,15 +167,55 @@ def get_transport_for_socks_proxy(
  
  
  def get_transport(
@@ -125,9 +98,7 @@ index 024eb2567026..82149f53e2eb 100644
 +    if curl_cffi_impersonate and HAS_CURL_CFFI:
 +        # Use curl_cffi transport for browser TLS fingerprint impersonation.
 +        # curl_cffi manages TLS internally (BoringSSL/NSS), so SSLContext/cipher shuffling is bypassed.
-+        _verify: bool | str = (
-+            verify if isinstance(verify, bool) or isinstance(verify, str) else True
-+        )
++        _verify: bool | str = verify if isinstance(verify, bool) or isinstance(verify, str) else True
 +        _http_version = CurlHttpVersion.V3 if enable_http3 else None
 +        logger.debug(
 +            "using curl_cffi transport impersonating %s (proxy=%s, http3=%s)",
@@ -164,13 +135,11 @@ index 024eb2567026..82149f53e2eb 100644
          http2=http2,
          limits=limit,
 -        proxy=httpx._config.Proxy(proxy_url) if proxy_url else None,  # pyright: ignore[reportPrivateUsage]
-+        proxy=(
-+            httpx._config.Proxy(proxy_url) if proxy_url else None
-+        ),  # pyright: ignore[reportPrivateUsage]
++        proxy=(httpx._config.Proxy(proxy_url) if proxy_url else None),  # pyright: ignore[reportPrivateUsage]
          local_address=local_address,
          retries=retries,
      )
-@@ -162,6 +240,7 @@ def new_client(
+@@ -162,6 +226,7 @@ def new_client(
      enable_http: bool,
      verify: bool,
      enable_http2: bool,
@@ -178,7 +147,7 @@ index 024eb2567026..82149f53e2eb 100644
      max_connections: int,
      max_keepalive_connections: int,
      keepalive_expiry: float,
-@@ -170,6 +249,7 @@ def new_client(
+@@ -170,6 +235,7 @@ def new_client(
      retries: int,
      max_redirects: int,
      hook_log_response: t.Callable[..., t.Any] | None,
@@ -186,7 +155,7 @@ index 024eb2567026..82149f53e2eb 100644
  ) -> httpx.AsyncClient:
      limit = httpx.Limits(
          max_connections=max_connections,
-@@ -180,23 +260,58 @@ def new_client(
+@@ -180,23 +246,56 @@ def new_client(
      mounts = {}
      mounts: None | (dict[str, t.Any | None]) = {}
      for pattern, proxy_url in proxies.items():
@@ -209,9 +178,7 @@ index 024eb2567026..82149f53e2eb 100644
 +                curl_cffi_impersonate=curl_cffi_impersonate,
 +            )
 +        elif (
-+            proxy_url.startswith("socks4://")
-+            or proxy_url.startswith("socks5://")
-+            or proxy_url.startswith("socks5h://")
++            proxy_url.startswith("socks4://") or proxy_url.startswith("socks5://") or proxy_url.startswith("socks5h://")
 +        ):
              mounts[pattern] = get_transport_for_socks_proxy(
                  verify, enable_http2, local_address, proxy_url, limit, retries
@@ -252,7 +219,7 @@ index 024eb2567026..82149f53e2eb 100644
  
      return httpx.AsyncClient(
          transport=transport,
-@@ -213,13 +328,13 @@ def get_loop() -> asyncio.AbstractEventLoop:
+@@ -213,13 +312,13 @@ def get_loop() -> asyncio.AbstractEventLoop:
  def init():
      # log
      for logger_name in (
@@ -273,7 +240,7 @@ index 024eb2567026..82149f53e2eb 100644
      ):
          logging.getLogger(logger_name).setLevel(logging.WARNING)
  
-@@ -231,7 +346,7 @@ def loop_thread():
+@@ -231,7 +330,7 @@ def loop_thread():
  
      thread = threading.Thread(
          target=loop_thread,
@@ -283,7 +250,7 @@ index 024eb2567026..82149f53e2eb 100644
      )
      thread.start()
 diff --git a/searx/network/network.py b/searx/network/network.py
-index eb53afb7f085..f93ff06ba836 100644
+index eb53afb7f085..d14c9fbfc1a4 100644
 --- a/searx/network/network.py
 +++ b/searx/network/network.py
 @@ -20,47 +20,48 @@
@@ -429,7 +396,7 @@ index eb53afb7f085..f93ff06ba836 100644
          else:
              for pattern, proxy_url in self.proxies.items():
                  pattern: str = PROXY_PATTERN_MAPPING.get(pattern, pattern)
-@@ -147,21 +152,28 @@ def iter_proxies(self) -> Generator[tuple[str, list[str]]]:
+@@ -147,7 +152,9 @@ def iter_proxies(self) -> Generator[tuple[str, list[str]]]:
                      proxy_url = [proxy_url]
                  yield pattern, proxy_url
  
@@ -440,37 +407,16 @@ index eb53afb7f085..f93ff06ba836 100644
          proxy_settings: dict[str, t.Any] = {}
          for pattern, proxy_urls in self.iter_proxies():
              proxy_settings[pattern] = cycle(proxy_urls)
-         while True:
-             # pylint: disable=stop-iteration-return
--            yield tuple((pattern, next(proxy_url_cycle)) for pattern, proxy_url_cycle in proxy_settings.items())
-+            yield tuple(
-+                (pattern, next(proxy_url_cycle))
-+                for pattern, proxy_url_cycle in proxy_settings.items()
-+            )
- 
-     async def log_response(self, response: httpx.Response):
-         request = response.request
+@@ -160,7 +167,7 @@ async def log_response(self, response: httpx.Response):
          status = f"{response.status_code} {response.reason_phrase}"
          response_line = f"{response.http_version} {status}"
          content_type = response.headers.get("Content-Type")
 -        content_type = f' ({content_type})' if content_type else ''
--        self._logger.debug(f'HTTP Request: {request.method} {request.url} "{response_line}"{content_type}')
 +        content_type = f" ({content_type})" if content_type else ""
-+        self._logger.debug(
-+            f'HTTP Request: {request.method} {request.url} "{response_line}"{content_type}'
-+        )
+         self._logger.debug(f'HTTP Request: {request.method} {request.url} "{response_line}"{content_type}')
  
      @staticmethod
-     async def check_tor_proxy(client: httpx.AsyncClient, proxies) -> bool:
-@@ -187,18 +199,27 @@ async def check_tor_proxy(client: httpx.AsyncClient, proxies) -> bool:
-         Network._TOR_CHECK_RESULT[proxies] = result
-         return result
- 
--    async def get_client(self, verify: bool | None = None, max_redirects: int | None = None) -> httpx.AsyncClient:
-+    async def get_client(
-+        self, verify: bool | None = None, max_redirects: int | None = None
-+    ) -> httpx.AsyncClient:
-         verify = self.verify if verify is None else verify
+@@ -192,13 +199,20 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
          max_redirects = self.max_redirects if max_redirects is None else max_redirects
          local_address = next(self._local_addresses_cycle)
          proxies = next(self._proxies_cycle)  # is a tuple so it can be part of the key
@@ -492,7 +438,7 @@ index eb53afb7f085..f93ff06ba836 100644
                  self.max_connections,
                  self.max_keepalive_connections,
                  self.keepalive_expiry,
-@@ -207,10 +228,11 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
+@@ -207,10 +221,11 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
                  0,
                  max_redirects,
                  hook_log_response,
@@ -505,7 +451,7 @@ index eb53afb7f085..f93ff06ba836 100644
              self._clients[key] = client
          return self._clients[key]
  
-@@ -221,29 +243,34 @@ async def close_client(client):
+@@ -221,26 +236,29 @@ async def close_client(client):
              except httpx.HTTPError:
                  pass
  
@@ -544,61 +490,17 @@ index eb53afb7f085..f93ff06ba836 100644
 +            del kwargs["raise_for_httperror"]
          return do_raise_for_httperror
  
--    def patch_response(self, response: httpx.Response, do_raise_for_httperror: bool) -> SXNG_Response:
-+    def patch_response(
-+        self, response: httpx.Response, do_raise_for_httperror: bool
-+    ) -> SXNG_Response:
-         if isinstance(response, httpx.Response):
-             response = t.cast(SXNG_Response, response)
-             # requests compatibility (response is not streamed)
-@@ -255,7 +282,9 @@ def patch_response(self, response: httpx.Response, do_raise_for_httperror: bool)
-                 try:
-                     raise_for_httperror(response)
-                 except:
--                    self._logger.warning(f"HTTP Request failed: {response.request.method} {response.request.url}")
-+                    self._logger.warning(
-+                        f"HTTP Request failed: {response.request.method} {response.request.url}"
-+                    )
-                     raise
-         return response
- 
-@@ -263,13 +292,21 @@ def is_valid_response(self, response: httpx.Response):
-         # pylint: disable=too-many-boolean-expressions
-         if (
-             (self.retry_on_http_error is True and 400 <= response.status_code <= 599)
--            or (isinstance(self.retry_on_http_error, list) and response.status_code in self.retry_on_http_error)
--            or (isinstance(self.retry_on_http_error, int) and response.status_code == self.retry_on_http_error)
-+            or (
-+                isinstance(self.retry_on_http_error, list)
-+                and response.status_code in self.retry_on_http_error
-+            )
-+            or (
-+                isinstance(self.retry_on_http_error, int)
-+                and response.status_code == self.retry_on_http_error
-+            )
-         ):
-             return False
-         return True
- 
--    async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any) -> SXNG_Response:
-+    async def call_client(
-+        self, stream: bool, method: str, url: str, **kwargs: t.Any
-+    ) -> SXNG_Response:
-         retries = self.retries
-         was_disconnected = False
-         do_raise_for_httperror = Network.extract_do_raise_for_httperror(kwargs)
-@@ -291,7 +328,9 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
+     def patch_response(self, response: httpx.Response, do_raise_for_httperror: bool) -> SXNG_Response:
+@@ -291,7 +309,7 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
                      # try again without decreasing the retries variable & with a new HTTP client
                      was_disconnected = True
                      await client.aclose()
 -                    self._logger.warning('httpx.RemoteProtocolError: the server has disconnected, retrying')
-+                    self._logger.warning(
-+                        "httpx.RemoteProtocolError: the server has disconnected, retrying"
-+                    )
++                    self._logger.warning("httpx.RemoteProtocolError: the server has disconnected, retrying")
                      continue
                  if retries <= 0:
                      raise e
-@@ -308,7 +347,10 @@ async def stream(self, method: str, url: str, **kwargs):
+@@ -308,7 +326,10 @@ async def stream(self, method: str, url: str, **kwargs):
  
      @classmethod
      async def aclose_all(cls):
@@ -610,29 +512,16 @@ index eb53afb7f085..f93ff06ba836 100644
  
  
  def get_network(name: str | None = None) -> "Network":
-@@ -323,7 +365,9 @@ async def check():
+@@ -323,7 +344,7 @@ async def check():
                  try:
                      await network.get_client()
                  except Exception:  # pylint: disable=broad-except
 -                    network._logger.exception('Error')  # pylint: disable=protected-access
-+                    network._logger.exception(
-+                        "Error"
-+                    )  # pylint: disable=protected-access
++                    network._logger.exception("Error")  # pylint: disable=protected-access
                      exception_count += 1
          return exception_count
  
-@@ -334,7 +378,9 @@ async def check():
- 
- 
- def initialize(
--    settings_engines: list[dict[str, t.Any]] = None,  # pyright: ignore[reportArgumentType]
-+    settings_engines: list[
-+        dict[str, t.Any]
-+    ] = None,  # pyright: ignore[reportArgumentType]
-     settings_outgoing: dict[str, t.Any] = None,  # pyright: ignore[reportArgumentType]
- ) -> None:
-     # pylint: disable=import-outside-toplevel)
-@@ -343,24 +389,26 @@ def initialize(
+@@ -343,24 +364,26 @@ def initialize(
  
      # pylint: enable=import-outside-toplevel)
  
@@ -673,7 +562,7 @@ index eb53afb7f085..f93ff06ba836 100644
      }
  
      def new_network(params: dict[str, t.Any], logger_name: str | None = None):
-@@ -369,28 +417,28 @@ def new_network(params: dict[str, t.Any], logger_name: str | None = None):
+@@ -369,28 +392,28 @@ def new_network(params: dict[str, t.Any], logger_name: str | None = None):
          result.update(default_params)  # pyright: ignore[reportUnknownMemberType]
          result.update(params)  # pyright: ignore[reportUnknownMemberType]
          if logger_name:
@@ -709,7 +598,7 @@ index eb53afb7f085..f93ff06ba836 100644
          NETWORKS[network_name] = new_network(network, logger_name=network_name)
  
      # define networks from engines.[i].network (except references)
-@@ -414,10 +462,12 @@ def iter_networks():
+@@ -414,10 +437,10 @@ def iter_networks():
      # the /image_proxy endpoint has a dedicated network.
      # same parameters than the default network, but HTTP/2 is disabled.
      # It decreases the CPU load average, and the total time is more or less the same
@@ -719,14 +608,12 @@ index eb53afb7f085..f93ff06ba836 100644
 -        image_proxy_params['enable_http2'] = False
 -        NETWORKS['image_proxy'] = new_network(image_proxy_params, logger_name='image_proxy')
 +        image_proxy_params["enable_http2"] = False
-+        NETWORKS["image_proxy"] = new_network(
-+            image_proxy_params, logger_name="image_proxy"
-+        )
++        NETWORKS["image_proxy"] = new_network(image_proxy_params, logger_name="image_proxy")
  
  
  @atexit.register
 diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
-index c23ebd956874..1846459a3d07 100644
+index c23ebd956874..32c0a1d30027 100644
 --- a/searx/settings_defaults.py
 +++ b/searx/settings_defaults.py
 @@ -1,5 +1,6 @@
@@ -786,26 +673,11 @@ index c23ebd956874..1846459a3d07 100644
  }
  _UNDEFINED = object()
  
-@@ -71,22 +72,31 @@ def __init__(
-         environ_name: str | None = None,
-     ):
-         self.type_definition: TypeDefinition = (
--            type_definition_arg if isinstance(type_definition_arg, tuple) else (type_definition_arg,)
-+            type_definition_arg
-+            if isinstance(type_definition_arg, tuple)
-+            else (type_definition_arg,)
-         )
-         self.default: t.Any = default
-         self.environ_name: str | None = environ_name
- 
+@@ -79,14 +80,14 @@ def __init__(
      @property
      def type_definition_repr(self):
--        types_str = [td.__name__ if isinstance(td, type) else repr(td) for td in self.type_definition]
+         types_str = [td.__name__ if isinstance(td, type) else repr(td) for td in self.type_definition]
 -        return ', '.join(types_str)
-+        types_str = [
-+            td.__name__ if isinstance(td, type) else repr(td)
-+            for td in self.type_definition
-+        ]
 +        return ", ".join(types_str)
  
      def check_type_definition(self, value: t.Any) -> None:
@@ -814,15 +686,11 @@ index c23ebd956874..1846459a3d07 100644
          type_list = tuple(t for t in self.type_definition if isinstance(t, type))
          if not isinstance(value, type_list):
 -            raise ValueError('The value has to be one of these types/values: {}'.format(self.type_definition_repr))
-+            raise ValueError(
-+                "The value has to be one of these types/values: {}".format(
-+                    self.type_definition_repr
-+                )
-+            )
++            raise ValueError("The value has to be one of these types/values: {}".format(self.type_definition_repr))
  
      def __call__(self, value: t.Any) -> t.Any:
          if value == _UNDEFINED:
-@@ -107,10 +117,10 @@ class SettingSublistValue(SettingsValue):
+@@ -107,10 +108,10 @@ class SettingSublistValue(SettingsValue):
      @override
      def check_type_definition(self, value: list[t.Any]) -> None:
          if not isinstance(value, list):
@@ -835,7 +703,7 @@ index c23ebd956874..1846459a3d07 100644
  
  
  class SettingsDirectoryValue(SettingsValue):
-@@ -124,7 +134,7 @@ def check_type_definition(self, value: t.Any) -> t.Any:
+@@ -124,7 +125,7 @@ def check_type_definition(self, value: t.Any) -> t.Any:
  
      @override
      def __call__(self, value: t.Any) -> t.Any:
@@ -844,29 +712,7 @@ index c23ebd956874..1846459a3d07 100644
              value = self.default
          return super().__call__(value)
  
-@@ -139,7 +149,9 @@ def __call__(self, value: t.Any) -> t.Any:
-         return super().__call__(value)
- 
- 
--def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list: list[str]):
-+def apply_schema(
-+    settings: dict[str, t.Any], schema: dict[str, t.Any], path_list: list[str]
-+):
-     error = False
-     for key, value in schema.items():
-         if isinstance(value, type) and issubclass(value, msgspec.Struct):
-@@ -171,7 +183,9 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
-                 logger.error(msg)
-                 error = True
-         elif isinstance(value, dict):
--            error = error or apply_schema(settings.setdefault(key, {}), schema[key], [*path_list, key])
-+            error = error or apply_schema(
-+                settings.setdefault(key, {}), schema[key], [*path_list, key]
-+            )
-         else:
-             settings.setdefault(key, value)
-     if len(path_list) == 0 and error:
-@@ -180,94 +194,105 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
+@@ -180,94 +181,101 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
  
  
  SCHEMA: dict[str, t.Any] = {
@@ -883,9 +729,7 @@ index c23ebd956874..1846459a3d07 100644
 +        "instance_name": SettingsValue(str, "SearXNG"),
 +        "privacypolicy_url": SettingsValue((None, False, str), None),
 +        "contact_url": SettingsValue((None, False, str), None),
-+        "donation_url": SettingsValue(
-+            (bool, str), "https://docs.searxng.org/donate.html"
-+        ),
++        "donation_url": SettingsValue((bool, str), "https://docs.searxng.org/donate.html"),
 +        "enable_metrics": SettingsValue(bool, True),
 +        "open_metrics": SettingsValue(str, ""),
      },
@@ -972,9 +816,7 @@ index c23ebd956874..1846459a3d07 100644
 -            'simple_style': SettingsValue(SIMPLE_STYLE, 'auto'),
 +    "ui": {
 +        "static_path": SettingsDirectoryValue(str, os.path.join(searx_dir, "static")),
-+        "templates_path": SettingsDirectoryValue(
-+            str, os.path.join(searx_dir, "templates")
-+        ),
++        "templates_path": SettingsDirectoryValue(str, os.path.join(searx_dir, "templates")),
 +        "default_theme": SettingsValue(str, "simple"),
 +        "default_locale": SettingsValue(str, ""),
 +        "theme_args": {
