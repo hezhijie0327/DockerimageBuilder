@@ -1,26 +1,25 @@
 diff --git a/searx/network/client.py b/searx/network/client.py
-index 024eb2567026..6536b1393474 100644
+index 024eb2567026..7f9a799dceba 100644
 --- a/searx/network/client.py
 +++ b/searx/network/client.py
-@@ -16,6 +16,17 @@
+@@ -16,6 +16,16 @@
  
  from searx import logger
  
 +try:
-+    from httpx_curl_cffi import AsyncCurlTransport, CurlOpt
++    from httpx_curl_cffi import AsyncCurlTransport
 +    from curl_cffi.const import CurlHttpVersion
 +
 +    HAS_CURL_CFFI = True
 +except ImportError:
 +    HAS_CURL_CFFI = False
 +    AsyncCurlTransport = None  # type: ignore
-+    CurlOpt = None  # type: ignore
 +    CurlHttpVersion = None  # type: ignore
 +
  CertTypes = str | tuple[str, str] | tuple[str, str, str]
  SslContextKeyType = tuple[str | None, CertTypes | None, bool, bool]
  
-@@ -143,8 +154,48 @@ def get_transport_for_socks_proxy(
+@@ -143,8 +153,46 @@ def get_transport_for_socks_proxy(
  
  
  def get_transport(
@@ -50,9 +49,7 @@ index 024eb2567026..6536b1393474 100644
 +            verify=_verify,
 +            proxy=proxy_url,
 +            http_version=_http_version,
-+            # FRESH_CONNECT ensures each request uses a fresh curl handle,
-+            # avoiding connection reuse issues in async parallel requests.
-+            curl_options={CurlOpt.FRESH_CONNECT: True},
++            max_connections=limit.max_connections,
 +        )
 +    if curl_cffi_impersonate and not HAS_CURL_CFFI:
 +        logger.warning(
@@ -70,7 +67,7 @@ index 024eb2567026..6536b1393474 100644
      _verify = get_sslcontexts(None, None, verify, True) if verify is True else verify
      return httpx.AsyncHTTPTransport(
          # pylint: disable=protected-access
-@@ -162,6 +213,7 @@ def new_client(
+@@ -162,6 +210,7 @@ def new_client(
      enable_http: bool,
      verify: bool,
      enable_http2: bool,
@@ -78,7 +75,7 @@ index 024eb2567026..6536b1393474 100644
      max_connections: int,
      max_keepalive_connections: int,
      keepalive_expiry: float,
-@@ -170,6 +222,7 @@ def new_client(
+@@ -170,6 +219,7 @@ def new_client(
      retries: int,
      max_redirects: int,
      hook_log_response: t.Callable[..., t.Any] | None,
@@ -86,7 +83,7 @@ index 024eb2567026..6536b1393474 100644
  ) -> httpx.AsyncClient:
      limit = httpx.Limits(
          max_connections=max_connections,
-@@ -182,17 +235,44 @@ def new_client(
+@@ -182,17 +232,44 @@ def new_client(
      for pattern, proxy_url in proxies.items():
          if not enable_http and pattern.startswith('http://'):
              continue
