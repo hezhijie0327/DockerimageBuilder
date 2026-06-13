@@ -1,0 +1,88 @@
+diff --git a/searx/engines/sov2ex.py b/searx/engines/sov2ex.py
+new file mode 100644
+index 00000000000..2b83d231167
+--- /dev/null
++++ b/searx/engines/sov2ex.py
+@@ -0,0 +1,82 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""SOV2EX - A convenient V2EX site search engine.
++
++`SOV2EX <https://www.sov2ex.com>`_ is a third-party search engine for V2EX
++(https://www.v2ex.com), a Chinese tech community.  It provides a JSON API for
++searching V2EX topics with support for time range filtering, node filtering, and
++sort options.
++
++.. attention::
++
++   This engine uses the `SOV2EX API <https://www.sov2ex.com>`_,
++   which is a third-party service and not officially affiliated with V2EX.
++
++"""
++
++import time
++import typing as t
++from datetime import datetime
++from urllib.parse import urlencode
++
++from searx.result_types import EngineResults
++
++if t.TYPE_CHECKING:
++    from searx.search.processors import OnlineParams
++    from searx.extended_types import SXNG_Response
++
++about = {
++    "website": "https://www.sov2ex.com/",
++    "official_api_documentation": "https://www.sov2ex.com/",
++    "use_official_api": True,
++    "require_api_key": False,
++    "results": "JSON",
++}
++
++base_url = "https://www.sov2ex.com/api/search"
++categories = ["general", "it"]
++
++paging = True
++page_size = 20
++time_range_support = True
++time_range_dict = {"day": 86400, "week": 604800, "month": 2592000, "year": 31536000}
++
++
++def request(query: str, params: "OnlineParams"):
++    args: dict[str, t.Any] = {
++        "q": query,
++        "size": page_size,
++        "from": (params["pageno"] - 1) * page_size,
++        "sort": "sumup",
++    }
++
++    if params.get("time_range") in time_range_dict:
++        now = int(time.time())
++        gte = now - time_range_dict[params["time_range"]]
++        args["gte"] = gte
++        args["lte"] = now
++
++    params["url"] = f"{base_url}?{urlencode(args)}"
++    return params
++
++
++def response(resp: "SXNG_Response") -> EngineResults:
++    res = EngineResults()
++    data = resp.json()
++
++    for hit in data.get("hits", []):
++        source = hit["_source"]
++
++        created = datetime.fromisoformat(source["created"])
++
++        res.add(
++            res.types.MainResult(
++                url=f"https://www.v2ex.com/t/{source['id']}",
++                title=source["title"],
++                content=source.get("content", ""),
++                author=source.get("member", ""),
++                publishedDate=created,
++                metadata=f"replies: {source.get('replies', 0)}",
++            )
++        )
++
++    return res
