@@ -1,9 +1,9 @@
 diff --git a/searx/engines/toutiao.py b/searx/engines/toutiao.py
 new file mode 100644
-index 00000000000..5a288188f75
+index 00000000000..b5890cafdd6
 --- /dev/null
 +++ b/searx/engines/toutiao.py
-@@ -0,0 +1,354 @@
+@@ -0,0 +1,361 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Toutiao_ (头条搜索) is a Chinese search engine by ByteDance.
 +
@@ -33,6 +33,7 @@ index 00000000000..5a288188f75
 +
 +categories = []
 +paging = True
++time_range_support = True
 +
 +base_url = "https://so.toutiao.com/search"
 +
@@ -40,9 +41,7 @@ index 00000000000..5a288188f75
 +"""Supported categories: "search", "news", "video", "images"."""
 +
 +# regex to extract JSON payloads from <script type="application/json"> tags
-+_JSON_SCRIPT_RE = re.compile(
-+    r'<script[^>]*type="application/json"[^>]*>(.*?)</script>', re.DOTALL
-+)
++_JSON_SCRIPT_RE = re.compile(r'<script[^>]*type="application/json"[^>]*>(.*?)</script>', re.DOTALL)
 +# strip HTML tags from highlighted text
 +_HTML_TAG_RE = re.compile(r"<[^>]+>")
 +
@@ -100,7 +99,8 @@ index 00000000000..5a288188f75
 +# URL builders per category
 +# ----------------------------------------------------------------------------
 +
-+def _search_url(query: str, page_num: int) -> str:
++
++def _search_url(query: str, page_num: int, time_range: str = "") -> str:
 +    args = {
 +        "dvpf": "pc",
 +        "source": "input",
@@ -109,6 +109,8 @@ index 00000000000..5a288188f75
 +        "page_num": page_num,
 +        "pd": "synthesis",
 +    }
++    if time_range:
++        args["filter_period"] = time_range
 +    return f"{base_url}?{urlencode(args)}"
 +
 +
@@ -169,12 +171,17 @@ index 00000000000..5a288188f75
 +
 +def request(query: str, params) -> None:
 +    page_num = params["pageno"] - 1
-+    params["url"] = _URL_BUILDERS[toutiao_categ](query, page_num)
++    time_range = params.get("time_range", "")
++    if toutiao_categ == "search" and time_range:
++        params["url"] = _search_url(query, page_num, time_range)
++    else:
++        params["url"] = _URL_BUILDERS[toutiao_categ](query, page_num)
 +
 +
 +# ----------------------------------------------------------------------------
 +# Response parsers per category
 +# ----------------------------------------------------------------------------
++
 +
 +def _parse_web_card(res: EngineResults, d: dict):
 +    """Parse a regular web / news result (``undefined-default`` template)."""
