@@ -1,11 +1,14 @@
 diff --git a/searx/network/client.py b/searx/network/client.py
-index 024eb2567026..a4d86f0afcd2 100644
+index 024eb2567026..11481addcece 100644
 --- a/searx/network/client.py
 +++ b/searx/network/client.py
-@@ -16,6 +16,17 @@
+@@ -14,7 +14,18 @@
+ from httpx_socks import AsyncProxyTransport
+ from python_socks import parse_proxy_url, ProxyConnectionError, ProxyTimeoutError, ProxyError
  
- from searx import logger
- 
+-from searx import logger
++from searx import logger, get_setting
++
 +try:
 +    from httpx_curl_cffi import AsyncCurlTransport, CurlOpt
 +    from curl_cffi.const import CurlHttpVersion
@@ -16,250 +19,311 @@ index 024eb2567026..a4d86f0afcd2 100644
 +    AsyncCurlTransport = None  # type: ignore
 +    CurlOpt = None  # type: ignore
 +    CurlHttpVersion = None  # type: ignore
-+
+ 
  CertTypes = str | tuple[str, str] | tuple[str, str, str]
  SslContextKeyType = tuple[str | None, CertTypes | None, bool, bool]
+@@ -112,7 +123,7 @@ async def handle_async_request(self, request: httpx.Request):
  
-@@ -143,8 +154,48 @@ def get_transport_for_socks_proxy(
+ 
+ def get_transport_for_socks_proxy(
+-    verify: bool, http2: bool, local_address: str, proxy_url: str, limit: httpx.Limits, retries: int
++    verify: bool, http2: bool, local_address: str | None, proxy_url: str, limit: httpx.Limits, retries: int
+ ):
+     # support socks5h (requests compatibility):
+     # https://requests.readthedocs.io/en/master/user/advanced/#socks
+@@ -143,8 +154,46 @@ def get_transport_for_socks_proxy(
  
  
  def get_transport(
 -    verify: bool, http2: bool, local_address: str, proxy_url: str | None, limit: httpx.Limits, retries: int
 +    verify: bool,
 +    http2: bool,
-+    enable_http3: bool,
-+    local_address: str,
++    local_address: str | None,
 +    proxy_url: str | None,
 +    limit: httpx.Limits,
 +    retries: int,
-+    curl_cffi_impersonate: str | None = None,
++    impersonate: str | None = None,
  ):
-+    if curl_cffi_impersonate and HAS_CURL_CFFI:
++    if impersonate and HAS_CURL_CFFI:
 +        # Use curl_cffi transport for browser TLS fingerprint impersonation.
-+        # curl_cffi manages TLS internally (BoringSSL/NSS), so SSLContext/cipher shuffling is bypassed.
-+        _verify: bool | str = verify if isinstance(verify, (bool, str)) else True
-+        _http_version = CurlHttpVersion.V3 if enable_http3 else None
++        # curl_cffi manages TLS internally (BoringSSL/NSS), so SSLContext and
++        # cipher shuffling are bypassed entirely.
++        _http_version = CurlHttpVersion.V3 if http2 else CurlHttpVersion.V1_1
 +        logger.debug(
-+            "using curl_cffi transport impersonating %s (proxy=%s, http3=%s)",
-+            curl_cffi_impersonate,
++            "using curl_cffi transport impersonating %s (proxy=%s, http_version=%s)",
++            impersonate,
 +            proxy_url,
-+            enable_http3,
++            _http_version,
 +        )
 +        return AsyncCurlTransport(
-+            impersonate=curl_cffi_impersonate,
-+            verify=_verify,
++            impersonate=impersonate,
++            verify=verify,
 +            proxy=proxy_url,
 +            http_version=_http_version,
-+            # FRESH_CONNECT ensures each request uses a fresh curl handle,
-+            # avoiding connection reuse issues in async parallel requests.
++            default_headers=True,
++            local_address=local_address,
++            debug=get_setting("general.debug"),
++            # FRESH_CONNECT avoids connection reuse issues in async parallel
++            # requests by giving each request a fresh curl handle.
 +            curl_options={CurlOpt.FRESH_CONNECT: True},
 +        )
-+    if curl_cffi_impersonate and not HAS_CURL_CFFI:
++
++    if impersonate and not HAS_CURL_CFFI:
 +        logger.warning(
-+            "curl_cffi_impersonate is set to '%s' but httpx_curl_cffi is not installed. "
++            "impersonate is set to '%s' but httpx_curl_cffi is not installed. "
 +            "Falling back to standard httpx transport. "
 +            "Install it with: pip install httpx_curl_cffi",
-+            curl_cffi_impersonate,
++            impersonate,
 +        )
-+    if enable_http3 and not (curl_cffi_impersonate and HAS_CURL_CFFI):
-+        logger.warning(
-+            "enable_http3 is set but HTTP/3 requires curl_cffi_impersonate. "
-+            "Standard httpx transport does not support HTTP/3. "
-+            "Set curl_cffi_impersonate to enable HTTP/3 via curl_cffi."
-+        )
++
      _verify = get_sslcontexts(None, None, verify, True) if verify is True else verify
      return httpx.AsyncHTTPTransport(
          # pylint: disable=protected-access
-@@ -162,6 +213,7 @@ def new_client(
-     enable_http: bool,
-     verify: bool,
-     enable_http2: bool,
-+    enable_http3: bool,
-     max_connections: int,
+@@ -166,10 +215,11 @@ def new_client(
      max_keepalive_connections: int,
      keepalive_expiry: float,
-@@ -170,6 +222,7 @@ def new_client(
+     proxies: dict[str, str],
+-    local_address: str,
++    local_address: str | None,
      retries: int,
      max_redirects: int,
      hook_log_response: t.Callable[..., t.Any] | None,
-+    curl_cffi_impersonate: str | None = None,
++    impersonate: str | None = None,
  ) -> httpx.AsyncClient:
      limit = httpx.Limits(
          max_connections=max_connections,
-@@ -182,17 +235,44 @@ def new_client(
+@@ -182,7 +232,15 @@ def new_client(
      for pattern, proxy_url in proxies.items():
          if not enable_http and pattern.startswith('http://'):
              continue
 -        if proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://'):
-+        if curl_cffi_impersonate and HAS_CURL_CFFI:
-+            # When curl_cffi impersonation is enabled, route ALL proxy types through
-+            # AsyncCurlTransport. curl_cffi (libcurl) natively supports http, https,
-+            # socks4, socks5, and socks5h proxies.
++        if impersonate and HAS_CURL_CFFI:
++            # curl_cffi (libcurl) natively supports http, https, socks4,
++            # socks5 and socks5h proxies, so route ALL proxy types through
++            # AsyncCurlTransport when impersonation is enabled.
 +            mounts[pattern] = get_transport(
-+                verify,
-+                enable_http2,
-+                enable_http3,
-+                local_address,
-+                proxy_url,
-+                limit,
-+                retries,
-+                curl_cffi_impersonate=curl_cffi_impersonate,
++                verify, enable_http2, local_address, proxy_url, limit, retries,
++                impersonate=impersonate,
 +            )
-+        elif (
-+            proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://')
-+        ):
++        elif proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://'):
              mounts[pattern] = get_transport_for_socks_proxy(
                  verify, enable_http2, local_address, proxy_url, limit, retries
              )
-         else:
--            mounts[pattern] = get_transport(verify, enable_http2, local_address, proxy_url, limit, retries)
-+            mounts[pattern] = get_transport(
-+                verify, enable_http2, enable_http3, local_address, proxy_url, limit, retries
-+            )
- 
+@@ -192,7 +250,10 @@ def new_client(
      if not enable_http:
          mounts['http://'] = AsyncHTTPTransportNoHttp()
  
 -    transport = get_transport(verify, enable_http2, local_address, None, limit, retries)
 +    transport = get_transport(
-+        verify,
-+        enable_http2,
-+        enable_http3,
-+        local_address,
-+        None,
-+        limit,
-+        retries,
-+        curl_cffi_impersonate=curl_cffi_impersonate,
++        verify, enable_http2, local_address, None, limit, retries,
++        impersonate=impersonate,
 +    )
  
      event_hooks = None
      if hook_log_response:
 diff --git a/searx/network/network.py b/searx/network/network.py
-index eb53afb7f085..765c20cb4e01 100644
+index eb53afb7f085..10b487acb43d 100644
 --- a/searx/network/network.py
 +++ b/searx/network/network.py
-@@ -20,7 +20,6 @@
+@@ -15,7 +15,7 @@
+ 
+ import httpx
+ 
+-from searx import logger, sxng_debug
++from searx import logger, sxng_debug, get_setting
+ from searx.extended_types import SXNG_Response
  from .client import new_client, get_loop, AsyncHTTPTransportNoHttp
  from .raise_for_httperror import raise_for_httperror
- 
--
- logger = logger.getChild('network')
- DEFAULT_NAME = '__DEFAULT__'
- NETWORKS: dict[str, "Network"] = {}
-@@ -48,6 +47,7 @@ class Network:
-         'enable_http',
-         'verify',
-         'enable_http2',
-+        'enable_http3',
-         'max_connections',
-         'max_keepalive_connections',
-         'keepalive_expiry',
 @@ -57,6 +57,7 @@ class Network:
          'max_redirects',
          'retries',
          'retry_on_http_error',
-+        'curl_cffi_impersonate',
++        'impersonate',
          '_local_addresses_cycle',
          '_proxies_cycle',
          '_clients',
-@@ -66,11 +67,12 @@ class Network:
-     _TOR_CHECK_RESULT = {}
- 
-     def __init__(
--        # pylint: disable=too-many-arguments
-+        # pylint: disable=too-many-arguments,too-many-positional-arguments
-         self,
-         enable_http: bool = True,
-         verify: bool = True,
-         enable_http2: bool = False,
-+        enable_http3: bool = False,
-         max_connections: int = None,  # pyright: ignore[reportArgumentType]
-         max_keepalive_connections: int = None,  # pyright: ignore[reportArgumentType]
-         keepalive_expiry: float = None,  # pyright: ignore[reportArgumentType]
-@@ -81,11 +83,13 @@ def __init__(
+@@ -81,6 +82,7 @@ def __init__(
          retry_on_http_error: bool = False,
          max_redirects: int = 30,
          logger_name: str = None,  # pyright: ignore[reportArgumentType]
-+        curl_cffi_impersonate: str | None = None,
++        impersonate: str | None = None,
      ):
  
          self.enable_http = enable_http
-         self.verify = verify
-         self.enable_http2 = enable_http2
-+        self.enable_http3 = enable_http3
-         self.max_connections = max_connections
-         self.max_keepalive_connections = max_keepalive_connections
-         self.keepalive_expiry = keepalive_expiry
-@@ -95,6 +99,7 @@ def __init__(
+@@ -95,6 +97,7 @@ def __init__(
          self.retries = retries
          self.retry_on_http_error = retry_on_http_error
          self.max_redirects = max_redirects
-+        self.curl_cffi_impersonate = curl_cffi_impersonate
++        self.impersonate = impersonate
          self._local_addresses_cycle = self.get_ipaddress_cycle()
          self._proxies_cycle = self.get_proxy_cycles()
          self._clients = {}
-@@ -192,13 +197,14 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
+@@ -190,9 +193,9 @@ async def check_tor_proxy(client: httpx.AsyncClient, proxies) -> bool:
+     async def get_client(self, verify: bool | None = None, max_redirects: int | None = None) -> httpx.AsyncClient:
+         verify = self.verify if verify is None else verify
          max_redirects = self.max_redirects if max_redirects is None else max_redirects
-         local_address = next(self._local_addresses_cycle)
+-        local_address = next(self._local_addresses_cycle)
++        local_address: str | None = next(self._local_addresses_cycle)
          proxies = next(self._proxies_cycle)  # is a tuple so it can be part of the key
 -        key = (verify, max_redirects, local_address, proxies)
-+        key = (verify, max_redirects, local_address, proxies, self.curl_cffi_impersonate)
++        key = (verify, max_redirects, local_address, proxies, self.impersonate)
          hook_log_response = self.log_response if sxng_debug else None
          if key not in self._clients or self._clients[key].is_closed:
              client = new_client(
-                 self.enable_http,
-                 verify,
-                 self.enable_http2,
-+                self.enable_http3,
-                 self.max_connections,
-                 self.max_keepalive_connections,
-                 self.keepalive_expiry,
-@@ -207,6 +213,7 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
+@@ -207,6 +210,7 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
                  0,
                  max_redirects,
                  hook_log_response,
-+                curl_cffi_impersonate=self.curl_cffi_impersonate,
++                impersonate=self.impersonate,
              )
              if self.using_tor_proxy and not await self.check_tor_proxy(client, proxies):
                  await client.aclose()
-@@ -352,6 +359,7 @@ def initialize(
-         'enable_http': False,
-         'verify': settings_outgoing['verify'],
-         'enable_http2': settings_outgoing['enable_http2'],
-+        'enable_http3': settings_outgoing.get('enable_http3', False),
-         'max_connections': settings_outgoing['pool_connections'],
-         'max_keepalive_connections': settings_outgoing['pool_maxsize'],
-         'keepalive_expiry': settings_outgoing['keepalive_expiry'],
-@@ -361,6 +369,7 @@ def initialize(
-         'max_redirects': settings_outgoing['max_redirects'],
-         'retries': settings_outgoing['retries'],
-         'retry_on_http_error': False,
-+        'curl_cffi_impersonate': settings_outgoing.get('curl_cffi_impersonate'),
-     }
+@@ -274,9 +278,17 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
+         was_disconnected = False
+         do_raise_for_httperror = Network.extract_do_raise_for_httperror(kwargs)
+         kwargs_clients = Network.extract_kwargs_clients(kwargs)
++
++        cookies = kwargs.pop("cookies", None)
++
++        if self.impersonate:
++            # In impersonate mode, prevent the application's User-Agent from
++            # overwriting the impersonated browser's default User-Agent.
++            # See https://curl-cffi.readthedocs.io/en/latest/api.html#curl_cffi.Curl.impersonate
++            kwargs.setdefault("headers", {}).pop("user-agent", None)
++
+         while retries >= 0:  # pragma: no cover
+             client = await self.get_client(**kwargs_clients)
+-            cookies = kwargs.pop("cookies", None)
+             client.cookies = httpx.Cookies(cookies)
+             try:
+                 if stream:
+@@ -333,9 +345,29 @@ async def check():
+         raise RuntimeError("Invalid network configuration")
  
-     def new_network(params: dict[str, t.Any], logger_name: str | None = None):
+ 
++def get_default_network_params() -> dict[str, t.Any]:
++    """Return default parameters for :py:obj:`Network` from the ``outgoing`` settings."""
++    # see https://github.com/encode/httpx/blob/e05a5372eb6172287458b37447c30f650047e1b8/httpx/_transports/default.py#L108-L121  # pylint: disable=line-too-long
++    s: dict[str, t.Any] = get_setting("outgoing")
++    return {
++        'enable_http': False,
++        'verify': s['verify'],
++        'enable_http2': s['enable_http2'],
++        'max_connections': s['pool_connections'],
++        'max_keepalive_connections': s['pool_maxsize'],
++        'keepalive_expiry': s['keepalive_expiry'],
++        'local_addresses': s['source_ips'],
++        'using_tor_proxy': s['using_tor_proxy'],
++        'proxies': s['proxies'],
++        'max_redirects': s['max_redirects'],
++        'retries': s['retries'],
++        'retry_on_http_error': False,
++        'impersonate': s.get('impersonate'),
++    }
++
++
+ def initialize(
+     settings_engines: list[dict[str, t.Any]] = None,  # pyright: ignore[reportArgumentType]
+-    settings_outgoing: dict[str, t.Any] = None,  # pyright: ignore[reportArgumentType]
+ ) -> None:
+     # pylint: disable=import-outside-toplevel)
+     from searx.engines import engines
+@@ -344,30 +376,13 @@ def initialize(
+     # pylint: enable=import-outside-toplevel)
+ 
+     settings_engines = settings_engines or settings['engines']
+-    settings_outgoing = settings_outgoing or settings['outgoing']
++    default_params = get_default_network_params()
+ 
+-    # default parameters for AsyncHTTPTransport
+-    # see https://github.com/encode/httpx/blob/e05a5372eb6172287458b37447c30f650047e1b8/httpx/_transports/default.py#L108-L121  # pylint: disable=line-too-long
+-    default_params: dict[str, t.Any] = {
+-        'enable_http': False,
+-        'verify': settings_outgoing['verify'],
+-        'enable_http2': settings_outgoing['enable_http2'],
+-        'max_connections': settings_outgoing['pool_connections'],
+-        'max_keepalive_connections': settings_outgoing['pool_maxsize'],
+-        'keepalive_expiry': settings_outgoing['keepalive_expiry'],
+-        'local_addresses': settings_outgoing['source_ips'],
+-        'using_tor_proxy': settings_outgoing['using_tor_proxy'],
+-        'proxies': settings_outgoing['proxies'],
+-        'max_redirects': settings_outgoing['max_redirects'],
+-        'retries': settings_outgoing['retries'],
+-        'retry_on_http_error': False,
+-    }
+-
+-    def new_network(params: dict[str, t.Any], logger_name: str | None = None):
++    def new_network(network_params: dict[str, t.Any], logger_name: str | None = None):
+         nonlocal default_params
+         result = {}
+         result.update(default_params)  # pyright: ignore[reportUnknownMemberType]
+-        result.update(params)  # pyright: ignore[reportUnknownMemberType]
++        result.update(network_params)  # pyright: ignore[reportUnknownMemberType]
+         if logger_name:
+             result['logger_name'] = logger_name
+         return Network(**result)  # type: ignore
+@@ -390,19 +405,19 @@ def iter_networks():
+     NETWORKS['ipv6'] = new_network({'local_addresses': '::'}, logger_name='ipv6')
+ 
+     # define networks from outgoing.networks
+-    for network_name, network in settings_outgoing['networks'].items():
+-        NETWORKS[network_name] = new_network(network, logger_name=network_name)
++    for network_name, network_params in get_setting("outgoing.networks").items():
++        NETWORKS[network_name] = new_network(network_params, logger_name=network_name)
+ 
+     # define networks from engines.[i].network (except references)
+     for engine_name, engine, network in iter_networks():
+         if network is None:
+-            network = {}
++            network_params: dict[str, t.Any] = {}
+             for attribute_name, attribute_value in default_params.items():
+                 if hasattr(engine, attribute_name):
+-                    network[attribute_name] = getattr(engine, attribute_name)
++                    network_params[attribute_name] = getattr(engine, attribute_name)
+                 else:
+-                    network[attribute_name] = attribute_value
+-            NETWORKS[engine_name] = new_network(network, logger_name=engine_name)
++                    network_params[attribute_name] = attribute_value
++            NETWORKS[engine_name] = new_network(network_params, logger_name=engine_name)
+         elif isinstance(network, dict):
+             NETWORKS[engine_name] = new_network(network, logger_name=engine_name)
+ 
+@@ -415,7 +430,7 @@ def iter_networks():
+     # same parameters than the default network, but HTTP/2 is disabled.
+     # It decreases the CPU load average, and the total time is more or less the same
+     if 'image_proxy' not in NETWORKS:
+-        image_proxy_params = default_params.copy()
++        image_proxy_params = get_default_network_params()
+         image_proxy_params['enable_http2'] = False
+         NETWORKS['image_proxy'] = new_network(image_proxy_params, logger_name='image_proxy')
+ 
+diff --git a/searx/search/__init__.py b/searx/search/__init__.py
+index 45ab8350996f..2257d4e19e07 100644
+--- a/searx/search/__init__.py
++++ b/searx/search/__init__.py
+@@ -37,7 +37,7 @@ def initialize(
+ ):
+     settings_engines = settings_engines or settings['engines']
+     load_engines(settings_engines)
+-    initialize_network(settings_engines, settings['outgoing'])
++    initialize_network(settings_engines)
+     if check_network:
+         check_network_configuration()
+     initialize_metrics([engine['name'] for engine in settings_engines], enable_metrics)
 diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
-index c23ebd956874..7ba9839da630 100644
+index c23ebd956874..f56ab633f6dd 100644
 --- a/searx/settings_defaults.py
 +++ b/searx/settings_defaults.py
-@@ -1,5 +1,6 @@
- # SPDX-License-Identifier: AGPL-3.0-or-later
- """Implementation of the default settings."""
-+
- from __future__ import annotations
- 
- import typing as t
-@@ -264,6 +265,13 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
+@@ -264,6 +264,12 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
          # Tor configuration
          'using_tor_proxy': SettingsValue(bool, False),
          'extra_proxy_timeout': SettingsValue(int, 0),
-+        # curl_cffi TLS fingerprint impersonation target (None = disabled, use standard httpx transport)
-+        # Supported values: "chrome", "firefox", "edge", "safari", "chrome110", "safari15_5", etc.
-+        # See https://github.com/lexiforest/curl_cffi for the full list.
-+        'curl_cffi_impersonate': SettingsValue((None, str), None),
-+        # Enable HTTP/3 (QUIC). Only effective when curl_cffi_impersonate is set
-+        # and httpx_curl_cffi is installed. Uses HTTP/3 with fallback to HTTP/2 / HTTP/1.1.
-+        'enable_http3': SettingsValue(bool, False),
++        # curl_cffi TLS fingerprint impersonation target.
++        # When set (e.g. "chrome", "firefox", "edge", "safari"), HTTPS requests are
++        # routed through curl_cffi instead of httpx.  HTTP/3 is enabled automatically
++        # when enable_http2 is True.  Requires: pip install httpx_curl_cffi
++        # See https://github.com/lexiforest/curl_cffi for the full list of targets.
++        'impersonate': SettingsValue((None, str), None),
          'networks': {},
      },
      'plugins': SettingsValue(dict, {}),
