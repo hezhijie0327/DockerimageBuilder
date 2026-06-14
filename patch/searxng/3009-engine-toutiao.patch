@@ -1,9 +1,9 @@
 diff --git a/searx/engines/toutiao.py b/searx/engines/toutiao.py
 new file mode 100644
-index 00000000000..b5890cafdd6
+index 00000000000..57b07790940
 --- /dev/null
 +++ b/searx/engines/toutiao.py
-@@ -0,0 +1,361 @@
+@@ -0,0 +1,366 @@
 +# SPDX-License-Identifier: AGPL-3.0-or-later
 +"""Toutiao_ (头条搜索) is a Chinese search engine by ByteDance.
 +
@@ -18,6 +18,7 @@ index 00000000000..b5890cafdd6
 +
 +import json
 +import re
++import time
 +from datetime import datetime
 +from urllib.parse import urlencode
 +
@@ -34,6 +35,7 @@ index 00000000000..b5890cafdd6
 +categories = []
 +paging = True
 +time_range_support = True
++time_range_dict = {"day": 86400, "week": 604800, "month": 2592000, "year": 31536000}
 +
 +base_url = "https://so.toutiao.com/search"
 +
@@ -76,23 +78,23 @@ index 00000000000..b5890cafdd6
 +    return _HTML_TAG_RE.sub("", text)
 +
 +
-+def _get_metadata(d: dict) -> str:
++def _get_metadata(data: dict) -> str:
 +    """Extract source/metadata from a result dict, preferring clean fields
 +    over highlighted ones."""
-+    metadata = d.get("media_name") or d.get("source") or ""
++    metadata = data.get("media_name") or data.get("source") or ""
 +    if not metadata:
-+        emphasized = d.get("emphasized")
++        emphasized = data.get("emphasized")
 +        if isinstance(emphasized, dict):
 +            metadata = _strip_html(emphasized.get("source", ""))
 +    return metadata
 +
 +
-+def _get_thumbnail(d: dict) -> str:
++def _get_thumbnail(data: dict) -> str:
 +    """Extract thumbnail URL from a result dict."""
-+    image_list = d.get("image_list")
++    image_list = data.get("image_list")
 +    if image_list and isinstance(image_list, list):
 +        return image_list[0].get("url", "")
-+    return d.get("image_url", "")
++    return data.get("image_url", "")
 +
 +
 +# ----------------------------------------------------------------------------
@@ -109,8 +111,11 @@ index 00000000000..b5890cafdd6
 +        "page_num": page_num,
 +        "pd": "synthesis",
 +    }
-+    if time_range:
-+        args["filter_period"] = time_range
++    if time_range and time_range in time_range_dict:
++        now = int(time.time())
++        past = now - time_range_dict[time_range]
++        args["min_time"] = past
++        args["max_time"] = now
 +    return f"{base_url}?{urlencode(args)}"
 +
 +
@@ -183,14 +188,14 @@ index 00000000000..b5890cafdd6
 +# ----------------------------------------------------------------------------
 +
 +
-+def _parse_web_card(res: EngineResults, d: dict):
++def _parse_web_card(res: EngineResults, data: dict):
 +    """Parse a regular web / news result (``undefined-default`` template)."""
-+    url = d.get("open_url") or d.get("source_url") or ""
-+    title = d.get("title", "")
-+    content = d.get("abstract", "")
-+    thumbnail = _get_thumbnail(d)
-+    metadata = _get_metadata(d)
-+    publishedDate = _parse_datetime(d.get("datetime", ""))
++    url = data.get("open_url") or data.get("source_url") or ""
++    title = data.get("title", "")
++    content = data.get("abstract", "")
++    thumbnail = _get_thumbnail(data)
++    metadata = _get_metadata(data)
++    publishedDate = _parse_datetime(data.get("datetime", ""))
 +
 +    res.add(
 +        res.types.MainResult(
@@ -204,15 +209,15 @@ index 00000000000..b5890cafdd6
 +    )
 +
 +
-+def _parse_video_card(res: EngineResults, d: dict, template: str = "videos.html"):
++def _parse_video_card(res: EngineResults, data: dict, template: str = "videos.html"):
 +    """Parse a video result (``video-undefined-default`` or similar)."""
-+    url = d.get("open_url") or d.get("source_url") or ""
-+    title = d.get("title", "")
-+    content = d.get("abstract", "")
-+    thumbnail = _get_thumbnail(d)
-+    metadata = _get_metadata(d)
-+    publishedDate = _parse_datetime(d.get("datetime", ""))
-+    length_str = d.get("video_duration_str", "")
++    url = data.get("open_url") or data.get("source_url") or ""
++    title = data.get("title", "")
++    content = data.get("abstract", "")
++    thumbnail = _get_thumbnail(data)
++    metadata = _get_metadata(data)
++    publishedDate = _parse_datetime(data.get("datetime", ""))
++    length_str = data.get("video_duration_str", "")
 +
 +    # Try to parse duration string like "01:10:05" to seconds
 +    length = None
@@ -240,11 +245,11 @@ index 00000000000..b5890cafdd6
 +    )
 +
 +
-+def _parse_external_video_card(res: EngineResults, d: dict):
++def _parse_external_video_card(res: EngineResults, data: dict):
 +    """Parse an external video embed (``video-67-video``, Bilibili etc.)."""
-+    display = d.get("display", {})
++    display = data.get("display", {})
 +    title = _extract_text(display.get("title", ""))
-+    url = d.get("url", "")
++    url = data.get("url", "")
 +    if not url:
 +        info = display.get("info", {})
 +        if isinstance(info, dict):
