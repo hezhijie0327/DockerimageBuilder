@@ -1,3 +1,30 @@
+diff --git a/searx/engines/__init__.py b/searx/engines/__init__.py
+index e906b780b0b6..0694c4329347 100644
+--- a/searx/engines/__init__.py
++++ b/searx/engines/__init__.py
+@@ -43,6 +43,9 @@
+     "disabled": False,
+     "inactive": False,
+     "about": {},
++    # When True, skip stripping the User-Agent header in impersonate mode.
++    # Engines that set a custom UA (e.g. Google's gen_gsa_useragent) need this.
++    "keep_user_agent": False,
+     "using_tor_proxy": False,
+     "send_accept_language_header": True,
+     "tokens": [],
+diff --git a/searx/engines/google.py b/searx/engines/google.py
+index e0048222b051..8e231982c3c4 100644
+--- a/searx/engines/google.py
++++ b/searx/engines/google.py
+@@ -58,6 +58,8 @@
+ """
+ time_range_support = True
+ safesearch = True
++# Google requires the GSA User-Agent set in request(); impersonate must not strip it.
++keep_user_agent = True
+ 
+ time_range_dict = {"day": "d", "week": "w", "month": "m", "year": "y"}
+ 
 diff --git a/searx/network/client.py b/searx/network/client.py
 index 024eb2567026..154c2cbdfe2d 100644
 --- a/searx/network/client.py
@@ -134,7 +161,7 @@ index 024eb2567026..154c2cbdfe2d 100644
      event_hooks = None
      if hook_log_response:
 diff --git a/searx/network/network.py b/searx/network/network.py
-index eb53afb7f085..93c9d611c6b6 100644
+index eb53afb7f085..acffcf60854c 100644
 --- a/searx/network/network.py
 +++ b/searx/network/network.py
 @@ -15,7 +15,7 @@
@@ -146,15 +173,16 @@ index eb53afb7f085..93c9d611c6b6 100644
  from searx.extended_types import SXNG_Response
  from .client import new_client, get_loop, AsyncHTTPTransportNoHttp
  from .raise_for_httperror import raise_for_httperror
-@@ -57,6 +57,7 @@ class Network:
+@@ -57,6 +57,8 @@ class Network:
          'max_redirects',
          'retries',
          'retry_on_http_error',
 +        'impersonate',
++        'keep_user_agent',
          '_local_addresses_cycle',
          '_proxies_cycle',
          '_clients',
-@@ -66,7 +67,7 @@ class Network:
+@@ -66,7 +68,7 @@ class Network:
      _TOR_CHECK_RESULT = {}
  
      def __init__(
@@ -163,23 +191,25 @@ index eb53afb7f085..93c9d611c6b6 100644
          self,
          enable_http: bool = True,
          verify: bool = True,
-@@ -81,6 +82,7 @@ def __init__(
+@@ -81,6 +83,8 @@ def __init__(
          retry_on_http_error: bool = False,
          max_redirects: int = 30,
          logger_name: str = None,  # pyright: ignore[reportArgumentType]
 +        impersonate: str | None = None,
++        keep_user_agent: bool = False,
      ):
  
          self.enable_http = enable_http
-@@ -95,6 +97,7 @@ def __init__(
+@@ -95,6 +99,8 @@ def __init__(
          self.retries = retries
          self.retry_on_http_error = retry_on_http_error
          self.max_redirects = max_redirects
 +        self.impersonate = impersonate
++        self.keep_user_agent = keep_user_agent
          self._local_addresses_cycle = self.get_ipaddress_cycle()
          self._proxies_cycle = self.get_proxy_cycles()
          self._clients = {}
-@@ -190,9 +193,9 @@ async def check_tor_proxy(client: httpx.AsyncClient, proxies) -> bool:
+@@ -190,9 +196,9 @@ async def check_tor_proxy(client: httpx.AsyncClient, proxies) -> bool:
      async def get_client(self, verify: bool | None = None, max_redirects: int | None = None) -> httpx.AsyncClient:
          verify = self.verify if verify is None else verify
          max_redirects = self.max_redirects if max_redirects is None else max_redirects
@@ -187,11 +217,11 @@ index eb53afb7f085..93c9d611c6b6 100644
 +        local_address: str | None = next(self._local_addresses_cycle)
          proxies = next(self._proxies_cycle)  # is a tuple so it can be part of the key
 -        key = (verify, max_redirects, local_address, proxies)
-+        key = (verify, max_redirects, local_address, proxies, self.impersonate)
++        key = (verify, max_redirects, local_address, proxies, self.impersonate, self.keep_user_agent)
          hook_log_response = self.log_response if sxng_debug else None
          if key not in self._clients or self._clients[key].is_closed:
              client = new_client(
-@@ -207,6 +210,7 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
+@@ -207,6 +213,7 @@ async def get_client(self, verify: bool | None = None, max_redirects: int | None
                  0,
                  max_redirects,
                  hook_log_response,
@@ -199,18 +229,20 @@ index eb53afb7f085..93c9d611c6b6 100644
              )
              if self.using_tor_proxy and not await self.check_tor_proxy(client, proxies):
                  await client.aclose()
-@@ -274,9 +278,20 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
+@@ -274,9 +281,22 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
          was_disconnected = False
          do_raise_for_httperror = Network.extract_do_raise_for_httperror(kwargs)
          kwargs_clients = Network.extract_kwargs_clients(kwargs)
 +
 +        cookies = kwargs.pop("cookies", None)
 +
-+        if self.impersonate:
++        if self.impersonate and not self.keep_user_agent:
 +            # In impersonate mode, prevent the application's User-Agent from
 +            # overwriting the impersonated browser's default User-Agent.
 +            # Normalize header keys to lowercase first so pop("user-agent")
 +            # matches regardless of the original casing.
++            # Engines with keep_user_agent=True (e.g. Google) set their own
++            # required UA and skip this stripping.
 +            # See https://curl-cffi.readthedocs.io/en/latest/api.html#curl_cffi.Curl.impersonate
 +            kwargs["headers"] = {k.lower(): v for k, v in kwargs.get("headers", {}).items()}
 +            kwargs["headers"].pop("user-agent", None)
@@ -221,7 +253,7 @@ index eb53afb7f085..93c9d611c6b6 100644
              client.cookies = httpx.Cookies(cookies)
              try:
                  if stream:
-@@ -333,9 +348,29 @@ async def check():
+@@ -333,9 +353,30 @@ async def check():
          raise RuntimeError("Invalid network configuration")
  
  
@@ -243,6 +275,7 @@ index eb53afb7f085..93c9d611c6b6 100644
 +        'retries': s['retries'],
 +        'retry_on_http_error': False,
 +        'impersonate': s.get('impersonate'),
++        'keep_user_agent': False,
 +    }
 +
 +
@@ -252,7 +285,7 @@ index eb53afb7f085..93c9d611c6b6 100644
  ) -> None:
      # pylint: disable=import-outside-toplevel)
      from searx.engines import engines
-@@ -344,30 +379,13 @@ def initialize(
+@@ -344,30 +385,13 @@ def initialize(
      # pylint: enable=import-outside-toplevel)
  
      settings_engines = settings_engines or settings['engines']
@@ -286,7 +319,7 @@ index eb53afb7f085..93c9d611c6b6 100644
          if logger_name:
              result['logger_name'] = logger_name
          return Network(**result)  # type: ignore
-@@ -390,19 +408,19 @@ def iter_networks():
+@@ -390,19 +414,19 @@ def iter_networks():
      NETWORKS['ipv6'] = new_network({'local_addresses': '::'}, logger_name='ipv6')
  
      # define networks from outgoing.networks
@@ -312,7 +345,7 @@ index eb53afb7f085..93c9d611c6b6 100644
          elif isinstance(network, dict):
              NETWORKS[engine_name] = new_network(network, logger_name=engine_name)
  
-@@ -415,7 +433,7 @@ def iter_networks():
+@@ -415,7 +439,7 @@ def iter_networks():
      # same parameters than the default network, but HTTP/2 is disabled.
      # It decreases the CPU load average, and the total time is more or less the same
      if 'image_proxy' not in NETWORKS:
