@@ -1,0 +1,360 @@
+diff --git a/searx/engines/toutiao.py b/searx/engines/toutiao.py
+new file mode 100644
+index 00000000000..5a288188f75
+--- /dev/null
++++ b/searx/engines/toutiao.py
+@@ -0,0 +1,354 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""Toutiao_ (头条搜索) is a Chinese search engine by ByteDance.
++
++.. _Toutiao: https://so.toutiao.com
++
++Supported categories (via ``toutiao_categ``):
++  - ``search`` — general web search
++  - ``news`` — news search
++  - ``video`` — video search
++  - ``images`` — image search
++"""
++
++import json
++import re
++from datetime import datetime
++from urllib.parse import urlencode
++
++from searx.result_types import EngineResults
++
++about = {
++    "website": "https://so.toutiao.com",
++    "official_api_documentation": None,
++    "use_official_api": False,
++    "require_api_key": False,
++    "results": "HTML",
++}
++
++categories = []
++paging = True
++
++base_url = "https://so.toutiao.com/search"
++
++toutiao_categ = "search"
++"""Supported categories: "search", "news", "video", "images"."""
++
++# regex to extract JSON payloads from <script type="application/json"> tags
++_JSON_SCRIPT_RE = re.compile(
++    r'<script[^>]*type="application/json"[^>]*>(.*?)</script>', re.DOTALL
++)
++# strip HTML tags from highlighted text
++_HTML_TAG_RE = re.compile(r"<[^>]+>")
++
++
++def init(_):
++    if toutiao_categ not in ("search", "news", "video", "images"):
++        raise ValueError("invalid toutiao category: %s" % toutiao_categ)
++
++
++def _parse_datetime(dt_str: str):
++    """Parse a datetime string like '2026-06-12 06:21:52'."""
++    if not dt_str:
++        return None
++    try:
++        return datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
++    except ValueError:
++        return None
++
++
++def _extract_text(obj):
++    """If *obj* is a dict with a ``text`` key, return that; otherwise return
++    *obj* as-is (or empty string)."""
++    if isinstance(obj, dict):
++        return obj.get("text", "")
++    return obj or ""
++
++
++def _strip_html(text: str) -> str:
++    """Remove HTML tags from *text*."""
++    if not text:
++        return ""
++    return _HTML_TAG_RE.sub("", text)
++
++
++def _get_metadata(d: dict) -> str:
++    """Extract source/metadata from a result dict, preferring clean fields
++    over highlighted ones."""
++    metadata = d.get("media_name") or d.get("source") or ""
++    if not metadata:
++        emphasized = d.get("emphasized")
++        if isinstance(emphasized, dict):
++            metadata = _strip_html(emphasized.get("source", ""))
++    return metadata
++
++
++def _get_thumbnail(d: dict) -> str:
++    """Extract thumbnail URL from a result dict."""
++    image_list = d.get("image_list")
++    if image_list and isinstance(image_list, list):
++        return image_list[0].get("url", "")
++    return d.get("image_url", "")
++
++
++# ----------------------------------------------------------------------------
++# URL builders per category
++# ----------------------------------------------------------------------------
++
++def _search_url(query: str, page_num: int) -> str:
++    args = {
++        "dvpf": "pc",
++        "source": "input",
++        "keyword": query,
++        "enable_druid_v2": "1",
++        "page_num": page_num,
++        "pd": "synthesis",
++    }
++    return f"{base_url}?{urlencode(args)}"
++
++
++def _news_url(query: str, page_num: int) -> str:
++    args = {
++        "cur_tab_title": "news",
++        "pd": "information",
++        "dvpf": "pc",
++        "action_type": "search_subtab_switch",
++        "source": "search_subtab_switch",
++        "enable_druid_v2": "1",
++        "page_num": page_num,
++        "from": "news",
++        "keyword": query,
++    }
++    return f"{base_url}?{urlencode(args)}"
++
++
++def _video_url(query: str, page_num: int) -> str:
++    args = {
++        "page_num": page_num,
++        "enable_druid_v2": "1",
++        "dvpf": "pc",
++        "cur_tab_title": "video",
++        "action_type": "search_subtab_switch",
++        "source": "search_subtab_switch",
++        "pd": "video",
++        "search_id": "",
++        "keyword": query,
++        "from": "video",
++    }
++    return f"{base_url}?{urlencode(args)}"
++
++
++def _images_url(query: str, page_num: int) -> str:
++    args = {
++        "dvpf": "pc",
++        "enable_druid_v2": "1",
++        "pd": "atlas",
++        "search_id": "",
++        "from": "gallery",
++        "source": "search_subtab_switch",
++        "page_num": page_num,
++        "cur_tab_title": "gallery",
++        "action_type": "search_subtab_switch",
++        "keyword": query,
++    }
++    return f"{base_url}?{urlencode(args)}"
++
++
++_URL_BUILDERS = {
++    "search": _search_url,
++    "news": _news_url,
++    "video": _video_url,
++    "images": _images_url,
++}
++
++
++def request(query: str, params) -> None:
++    page_num = params["pageno"] - 1
++    params["url"] = _URL_BUILDERS[toutiao_categ](query, page_num)
++
++
++# ----------------------------------------------------------------------------
++# Response parsers per category
++# ----------------------------------------------------------------------------
++
++def _parse_web_card(res: EngineResults, d: dict):
++    """Parse a regular web / news result (``undefined-default`` template)."""
++    url = d.get("open_url") or d.get("source_url") or ""
++    title = d.get("title", "")
++    content = d.get("abstract", "")
++    thumbnail = _get_thumbnail(d)
++    metadata = _get_metadata(d)
++    publishedDate = _parse_datetime(d.get("datetime", ""))
++
++    res.add(
++        res.types.MainResult(
++            url=url,
++            title=title,
++            content=content,
++            thumbnail=thumbnail,
++            metadata=metadata,
++            publishedDate=publishedDate,
++        )
++    )
++
++
++def _parse_video_card(res: EngineResults, d: dict, template: str = "videos.html"):
++    """Parse a video result (``video-undefined-default`` or similar)."""
++    url = d.get("open_url") or d.get("source_url") or ""
++    title = d.get("title", "")
++    content = d.get("abstract", "")
++    thumbnail = _get_thumbnail(d)
++    metadata = _get_metadata(d)
++    publishedDate = _parse_datetime(d.get("datetime", ""))
++    length_str = d.get("video_duration_str", "")
++
++    # Try to parse duration string like "01:10:05" to seconds
++    length = None
++    if length_str:
++        parts = length_str.split(":")
++        try:
++            if len(parts) == 3:
++                length = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
++            elif len(parts) == 2:
++                length = int(parts[0]) * 60 + int(parts[1])
++        except (ValueError, IndexError):
++            pass
++
++    res.add(
++        res.types.MainResult(
++            template=template,
++            url=url,
++            title=title,
++            content=content,
++            thumbnail=thumbnail,
++            metadata=metadata,
++            publishedDate=publishedDate,
++            length=length,
++        )
++    )
++
++
++def _parse_external_video_card(res: EngineResults, d: dict):
++    """Parse an external video embed (``video-67-video``, Bilibili etc.)."""
++    display = d.get("display", {})
++    title = _extract_text(display.get("title", ""))
++    url = d.get("url", "")
++    if not url:
++        info = display.get("info", {})
++        if isinstance(info, dict):
++            url = info.get("url", "")
++
++    if url:
++        res.add(
++            res.types.MainResult(
++                template="videos.html",
++                url=url,
++                title=title,
++                content="",
++            )
++        )
++
++
++def _parse_general_or_news(res: EngineResults, json_blobs: list[dict]):
++    """Parse general search / news results."""
++    for data in json_blobs:
++        if "data" not in data:
++            continue
++        d = data["data"]
++        template_key = d.get("template_key", "")
++
++        if template_key == "undefined-default":
++            _parse_web_card(res, d)
++
++        elif "homepage" in template_key or "toutiao_web" in template_key or "baike" in template_key:
++            display = d.get("display", {})
++            title = _extract_text(display.get("title", ""))
++            url = d.get("url", "")
++            if not url:
++                info = display.get("info", {})
++                if isinstance(info, dict):
++                    url = info.get("url", "")
++            content = ""
++            summary = display.get("summary")
++            if isinstance(summary, dict):
++                content = summary.get("text", "")
++            if url:
++                res.add(res.types.MainResult(url=url, title=title, content=content))
++
++        elif "video" in template_key:
++            display = d.get("display", [])
++            if isinstance(display, list):
++                for item in display:
++                    _parse_video_card(res, item)
++            elif isinstance(display, dict):
++                # external video embed card
++                _parse_external_video_card(res, d)
++
++
++def _parse_video_tab(res: EngineResults, json_blobs: list[dict]):
++    """Parse dedicated video tab results."""
++    for data in json_blobs:
++        if "data" not in data:
++            continue
++        d = data["data"]
++        template_key = d.get("template_key", "")
++
++        if template_key == "video-undefined-default":
++            _parse_video_card(res, d)
++
++        elif template_key == "video-67-video":
++            _parse_external_video_card(res, d)
++
++
++def _parse_images(res: EngineResults, json_blobs: list[dict]):
++    """Parse image search results (``rawData.data``)."""
++    for data in json_blobs:
++        if "rawData" not in data:
++            continue
++        rd = data["rawData"]
++        items = rd.get("data")
++        if not isinstance(items, list):
++            continue
++
++        for item in items:
++            img_url = item.get("img_url") or ""
++            thumbnail_src = item.get("img_small_url") or img_url
++            source_url = item.get("original_page_url") or ""
++            title = item.get("text") or ""
++
++            height = item.get("height", 0)
++            width = item.get("width", 0)
++            resolution = ""
++            if width and height:
++                resolution = f"{width}x{height}"
++
++            res.add(
++                res.types.Image(
++                    url=source_url or img_url,
++                    title=title,
++                    img_src=img_url,
++                    thumbnail_src=thumbnail_src,
++                    resolution=resolution,
++                )
++            )
++
++
++_RESPONSE_PARSERS = {
++    "search": _parse_general_or_news,
++    "news": _parse_general_or_news,
++    "video": _parse_video_tab,
++    "images": _parse_images,
++}
++
++
++def response(resp) -> EngineResults:
++    res = EngineResults()
++
++    json_blobs = []
++    for match in _JSON_SCRIPT_RE.finditer(resp.text):
++        try:
++            json_blobs.append(json.loads(match.group(1)))
++        except json.JSONDecodeError:
++            continue
++
++    _RESPONSE_PARSERS[toutiao_categ](res, json_blobs)
++    return res
