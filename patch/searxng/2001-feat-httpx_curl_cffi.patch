@@ -134,7 +134,7 @@ index 024eb2567026..154c2cbdfe2d 100644
      event_hooks = None
      if hook_log_response:
 diff --git a/searx/network/network.py b/searx/network/network.py
-index eb53afb7f085..407ba621f9cd 100644
+index eb53afb7f085..93c9d611c6b6 100644
 --- a/searx/network/network.py
 +++ b/searx/network/network.py
 @@ -15,7 +15,7 @@
@@ -199,7 +199,7 @@ index eb53afb7f085..407ba621f9cd 100644
              )
              if self.using_tor_proxy and not await self.check_tor_proxy(client, proxies):
                  await client.aclose()
-@@ -274,9 +278,17 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
+@@ -274,9 +278,20 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
          was_disconnected = False
          do_raise_for_httperror = Network.extract_do_raise_for_httperror(kwargs)
          kwargs_clients = Network.extract_kwargs_clients(kwargs)
@@ -209,8 +209,11 @@ index eb53afb7f085..407ba621f9cd 100644
 +        if self.impersonate:
 +            # In impersonate mode, prevent the application's User-Agent from
 +            # overwriting the impersonated browser's default User-Agent.
++            # Normalize header keys to lowercase first so pop("user-agent")
++            # matches regardless of the original casing.
 +            # See https://curl-cffi.readthedocs.io/en/latest/api.html#curl_cffi.Curl.impersonate
-+            kwargs.setdefault("headers", {}).pop("user-agent", None)
++            kwargs["headers"] = {k.lower(): v for k, v in kwargs.get("headers", {}).items()}
++            kwargs["headers"].pop("user-agent", None)
 +
          while retries >= 0:  # pragma: no cover
              client = await self.get_client(**kwargs_clients)
@@ -218,7 +221,7 @@ index eb53afb7f085..407ba621f9cd 100644
              client.cookies = httpx.Cookies(cookies)
              try:
                  if stream:
-@@ -333,9 +345,29 @@ async def check():
+@@ -333,9 +348,29 @@ async def check():
          raise RuntimeError("Invalid network configuration")
  
  
@@ -249,7 +252,7 @@ index eb53afb7f085..407ba621f9cd 100644
  ) -> None:
      # pylint: disable=import-outside-toplevel)
      from searx.engines import engines
-@@ -344,30 +376,13 @@ def initialize(
+@@ -344,30 +379,13 @@ def initialize(
      # pylint: enable=import-outside-toplevel)
  
      settings_engines = settings_engines or settings['engines']
@@ -283,7 +286,7 @@ index eb53afb7f085..407ba621f9cd 100644
          if logger_name:
              result['logger_name'] = logger_name
          return Network(**result)  # type: ignore
-@@ -390,19 +405,19 @@ def iter_networks():
+@@ -390,19 +408,19 @@ def iter_networks():
      NETWORKS['ipv6'] = new_network({'local_addresses': '::'}, logger_name='ipv6')
  
      # define networks from outgoing.networks
@@ -309,7 +312,7 @@ index eb53afb7f085..407ba621f9cd 100644
          elif isinstance(network, dict):
              NETWORKS[engine_name] = new_network(network, logger_name=engine_name)
  
-@@ -415,7 +430,7 @@ def iter_networks():
+@@ -415,7 +433,7 @@ def iter_networks():
      # same parameters than the default network, but HTTP/2 is disabled.
      # It decreases the CPU load average, and the total time is more or less the same
      if 'image_proxy' not in NETWORKS:
