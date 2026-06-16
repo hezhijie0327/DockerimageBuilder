@@ -1,0 +1,77 @@
+diff --git a/searx/engines/npmmirror.py b/searx/engines/npmmirror.py
+new file mode 100644
+index 00000000000..55e38ec06e3
+--- /dev/null
++++ b/searx/engines/npmmirror.py
+@@ -0,0 +1,71 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""npmmirror package search."""
++
++from urllib.parse import urlencode
++from dateutil import parser
++
++
++about = {
++    "website": "https://npmmirror.com/",
++    "official_api_documentation": "https://registry.npmmirror.com/-/v1/search",
++    "use_official_api": True,
++    "require_api_key": False,
++    "results": "JSON",
++}
++
++categories = ['it', 'packages']
++
++
++# engine dependent config
++paging = True
++page_size = 10
++search_api = "https://registry.npmmirror.com/-/v1/search?"
++
++
++def request(query: str, params):
++    args = urlencode(
++        {
++            'from': (params["pageno"] - 1) * page_size,
++            'text': query,
++            'size': page_size,
++        }
++    )
++    params['url'] = search_api + args
++    return params
++
++
++def response(resp):
++    results = []
++    content = resp.json()
++
++    for entry in content.get("objects", content.get("results", [])):
++        package = entry.get("package", {})
++        published_date = package.get("date")
++        if published_date:
++            published_date = parser.parse(published_date)
++
++        keywords = package.get("keywords")
++        if not isinstance(keywords, list):
++            keywords = []
++
++        tags = list(entry.get("flags", {}).keys()) + keywords
++        links = package.get("links", {})
++        package_name = package.get("name", "")
++
++        results.append(
++            {
++                "template": "packages.html",
++                "url": f"https://npmmirror.com/package/{package_name}",
++                "title": package_name,
++                "package_name": package_name,
++                "content": package.get("description", ""),
++                "version": package.get("version"),
++                "maintainer": package.get("author", {}).get("name"),
++                "publishedDate": published_date,
++                "tags": tags,
++                "homepage": links.get("homepage"),
++                "source_code_url": links.get("repository"),
++            }
++        )
++
++    return results
