@@ -1,9 +1,9 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index 11736437b54..e43f6557534 100644
+index e4fdd6d1d43..a42a0537626 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
 @@ -10,11 +10,15 @@ import {
-   findBlockedUrlInMessage,
+   findBlockedNavigationUrl,
    noop,
    once,
 +  // 引入 Privacy Badger 位置
@@ -44,7 +44,7 @@ index 11736437b54..e43f6557534 100644
      this.logger.debug(`Starting new ${this.constructor.name} instance`);
    }
  
-@@ -136,6 +152,19 @@ export class ChromiumCDP extends EventEmitter {
+@@ -143,6 +159,19 @@ export class ChromiumCDP extends EventEmitter {
            terminateIfBlocked(response.url(), 'response');
          });
  
@@ -64,7 +64,7 @@ index 11736437b54..e43f6557534 100644
          this.emit('newPage', page);
        }
      }
-@@ -198,6 +227,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -209,6 +238,8 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
@@ -73,7 +73,7 @@ index 11736437b54..e43f6557534 100644
        this.blockAds ? ublockLitePath : null,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
-@@ -222,6 +253,32 @@ export class ChromiumCDP extends EventEmitter {
+@@ -233,6 +264,32 @@ export class ChromiumCDP extends EventEmitter {
        }
      }
  
@@ -106,7 +106,7 @@ index 11736437b54..e43f6557534 100644
      const finalOptions = {
        ...options,
        args: [
-@@ -230,6 +287,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -241,6 +298,8 @@ export class ChromiumCDP extends EventEmitter {
          // Playwright 1.57+ uses Chrome For Test, which has stricter security than Chromium.
          // This is needed to allow WebSocket connections to localhost.
          `--disable-features=LocalNetworkAccessChecks`,
@@ -116,10 +116,10 @@ index 11736437b54..e43f6557534 100644
          this.userDataDir ? `--user-data-dir=${this.userDataDir}` : '',
        ].filter((_) => !!_),
 diff --git a/src/browsers/browsers.playwright.ts b/src/browsers/browsers.playwright.ts
-index cd1eb6e0864..2d1845a872a 100644
+index e63f463b1c4..7efef6a3c05 100644
 --- a/src/browsers/browsers.playwright.ts
 +++ b/src/browsers/browsers.playwright.ts
-@@ -81,10 +81,38 @@ class BasePlaywright extends EventEmitter {
+@@ -135,6 +135,32 @@ class BasePlaywright extends EventEmitter {
        args.push('--headless=new');
      }
  
@@ -152,17 +152,20 @@ index cd1eb6e0864..2d1845a872a 100644
      return {
        ...opts,
        args: [
-         ...args,
-+        // 注入补充 Patch 参数
-+        ...patchOptions,
-         // Playwright 1.57+ uses Chrome For Test, which has stricter security than Chromium.
-         // This is needed to allow WebSocket connections to localhost.
-         `--disable-features=LocalNetworkAccessChecks`,
+@@ -145,7 +171,7 @@ class BasePlaywright extends EventEmitter {
+         // RenderDocument). The list is version-specific, resolved via Config.
+         // See https://github.com/browserless/browserless/issues/5450
+         ...withMergedChromiumDisableFeatures(
+-          args,
++          [...patchOptions, ...args],
+           this.config.getChromiumDisabledFeatures(pwVersion),
+         ),
+         this.userDataDir ? `--user-data-dir=${this.userDataDir}` : '',
 diff --git a/src/utils.ts b/src/utils.ts
-index c91ac29ec20..7517cf12e00 100644
+index 44b80d5e1e3..28f5d7a5ee9 100644
 --- a/src/utils.ts
 +++ b/src/utils.ts
-@@ -973,6 +973,13 @@ export const getCDPClient = (page: Page): CDPSession => {
+@@ -981,6 +981,13 @@ export const getCDPClient = (page: Page): CDPSession => {
    return typeof c === 'function' ? c.call(page) : c;
  };
  
