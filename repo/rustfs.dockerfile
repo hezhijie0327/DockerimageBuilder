@@ -40,9 +40,10 @@ WORKDIR /rustfs
 COPY --from=get_info /tmp/BUILDTMP/RUSTFS_WEB /rustfs
 
 RUN \
-    npm i -g corepack@latest \
+    export PACKAGE_MANAGER=$(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
+    && npm i -g corepack@latest \
     && corepack enable \
-    && corepack use pnpm@11 \
+    && corepack use "${PACKAGE_MANAGER}" \
     && pnpm i \
     && pnpm build
 
