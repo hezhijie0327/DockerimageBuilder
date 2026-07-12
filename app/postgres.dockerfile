@@ -41,6 +41,10 @@ RUN \
         libclang-dev \
         llvm-dev \
         libssl-dev \
+        gettext \
+        libgettextpo-dev \
+    && ln -sf /usr/lib/$(gcc -dumpmachine)/libc.so /usr/lib/$(gcc -dumpmachine)/libintl.so \
+    && ldconfig --verbose \
     && curl --proto '=https' --tlsv1.2 -sSf "https://sh.rustup.rs" | sh -s -- --default-toolchain "stable" -y
 
 FROM build_basic AS build_c_plugin
