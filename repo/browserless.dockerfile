@@ -72,6 +72,9 @@ RUN \
         unzip
 
 RUN \
+    sed -i 's/"prepare": "husky"/"prepare": "husky || true"/' package.json
+
+RUN \
     corepack enable \
     && corepack use pnpm@10 \
     && pnpm i \
