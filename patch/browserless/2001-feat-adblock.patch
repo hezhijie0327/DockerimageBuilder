@@ -1,5 +1,5 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index ff2612e264c..5f7e8e7a7ce 100644
+index eb7a947d507..13fcd7e75f0 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
 @@ -10,11 +10,15 @@ import {
@@ -15,10 +15,10 @@ index ff2612e264c..5f7e8e7a7ce 100644
  import { EventEmitter } from 'events';
 +// 引入 adblocker 插件（使用 Ghostery 的实现）
 +import { PuppeteerBlocker } from '@ghostery/adblocker-puppeteer';
- import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+ import StealthPlugin from '@zorilla/puppeteer-extra-plugin-stealth';
+ import { addExtra } from '@zorilla/puppeteer-extra';
  import getPort from 'get-port';
- import httpProxy from 'http-proxy';
-@@ -36,6 +40,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -44,6 +48,8 @@ export class ChromiumCDP extends EventEmitter {
    protected proxy = httpProxy.createProxyServer();
    protected executablePath = playwright.chromium.executablePath();
    protected keepUntilMS = 0;
@@ -27,7 +27,7 @@ index ff2612e264c..5f7e8e7a7ce 100644
  
    constructor({
      blockAds,
-@@ -55,6 +61,16 @@ export class ChromiumCDP extends EventEmitter {
+@@ -63,6 +69,16 @@ export class ChromiumCDP extends EventEmitter {
      this.blockAds = blockAds;
      this.logger = logger;
  
@@ -44,7 +44,7 @@ index ff2612e264c..5f7e8e7a7ce 100644
      this.logger.debug(`Starting new ${this.constructor.name} instance`);
    }
  
-@@ -150,6 +166,19 @@ export class ChromiumCDP extends EventEmitter {
+@@ -158,6 +174,19 @@ export class ChromiumCDP extends EventEmitter {
            terminateIfBlocked(response.url(), 'response');
          });
  
@@ -64,7 +64,7 @@ index ff2612e264c..5f7e8e7a7ce 100644
          this.emit('newPage', page);
        }
      }
-@@ -216,6 +245,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -224,6 +253,8 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
@@ -73,7 +73,7 @@ index ff2612e264c..5f7e8e7a7ce 100644
        this.blockAds ? ublockLitePath : null,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
-@@ -240,6 +271,32 @@ export class ChromiumCDP extends EventEmitter {
+@@ -248,6 +279,32 @@ export class ChromiumCDP extends EventEmitter {
        }
      }
  
@@ -106,7 +106,7 @@ index ff2612e264c..5f7e8e7a7ce 100644
      const finalOptions = {
        ...options,
        args: [
-@@ -248,6 +305,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -256,6 +313,8 @@ export class ChromiumCDP extends EventEmitter {
          // Playwright 1.57+ uses Chrome For Test, which has stricter security than Chromium.
          // This is needed to allow WebSocket connections to localhost.
          `--disable-features=LocalNetworkAccessChecks`,
@@ -162,10 +162,10 @@ index 02ff6c60385..885aca5ac40 100644
        ],
        executablePath: this.executablePath(),
 diff --git a/src/utils.ts b/src/utils.ts
-index 44b80d5e1e3..28f5d7a5ee9 100644
+index 38a17d8112a..478353e5333 100644
 --- a/src/utils.ts
 +++ b/src/utils.ts
-@@ -981,6 +981,13 @@ export const getCDPClient = (page: Page): CDPSession => {
+@@ -1023,6 +1023,13 @@ export const getCDPClient = (page: Page): CDPSession => {
    return typeof c === 'function' ? c.call(page) : c;
  };
  
