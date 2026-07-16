@@ -78,7 +78,7 @@ RUN \
     corepack enable \
     && corepack use pnpm@10 \
     && pnpm i \
-    && pnpm add @ghostery/adblocker-puppeteer
+    && pnpm add @zorilla/puppeteer-extra-plugin-adblocker
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
