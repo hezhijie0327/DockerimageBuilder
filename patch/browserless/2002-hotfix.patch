@@ -1,0 +1,78 @@
+diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
+index 13fcd7e75f0..2e02f19b12f 100644
+--- a/src/browsers/browsers.cdp.ts
++++ b/src/browsers/browsers.cdp.ts
+@@ -17,8 +17,8 @@ import {
+ import puppeteer, { Browser, Page, Target } from 'puppeteer-core';
+ import { Duplex } from 'stream';
+ import { EventEmitter } from 'events';
+-// 引入 adblocker 插件（使用 Ghostery 的实现）
+-import { PuppeteerBlocker } from '@ghostery/adblocker-puppeteer';
++// 引入 adblocker 插件（使用 Zorilla 的 puppeteer-extra 插件封装）
++import AdblockerPlugin from '@zorilla/puppeteer-extra-plugin-adblocker';
+ import StealthPlugin from '@zorilla/puppeteer-extra-plugin-stealth';
+ import { addExtra } from '@zorilla/puppeteer-extra';
+ import getPort from 'get-port';
+@@ -48,8 +48,6 @@ export class ChromiumCDP extends EventEmitter {
+   protected proxy = httpProxy.createProxyServer();
+   protected executablePath = playwright.chromium.executablePath();
+   protected keepUntilMS = 0;
+-  // Ghostery blocker 实例（或正在创建的 Promise）
+-  protected blocker: Promise<PuppeteerBlocker | null> | null = null;
+ 
+   constructor({
+     blockAds,
+@@ -69,16 +67,6 @@ export class ChromiumCDP extends EventEmitter {
+     this.blockAds = blockAds;
+     this.logger = logger;
+ 
+-    // stealth 模式下，创建 Ghostery PuppeteerBlocker（屏蔽广告与追踪）
+-    if (blockAds) {
+-      this.blocker = (PuppeteerBlocker as any)
+-        .fromPrebuiltAdsAndTracking(fetch as any)
+-        .catch((e: unknown) => {
+-          this.logger.warn(`Failed to initialize PuppeteerBlocker: ${e}`);
+-          return null; // 或视需求选择重新抛出
+-        });
+-    }
+-
+     this.logger.debug(`Starting new ${this.constructor.name} instance`);
+   }
+ 
+@@ -174,19 +162,6 @@ export class ChromiumCDP extends EventEmitter {
+           terminateIfBlocked(response.url(), 'response');
+         });
+ 
+-        // 如果启用了 adblock，向页面注入 Ghostery 屏蔽器
+-        if (this.blocker) {
+-          try {
+-            const blockerInstance: any = await this.blocker;
+-            // enableBlockingInPage 会注入内容脚本以拦截请求
+-            await blockerInstance.enableBlockingInPage(page);
+-          } catch (err) {
+-            this.logger.warn(
+-              `Failed to enable PuppeteerBlocker on page: ${err}`,
+-            );
+-          }
+-        }
+-
+         this.emit('newPage', page);
+       }
+     }
+@@ -241,6 +216,16 @@ export class ChromiumCDP extends EventEmitter {
+     this.port = await getPort();
+     this.logger.debug(`${this.constructor.name} got open port ${this.port}`);
+ 
++    // 启用 AdblockerPlugin 插件，屏蔽广告与追踪
++    if (this.blockAds) {
++      puppeteerStealth.use(
++        AdblockerPlugin({
++          blockTrackersAndAnnoyances: true,
++          useCache: true,
++        }) as unknown as Parameters<typeof puppeteerStealth.use>[0],
++      );
++    }
++
+     const extensionLaunchArgs = options.args?.find((a) =>
+       a.startsWith('--load-extension'),
+     );
