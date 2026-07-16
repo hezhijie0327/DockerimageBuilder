@@ -1,91 +1,67 @@
 diff --git a/src/browsers/browsers.cdp.ts b/src/browsers/browsers.cdp.ts
-index eb7a947d507..13fcd7e75f0 100644
+index eb7a947d507..6b30078f538 100644
 --- a/src/browsers/browsers.cdp.ts
 +++ b/src/browsers/browsers.cdp.ts
-@@ -10,11 +10,15 @@ import {
+@@ -10,11 +10,18 @@ import {
    findBlockedNavigationUrl,
    noop,
    once,
-+  // 引入 Privacy Badger 位置
++  // <PATCH>Privacy Badger</PATCH>
 +  privacyBadgerPath,
++  // <PATCH>Privacy Badger</PATCH>
    ublockLitePath,
  } from '@browserless.io/browserless';
  import puppeteer, { Browser, Page, Target } from 'puppeteer-core';
  import { Duplex } from 'stream';
  import { EventEmitter } from 'events';
-+// 引入 adblocker 插件（使用 Ghostery 的实现）
-+import { PuppeteerBlocker } from '@ghostery/adblocker-puppeteer';
++// <PATCH>@zorilla/puppeteer-extra-plugin-adblocker</PATCH>
++import { DEFAULT_INTERCEPT_RESOLUTION_PRIORITY } from 'puppeteer'
++import AdblockerPlugin from '@zorilla/puppeteer-extra-plugin-adblocker';
++// <PATCH>@zorilla/puppeteer-extra-plugin-adblocker</PATCH>
  import StealthPlugin from '@zorilla/puppeteer-extra-plugin-stealth';
  import { addExtra } from '@zorilla/puppeteer-extra';
  import getPort from 'get-port';
-@@ -44,6 +48,8 @@ export class ChromiumCDP extends EventEmitter {
-   protected proxy = httpProxy.createProxyServer();
-   protected executablePath = playwright.chromium.executablePath();
-   protected keepUntilMS = 0;
-+  // Ghostery blocker 实例（或正在创建的 Promise）
-+  protected blocker: Promise<PuppeteerBlocker | null> | null = null;
+@@ -212,6 +219,18 @@ export class ChromiumCDP extends EventEmitter {
+     this.port = await getPort();
+     this.logger.debug(`${this.constructor.name} got open port ${this.port}`);
  
-   constructor({
-     blockAds,
-@@ -63,6 +69,16 @@ export class ChromiumCDP extends EventEmitter {
-     this.blockAds = blockAds;
-     this.logger = logger;
- 
-+    // stealth 模式下，创建 Ghostery PuppeteerBlocker（屏蔽广告与追踪）
-+    if (blockAds) {
-+      this.blocker = (PuppeteerBlocker as any)
-+        .fromPrebuiltAdsAndTracking(fetch as any)
-+        .catch((e: unknown) => {
-+          this.logger.warn(`Failed to initialize PuppeteerBlocker: ${e}`);
-+          return null; // 或视需求选择重新抛出
-+        });
++    // <PATCH>@zorilla/puppeteer-extra-plugin-adblocker</PATCH>
++    if (this.blockAds) {
++      puppeteerStealth.use(
++        AdblockerPlugin({
++          blockTrackersAndAnnoyances: true,
++          interceptResolutionPriority: DEFAULT_INTERCEPT_RESOLUTION_PRIORITY,
++          useCache: true,
++        }) as unknown as Parameters<typeof puppeteerStealth.use>[0],
++      );
 +    }
++    // <PATCH>@zorilla/puppeteer-extra-plugin-adblocker</PATCH>
 +
-     this.logger.debug(`Starting new ${this.constructor.name} instance`);
-   }
- 
-@@ -158,6 +174,19 @@ export class ChromiumCDP extends EventEmitter {
-           terminateIfBlocked(response.url(), 'response');
-         });
- 
-+        // 如果启用了 adblock，向页面注入 Ghostery 屏蔽器
-+        if (this.blocker) {
-+          try {
-+            const blockerInstance: any = await this.blocker;
-+            // enableBlockingInPage 会注入内容脚本以拦截请求
-+            await blockerInstance.enableBlockingInPage(page);
-+          } catch (err) {
-+            this.logger.warn(
-+              `Failed to enable PuppeteerBlocker on page: ${err}`,
-+            );
-+          }
-+        }
-+
-         this.emit('newPage', page);
-       }
-     }
-@@ -224,6 +253,8 @@ export class ChromiumCDP extends EventEmitter {
+     const extensionLaunchArgs = options.args?.find((a) =>
+       a.startsWith('--load-extension'),
+     );
+@@ -224,6 +243,9 @@ export class ChromiumCDP extends EventEmitter {
      );
  
      const extensions = [
-+      // 引入 Privacy Badger 插件
++      // <PATCH>@zorilla/puppeteer-extra-plugin-adblocker</PATCH>
 +      this.blockAds ? privacyBadgerPath : null,
++      // <PATCH>@zorilla/puppeteer-extra-plugin-adblocker</PATCH>
        this.blockAds ? ublockLitePath : null,
        extensionLaunchArgs ? extensionLaunchArgs.split('=')[1] : null,
      ].filter((_) => !!_);
-@@ -248,6 +279,32 @@ export class ChromiumCDP extends EventEmitter {
+@@ -248,6 +270,30 @@ export class ChromiumCDP extends EventEmitter {
        }
      }
  
++    // <PATCH>Browser Options</PATCH>
 +    const patchOptions = [
-+      // 浏览器参数
 +      '--disable-crashpad',
 +      '--disable-crashpad-for-testing',
 +      '--disable-crashpad-forwarding',
 +      '--disable-in-process-stack-traces',
 +      '--no-default-browser-check',
 +
-+      // 反检测增强
 +      '--disable-blink-features=AutomationControlled',
 +      '--disable-features=LocalNetworkAccessChecks,WebRtcHideLocalIpsWithMdns',
 +      '--enforce-webrtc-ip-permission-check',
@@ -94,44 +70,43 @@ index eb7a947d507..13fcd7e75f0 100644
 +      '--no-pings',
 +      '--webrtc-ip-handling-policy=disable_non_proxied_udp',
 +
-+      // 性能优化
 +      '--aggressive-cache-discard',
 +
-+      // 容器环境
 +      '--disable-setuid-sandbox',
 +      '--no-zygote',
 +      '--single-process',
 +    ];
++    // <PATCH>Browser Options</PATCH>
 +
      const finalOptions = {
        ...options,
        args: [
-@@ -256,6 +313,8 @@ export class ChromiumCDP extends EventEmitter {
+@@ -256,6 +302,9 @@ export class ChromiumCDP extends EventEmitter {
          // Playwright 1.57+ uses Chrome For Test, which has stricter security than Chromium.
          // This is needed to allow WebSocket connections to localhost.
          `--disable-features=LocalNetworkAccessChecks`,
-+        // 注入补充 Patch 参数
++        // <PATCH>Browser Options</PATCH>
 +        ...patchOptions,
++        // <PATCH>Browser Options</PATCH>
          ...(options.args || []),
          this.userDataDir ? `--user-data-dir=${this.userDataDir}` : '',
        ].filter((_) => !!_),
 diff --git a/src/browsers/browsers.playwright.ts b/src/browsers/browsers.playwright.ts
-index 02ff6c60385..885aca5ac40 100644
+index 02ff6c60385..6322f8db156 100644
 --- a/src/browsers/browsers.playwright.ts
 +++ b/src/browsers/browsers.playwright.ts
-@@ -127,6 +127,32 @@ class BasePlaywright extends EventEmitter {
+@@ -127,6 +127,30 @@ class BasePlaywright extends EventEmitter {
        args.push('--headless=new');
      }
  
++    // <PATCH>Browser Options</PATCH>
 +    const patchOptions = [
-+      // 浏览器参数
 +      '--disable-crashpad',
 +      '--disable-crashpad-for-testing',
 +      '--disable-crashpad-forwarding',
 +      '--disable-in-process-stack-traces',
 +      '--no-default-browser-check',
 +
-+      // 反检测增强
 +      '--disable-blink-features=AutomationControlled',
 +      '--disable-features=LocalNetworkAccessChecks,WebRtcHideLocalIpsWithMdns',
 +      '--enforce-webrtc-ip-permission-check',
@@ -140,41 +115,43 @@ index 02ff6c60385..885aca5ac40 100644
 +      '--no-pings',
 +      '--webrtc-ip-handling-policy=disable_non_proxied_udp',
 +
-+      // 性能优化
 +      '--aggressive-cache-discard',
 +
-+      // 容器环境
 +      '--disable-setuid-sandbox',
 +      '--no-zygote',
 +      '--single-process',
 +    ];
++    // <PATCH>Browser Options</PATCH>
 +
      return {
        ...opts,
        args: [
-@@ -141,6 +167,8 @@ class BasePlaywright extends EventEmitter {
+@@ -141,6 +165,9 @@ class BasePlaywright extends EventEmitter {
            this.config.getChromiumDisabledFeatures(pwVersion),
            this.config.getBrowserlessChromiumDisabledFeatures(),
          ),
-+        // 注入补充 Patch 参数
++        // <PATCH>Browser Options</PATCH>
 +        ...patchOptions,
++        // <PATCH>Browser Options</PATCH>
          this.userDataDir ? `--user-data-dir=${this.userDataDir}` : '',
        ],
        executablePath: this.executablePath(),
 diff --git a/src/utils.ts b/src/utils.ts
-index 38a17d8112a..478353e5333 100644
+index 38a17d8112a..df3b657923d 100644
 --- a/src/utils.ts
 +++ b/src/utils.ts
-@@ -1023,6 +1023,13 @@ export const getCDPClient = (page: Page): CDPSession => {
+@@ -1023,6 +1023,15 @@ export const getCDPClient = (page: Page): CDPSession => {
    return typeof c === 'function' ? c.call(page) : c;
  };
  
++// <PATCH>Privacy Badger</PATCH>
 +export const privacyBadgerPath = path.join(
 +  __dirname,
 +  '..',
 +  'extensions',
 +  'privacy_badger',
 +);
++// <PATCH>Privacy Badger</PATCH>
 +
  export const ublockLitePath = path.join(
    __dirname,
