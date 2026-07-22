@@ -75,8 +75,10 @@ RUN \
     sed -i 's/"prepare": "husky"/"prepare": "husky || true"/' package.json
 
 RUN \
-    npm clean-install \
-    && npm add puppeteer @zorilla/puppeteer-extra-plugin-adblocker
+    corepack enable \
+    && corepack use pnpm@10 \
+    && pnpm i \
+    && pnpm add puppeteer @zorilla/puppeteer-extra-plugin-adblocker
 
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/fonts/* /usr/share/fonts/truetype/
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src /app/src/
@@ -88,10 +90,10 @@ COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/management /app/src/ro
 COPY --from=get_info /tmp/BUILDTMP/BROWSERLESS/src/routes/${PLAYWRIGHT_CORE} /app/src/routes/${PLAYWRIGHT_CORE}/
 
 RUN \
-    npm run build \
-    && npm run build:function \
-    && npm run install:debugger \
-    && npm prune --prod \
+    pnpm run build \
+    && pnpm run build:function \
+    && pnpm run install:debugger \
+    && pnpm prune --prod \
     && apt-get -qq clean && rm -rf /app/extensions/*/*.zip rm -rf /app/extensions/*/*.patched /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && find /app/build -type f -name "*.ts" -exec rm -f {} \;
 
@@ -121,9 +123,6 @@ COPY --from=build_browserless /app/static /app/static
 
 COPY --from=build_browserless /usr/share/fonts/opentype/ /usr/share/fonts/opentype/
 COPY --from=build_browserless /usr/share/fonts/truetype/ /usr/share/fonts/truetype/
-
-RUN \
-    npm prune --omit=dev
 
 RUN \
     if [ "${PLAYWRIGHT_CORE}" = "chrome" ] || [ "${PLAYWRIGHT_CORE}" = "edge" ]; then \
