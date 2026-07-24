@@ -137,6 +137,11 @@ COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectors
 COPY --from=build_rust_plugin /tmp/BUILDTMP/pgvectorscale/target/release/vectorscale-pg*/usr/share/postgresql/${POSTGRES_VERSION}/extension/* /usr/share/postgresql/${POSTGRES_VERSION}/extension/
 
 RUN \
+    apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libopenblas-dev
+
+RUN \
     mkdir -p /data \
     && sed -i "2i export PATH=\"/usr/lib/postgresql/${POSTGRES_VERSION}/bin:\$PATH\"" "/usr/local/bin/docker-entrypoint.sh" \
     && sed -i "s/^#shared_preload_libraries = ''/shared_preload_libraries = 'pg_search,pg_cron,pg_stat_statements'/" "/usr/share/postgresql/postgresql.conf.sample" \
