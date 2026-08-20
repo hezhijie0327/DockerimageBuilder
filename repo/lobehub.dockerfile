@@ -56,6 +56,8 @@ ENV \
 WORKDIR /app
 
 COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/apps/desktop/src/main/package.json ./apps/desktop/src/main/package.json
+COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/apps/share/package.json ./apps/share/package.json
+COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/apps/workbench/package.json ./apps/workbench/package.json
 COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/package.json /tmp/BUILDTMP/LOBEHUB/pnpm-workspace.yaml ./
 COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/.npmrc ./
 COPY --from=get_info /tmp/BUILDTMP/LOBEHUB/packages ./packages
@@ -80,6 +82,9 @@ RUN \
     && rm -rf src/app/desktop "src/app/(backend)/trpc/desktop" \
     && pnpm run build:docker
 
+RUN \
+    mkdir -p /runtime-deps && cp -a node_modules/.pnpm/@swc+helpers@* /runtime-deps/
+
 FROM busybox:latest AS rebased_lobehub
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
@@ -89,6 +94,8 @@ COPY --from=build_baseos /distroless/ /
 COPY --from=build_lobehub /app/.next/standalone /app/
 COPY --from=build_lobehub /app/.next/static /app/.next/static
 COPY --from=build_lobehub /app/public/_spa /app/public/_spa
+COPY --from=build_lobehub /app/public/_spa-share /app/public/_spa-share
+COPY --from=build_lobehub /app/public/_spa-workbench /app/public/_spa-workbench
 
 COPY --from=build_lobehub /app/packages/database/migrations /app/migrations
 COPY --from=build_lobehub /app/scripts/migrateServerDB/docker.cjs /app/docker.cjs
@@ -97,6 +104,7 @@ COPY --from=build_lobehub /app/scripts/migrateServerDB/errorHint.js /app/errorHi
 COPY --from=build_lobehub /deps/node_modules/.pnpm /app/node_modules/.pnpm
 COPY --from=build_lobehub /deps/node_modules/pg /app/node_modules/pg
 COPY --from=build_lobehub /deps/node_modules/drizzle-orm /app/node_modules/drizzle-orm
+COPY --from=build_lobehub /runtime-deps/ /app/node_modules/.pnpm/
 
 COPY --from=build_lobehub /app/scripts/serverLauncher/startServer.js /app/startServer.js
 COPY --from=build_lobehub /app/scripts/_shared /app/scripts/_shared
