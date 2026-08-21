@@ -1,0 +1,1247 @@
+diff --git a/searx/autocomplete.py b/searx/autocomplete.py
+index dfb1f110ed29..6610f8cb7316 100644
+--- a/searx/autocomplete.py
++++ b/searx/autocomplete.py
+@@ -127,18 +127,17 @@ def duckduckgo(query: str, sxng_locale: str) -> list[str]:
+ 
+ 
+ def google_complete(query: str, sxng_locale: str) -> list[str]:
+-    """Autocomplete from Google.  Supports Google's languages and subdomains
++    """Autocomplete from Google.  Supports Google's languages
+     (:py:obj:`searx.engines.google.get_google_info`) by using the async REST
+     API::
+ 
+-        https://{subdomain}/complete/search?{args}
++        https://www.google.com/complete/search?{args}
+ 
+     """
+ 
+     data = ENGINE_TRAITS.get("google") or {}
+     traits = EngineTraits(**data)
+     google_info: dict[str, t.Any] = google.get_google_info({'searxng_locale': sxng_locale}, traits)
+-    url = 'https://{subdomain}/complete/search?{args}'
+     args = urlencode(
+         {
+             'q': query,
+@@ -148,7 +147,7 @@ def google_complete(query: str, sxng_locale: str) -> list[str]:
+     )
+     results: list[str] = []
+ 
+-    resp = get(url.format(subdomain=google_info['subdomain'], args=args))
++    resp = get('https://www.google.com/complete/search?' + args)
+     if resp and resp.ok:
+         json_txt = resp.text[resp.text.find('[') : resp.text.find(']', -3) + 1]
+         data = json.loads(json_txt)
+diff --git a/searx/engines/google.py b/searx/engines/google.py
+index 62cbe09ae976..0b075500870f 100644
+--- a/searx/engines/google.py
++++ b/searx/engines/google.py
+@@ -9,12 +9,15 @@
+ - :ref:`google scholar engine`
+ - :ref:`google autocomplete`
+ 
++This implementation uses Nokia user agents to request an XML layout from Google.
++The normal web version requires executing JavaScript to load the results and
++therefore is currently not used here.  See `Google discussion`_ for more
++information on that topic.
++
++.. _Google discussion: https://github.com/searxng/searxng/issues/6359
+ """
+ 
+ import random
+-import re
+-import string
+-import time
+ import typing as t
+ from urllib.parse import unquote, urlencode
+ 
+@@ -44,16 +47,16 @@
+     "official_api_documentation": "https://developers.google.com/custom-search/",
+     "use_official_api": False,
+     "require_api_key": False,
+-    "results": "HTML",
++    "results": "XML",
+ }
+ 
+ # engine dependent config
+ categories = ["general", "web"]
+ paging = True
+ max_page = 50
+-"""`Google max 50 pages`_
++"""Google supports up to 50 pages of results, see the `Google max_page discussion`_.
+ 
+-.. _Google max 50 pages: https://github.com/searxng/searxng/issues/2982
++.. _Google max_page discussion: https://github.com/searxng/searxng/issues/2982
+ """
+ time_range_support = True
+ language_support = True
+@@ -64,38 +67,23 @@
+ # Filter results. 0: None, 1: Moderate, 2: Strict
+ filter_mapping = {0: "off", 1: "medium", 2: "high"}
+ 
++# https://github.com/searxng/searxng/issues/6359
++nokia_useragents = (
++    "Nokia7610/2.0 (5.0509.0) SymbianOS/7.0s Series60/2.1 Profile/MIDP-2.0 Configuration/CLDC-1.0",
++    "Nokia7610/2.0 (7.0642.0) SymbianOS/7.0s Series60/2.1 Profile/MIDP-2.0 Configuration/CLDC-1.0",
++    "Nokia6230/2.0 (05.50) Profile/MIDP-2.0 Configuration/CLDC-1.1",
++    "Nokia6230i/2.0 (03.80) Profile/MIDP-2.0 Configuration/CLDC-1.1",
++    "Nokia6280/2.0 (03.60) Profile/MIDP-2.0 Configuration/CLDC-1.1",
++    "NokiaN72/2.0617.1.0.3 Series60/2.8 Profile/MIDP-2.0 Configuration/CLDC-1.1",
++)
++
++
+ # specific xpath variables
+ # ------------------------
+ 
+ # Suggestions are links placed in a *card-section*, we extract only the text
+ # from the links not the links itself.
+-suggestion_xpath = '//div[contains(@class, "gGQDvd iIWm4b")]//a'
+-
+-
+-_arcid_range = string.ascii_letters + string.digits + "_-"
+-_arcid_random: tuple[str, int] | None = None
+-
+-
+-def ui_async(start: int) -> str:
+-    """Format of the response from UI's async request.
+-
+-    - ``arc_id:<...>,use_ac:true,_fmt:prog``
+-
+-    The arc_id is random generated every hour.
+-    """
+-    global _arcid_random  # pylint: disable=global-statement
+-
+-    use_ac = "use_ac:true"
+-    # _fmt:html returns a HTTP 500 when user search for celebrities like
+-    # '!google natasha allegri' or '!google chris evans'
+-    _fmt = "_fmt:prog"
+-
+-    # create a new random arc_id every hour
+-    if not _arcid_random or (int(time.time()) - _arcid_random[1]) > 3600:
+-        _arcid_random = ("".join(random.choices(_arcid_range, k=23)), int(time.time()))
+-    arc_id = f"arc_id:srp_{_arcid_random[0]}_1{start:02}"
+-
+-    return ",".join([arc_id, use_ac, _fmt])
++suggestion_xpath = '//table[contains(@class, "HExoMb")]//a[contains(@class, "ZWRArf")]'
+ 
+ 
+ def get_google_info(params: "OnlineParams", eng_traits: EngineTraits) -> dict[str, t.Any]:
+@@ -127,19 +115,11 @@ def get_google_info(params: "OnlineParams", eng_traits: EngineTraits) -> dict[st
+             A instance of :py:obj:`babel.core.Locale` build from the
+             ``searxng_locale`` value.
+ 
+-        subdomain:
+-            Google subdomain :py:obj:`google_domains` that fits to the country
+-            code.
+-
+         params:
+             Py-Dictionary with additional request arguments (can be passed to
+             :py:func:`urllib.parse.urlencode`).
+ 
+             - ``hl`` parameter: specifies the interface language of user interface.
+-            - ``lr`` parameter: restricts search results to documents written in
+-              a particular language.
+-            - ``cr`` parameter: restricts search results to documents
+-              originating in a particular country.
+             - ``ie`` parameter: sets the character encoding scheme that should
+               be used to interpret the query string ('utf8').
+             - ``oe`` parameter: sets the character encoding scheme that should
+@@ -156,7 +136,6 @@ def get_google_info(params: "OnlineParams", eng_traits: EngineTraits) -> dict[st
+     ret_val: dict[str, t.Any] = {
+         "language": None,
+         "country": None,
+-        "subdomain": None,
+         "params": {},
+         "headers": {},
+         "cookies": {},
+@@ -184,7 +163,6 @@ def get_google_info(params: "OnlineParams", eng_traits: EngineTraits) -> dict[st
+     ret_val["language"] = eng_lang
+     ret_val["country"] = country
+     ret_val["locale"] = locale
+-    ret_val["subdomain"] = eng_traits.custom["supported_domains"].get(country.upper(), "www.google.com")
+ 
+     # hl parameter:
+     #   The hl parameter specifies the interface language (host language) of
+@@ -198,35 +176,6 @@ def get_google_info(params: "OnlineParams", eng_traits: EngineTraits) -> dict[st
+     # https://github.com/searxng/searxng/issues/2515#issuecomment-1607150817
+     ret_val["params"]["hl"] = f"{lang_code}"
+ 
+-    # lr parameter:
+-    #   The lr (language restrict) parameter restricts search results to
+-    #   documents written in a particular language.
+-    #   https://developers.google.com/custom-search/docs/xml_results#lrsp
+-    #   Language Collection Values:
+-    #   https://developers.google.com/custom-search/docs/xml_results_appendices#languageCollections
+-    #
+-    # To select 'all' languages an empty 'lr' value is used.
+-    #
+-    # Different to other google services, Google Scholar supports to select more
+-    # than one language. The languages are separated by a pipe '|' (logical OR).
+-    # By example: &lr=lang_zh-TW%7Clang_de selects articles written in
+-    # traditional chinese OR german language.
+-
+-    ret_val["params"]["lr"] = eng_lang
+-    if sxng_locale == "all":
+-        ret_val["params"]["lr"] = ""
+-
+-    # cr parameter:
+-    #   The cr parameter restricts search results to documents originating in a
+-    #   particular country.
+-    #   https://developers.google.com/custom-search/docs/xml_results#crsp
+-
+-    # specify a region (country) only if a region is given in the selected
+-    # locale --> https://github.com/searxng/searxng/issues/2672
+-    ret_val["params"]["cr"] = ""
+-    if len(sxng_locale.split("-")) > 1:
+-        ret_val["params"]["cr"] = "country" + country
+-
+     # gl parameter: (mandatory by Google News)
+     #   The gl parameter value is a two-letter country code. For WebSearch
+     #   results, the gl parameter boosts search results whose country of origin
+@@ -300,88 +249,67 @@ def detect_google_sorry(resp: "SXNG_Response"):
+         raise SearxEngineCaptchaException()
+ 
+ 
+-def request(query: str, params: "OnlineParams") -> None:
+-    """Google search request"""
+-    # pylint: disable=line-too-long
+-    start = (params["pageno"] - 1) * 10
+-    google_info = get_google_info(params, traits)
+-
+-    # https://www.google.de/search?q=corona&hl=de&lr=lang_de&start=0&tbs=qdr%3Ad&safe=medium
+-    query_url = (
+-        "https://"
+-        + google_info["subdomain"]
+-        + "/search"
+-        + "?"
+-        + urlencode(
+-            {
+-                "q": query,
+-                **google_info["params"],
+-                "filter": "0",
+-                "start": start,
+-                # 'vet': '12ahUKEwik3ZbIzfn7AhXMX_EDHbUDBh0QxK8CegQIARAC..i',
+-                # 'ved': '2ahUKEwik3ZbIzfn7AhXMX_EDHbUDBh0Q_skCegQIARAG',
+-                # 'cs' : 1,
+-                # 'sa': 'N',
+-                # 'yv': 3,
+-                # 'prmd': 'vin',
+-                # 'ei': 'GASaY6TxOcy_xc8PtYeY6AE',
+-                # 'sa': 'N',
+-                # 'sstk': 'AcOHfVkD7sWCSAheZi-0tx_09XDO55gTWY0JNq3_V26cNN-c8lfD45aZYPI8s_Bqp8s57AHz5pxchDtAGCA_cikAWSjy9kw3kgg'
+-                # formally known as use_mobile_ui
+-                # "asearch": "arc",
+-                # "async": str_async,
+-            }
+-        )
+-    )
+-
+-    if params["time_range"] in time_range_dict:
+-        query_url += "&" + urlencode({"tbs": "qdr:" + time_range_dict[params["time_range"]]})
+-    if params["safesearch"]:
+-        query_url += "&" + urlencode({"safe": filter_mapping[params["safesearch"]]})
+-    params["url"] = query_url
+-
+-    params["cookies"] = google_info["cookies"]
+-    params["headers"].update(google_info["headers"])
+-
+-
+-# regex match to get image map that is found inside the returned javascript:
+-# (function(){var s='...';var i=['...'] ...}
+-RE_DATA_IMAGE = re.compile(r"(data:image[^']*?)'[^']*?'((?:dimg|pimg|tsuid)[^']*)")
+-
+-
+-def parse_url_images(text: str):
+-    data_image_map = {}
+-
+-    for image_url, img_id in RE_DATA_IMAGE.findall(text):
+-        data_image_map[img_id] = image_url.encode('utf-8').decode("unicode-escape")
+-    logger.debug("data:image objects --> %s", list(data_image_map.keys()))
+-    return data_image_map
+-
+-
+-def response(resp: "SXNG_Response"):
+-    """Get response from google's search request"""
+-    # pylint: disable=too-many-branches, too-many-statements
++def unwrap_google_url(raw_url: str) -> str:
++    # remove redirector from url
++    if raw_url.startswith("/url?q="):
++        return unquote(raw_url[7:].split("&sa=U")[0])
++    return raw_url
++
++
++def wml_dom(resp: "SXNG_Response"):
+     detect_google_sorry(resp)
+-    data_image_map = parse_url_images(resp.text)
++    text = resp.text
++    if text.lstrip().startswith("<?xml"):
++        text = text.split("?>", 1)[-1]
++    return html.fromstring(text)
++
++
++def google_request(
++    query: str,
++    params: "OnlineParams",
++    extra_args: dict[str, t.Any] | None = None,
++    *,
++    eng_traits: EngineTraits | None = None,
++    use_time_range: bool = True,
++    use_safesearch: bool = True,
++    safesearch_map: dict[int, str] | None = None,
++) -> None:
++    google_info = get_google_info(params, eng_traits or traits)
++    start = (params["pageno"] - 1) * 10
++    args: dict[str, t.Any] = {"q": query, "sca_esv": "1", **google_info["params"], **(extra_args or {})}
++    if start:
++        args["start"] = start
++    if use_time_range and params["time_range"] in time_range_dict:
++        args["tbs"] = "qdr:" + time_range_dict[params["time_range"]]
++    if use_safesearch and params["safesearch"]:
++        args["safe"] = (safesearch_map or filter_mapping)[params["safesearch"]]
++
++    params["url"] = f"https://www.google.com/wml/search?{urlencode(args)}"
++    params["headers"]["User-Agent"] = random.choice(nokia_useragents)
++
++
++def request(query: str, params: "OnlineParams") -> None:
++    google_request(query, params)
+ 
+-    results = EngineResults()
+ 
+-    # convert the text to dom
+-    dom = html.fromstring(resp.text)
++def response(resp: "SXNG_Response") -> EngineResults:
++    results = EngineResults()
++    dom = wml_dom(resp)
+ 
+     # parse results
+-    for result in eval_xpath_list(dom, '//a[@data-ved and not(@class)]'):
+-        # pylint: disable=too-many-nested-blocks
++    for result in eval_xpath_list(dom, '//div[contains(@class, "zMzFAb")]'):
+ 
+         try:
+-            title_tag = eval_xpath_getindex(result, './/div[@style]', 0, default=None)
++            title_tag = eval_xpath_getindex(
++                result, './/a[contains(@class, "fuLhoc")]//span[contains(@class, "CVA68e")]', 0, default=None
++            )
+             if title_tag is None:
+                 # this not one of the common google results *section*
+                 logger.debug("ignoring item from the result_xpath list: missing title")
+                 continue
+             title = extract_text(title_tag)
+ 
+-            raw_url = result.get("href")
++            raw_url = eval_xpath_getindex(result, './/a[contains(@class, "fuLhoc")]/@href', 0, default=None)
+             if raw_url is None:
+                 logger.debug(
+                     'ignoring item from the result_xpath list: missing url of title "%s"',
+@@ -389,30 +317,19 @@ def response(resp: "SXNG_Response"):
+                 )
+                 continue
+ 
+-            if raw_url.startswith('/url?q='):
+-                url = unquote(raw_url[7:].split("&sa=U")[0])  # remove the google redirector
+-            else:
+-                url = raw_url
+-
+-            content_nodes = eval_xpath(result, '../..//div[contains(@class, "ilUpNd H66NU aSRlid")]')
+-            for item in content_nodes:
+-                for script in item.xpath(".//script"):
+-                    script.getparent().remove(script)
+-
+-            content = extract_text(content_nodes[0])
+-
+-            # Images that are NOT the favicon
+-            xpath_image = eval_xpath_getindex(result, './/img', index=0, default=None)
+-
+-            thumbnail = None
+-            if xpath_image is not None:
+-                thumbnail = xpath_image.get("src")
+-                if thumbnail.startswith("data:image"):
+-                    img_id = xpath_image.get("id")
+-                    if img_id:
+-                        thumbnail = data_image_map.get(img_id)
+-
+-            results.append({"url": url, "title": title, "content": content or '', "thumbnail": thumbnail})
++            url = unwrap_google_url(raw_url)
++            content = extract_text(
++                eval_xpath(result, './/div[contains(@class, "taTFJ")]//span[contains(@class, "FrIlee")]')
++            )
++            thumbnail = eval_xpath_getindex(result, './/img[contains(@src, "encrypted-tbn")]/@src', 0, default=None)
++            results.add(
++                results.types.MainResult(
++                    url=url,
++                    title=title or "",
++                    content=content or "",
++                    thumbnail=thumbnail or "",
++                )
++            )
+ 
+         except Exception as e:  # pylint: disable=broad-except
+             logger.error(e, exc_info=True)
+@@ -420,10 +337,8 @@ def response(resp: "SXNG_Response"):
+ 
+     # parse suggestion
+     for suggestion in eval_xpath_list(dom, suggestion_xpath):
+-        # append suggestion
+-        results.append({"suggestion": extract_text(suggestion)})
++        results.add(results.types.LegacyResult(suggestion=extract_text(suggestion)))
+ 
+-    # return results
+     return results
+ 
+ 
+@@ -456,14 +371,12 @@ def response(resp: "SXNG_Response"):
+ ]
+ 
+ 
+-def fetch_traits(engine_traits: EngineTraits, add_domains: bool = True):
++def fetch_traits(engine_traits: EngineTraits):
+     """Fetch languages from Google."""
+     # pylint: disable=import-outside-toplevel, too-many-branches
+ 
+     from searx.network import get  # see https://github.com/searxng/searxng/issues/762
+ 
+-    engine_traits.custom["supported_domains"] = {}
+-
+     resp = get("https://www.google.com/preferences", timeout=5)
+     if not resp.ok:
+         raise RuntimeError("Response from Google preferences is not OK.")
+@@ -514,22 +427,3 @@ def fetch_traits(engine_traits: EngineTraits, add_domains: bool = True):
+ 
+     # alias regions
+     engine_traits.regions["zh-CN"] = "HK"
+-
+-    # supported domains
+-
+-    if add_domains:
+-        resp = get("https://www.google.com/supported_domains", timeout=5)
+-        if not resp.ok:
+-            raise RuntimeError("Response from Google supported domains is not OK.")
+-
+-        for domain in resp.text.split():
+-            domain = domain.strip()
+-            if not domain or domain in [
+-                ".google.com",
+-            ]:
+-                continue
+-            region = domain.split(".")[-1].upper()
+-            engine_traits.custom["supported_domains"][region] = "www" + domain
+-            if region == "HK":
+-                # There is no google.cn, we use .com.hk for zh-CN
+-                engine_traits.custom["supported_domains"]["CN"] = "www" + domain
+diff --git a/searx/engines/google_cse.py b/searx/engines/google_cse.py
+index 4d39c8cc928f..2479a54b4a6f 100644
+--- a/searx/engines/google_cse.py
++++ b/searx/engines/google_cse.py
+@@ -114,10 +114,6 @@ def request(query: str, params: "OnlineParams") -> None:
+         start_date, end_date = _get_start_and_end_date_str(params["time_range"])
+         args["sort"] = f"date:r:{start_date}:{end_date}"
+ 
+-    if info.get("lr"):
+-        args["lr"] = info["lr"]
+-    if info.get("cr"):
+-        args["cr"] = info["cr"]
+     if google_info["country"] not in (None, "ZZ"):
+         args["gl"] = google_info["country"]
+     if token["exp"]:
+diff --git a/searx/engines/google_images.py b/searx/engines/google_images.py
+index aba88d49e8dc..261c90c9d4b4 100644
+--- a/searx/engines/google_images.py
++++ b/searx/engines/google_images.py
+@@ -1,122 +1,68 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+-"""This is the implementation of the Google Images engine using the internal
+-Google API used by the Google Go Android app.
++"""Google Images: see :py:obj:`searx.engines.google`."""
+ 
+-This internal API offer results in
+-
+-- JSON (``_fmt:json``)
+-- Protobuf_ (``_fmt:pb``)
+-- Protobuf_ compressed? (``_fmt:pc``)
+-- HTML (``_fmt:html``)
+-- Protobuf_ encoded in JSON (``_fmt:jspb``).
+-
+-.. _Protobuf: https://en.wikipedia.org/wiki/Protocol_Buffers
+-"""
+-
+-from urllib.parse import urlencode
+-from json import loads
++import typing as t
++from urllib.parse import parse_qs, unquote, urlparse
+ 
+ from searx.engines.google import fetch_traits  # pylint: disable=unused-import
+-from searx.engines.google import (
+-    get_google_info,
+-    time_range_dict,
+-    detect_google_sorry,
+-)
++from searx.engines.google import google_request, wml_dom
++from searx.result_types import EngineResults
++from searx.utils import eval_xpath_list
++
++if t.TYPE_CHECKING:
++    from searx.extended_types import SXNG_Response
++    from searx.search.processors import OnlineParams
+ 
+ # about
+ about = {
+-    "website": 'https://images.google.com',
+-    "wikidata_id": 'Q521550',
+-    "official_api_documentation": 'https://developers.google.com/custom-search',
++    "website": "https://images.google.com",
++    "wikidata_id": "Q521550",
++    "official_api_documentation": "https://developers.google.com/custom-search",
+     "use_official_api": False,
+     "require_api_key": False,
+-    "results": 'JSON',
++    "results": "XML",
+ }
+ 
+ # engine dependent config
+-categories = ['images', 'web']
++categories = ["images", "web"]
+ paging = True
+ max_page = 50
+-"""`Google max 50 pages`_
++"""Google supports up to 50 pages of results, see the `Google max_page discussion`_.
+ 
+-.. _Google max 50 pages: https://github.com/searxng/searxng/issues/2982
++.. _Google max_page discussion: https://github.com/searxng/searxng/issues/2982
+ """
+ 
+ time_range_support = True
+ language_support = True
+ safesearch = True
+ 
+-filter_mapping = {0: 'images', 1: 'active', 2: 'active'}
+-
+-
+-def request(query, params):
+-    """Google-Image search request"""
+-
+-    google_info = get_google_info(params, traits)
+-
+-    query_url = (
+-        'https://'
+-        + google_info['subdomain']
+-        + '/search'
+-        + '?'
+-        + urlencode({'q': query, 'tbm': "isch", **google_info['params'], 'asearch': 'isch'})
+-        # don't urlencode this because wildly different AND bad results
+-        # pagination uses Zero-based numbering
+-        + f'&async=_fmt:json,p:1,ijn:{params["pageno"] - 1}'
+-    )
+-
+-    if params['time_range'] in time_range_dict:
+-        query_url += '&' + urlencode({'tbs': 'qdr:' + time_range_dict[params['time_range']]})
+-    if params['safesearch']:
+-        query_url += '&' + urlencode({'safe': filter_mapping[params['safesearch']]})
+-    params['url'] = query_url
+-    params['cookies'] = google_info['cookies']
+-    params['headers'].update(google_info['headers'])
+-    # this ua will allow getting ~50 results instead of 10. #1641
+-    params['headers']['User-Agent'] = (
+-        'NSTN/3.60.474802233.release Dalvik/2.1.0 (Linux; U; Android 12;' f' {google_info.get("country", "US")}) gzip'
+-    )
+-
+-    return params
+-
+-
+-def response(resp):
+-    """Get response from google's search request"""
+-    results = []
+-
+-    detect_google_sorry(resp)
+-
+-    json_start = resp.text.find('{"ischj":')
+-    json_data = loads(resp.text[json_start:])
+-
+-    for item in json_data["ischj"].get("metadata", []):
+-        result_item = {
+-            'url': item["result"]["referrer_url"],
+-            'title': item["result"]["page_title"],
+-            'content': item["text_in_grid"]["snippet"],
+-            'source': item["result"]["site_title"],
+-            'resolution': f'{item["original_image"]["width"]} x {item["original_image"]["height"]}',
+-            'img_src': item["original_image"]["url"],
+-            'thumbnail_src': item["thumbnail"]["url"],
+-            'template': 'images.html',
+-        }
+-
+-        author = item["result"].get('iptc', {}).get('creator')
+-        if author:
+-            result_item['author'] = ', '.join(author)
+-
+-        copyright_notice = item["result"].get('iptc', {}).get('copyright_notice')
+-        if copyright_notice:
+-            result_item['source'] += ' | ' + copyright_notice
+-
+-        freshness_date = item["result"].get("freshness_date")
+-        if freshness_date:
+-            result_item['source'] += ' | ' + freshness_date
+-
+-        file_size = item.get('gsa', {}).get('file_size')
+-        if file_size:
+-            result_item['source'] += ' (%s)' % file_size
+-
+-        results.append(result_item)
++filter_mapping = {0: "images", 1: "active", 2: "active"}
++
++
++def request(query: str, params: "OnlineParams") -> None:
++    google_request(query, params, {"tbm": "isch"}, eng_traits=traits, safesearch_map=filter_mapping)
++
++
++def response(resp: "SXNG_Response") -> EngineResults:
++    results = EngineResults()
++    dom = wml_dom(resp)
++
++    for link in eval_xpath_list(dom, '//a[contains(@href, "/imgres?")]'):
++        qs = parse_qs(urlparse(link.get("href", "")).query)
++        img_src = qs.get("imgurl", [""])[0]
++        url = qs.get("imgrefurl", [""])[0]
++        if not img_src or not url:
++            continue
++        width, height = qs.get("w", [""])[0], qs.get("h", [""])[0]
++        tbnid = qs.get("tbnid", [""])[0]
++        results.add(
++            results.types.Image(
++                url=url,
++                title=unquote(urlparse(img_src).path.rsplit("/", 1)[-1]) or urlparse(url).netloc,
++                img_src=img_src,
++                thumbnail_src=f"https://encrypted-tbn0.gstatic.com/images?q=tbn:{tbnid}",
++                resolution=f"{width} x {height}" if width and height else "",
++            )
++        )
+ 
+     return results
+diff --git a/searx/engines/google_news.py b/searx/engines/google_news.py
+index 3971bc03a95f..5f423225a13d 100644
+--- a/searx/engines/google_news.py
++++ b/searx/engines/google_news.py
+@@ -1,324 +1,83 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+-"""This is the implementation of the Google News engine.
++"""Google News: see :py:obj:`searx.engines.google`."""
+ 
+-Google News has a different region handling compared to Google WEB.
+-
+-- the ``ceid`` argument has to be set (:py:obj:`ceid_list`)
+-- the hl_ argument has to be set correctly (and different to Google WEB)
+-- the gl_ argument is mandatory
+-
+-If one of this argument is not set correctly, the request is redirected to
+-CONSENT dialog::
+-
+-  https://consent.google.com/m?continue=
+-
+-The google news API ignores some parameters from the common :ref:`google API`:
+-
+-- num_ : the number of search results is ignored / there is no paging all
+-  results for a query term are in the first response.
+-- save_ : is ignored / Google-News results are always *SafeSearch*
+-
+-.. _hl: https://developers.google.com/custom-search/docs/xml_results#hlsp
+-.. _gl: https://developers.google.com/custom-search/docs/xml_results#glsp
+-.. _num: https://developers.google.com/custom-search/docs/xml_results#numsp
+-.. _save: https://developers.google.com/custom-search/docs/xml_results#safesp
+-"""
+ import typing as t
+ 
+-import json
+-import base64
+-from urllib.parse import urlencode
+-from lxml import html
+-import babel
+-
+-from searx import locales
++from searx.engines.google import fetch_traits  # pylint: disable=unused-import
++from searx.engines.google import google_request, unwrap_google_url, wml_dom
++from searx.result_types import EngineResults
+ from searx.utils import (
+-    eval_xpath,
+-    eval_xpath_list,
+     eval_xpath_getindex,
++    eval_xpath_list,
+     extract_text,
+ )
+ 
+-from searx.engines.google import fetch_traits as _fetch_traits  # pylint: disable=unused-import
+-from searx.engines.google import (
+-    get_google_info,
+-    detect_google_sorry,
+-)
+-from searx.enginelib.traits import EngineTraits
+-
+-from searx.result_types import EngineResults
+-
+ if t.TYPE_CHECKING:
+     from searx.extended_types import SXNG_Response
+     from searx.search.processors import OnlineParams
+ 
+ # about
+ about = {
+-    "website": "https://news.google.com",
++    "website": "https://www.google.com",
+     "wikidata_id": "Q12020",
+     "official_api_documentation": "https://developers.google.com/custom-search",
+     "use_official_api": False,
+     "require_api_key": False,
+-    "results": "HTML",
++    "results": "XML",
+ }
+ 
+ # engine dependent config
+ categories = ["news"]
+-paging = False
++paging = True
++max_page = 50
++"""Google supports up to 50 pages of results, see the `Google max_page discussion`_.
++
++.. _Google max_page discussion: https://github.com/searxng/searxng/issues/2982
++"""
+ time_range_support = False
+ language_support = True
+-
+-# Google-News results are always *SafeSearch*. Option 'safesearch' is set to
+-# False here.
+-#
+-#  safesearch : results are identical for safesearch=0 and safesearch=2
+-safesearch = True
+-base_url: str = "https://news.google.com"
++safesearch = False
+ 
+ 
+ def request(query: str, params: "OnlineParams") -> None:
+-    """Google-News search request"""
+-
+-    sxng_locale = params.get("searxng_locale", "en-US")
+-    ceid: str = locales.get_engine_locale(
+-        sxng_locale, traits.custom["ceid"], default="US:en"
+-    )  # pyright: ignore[reportAssignmentType]
+-    google_info = get_google_info(params, traits)
+-    google_info["subdomain"] = "news.google.com"  # google news has only one domain
+-
+-    ceid_region, ceid_lang = ceid.split(":")
+-    ceid_lang, ceid_suffix = (
+-        ceid_lang.split(":")
+-        + [
+-            "",
+-        ]
+-    )[:2]
+-
+-    google_info["params"]["hl"] = ceid_lang
+-
+-    if ceid_suffix and ceid_suffix not in ["Hans", "Hant"]:
+-
+-        if ceid_region.lower() == ceid_lang:
+-            google_info["params"]["hl"] = ceid_lang + "-" + ceid_region
+-        else:
+-            google_info["params"]["hl"] = ceid_lang + "-" + ceid_suffix
+-
+-    elif ceid_region.lower() != ceid_lang:
+-
+-        if ceid_region in ["AT", "BE", "CH", "IL", "SA", "IN", "BD", "PT"]:
+-            google_info["params"]["hl"] = ceid_lang
+-        else:
+-            google_info["params"]["hl"] = ceid_lang + "-" + ceid_region
++    google_request(query, params, {"tbm": "nws"}, eng_traits=traits, use_time_range=False, use_safesearch=False)
+ 
+-    google_info["params"]["lr"] = "lang_" + ceid_lang.split("-")[0]
+-    google_info["params"]["gl"] = ceid_region
+ 
+-    query_url = (
+-        "https://"
+-        + google_info["subdomain"]
+-        + "/search?"
+-        + urlencode(
+-            {"q": query, **google_info["params"]},
+-        )
+-        # ceid includes a ':' character which must not be urlencoded
+-        + ("&ceid=%s" % ceid)
++def _span_text(link, css_class: str):
++    return extract_text(
++        eval_xpath_getindex(link, f'.//span[contains(@class, "{css_class}")]', 0, default=None),
++        allow_none=True,
+     )
+ 
+-    params["url"] = query_url
+-    params["cookies"] = google_info["cookies"]
+-    params["headers"].update(google_info["headers"])
+-
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+-    """Get response from google's search request"""
+-
+-    res = EngineResults()
+-
+-    detect_google_sorry(resp)
+-
+-    # convert the text to dom
+-    dom = html.fromstring(resp.text)
+-
+-    for result in eval_xpath_list(dom, "//div[@jslog and @data-n-tid and @jsdata]"):
+-
+-        url: str = eval_xpath_getindex(result, "./a[@target='_blank']/@href", 0, default=0)
+-        if not url:
++    results = EngineResults()
++    seen = set()
++    for link in eval_xpath_list(wml_dom(resp), '//a[contains(@href, "/url?q=")]'):
++        href = link.get("href")
++        if not href:
+             continue
+-        if url.startswith("./"):
+-            url = base_url + url[1:]
+ 
+-        # The real URL is often encoded in the "jslog" attribute
+-        jslog: str | None = eval_xpath_getindex(result, "./a[@target='_blank']/@jslog", 0, default=None)
+-
+-        # Try to extract the real URL from jslog
+-        real_url: str | None = None
+-        if jslog:
+-            # jslog format is usually: "95014; 5:<base64>; track:click,vis".  We
+-            # want the second part (index 1) after splitting by ";"
+-            parts: list[str] = jslog.split(";")
+-            if len(parts) > 1:
+-                b64_data: str = parts[1].split(":")[-1].strip()
+-                # Pad base64 if necessary
+-                b64_data += "=" * (-len(b64_data) % 4)
+-                decoded_data: list[str | None] = json.loads(base64.b64decode(b64_data).decode("utf-8"))
+-                # The URL is typically the last element in the decoded array
+-                if (
+-                    isinstance(decoded_data, list)
+-                    and isinstance(decoded_data[-1], str)
+-                    and decoded_data[-1].startswith("http")
+-                ):
+-                    real_url = decoded_data[-1]
+-        if real_url:
+-            url = real_url
+-        else:
+-            logger.error(f"no real-url found: {url}")
++        url = unwrap_google_url(href)
++        if url in seen or "google.com/search" in url:
+             continue
+ 
+-        title = extract_text(eval_xpath(result, "./h4")) or ""
+-
+-        # The pub_date is mostly a string like 'yesterday', not a real timezone
+-        # date or time.  Therefore we can't use publishedDate and place the
+-        # *pub* sting into the content.
+-
+-        pub_date = extract_text(eval_xpath(result, ".//time"))
+-        pub_origin = extract_text(eval_xpath(result, ".//div[contains(@class, 'vr1PYe')]"))
+-        content = " / ".join([x for x in [pub_origin, pub_date] if x])
++        title = _span_text(link, "M3vVJe") or _span_text(link, "fuLhoc")
++        if not title:
++            continue
+ 
+-        thumbnail: str = eval_xpath_getindex(result, ".//figure/img/@src", 0, default="")
+-        if thumbnail and thumbnail.startswith("/"):
+-            thumbnail = base_url + thumbnail
++        source = _span_text(link, "dXDvrc")
++        pub_date = _span_text(link, "YVIcad")
++        thumbnail = eval_xpath_getindex(link, './/img[contains(@src, "encrypted-tbn")]/@src', 0, default=None)
+ 
+-        res.add(
+-            res.types.MainResult(
++        seen.add(url)
++        results.add(
++            results.types.MainResult(
+                 url=url,
+                 title=title,
+-                content=content,
+-                thumbnail=thumbnail,
++                content=" / ".join(x for x in [source, pub_date] if x),
++                thumbnail=thumbnail or "",
+             )
+         )
+ 
+-    return res
+-
+-
+-ceid_list = [
+-    "AE:ar",
+-    "AR:es-419",
+-    "AT:de",
+-    "AU:en",
+-    "BD:bn",
+-    "BE:fr",
+-    "BE:nl",
+-    "BG:bg",
+-    "BR:pt-419",
+-    "BW:en",
+-    "CA:en",
+-    "CA:fr",
+-    "CH:de",
+-    "CH:fr",
+-    "CL:es-419",
+-    "CN:zh-Hans",
+-    "CO:es-419",
+-    "CU:es-419",
+-    "CZ:cs",
+-    "DE:de",
+-    "EE:et",
+-    "EG:ar",
+-    "ES:ca",
+-    "ES:es",
+-    "ET:en",
+-    "FI:fi",
+-    "FR:fr",
+-    "GB:en",
+-    "GH:en",
+-    "GR:el",
+-    "HK:zh-Hant",
+-    "HU:hu",
+-    "ID:en",
+-    "ID:id",
+-    "IE:en",
+-    "IL:en",
+-    "IL:he",
+-    "IN:bn",
+-    "IN:en",
+-    "IN:gu",
+-    "IN:hi",
+-    "IN:ml",
+-    "IN:mr",
+-    "IN:pa",
+-    "IN:ta",
+-    "IN:te",
+-    "IT:it",
+-    "JP:ja",
+-    "KE:en",
+-    "KR:ko",
+-    "LB:ar",
+-    "LT:lt",
+-    "LV:en",
+-    "LV:lv",
+-    "MA:fr",
+-    "MY:en",
+-    "MY:ms",
+-    "NA:en",
+-    "NG:en",
+-    "NL:nl",
+-    "NO:no",
+-    "NZ:en",
+-    "PH:en",
+-    "PK:en",
+-    "PL:pl",
+-    "RO:ro",
+-    "RS:sr",
+-    "RU:ru",
+-    "SA:ar",
+-    "SE:sv",
+-    "SG:en",
+-    "SI:sl",
+-    "SK:sk",
+-    "SN:fr",
+-    "TH:th",
+-    "TR:tr",
+-    "TZ:en",
+-    "UA:ru",
+-    "UA:uk",
+-    "UG:en",
+-    "US:en",
+-    "VN:vi",
+-    "ZA:en",
+-    "ZW:en",
+-]
+-"""List of region/language combinations supported by Google News.  Values of the
+-``ceid`` argument of the Google News REST API."""
+-
+-
+-_skip_values = [
+-    "ET:en",  # english (ethiopia)
+-    "ID:en",  # english (indonesia)
+-    "LV:en",  # english (latvia)
+-]
+-
+-_ceid_locale_map = {"NO:no": "nb-NO"}
+-
+-
+-def fetch_traits(engine_traits: EngineTraits):
+-    _fetch_traits(engine_traits, add_domains=False)
+-
+-    engine_traits.custom["ceid"] = {}
+-
+-    for ceid in ceid_list:
+-        if ceid in _skip_values:
+-            continue
+-
+-        region, lang = ceid.split(":")
+-        x = lang.split("-")
+-        if len(x) > 1:
+-            if x[1] not in ["Hant", "Hans"]:
+-                lang = x[0]
+-
+-        sxng_locale = _ceid_locale_map.get(ceid, lang + "-" + region)
+-        try:
+-            locale = babel.Locale.parse(sxng_locale, sep="-")
+-        except babel.UnknownLocaleError:
+-            print("ERROR: %s -> %s is unknown by babel" % (ceid, sxng_locale))
+-            continue
+-
+-        engine_traits.custom["ceid"][locales.region_tag(locale)] = ceid
++    return results
+diff --git a/searx/engines/google_scholar.py b/searx/engines/google_scholar.py
+index e032e25a1d36..706291da7270 100644
+--- a/searx/engines/google_scholar.py
++++ b/searx/engines/google_scholar.py
+@@ -77,8 +77,6 @@ def request(query: str, params: "OnlineParams") -> None:
+     """Google-Scholar search request"""
+ 
+     google_info = get_google_info(params, traits)
+-    # subdomain is: scholar.google.xy
+-    google_info["subdomain"] = google_info["subdomain"].replace("www.", "scholar.")
+ 
+     args = {
+         "q": query,
+@@ -89,7 +87,7 @@ def request(query: str, params: "OnlineParams") -> None:
+     }
+     args.update(time_range_args(params))
+ 
+-    params["url"] = "https://" + google_info["subdomain"] + "/scholar?" + urlencode(args)
++    params["url"] = "https://scholar.google.com/scholar?" + urlencode(args)
+     params["cookies"] = google_info["cookies"]
+     params["headers"].update(google_info["headers"])
+ 
+diff --git a/searx/engines/google_videos.py b/searx/engines/google_videos.py
+index 0860368fd610..e58ab23885c1 100644
+--- a/searx/engines/google_videos.py
++++ b/searx/engines/google_videos.py
+@@ -1,185 +1,81 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+-"""This is the implementation of the Google Videos engine.
++"""Google Videos: see :py:obj:`searx.engines.google`."""
+ 
+-.. admonition:: Content-Security-Policy (CSP)
+-
+-   This engine needs to allow images from the `data URLs`_ (prefixed with the
+-   ``data:`` scheme)::
+-
+-     Header set Content-Security-Policy "img-src 'self' data: ;"
+-
+-.. _data URLs:
+-   https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs
+-"""
+-import re
+-from urllib.parse import urlencode, urlparse, parse_qs, unquote
+-from lxml import html
++import typing as t
+ 
++from searx.engines.google import fetch_traits  # pylint: disable=unused-import
++from searx.engines.google import google_request, unwrap_google_url, wml_dom
++from searx.result_types import EngineResults
+ from searx.utils import (
+-    eval_xpath_list,
+     eval_xpath_getindex,
++    eval_xpath_list,
+     extract_text,
++    get_embeded_stream_url,
++    parse_duration_string,
+ )
+ 
+-from searx.engines.google import fetch_traits  # pylint: disable=unused-import
+-from searx.engines.google import (
+-    get_google_info,
+-    time_range_dict,
+-    filter_mapping,
+-    suggestion_xpath,
+-    detect_google_sorry,
+-    ui_async,
+-)
+-from searx.utils import get_embeded_stream_url
++if t.TYPE_CHECKING:
++    from searx.extended_types import SXNG_Response
++    from searx.search.processors import OnlineParams
+ 
+ # about
+ about = {
+-    "website": 'https://www.google.com',
+-    "wikidata_id": 'Q219885',
+-    "official_api_documentation": 'https://developers.google.com/custom-search',
++    "website": "https://www.google.com",
++    "wikidata_id": "Q219885",
++    "official_api_documentation": "https://developers.google.com/custom-search",
+     "use_official_api": False,
+     "require_api_key": False,
+-    "results": 'HTML',
++    "results": "XML",
+ }
+ 
+ # engine dependent config
+-categories = ['videos', 'web']
++categories = ["videos", "web"]
+ paging = True
+ max_page = 50
++"""Google supports up to 50 pages of results, see the `Google max_page discussion`_.
++
++.. _Google max_page discussion: https://github.com/searxng/searxng/issues/2982
++"""
+ language_support = True
+ time_range_support = True
+ safesearch = True
+ 
+ 
+-# =26;[3,"dimg_ZNMiZPCqE4apxc8P3a2tuAQ_137"]a87;data:image/jpeg;base64,/9j/4AAQSkZJRgABA
+-# ...6T+9Nl4cnD+gr9OK8I56/tX3l86nWYw//2Q==26;
+-RE_DATA_IMAGE = re.compile(r'"(dimg_[^"]*)"[^;]*;(data:image[^;]*;[^;]*);?')
+-
+-
+-def parse_data_images(text: str):
+-    data_image_map = {}
+-
+-    for img_id, data_image in RE_DATA_IMAGE.findall(text):
+-        end_pos = data_image.rfind("=")
+-        if end_pos > 0:
+-            data_image = data_image[: end_pos + 1]
+-        data_image_map[img_id] = data_image
+-    logger.debug("data:image objects --> %s", list(data_image_map.keys()))
+-    return data_image_map
+-
+-
+-def request(query, params):
+-    """Google-Video search request"""
+-    google_info = get_google_info(params, traits)
+-    start = (params['pageno'] - 1) * 10
+-
+-    query_url = (
+-        'https://'
+-        + google_info['subdomain']
+-        + '/search'
+-        + "?"
+-        + urlencode(
+-            {
+-                'q': query,
+-                'tbm': "vid",
+-                'start': start,
+-                **google_info['params'],
+-                'asearch': 'arc',
+-                'async': ui_async(start),
+-            }
+-        )
+-    )
++def request(query: str, params: "OnlineParams") -> None:
++    google_request(query, params, {"tbm": "vid"}, eng_traits=traits)
+ 
+-    if params['time_range'] in time_range_dict:
+-        query_url += '&' + urlencode({'tbs': 'qdr:' + time_range_dict[params['time_range']]})
+-    if 'safesearch' in params:
+-        query_url += '&' + urlencode({'safe': filter_mapping[params['safesearch']]})
+-    params['url'] = query_url
+ 
+-    params['cookies'] = google_info['cookies']
+-    params['headers'].update(google_info['headers'])
+-    return params
++def response(resp: "SXNG_Response") -> EngineResults:
++    results = EngineResults()
+ 
+-
+-def response(resp):
+-    """Get response from google's search request"""
+-    results = []
+-
+-    detect_google_sorry(resp)
+-    data_image_map = parse_data_images(resp.text)
+-
+-    # convert the text to dom
+-    dom = html.fromstring(resp.text)
+-
+-    result_divs = eval_xpath_list(dom, '//div[contains(@class, "MjjYud")]')
+-
+-    # parse results
+-    for result in result_divs:
++    for result in eval_xpath_list(wml_dom(resp), '//div[contains(@class, "zMzFAb")]'):
+         title = extract_text(
+-            eval_xpath_getindex(result, './/h3[contains(@class, "LC20lb")] | .//div[@role="heading"]', 0, default=None),
++            eval_xpath_getindex(result, './/span[contains(@class, "CVA68e")]', 0, default=None),
+             allow_none=True,
+         )
+-        url = eval_xpath_getindex(
+-            result, './/a[@jsname="UWckNb"]/@href | .//a[contains(@href, "/url?q=")]/@href', 0, default=None
+-        )
+-        if url and url.startswith('/url?q='):
+-            url = unquote(url[7:].split('&sa=U')[0])
+-
+-        content = extract_text(
+-            eval_xpath_getindex(result, './/div[contains(@class, "ITZIwc")]', 0, default=None), allow_none=True
+-        )
+-        pub_info = extract_text(
+-            eval_xpath_getindex(
+-                result, './/div[contains(@class, "gqF9jc")] | .//div[contains(@class, "WRu9Cd")]', 0, default=None
+-            ),
+-            allow_none=True,
+-        )
+-        # Broader XPath to find any <img> element
+-        thumbnail = eval_xpath_getindex(result, './/img/@src', 0, default=None)
+-        duration = extract_text(
+-            eval_xpath_getindex(result, './/span[contains(@class, "k1U36b")]', 0, default=None), allow_none=True
+-        )
+-        video_id = eval_xpath_getindex(result, './/div[@jscontroller="rTuANe"]/@data-vid', 0, default=None)
+-
+-        # Fallback for video_id from URL if not found via XPath
+-        if not video_id and url and 'youtube.com' in url:
+-            parsed_url = urlparse(url)
+-            video_id = parse_qs(parsed_url.query).get('v', [None])[0]
+-
+-        # Handle thumbnail
+-        if thumbnail and thumbnail.startswith('data:image'):
+-            img_id = eval_xpath_getindex(result, './/img/@id', 0, default=None)
+-            if img_id and img_id in data_image_map:
+-                thumbnail = data_image_map[img_id]
+-            else:
+-                thumbnail = None
+-        if not thumbnail and video_id:
+-            thumbnail = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+-
+-        # Handle video embed URL
+-        embed_url = None
+-        if video_id:
+-            embed_url = get_embeded_stream_url(f"https://www.youtube.com/watch?v={video_id}")
+-        elif url:
+-            embed_url = get_embeded_stream_url(url)
+-
+-        # Only append results with valid title and url
+-        if title and url:
+-            results.append(
+-                {
+-                    'url': url,
+-                    'title': title,
+-                    'content': content or '',
+-                    'author': pub_info,
+-                    'thumbnail': thumbnail,
+-                    'length': duration,
+-                    'iframe_src': embed_url,
+-                    'template': 'videos.html',
+-                }
++        raw_url = eval_xpath_getindex(result, './/a[contains(@class, "fuLhoc")]/@href', 0, default=None)
++        if not title or not raw_url:
++            continue
++
++        url = unwrap_google_url(raw_url)
++        thumbnail = eval_xpath_getindex(result, './/img[contains(@class, "SygO9d")]/@src', 0, default="")
++        if "/default.jpg" in thumbnail:
++            thumbnail = thumbnail.split("?")[0].replace("/default.jpg", "/hqdefault.jpg")
++        length = None
++        for span in eval_xpath_list(result, './/span[contains(@class, "YVIcad")]'):
++            length = parse_duration_string(extract_text(span) or "")
++            if length:
++                break
++
++        results.add(
++            results.types.MainResult(
++                url=url,
++                title=title,
++                thumbnail=thumbnail,
++                length=length,
++                iframe_src=get_embeded_stream_url(url) or "",
++                template="videos.html",
+             )
+-
+-    # parse suggestion
+-    for suggestion in eval_xpath_list(dom, suggestion_xpath):
+-        results.append({'suggestion': extract_text(suggestion)})
++        )
+ 
+     return results
