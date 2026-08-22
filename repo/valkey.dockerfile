@@ -52,7 +52,7 @@ RUN \
     && make -j $(nproc) \
         BUILD_LUA="yes" BUILD_RDMA="no" BUILD_TLS="yes" \
         USE_FAST_FLOAT="yes" USE_LIBBACKTRACE="no" USE_SYSTEMD="no" \
-        MALLOC="jemalloc" \
+        MALLOC="libc" \
     && make install
 
 FROM busybox:latest AS rebased_valkey
