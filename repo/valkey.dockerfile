@@ -42,8 +42,8 @@ COPY --from=build_openssl / /BUILDLIB/
 
 RUN \
     PREFIX="/BUILDLIB" \
-    && export CPPFLAGS="-I$PREFIX/include -static" \
-    && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s" \
+    && export CPPFLAGS="-I$PREFIX/include" \
+    && export LDFLAGS="-L$PREFIX/lib64 -L$PREFIX/lib -s -static" \
     && export LD_LIBRARY_PATH="$PREFIX/lib64:$PREFIX/lib:$LD_LIBRARY_PATH" \
     && export PKG_CONFIG_PATH="$PREFIX/lib64/pkgconfig:$PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH" \
     && export PATH="$PREFIX/bin:$PATH" \
@@ -52,7 +52,7 @@ RUN \
     && make -j $(nproc) \
         BUILD_LUA="yes" BUILD_RDMA="no" BUILD_TLS="yes" \
         USE_FAST_FLOAT="yes" USE_LIBBACKTRACE="no" USE_SYSTEMD="no" \
-        MALLOC="libc" \
+        MALLOC="jemalloc" \
     && make install
 
 FROM busybox:latest AS rebased_valkey
