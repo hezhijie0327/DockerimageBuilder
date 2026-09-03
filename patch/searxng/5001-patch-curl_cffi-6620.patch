@@ -1,0 +1,1644 @@
+diff --git a/searx/autocomplete.py b/searx/autocomplete.py
+index 6610f8cb7316..12c70e323428 100644
+--- a/searx/autocomplete.py
++++ b/searx/autocomplete.py
+@@ -11,7 +11,7 @@
+ 
+ import lxml.etree
+ import lxml.html
+-from httpx import HTTPError
++from curl_cffi.requests.exceptions import RequestException
+ 
+ from searx import settings
+ from searx.engines import (
+@@ -63,7 +63,7 @@ def bing(query: str, _sxng_locale: str) -> list[str]:
+     base_url = "https://www.bing.com/AS/Suggestions?"
+     # cvid has to be a 32 character long string consisting of numbers and uppsercase characters
+     cvid = ''.join(random.choices(string.ascii_uppercase + string.digits, k=32))
+-    response = get(base_url + urlencode({'qry': query, 'csr': 1, 'cvid': cvid}))
++    response = get(base_url + urlencode({'qry': query, 'csr': 1, 'cvid': cvid}), enable_http3=True)
+     results: list[str] = []
+ 
+     if response.ok:
+@@ -83,7 +83,7 @@ def brave(query: str, _sxng_locale: str) -> list[str]:
+     url = 'https://search.brave.com/api/suggest?'
+     url += urlencode({'q': query})
+     country = 'all'
+-    kwargs = {'cookies': {'country': country}}
++    kwargs = {'cookies': {'country': country}, 'enable_http3': True}
+     resp = get(url, **kwargs)
+     results: list[str] = []
+ 
+@@ -147,7 +147,7 @@ def google_complete(query: str, sxng_locale: str) -> list[str]:
+     )
+     results: list[str] = []
+ 
+-    resp = get('https://www.google.com/complete/search?' + args)
++    resp = get('https://www.google.com/complete/search?' + args, enable_http3=True)
+     if resp and resp.ok:
+         json_txt = resp.text[resp.text.find('[') : resp.text.find(']', -3) + 1]
+         data = json.loads(json_txt)
+@@ -418,5 +418,5 @@ def search_autocomplete(backend_name: str, query: str, sxng_locale: str) -> list
+         return []
+     try:
+         return backend(query, sxng_locale)
+-    except (HTTPError, SearxEngineResponseException):
++    except (RequestException, SearxEngineResponseException):
+         return []
+diff --git a/searx/data/tracker_patterns.py b/searx/data/tracker_patterns.py
+index 900f7e84cc3c..0802fa9951f0 100644
+--- a/searx/data/tracker_patterns.py
++++ b/searx/data/tracker_patterns.py
+@@ -10,7 +10,7 @@
+ from collections.abc import Iterator
+ from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+ 
+-from httpx import HTTPError
++from curl_cffi.requests.exceptions import RequestException
+ 
+ from searx.data.core import get_cache, log
+ from searx.network import get as http_get
+@@ -87,8 +87,8 @@ def iter_clear_list(self) -> Iterator[RuleType]:
+             try:
+                 resp = http_get(url, timeout=3)
+ 
+-            except HTTPError as exc:
+-                log.warning("TRACKER_PATTERNS: HTTPError (%s) occured while fetching %s", url, exc)
++            except RequestException as exc:
++                log.warning("TRACKER_PATTERNS: RequestException while fetching %s: %s", url, exc)
+                 continue
+ 
+             if resp.status_code != 200:
+diff --git a/searx/enginelib/__init__.py b/searx/enginelib/__init__.py
+index 481a91718f0b..1a7e4ef8c290 100644
+--- a/searx/enginelib/__init__.py
++++ b/searx/enginelib/__init__.py
+@@ -317,6 +317,9 @@ class Engine(abc.ABC):  # pylint: disable=too-few-public-methods
+     enable_http: bool
+     """Enable HTTP (by default only HTTPS is enabled)."""
+ 
++    enable_http3: bool = False
++    """Enables the use of HTTP/3 if available"""
++
+     shortcut: str
+     """Code used to execute bang requests (``!foo``)"""
+ 
+diff --git a/searx/engines/__builtins__.pyi b/searx/engines/__builtins__.pyi
+index ff3cfda0b2e8..30a39bed7c8b 100644
+--- a/searx/engines/__builtins__.pyi
++++ b/searx/engines/__builtins__.pyi
+@@ -26,6 +26,7 @@ categories: list[str]
+ disabled: bool
+ display_error_messages: bool
+ enable_http: bool
++enable_http3: bool
+ engine_type: str
+ inactive: bool
+ max_page: int
+diff --git a/searx/engines/bing.py b/searx/engines/bing.py
+index 10390a6d44ec..6f3b6e047b61 100644
+--- a/searx/engines/bing.py
++++ b/searx/engines/bing.py
+@@ -40,6 +40,7 @@
+ # engine dependent config
+ categories = ["general", "web"]
+ safesearch = True
++enable_http3 = True
+ _safesearch_map: dict[int, str] = {
+     0: "off",
+     1: "moderate",
+diff --git a/searx/engines/bing_images.py b/searx/engines/bing_images.py
+index 078a1873346d..0f32f2c7aa27 100644
+--- a/searx/engines/bing_images.py
++++ b/searx/engines/bing_images.py
+@@ -25,6 +25,7 @@
+ # engine dependent config
+ categories = ["images", "web"]
+ paging = True
++enable_http3 = True
+ safesearch = True
+ time_range_support = True
+ time_map = {
+diff --git a/searx/engines/bing_news.py b/searx/engines/bing_news.py
+index 0e93af83e78f..44fb05e9f957 100644
+--- a/searx/engines/bing_news.py
++++ b/searx/engines/bing_news.py
+@@ -33,6 +33,7 @@
+ paging = True
+ """If go through the pages and there are actually no new results for another
+ page, then bing returns the results from the last page again."""
++enable_http3 = True
+ 
+ time_range_support = True
+ time_map = {
+diff --git a/searx/engines/bing_videos.py b/searx/engines/bing_videos.py
+index 2ad53baeb7fd..297c6b8fadd6 100644
+--- a/searx/engines/bing_videos.py
++++ b/searx/engines/bing_videos.py
+@@ -26,6 +26,7 @@
+ # engine dependent config
+ categories = ["videos", "web"]
+ paging = True
++enable_http3 = True
+ safesearch = True
+ time_range_support = True
+ 
+diff --git a/searx/engines/brave.py b/searx/engines/brave.py
+index dcc96609f10f..7a9abb7dd42e 100644
+--- a/searx/engines/brave.py
++++ b/searx/engines/brave.py
+@@ -151,6 +151,7 @@
+ 
+ base_url = "https://search.brave.com/"
+ categories = []
++enable_http3 = True
+ brave_category: t.Literal["search", "videos", "images", "news", "goggles"] = "search"
+ """Brave supports common web-search, videos, images, news, and goggles search.
+ 
+diff --git a/searx/engines/duckduckgo_extra.py b/searx/engines/duckduckgo_extra.py
+index 3ea1401611d1..f6f259298f40 100644
+--- a/searx/engines/duckduckgo_extra.py
++++ b/searx/engines/duckduckgo_extra.py
+@@ -97,6 +97,7 @@ def request(query: str, params: "OnlineParams") -> None:
+     # The vqd value is generated from the query and the UA header. To be able to
+     # reuse the vqd value, the UA header must be static.
+     headers["User-Agent"] = _HTTP_User_Agent
++    params["impersonate"] = "none"
+     vqd = get_vqd(query=query, params=params) or fetch_vqd(query=query, params=params)
+ 
+     headers["Accept"] = "*/*"
+diff --git a/searx/engines/google.py b/searx/engines/google.py
+index dfef6593ef50..ea3bf170aa5c 100644
+--- a/searx/engines/google.py
++++ b/searx/engines/google.py
+@@ -327,6 +327,7 @@ def google_request(
+ 
+     params["url"] = f"https://www.google.com/wml/search?{urlencode(args)}"
+     params["headers"]["User-Agent"] = random.choice(nokia_useragents)
++    params["impersonate"] = "chrome99_android"
+ 
+ 
+ def request(query: str, params: "OnlineParams") -> None:
+diff --git a/searx/engines/google_cse.py b/searx/engines/google_cse.py
+index 832fc699a428..0a2149366e17 100644
+--- a/searx/engines/google_cse.py
++++ b/searx/engines/google_cse.py
+@@ -30,6 +30,7 @@
+ 
+ categories = ["general", "web"]
+ paging = True
++enable_http3 = True
+ max_page = 5
+ page_size = 20
+ time_range_support = True
+diff --git a/searx/engines/google_images.py b/searx/engines/google_images.py
+index 6ef367aa94ae..fda440b62e62 100644
+--- a/searx/engines/google_images.py
++++ b/searx/engines/google_images.py
+@@ -26,6 +26,7 @@
+ # engine dependent config
+ categories = ["images", "web"]
+ paging = True
++enable_http3 = True
+ max_page = 50
+ """Google supports up to 50 pages of results, see the `Google max_page discussion`_.
+ 
+diff --git a/searx/engines/google_play.py b/searx/engines/google_play.py
+index 2636ed659e64..53712b33392f 100644
+--- a/searx/engines/google_play.py
++++ b/searx/engines/google_play.py
+@@ -20,6 +20,7 @@
+ }
+ 
+ play_categ = None  # apps|movies
++enable_http3 = True
+ base_url = 'https://play.google.com'
+ search_url = base_url + "/store/search?{query}&c={play_categ}"
+ 
+diff --git a/searx/engines/google_scholar.py b/searx/engines/google_scholar.py
+index 706291da7270..3563656f4e08 100644
+--- a/searx/engines/google_scholar.py
++++ b/searx/engines/google_scholar.py
+@@ -27,7 +27,7 @@
+ from urllib.parse import urlencode
+ from datetime import datetime
+ from lxml import html
+-import httpx
++from curl_cffi.requests.exceptions import TooManyRedirects
+ 
+ from searx.utils import (
+     eval_xpath,
+@@ -63,6 +63,7 @@
+ # engine dependent config
+ categories = ["science", "scientific publications"]
+ paging = True
++enable_http3 = True
+ max_page = 50
+ """`Google max 50 pages`_
+ 
+@@ -102,7 +103,7 @@ def response(resp: "SXNG_Response") -> EngineResults:  # pylint: disable=too-man
+             raise SearxEngineAccessDeniedException(
+                 message="google_scholar: unusual traffic detected",
+             )
+-        raise httpx.TooManyRedirects(f"location {resp.headers['Location'].split('?')[0]}")
++        raise TooManyRedirects(f"location {resp.headers['Location'].split('?')[0]}")
+ 
+     res = EngineResults()
+     dom = html.fromstring(resp.text)
+diff --git a/searx/engines/yacy.py b/searx/engines/yacy.py
+index 91d7f3a61136..83f1dc67800b 100644
+--- a/searx/engines/yacy.py
++++ b/searx/engines/yacy.py
+@@ -58,7 +58,7 @@
+ from urllib.parse import urlencode
+ from dateutil import parser
+ 
+-from httpx import DigestAuth
++from curl_cffi import CurlOpt
+ 
+ from searx.utils import html_to_text
+ 
+@@ -141,7 +141,10 @@ def request(query, params):
+     params["url"] = f"{_base_url()}/yacysearch.json?{urlencode(args)}"
+ 
+     if http_digest_auth_user and http_digest_auth_pass:
+-        params['auth'] = DigestAuth(http_digest_auth_user, http_digest_auth_pass)
++        params['curl_options'] = {
++            CurlOpt.HTTPAUTH: 2,  # CURLAUTH_DIGEST
++            CurlOpt.USERPWD: f"{http_digest_auth_user}:{http_digest_auth_pass}",
++        }
+ 
+     return params
+ 
+diff --git a/searx/engines/yandex.py b/searx/engines/yandex.py
+index 5e963475bef0..5b362a0b8acc 100644
+--- a/searx/engines/yandex.py
++++ b/searx/engines/yandex.py
+@@ -22,6 +22,7 @@
+ # Engine configuration
+ categories = []
+ paging = True
++enable_http3 = True
+ search_type = ""
+ 
+ # Search URL
+diff --git a/searx/engines/youtube_api.py b/searx/engines/youtube_api.py
+index ebecd5432b21..190410b679c6 100644
+--- a/searx/engines/youtube_api.py
++++ b/searx/engines/youtube_api.py
+@@ -22,6 +22,7 @@
+ # engine dependent config
+ categories = ['videos', 'music']
+ paging = False
++enable_http3 = True
+ api_key = None
+ 
+ # search-url
+diff --git a/searx/engines/youtube_noapi.py b/searx/engines/youtube_noapi.py
+index 51372397cc93..0d22a0af627e 100644
+--- a/searx/engines/youtube_noapi.py
++++ b/searx/engines/youtube_noapi.py
+@@ -20,6 +20,7 @@
+ # engine dependent config
+ categories = ['videos', 'music']
+ paging = True
++enable_http3 = True
+ language_support = False
+ time_range_support = True
+ 
+diff --git a/searx/extended_types.py b/searx/extended_types.py
+index e30e46536eb5..b13649016b3b 100644
+--- a/searx/extended_types.py
++++ b/searx/extended_types.py
+@@ -3,7 +3,7 @@
+ 
+ - :py:obj:`flask.request` is replaced by :py:obj:`sxng_request`
+ - :py:obj:`flask.Request` is replaced by :py:obj:`SXNG_Request`
+-- :py:obj:`httpx.response` is replaced by :py:obj:`SXNG_Response`
++- :py:obj:`curl_cffi.requests.Response` is replaced by :py:obj:`SXNG_Response`
+ 
+ ----
+ 
+@@ -24,8 +24,10 @@
+ __all__ = ["SXNG_Request", "sxng_request", "SXNG_Response"]
+ 
+ import typing
++from urllib.parse import urlsplit
++
+ import flask
+-import httpx
++from curl_cffi.requests import Response as CurlResponse
+ 
+ if typing.TYPE_CHECKING:
+     import searx.preferences
+@@ -69,18 +71,37 @@ class SXNG_Request(flask.Request):
+ sxng_request = typing.cast(SXNG_Request, flask.request)
+ 
+ 
+-class SXNG_Response(httpx.Response):
+-    """SearXNG extends the class :py:obj:`httpx.Response` with properties from
+-    *this* class (type cast of :py:obj:`httpx.Response`).
++class SXNG_URL(str):
++    """String URL"""
++
++    @property
++    def host(self) -> str | None:
++        return urlsplit(self).hostname
++
++    @property
++    def path(self) -> str:
++        return urlsplit(self).path
++
++
++class SXNG_Response(CurlResponse):
++    """SearXNG extends :py:obj:`curl_cffi.requests.Response` with properties from
++    *this* class (type cast of the curl_cffi response).
+ 
+     .. code:: python
+ 
+-       response = httpx.get("https://example.org")
+        response = typing.cast(SXNG_Response, response)
+        if response.ok:
+           ...
+        query_was = search_params["query"]
+     """
+ 
+-    ok: bool
+     search_params: "OnlineParamTypes | OnlineDictParams | OnlineCurrenciesParams"
++    _url: str = ""
++
++    @property
++    def url(self) -> SXNG_URL:  # type: ignore[override]
++        return SXNG_URL(self._url)
++
++    @url.setter
++    def url(self, value: str) -> None:
++        self._url = str(value or "")
+diff --git a/searx/favicons/proxy.py b/searx/favicons/proxy.py
+index 1346d19b0cf8..f62fcf61f79f 100644
+--- a/searx/favicons/proxy.py
++++ b/searx/favicons/proxy.py
+@@ -10,7 +10,7 @@
+ import urllib.parse
+ 
+ import flask
+-from httpx import HTTPError
++from curl_cffi.requests.exceptions import RequestException
+ import msgspec
+ 
+ from searx import get_setting
+@@ -185,7 +185,7 @@ def search_favicon(resolver: str, authority: str) -> tuple[None | bytes, None |
+         if data is None or mime is None:
+             data, mime = (None, None)
+ 
+-    except (HTTPError, SearxEngineResponseException):
++    except (RequestException, SearxEngineResponseException):
+         pass
+ 
+     cache.CACHE.set(resolver, authority, mime, data)
+diff --git a/searx/metrics/error_recorder.py b/searx/metrics/error_recorder.py
+index c0666383dda7..d89aed1ce754 100644
+--- a/searx/metrics/error_recorder.py
++++ b/searx/metrics/error_recorder.py
+@@ -6,7 +6,7 @@
+ import inspect
+ from json import JSONDecodeError
+ from urllib.parse import urlparse
+-from httpx import HTTPError, HTTPStatusError
++from curl_cffi.requests.exceptions import HTTPError, RequestException
+ from searx.exceptions import (
+     SearxXPathSyntaxException,
+     SearxEngineXPathException,
+@@ -100,32 +100,22 @@ def get_trace(traces):
+     return traces[-1]
+ 
+ 
+-def get_hostname(exc: HTTPError) -> str | None:
+-    url = exc.request.url
+-    if url is None and exc.response is not None:
+-        url = exc.response.url
+-    return urlparse(url).netloc
++def get_hostname(exc: RequestException) -> str | None:
++    url = getattr(getattr(exc, "request", None), "url", None)
++    if url is None:
++        url = getattr(getattr(exc, "response", None), "url", None)
++    return urlparse(str(url)).netloc if url else None
+ 
+ 
+ def get_request_exception_messages(
+-    exc: HTTPError,
++    exc: RequestException,
+ ) -> tuple[str | None, str | None, str | None]:
+-    url = None
+-    status_code = None
+-    reason = None
+-    hostname = None
+-    if hasattr(exc, '_request') and exc._request is not None:  # pylint: disable=protected-access
+-        # exc.request is property that raise an RuntimeException
+-        # if exc._request is not defined.
+-        url = exc.request.url
+-    if url is None and hasattr(exc, 'response') and exc.response is not None:
+-        url = exc.response.url
+-    if url is not None:
+-        hostname = url.host
+-    if isinstance(exc, HTTPStatusError):
+-        status_code = str(exc.response.status_code)
+-        reason = exc.response.reason_phrase
+-    return (status_code, reason, hostname)
++    response = getattr(exc, "response", None)
++    status_code = reason = None
++    if isinstance(exc, HTTPError) and response is not None:
++        status_code = str(response.status_code)
++        reason = response.reason
++    return (status_code, reason, get_hostname(exc))
+ 
+ 
+ def get_messages(exc, filename) -> tuple[str, ...]:  # pylint: disable=too-many-return-statements
+@@ -135,7 +125,7 @@ def get_messages(exc, filename) -> tuple[str, ...]:  # pylint: disable=too-many-
+         return (str(exc),)
+     if isinstance(exc, ValueError) and 'lxml' in filename:
+         return (str(exc),)
+-    if isinstance(exc, HTTPError):
++    if isinstance(exc, RequestException):
+         return get_request_exception_messages(exc)
+     if isinstance(exc, SearxXPathSyntaxException):
+         return (exc.xpath_str, exc.message)
+diff --git a/searx/network/__init__.py b/searx/network/__init__.py
+index 3a3b93d08479..2257bcd31051 100644
+--- a/searx/network/__init__.py
++++ b/searx/network/__init__.py
+@@ -14,8 +14,7 @@
+ from collections.abc import Iterable
+ from contextlib import contextmanager
+ 
+-import httpx
+-import anyio
++from curl_cffi.requests.exceptions import StreamConsumedError, Timeout
+ 
+ from searx.extended_types import SXNG_Response
+ from .network import get_network, initialize, check_network_configuration  # pylint:disable=cyclic-import
+@@ -74,7 +73,6 @@ def _get_timeout(start_time: float, kwargs: t.Any) -> float:
+     # pylint: disable=too-many-branches
+ 
+     timeout: float | None
+-    # timeout (httpx)
+     if 'timeout' in kwargs:
+         timeout = kwargs['timeout']
+     else:
+@@ -105,10 +103,10 @@ def request(method: str, url: str, **kwargs: t.Any) -> SXNG_Response:
+         try:
+             return future.result(timeout)
+         except concurrent.futures.TimeoutError as e:
+-            raise httpx.TimeoutException('Timeout', request=None) from e
++            raise Timeout('Timeout') from e
+ 
+ 
+-def multi_requests(request_list: list["Request"]) -> list[httpx.Response | Exception]:
++def multi_requests(request_list: list["Request"]) -> list[SXNG_Response | Exception]:
+     """send multiple HTTP requests in parallel. Wait for all requests to finish."""
+     with _record_http_time() as start_time:
+         # send the requests
+@@ -128,7 +126,7 @@ def multi_requests(request_list: list["Request"]) -> list[httpx.Response | Excep
+             try:
+                 responses.append(future.result(timeout))
+             except concurrent.futures.TimeoutError:
+-                responses.append(httpx.TimeoutException('Timeout', request=None))
++                responses.append(Timeout('Timeout'))
+             except Exception as e:  # pylint: disable=broad-except
+                 responses.append(e)
+         return responses
+@@ -205,14 +203,12 @@ async def stream_chunk_to_queue(network, queue, method: str, url: str, **kwargs:
+     try:
+         async with await network.stream(method, url, **kwargs) as response:
+             queue.put(response)
+-            # aiter_raw: access the raw bytes on the response without applying any HTTP content decoding
+-            # https://www.python-httpx.org/quickstart/#streaming-responses
+-            async for chunk in response.aiter_raw(65536):
++            async for chunk in response.aiter_content():
+                 if len(chunk) > 0:
+                     queue.put(chunk)
+-    except (httpx.StreamClosed, anyio.ClosedResourceError):
++    except StreamConsumedError:
+         # the response was queued before the exception.
+-        # the exception was raised on aiter_raw.
++        # the exception was raised on aiter_content.
+         # we do nothing here: in the finally block, None will be queued
+         # so stream(method, url, **kwargs) generator can stop
+         pass
+@@ -246,22 +242,19 @@ def _close_response_method(self):
+     asyncio.run_coroutine_threadsafe(self.aclose(), get_loop())
+     # reach the end of _self.generator ( _stream_generator ) to an avoid memory leak.
+     # it makes sure that :
+-    # * the httpx response is closed (see the stream_chunk_to_queue function)
++    # * the curl_cffi response is closed (see the stream_chunk_to_queue function)
+     # * to call future.result() in _stream_generator
+     for _ in self._generator:  # pylint: disable=protected-access
+         continue
+ 
+ 
+ def stream(method: str, url: str, **kwargs: t.Any) -> tuple[SXNG_Response, Iterable[bytes]]:
+-    """Replace httpx.stream.
++    """Stream for the image proxy.
+ 
+     Usage:
+-    response, stream = poolrequests.stream(...)
++    response, stream = searx.network.stream(...)
+     for chunk in stream:
+         ...
+-
+-    httpx.Client.stream requires to write the httpx.HTTPTransport version of the
+-    the httpx.AsyncHTTPTransport declared above.
+     """
+     generator = _stream_generator(method, url, **kwargs)
+ 
+diff --git a/searx/network/client.py b/searx/network/client.py
+index 4019e907ccc6..9e6d213bea6a 100644
+--- a/searx/network/client.py
++++ b/searx/network/client.py
+@@ -2,207 +2,114 @@
+ # pylint: disable=missing-module-docstring, global-statement
+ 
+ import typing as t
+-from types import TracebackType
+ 
+ import asyncio
+ import logging
+-import random
+-from ssl import SSLContext
++import os
+ import threading
+ 
+-import httpx
+-from httpx_socks import AsyncProxyTransport
+-from python_socks import parse_proxy_url, ProxyConnectionError, ProxyTimeoutError, ProxyError
++from curl_cffi import AsyncSession, CurlHttpVersion, CurlOpt
++from curl_cffi.requests.exceptions import InvalidSchema, RequestException
+ 
+-from searx import logger
++from searx.extended_types import SXNG_Response
+ 
+-CertTypes = str | tuple[str, str] | tuple[str, str, str]
+-SslContextKeyType = tuple[str | None, CertTypes | None, bool, bool]
+-
+-logger = logger.getChild('searx.network.client')
+ LOOP: asyncio.AbstractEventLoop = None  # pyright: ignore[reportAssignmentType]
+ 
+-SSLCONTEXTS: dict[SslContextKeyType, SSLContext] = {}
+-
+-
+-def shuffle_ciphers(ssl_context: SSLContext):
+-    """Shuffle httpx's default ciphers of a SSL context randomly.
+-
+-    From `What Is TLS Fingerprint and How to Bypass It`_
+-
+-    > When implementing TLS fingerprinting, servers can't operate based on a
+-    > locked-in whitelist database of fingerprints.  New fingerprints appear
+-    > when web clients or TLS libraries release new versions. So, they have to
+-    > live off a blocklist database instead.
+-    > ...
+-    > It's safe to leave the first three as is but shuffle the remaining ciphers
+-    > and you can bypass the TLS fingerprint check.
+-
+-    .. _What Is TLS Fingerprint and How to Bypass It:
+-       https://www.zenrows.com/blog/what-is-tls-fingerprint#how-to-bypass-tls-fingerprinting
+-
+-    """
+-    c_list = [cipher["name"] for cipher in ssl_context.get_ciphers()]
+-    sc_list, c_list = c_list[:3], c_list[3:]
+-    random.shuffle(c_list)
+-    ssl_context.set_ciphers(":".join(sc_list + c_list))
+-
++# chrome is used by default
++DEFAULT_IMPERSONATE = "chrome"
++NO_IMPERSONATE = "none"
+ 
+-def get_sslcontexts(
+-    proxy_url: str | None = None, cert: CertTypes | None = None, verify: bool = True, trust_env: bool = True
+-) -> SSLContext:
+-    key: SslContextKeyType = (proxy_url, cert, verify, trust_env)
+-    if key not in SSLCONTEXTS:
+-        SSLCONTEXTS[key] = httpx.create_ssl_context(verify, cert, trust_env)
+-    shuffle_ciphers(SSLCONTEXTS[key])
+-    return SSLCONTEXTS[key]
+ 
++class AsyncClient(AsyncSession):
++    """:class:`curl_cffi.AsyncSession` with ``aclose`` / ``is_closed``."""
+ 
+-class AsyncHTTPTransportNoHttp(httpx.AsyncHTTPTransport):
+-    """Block HTTP request
++    def __init__(self, enable_http: bool, **kwargs: t.Any):
++        self.enable_http = enable_http
++        self._closed = False
++        super().__init__(**kwargs)
+ 
+-    The constructor is blank because httpx.AsyncHTTPTransport.__init__ creates an SSLContext unconditionally:
+-    https://github.com/encode/httpx/blob/0f61aa58d66680c239ce43c8cdd453e7dc532bfc/httpx/_transports/default.py#L271
++    @property
++    def is_closed(self) -> bool:
++        return self._closed
+ 
+-    Each SSLContext consumes more than 500kb of memory, since there is about one network per engine.
+-
+-    In consequence, this class overrides all public methods
+-
+-    For reference: https://github.com/encode/httpx/issues/2298
+-    """
+-
+-    def __init__(self, *args, **kwargs):  # type: ignore
+-        # pylint: disable=super-init-not-called
+-        # this on purpose if the base class is not called
+-        pass
+-
+-    async def handle_async_request(self, request: httpx.Request):
+-        raise httpx.UnsupportedProtocol('HTTP protocol is disabled')
++    def check_url(self, url: str) -> None:
++        if not self.enable_http and str(url).startswith("http://"):
++            raise InvalidSchema("HTTP protocol is disabled")
+ 
+     async def aclose(self) -> None:
+-        pass
+-
+-    async def __aenter__(self):
+-        return self
+-
+-    async def __aexit__(
+-        self,
+-        exc_type: type[BaseException] | None = None,
+-        exc_value: BaseException | None = None,
+-        traceback: TracebackType | None = None,
+-    ) -> None:
+-        pass
+-
+-
+-class AsyncProxyTransportFixed(AsyncProxyTransport):
+-    """Fix httpx_socks.AsyncProxyTransport
++        if self._closed:
++            return
++        self._closed = True
++        try:
++            await self.close()
++        except RequestException:
++            pass
+ 
+-    Map python_socks exceptions to httpx.ProxyError exceptions
+-    """
+ 
+-    async def handle_async_request(self, request: httpx.Request):
+-        try:
+-            return await super().handle_async_request(request)
+-        except ProxyConnectionError as e:
+-            raise httpx.ProxyError("ProxyConnectionError: " + str(e.strerror), request=request) from e
+-        except ProxyTimeoutError as e:
+-            raise httpx.ProxyError("ProxyTimeoutError: " + str(e.args[0]), request=request) from e
+-        except ProxyError as e:
+-            raise httpx.ProxyError("ProxyError: " + str(e.args[0]), request=request) from e
+-
+-
+-def get_transport_for_socks_proxy(
+-    verify: bool, http2: bool, local_address: str, proxy_url: str, limit: httpx.Limits, retries: int
+-):
+-    # support socks5h (requests compatibility):
+-    # https://requests.readthedocs.io/en/master/user/advanced/#socks
+-    # socks5://   hostname is resolved on client side
+-    # socks5h://  hostname is resolved on proxy side
+-    rdns = False
+-    socks5h = 'socks5h://'
+-    if proxy_url.startswith(socks5h):
+-        proxy_url = 'socks5://' + proxy_url[len(socks5h) :]
+-        rdns = True
+-
+-    proxy_type, proxy_host, proxy_port, proxy_username, proxy_password = parse_proxy_url(proxy_url)
+-    _verify = get_sslcontexts(proxy_url, None, verify, True) if verify is True else verify
+-    return AsyncProxyTransportFixed(
+-        proxy_type=proxy_type,
+-        proxy_host=proxy_host,
+-        proxy_port=proxy_port,
+-        username=proxy_username,
+-        password=proxy_password,
+-        rdns=rdns,
+-        verify=_verify,  # pyright: ignore[reportArgumentType]
+-        http2=http2,
+-        local_address=local_address,
+-        limits=limit,
+-        retries=retries,
+-    )
+-
+-
+-def get_transport(
+-    verify: bool, http2: bool, local_address: str, proxy_url: str | None, limit: httpx.Limits, retries: int
+-):
+-    _verify = get_sslcontexts(None, None, verify, True) if verify is True else verify
+-    return httpx.AsyncHTTPTransport(
+-        # pylint: disable=protected-access
+-        verify=_verify,
+-        http2=http2,
+-        limits=limit,
+-        proxy=httpx._config.Proxy(proxy_url) if proxy_url else None,  # pyright: ignore[reportPrivateUsage]
+-        local_address=local_address,
+-        retries=retries,
+-    )
++def _proxy_kwargs(proxies: dict[str, str], enable_http: bool) -> dict[str, t.Any]:
++    """Map settings.yml proxy keys (``all://``, ``https://``) to curl_cffi."""
++    mapped: dict[str, str] = {}
++    all_proxy: str | None = None
++    for pattern, proxy_url in proxies.items():
++        if not enable_http and pattern.startswith("http://"):
++            continue
++        if pattern.startswith("https"):
++            mapped["https"] = proxy_url
++        elif pattern.startswith("http"):
++            mapped["http"] = proxy_url
++        else:
++            all_proxy = proxy_url
++    if all_proxy:
++        return {"proxy": all_proxy}
++    if mapped:
++        return {"proxies": mapped}
++    return {}
+ 
+ 
+ def new_client(
+     # pylint: disable=too-many-arguments
+     enable_http: bool,
+-    verify: bool,
++    verify: bool | str,
+     enable_http2: bool,
++    enable_http3: bool,
+     max_connections: int,
+-    max_keepalive_connections: int,
+-    keepalive_expiry: float,
+     proxies: dict[str, str],
+-    local_address: str,
+-    retries: int,
++    local_address: str | None,
+     max_redirects: int,
+-    hook_log_response: t.Callable[..., t.Any] | None,
+-) -> httpx.AsyncClient:
+-    limit = httpx.Limits(
+-        max_connections=max_connections,
+-        max_keepalive_connections=max_keepalive_connections,
+-        keepalive_expiry=keepalive_expiry,
+-    )
+-    # See https://www.python-httpx.org/advanced/#routing
+-    mounts = {}
+-    mounts: None | (dict[str, t.Any | None]) = {}
+-    for pattern, proxy_url in proxies.items():
+-        if not enable_http and pattern.startswith('http://'):
+-            continue
+-        if proxy_url.startswith('socks4://') or proxy_url.startswith('socks5://') or proxy_url.startswith('socks5h://'):
+-            mounts[pattern] = get_transport_for_socks_proxy(
+-                verify, enable_http2, local_address, proxy_url, limit, retries
+-            )
+-        else:
+-            mounts[pattern] = get_transport(verify, enable_http2, local_address, proxy_url, limit, retries)
+-
+-    if not enable_http:
+-        mounts['http://'] = AsyncHTTPTransportNoHttp()
+-
+-    transport = get_transport(verify, enable_http2, local_address, None, limit, retries)
+-
+-    event_hooks = None
+-    if hook_log_response:
+-        event_hooks = {'response': [hook_log_response]}
+-
+-    return httpx.AsyncClient(
+-        transport=transport,
+-        mounts=mounts,
+-        max_redirects=max_redirects,
+-        event_hooks=event_hooks,
+-    )
++    impersonate: str = DEFAULT_IMPERSONATE,
++    curl_options: dict[int, t.Any] | None = None,
++) -> AsyncClient:
++    extra_curl = dict(curl_options or {})
++    cert_file = os.environ.get("SSL_CERT_FILE")
++    if cert_file:
++        extra_curl.setdefault(CurlOpt.CAINFO, cert_file)
++    cert_dir = os.environ.get("SSL_CERT_DIR")
++    if cert_dir:
++        extra_curl.setdefault(CurlOpt.CAPATH, cert_dir)
++    use_impersonate = impersonate not in ("", NO_IMPERSONATE)
++    kwargs: dict[str, t.Any] = {
++        "enable_http": enable_http,
++        "verify": verify,
++        "max_redirects": max_redirects,
++        "max_clients": max_connections or 10,
++        "response_class": SXNG_Response,
++        "discard_cookies": True,
++        **_proxy_kwargs(proxies, enable_http),
++    }
++    if use_impersonate:
++        kwargs["impersonate"] = impersonate
++        kwargs["default_headers"] = True
++    if local_address:
++        kwargs["interface"] = local_address
++    if not enable_http2:
++        kwargs["http_version"] = CurlHttpVersion.V1_1
++    elif enable_http3 and not proxies:
++        kwargs["http_version"] = CurlHttpVersion.V3
++    else:
++        kwargs["http_version"] = CurlHttpVersion.V2_0
++    if extra_curl:
++        kwargs["curl_options"] = extra_curl
++    return AsyncClient(**kwargs)
+ 
+ 
+ def get_loop() -> asyncio.AbstractEventLoop:
+@@ -210,30 +117,18 @@ def get_loop() -> asyncio.AbstractEventLoop:
+ 
+ 
+ def init():
+-    # log
+-    for logger_name in (
+-        'httpx',
+-        'httpcore.proxy',
+-        'httpcore.connection',
+-        'httpcore.http11',
+-        'httpcore.http2',
+-        'hpack.hpack',
+-        'hpack.table',
+-    ):
+-        logging.getLogger(logger_name).setLevel(logging.WARNING)
+-
+-    # loop
++    logging.getLogger("curl_cffi").setLevel(logging.WARNING)
++
++    ready = threading.Event()
++
+     def loop_thread():
+         global LOOP
+         LOOP = asyncio.new_event_loop()
++        ready.set()
+         LOOP.run_forever()
+ 
+-    thread = threading.Thread(
+-        target=loop_thread,
+-        name='asyncio_loop',
+-        daemon=True,
+-    )
+-    thread.start()
++    threading.Thread(target=loop_thread, name="asyncio_loop", daemon=True).start()
++    ready.wait()
+ 
+ 
+ init()
+diff --git a/searx/network/network.py b/searx/network/network.py
+index eb53afb7f085..42828ce411d8 100644
+--- a/searx/network/network.py
++++ b/searx/network/network.py
+@@ -13,11 +13,16 @@
+ import ipaddress
+ from itertools import cycle
+ 
+-import httpx
++from curl_cffi import CurlHttpVersion
++from curl_cffi.requests.exceptions import (
++    ConnectionError as CurlConnectionError,
++    ProxyError,
++    RequestException,
++)
+ 
+ from searx import logger, sxng_debug
+ from searx.extended_types import SXNG_Response
+-from .client import new_client, get_loop, AsyncHTTPTransportNoHttp
++from .client import DEFAULT_IMPERSONATE, AsyncClient, new_client, get_loop
+ from .raise_for_httperror import raise_for_httperror
+ 
+ 
+@@ -48,9 +53,8 @@ class Network:
+         'enable_http',
+         'verify',
+         'enable_http2',
++        'enable_http3',
+         'max_connections',
+-        'max_keepalive_connections',
+-        'keepalive_expiry',
+         'local_addresses',
+         'proxies',
+         'using_tor_proxy',
+@@ -64,6 +68,7 @@ class Network:
+     )
+ 
+     _TOR_CHECK_RESULT = {}
++    _CLIENT_KWARGS = ('verify', 'max_redirects', 'impersonate', 'curl_options', 'enable_http3')
+ 
+     def __init__(
+         # pylint: disable=too-many-arguments
+@@ -71,9 +76,8 @@ def __init__(
+         enable_http: bool = True,
+         verify: bool = True,
+         enable_http2: bool = False,
++        enable_http3: bool = False,
+         max_connections: int = None,  # pyright: ignore[reportArgumentType]
+-        max_keepalive_connections: int = None,  # pyright: ignore[reportArgumentType]
+-        keepalive_expiry: float = None,  # pyright: ignore[reportArgumentType]
+         proxies: str | dict[str, str] | None = None,
+         using_tor_proxy: bool = False,
+         local_addresses: str | list[str] | None = None,
+@@ -86,9 +90,8 @@ def __init__(
+         self.enable_http = enable_http
+         self.verify = verify
+         self.enable_http2 = enable_http2
++        self.enable_http3 = enable_http3
+         self.max_connections = max_connections
+-        self.max_keepalive_connections = max_keepalive_connections
+-        self.keepalive_expiry = keepalive_expiry
+         self.proxies = proxies
+         self.using_tor_proxy = using_tor_proxy
+         self.local_addresses = local_addresses
+@@ -137,7 +140,6 @@ def get_ipaddress_cycle(self):
+     def iter_proxies(self) -> Generator[tuple[str, list[str]]]:
+         if not self.proxies:
+             return
+-        # https://www.python-httpx.org/compatibility/#proxy-keys
+         if isinstance(self.proxies, str):
+             yield 'all://', [self.proxies]
+         else:
+@@ -155,62 +157,73 @@ def get_proxy_cycles(self) -> Generator[tuple[tuple[str, str], ...], str, str]:
+             # pylint: disable=stop-iteration-return
+             yield tuple((pattern, next(proxy_url_cycle)) for pattern, proxy_url_cycle in proxy_settings.items())
+ 
+-    async def log_response(self, response: httpx.Response):
++    _HTTP_VERSION = {
++        int(CurlHttpVersion.V1_0): "HTTP/1.0",
++        int(CurlHttpVersion.V1_1): "HTTP/1.1",
++        int(CurlHttpVersion.V2_0): "HTTP/2",
++        int(CurlHttpVersion.V2TLS): "HTTP/2",
++        int(CurlHttpVersion.V2_PRIOR_KNOWLEDGE): "HTTP/2",
++        int(CurlHttpVersion.V3): "HTTP/3",
++        int(CurlHttpVersion.V3ONLY): "HTTP/3",
++    }
++
++    async def log_response(self, response: SXNG_Response):
+         request = response.request
+-        status = f"{response.status_code} {response.reason_phrase}"
+-        response_line = f"{response.http_version} {status}"
++        http_version = self._HTTP_VERSION.get(response.http_version, str(response.http_version))
++        status = f"{response.status_code} {response.reason}"
++        response_line = f"{http_version} {status}"
+         content_type = response.headers.get("Content-Type")
+         content_type = f' ({content_type})' if content_type else ''
+-        self._logger.debug(f'HTTP Request: {request.method} {request.url} "{response_line}"{content_type}')
++        method = request.method if request else "?"
++        url = request.url if request else response.url
++        self._logger.debug(f'HTTP Request: {method} {url} "{response_line}"{content_type}')
+ 
+     @staticmethod
+-    async def check_tor_proxy(client: httpx.AsyncClient, proxies) -> bool:
++    async def check_tor_proxy(client: AsyncClient, proxies) -> bool:
+         if proxies in Network._TOR_CHECK_RESULT:
+             return Network._TOR_CHECK_RESULT[proxies]
+ 
+-        result = True
+-        # ignore client._transport because it is not used with all://
+-        for transport in client._mounts.values():  # pylint: disable=protected-access
+-            if isinstance(transport, AsyncHTTPTransportNoHttp):
+-                continue
+-            if getattr(transport, "_pool") and getattr(
+-                # pylint: disable=protected-access
+-                transport._pool,  # type: ignore
+-                "_rdns",
+-                False,
+-            ):
+-                continue
++        if not proxies or not all(url.startswith('socks5h://') for _, url in proxies):
++            Network._TOR_CHECK_RESULT[proxies] = False
+             return False
++
+         response = await client.get("https://check.torproject.org/api/ip", timeout=60)
+-        if not response.json()["IsTor"]:
+-            result = False
++        result = bool(response.json()["IsTor"])
+         Network._TOR_CHECK_RESULT[proxies] = result
+         return result
+ 
+-    async def get_client(self, verify: bool | None = None, max_redirects: int | None = None) -> httpx.AsyncClient:
++    async def get_client(
++        self,
++        verify: bool | None = None,
++        max_redirects: int | None = None,
++        impersonate: str | None = None,
++        curl_options: dict[int, t.Any] | None = None,
++        enable_http3: bool | None = None,
++    ) -> AsyncClient:
+         verify = self.verify if verify is None else verify
+         max_redirects = self.max_redirects if max_redirects is None else max_redirects
++        impersonate = impersonate or DEFAULT_IMPERSONATE
++        enable_http3 = self.enable_http3 if enable_http3 is None else enable_http3
+         local_address = next(self._local_addresses_cycle)
+         proxies = next(self._proxies_cycle)  # is a tuple so it can be part of the key
+-        key = (verify, max_redirects, local_address, proxies)
+-        hook_log_response = self.log_response if sxng_debug else None
++        curl_key = tuple(sorted((int(k), v) for k, v in (curl_options or {}).items()))
++        key = (verify, max_redirects, local_address, proxies, impersonate, curl_key, enable_http3)
+         if key not in self._clients or self._clients[key].is_closed:
+             client = new_client(
+                 self.enable_http,
+                 verify,
+                 self.enable_http2,
++                enable_http3,
+                 self.max_connections,
+-                self.max_keepalive_connections,
+-                self.keepalive_expiry,
+                 dict(proxies),
+                 local_address,
+-                0,
+                 max_redirects,
+-                hook_log_response,
++                impersonate=impersonate,
++                curl_options=curl_options,
+             )
+             if self.using_tor_proxy and not await self.check_tor_proxy(client, proxies):
+                 await client.aclose()
+-                raise httpx.ProxyError('Network configuration problem: not using Tor')
++                raise ProxyError('Network configuration problem: not using Tor')
+             self._clients[key] = client
+         return self._clients[key]
+ 
+@@ -218,22 +231,14 @@ async def aclose(self):
+         async def close_client(client):
+             try:
+                 await client.aclose()
+-            except httpx.HTTPError:
++            except RequestException:
+                 pass
+ 
+         await asyncio.gather(*[close_client(client) for client in self._clients.values()], return_exceptions=False)
+ 
+     @staticmethod
+     def extract_kwargs_clients(kwargs: dict[str, t.Any]) -> dict[str, t.Any]:
+-        kwargs_clients: dict[str, t.Any] = {}
+-        if 'verify' in kwargs:
+-            kwargs_clients['verify'] = kwargs.pop('verify')
+-        if 'max_redirects' in kwargs:
+-            kwargs_clients['max_redirects'] = kwargs.pop('max_redirects')
+-        if 'allow_redirects' in kwargs:
+-            # see https://github.com/encode/httpx/pull/1808
+-            kwargs['follow_redirects'] = kwargs.pop('allow_redirects')
+-        return kwargs_clients
++        return {key: kwargs.pop(key) for key in Network._CLIENT_KWARGS if key in kwargs}
+ 
+     @staticmethod
+     def extract_do_raise_for_httperror(kwargs: dict[str, t.Any]):
+@@ -243,23 +248,18 @@ def extract_do_raise_for_httperror(kwargs: dict[str, t.Any]):
+             del kwargs['raise_for_httperror']
+         return do_raise_for_httperror
+ 
+-    def patch_response(self, response: httpx.Response, do_raise_for_httperror: bool) -> SXNG_Response:
+-        if isinstance(response, httpx.Response):
+-            response = t.cast(SXNG_Response, response)
+-            # requests compatibility (response is not streamed)
+-            # see also https://www.python-httpx.org/compatibility/#checking-for-4xx5xx-responses
+-            response.ok = not response.is_error
+-
+-            # raise an exception
+-            if do_raise_for_httperror:
+-                try:
+-                    raise_for_httperror(response)
+-                except:
+-                    self._logger.warning(f"HTTP Request failed: {response.request.method} {response.request.url}")
+-                    raise
++    def patch_response(self, response: SXNG_Response, do_raise_for_httperror: bool) -> SXNG_Response:
++        if do_raise_for_httperror:
++            try:
++                raise_for_httperror(response)
++            except:
++                method = response.request.method if response.request else "?"
++                url = response.request.url if response.request else response.url
++                self._logger.warning(f"HTTP Request failed: {method} {url}")
++                raise
+         return response
+ 
+-    def is_valid_response(self, response: httpx.Response):
++    def is_valid_response(self, response: SXNG_Response):
+         # pylint: disable=too-many-boolean-expressions
+         if (
+             (self.retry_on_http_error is True and 400 <= response.status_code <= 599)
+@@ -276,26 +276,29 @@ async def call_client(self, stream: bool, method: str, url: str, **kwargs: t.Any
+         kwargs_clients = Network.extract_kwargs_clients(kwargs)
+         while retries >= 0:  # pragma: no cover
+             client = await self.get_client(**kwargs_clients)
+-            cookies = kwargs.pop("cookies", None)
+-            client.cookies = httpx.Cookies(cookies)
+             try:
++                method = method.upper()
++                client.check_url(url)
+                 if stream:
+                     return client.stream(method, url, **kwargs)
+ 
+                 response = await client.request(method, url, **kwargs)
++                if sxng_debug:
++                    await self.log_response(response)
+                 if self.is_valid_response(response) or retries <= 0:
+                     return self.patch_response(response, do_raise_for_httperror)
+-            except httpx.RemoteProtocolError as e:
++                await client.aclose()
++            except CurlConnectionError as e:
+                 if not was_disconnected:
+                     # the server has closed the connection:
+                     # try again without decreasing the retries variable & with a new HTTP client
+                     was_disconnected = True
+                     await client.aclose()
+-                    self._logger.warning('httpx.RemoteProtocolError: the server has disconnected, retrying')
++                    self._logger.warning('ConnectionError: the server has disconnected, retrying')
+                     continue
+                 if retries <= 0:
+                     raise e
+-            except (httpx.RequestError, httpx.HTTPStatusError) as e:
++            except RequestException as e:
+                 if retries <= 0:
+                     raise e
+             retries -= 1
+@@ -346,15 +349,12 @@ def initialize(
+     settings_engines = settings_engines or settings['engines']
+     settings_outgoing = settings_outgoing or settings['outgoing']
+ 
+-    # default parameters for AsyncHTTPTransport
+-    # see https://github.com/encode/httpx/blob/e05a5372eb6172287458b37447c30f650047e1b8/httpx/_transports/default.py#L108-L121  # pylint: disable=line-too-long
+     default_params: dict[str, t.Any] = {
+         'enable_http': False,
+         'verify': settings_outgoing['verify'],
+         'enable_http2': settings_outgoing['enable_http2'],
++        'enable_http3': False,
+         'max_connections': settings_outgoing['pool_connections'],
+-        'max_keepalive_connections': settings_outgoing['pool_maxsize'],
+-        'keepalive_expiry': settings_outgoing['keepalive_expiry'],
+         'local_addresses': settings_outgoing['source_ips'],
+         'using_tor_proxy': settings_outgoing['using_tor_proxy'],
+         'proxies': settings_outgoing['proxies'],
+@@ -424,9 +424,6 @@ def iter_networks():
+ def done():
+     """Close all HTTP client
+ 
+-    Avoid a warning at exit
+-    See https://github.com/encode/httpx/pull/2026
+-
+     Note: since Network.aclose has to be async, it is not possible to call this method on Network.__del__
+     So Network.aclose is called here using atexit.register
+     """
+diff --git a/searx/network/raise_for_httperror.py b/searx/network/raise_for_httperror.py
+index d50e650e2325..f4f409c994ce 100644
+--- a/searx/network/raise_for_httperror.py
++++ b/searx/network/raise_for_httperror.py
+@@ -59,13 +59,10 @@ def raise_for_captcha(resp: "SXNG_Response"):
+ 
+ 
+ def raise_for_httperror(resp: "SXNG_Response") -> None:
+-    """Raise exception for an HTTP response is an error.
+-
+-    Args:
+-        resp (requests.Response): Response to check
++    """Raise an exception if the HTTP response is an error.
+ 
+     Raises:
+-        requests.HTTPError: raise by resp.raise_for_status()
++        curl_cffi.requests.exceptions.HTTPError: raised by resp.raise_for_status()
+         searx.exceptions.SearxEngineAccessDeniedException: raise when the HTTP status code is 402 or 403.
+         searx.exceptions.SearxEngineTooManyRequestsException: raise when the HTTP status code is 429.
+         searx.exceptions.SearxEngineCaptchaException: raise when if CATPCHA challenge is detected.
+diff --git a/searx/plugins/tor_check.py b/searx/plugins/tor_check.py
+index a3d6e17a7358..5645179b77ed 100644
+--- a/searx/plugins/tor_check.py
++++ b/searx/plugins/tor_check.py
+@@ -9,7 +9,7 @@
+ 
+ import re
+ from flask_babel import gettext
+-from httpx import HTTPError
++from curl_cffi.requests.exceptions import RequestException
+ 
+ from searx.network import get
+ from searx.plugins import Plugin, PluginInfo
+@@ -59,7 +59,7 @@ def post_search(self, request: "SXNG_Request", search: "SearchWithPlugins") -> E
+                 resp = get(url_exit_list)
+                 node_list = re.findall(reg, resp.text)  # type: ignore
+ 
+-            except HTTPError:
++            except RequestException:
+                 # No answer, return error
+                 msg = gettext("Could not download the list of Tor exit-nodes from")
+                 results.add(results.types.Answer(answer=f"{msg} {url_exit_list}"))
+diff --git a/searx/search/processors/online.py b/searx/search/processors/online.py
+index 7d7b5f34b1dd..1fe4721c33d3 100644
+--- a/searx/search/processors/online.py
++++ b/searx/search/processors/online.py
+@@ -8,10 +8,9 @@
+ from timeit import default_timer
+ import asyncio
+ import ssl
+-import httpx
++from curl_cffi.requests.exceptions import RequestException, Timeout
+ 
+ import searx.network
+-from searx.utils import gen_useragent
+ from searx.exceptions import (
+     SearxEngineAccessDeniedException,
+     SearxEngineCaptchaException,
+@@ -39,21 +38,21 @@ class HTTPParams(t.TypedDict):
+     """Sending `form encoded data`_.
+ 
+     .. _form encoded data:
+-       https://www.python-httpx.org/quickstart/#sending-form-encoded-data
++       https://curl-cffi.readthedocs.io/en/latest/quick_start.html#form-submit
+     """
+ 
+     json: dict[str, t.Any]
+     """`Sending `JSON encoded data`_.
+ 
+     .. _JSON encoded data:
+-       https://www.python-httpx.org/quickstart/#sending-json-encoded-data
++       https://curl-cffi.readthedocs.io/en/latest/quick_start.html#posting-json
+     """
+ 
+     content: bytes
+     """`Sending `binary request data`_.
+ 
+     .. _binary request data:
+-       https://www.python-httpx.org/quickstart/#sending-json-encoded-data
++       https://curl-cffi.readthedocs.io/en/latest/quick_start.html#binary-data
+     """
+ 
+     url: str | None
+@@ -71,13 +70,13 @@ class HTTPParams(t.TypedDict):
+     soft_max_redirects: int
+     """Maximum redirects, soft limit. Record an error but don't stop the engine."""
+ 
+-    verify: None | t.Literal[False] | str  # not sure str really works
++    verify: None | t.Literal[False] | str
+     """If not ``None``, it overrides the verify value defined in the network.  Use
+     ``False`` to accept any server certificate and use a path to file to specify a
+     server certificate"""
+ 
+-    auth: str | None
+-    """An authentication to use when sending requests."""
++    auth: tuple[str, str] | None
++    """Basic auth credentials ``(username, password)``."""
+ 
+     raise_for_httperror: bool
+     """Raise an exception if the `HTTP response status code`_ is ``>= 300``.
+@@ -86,6 +85,12 @@ class HTTPParams(t.TypedDict):
+         https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status
+     """
+ 
++    impersonate: t.NotRequired[str]
++    """curl_cffi impersonate target. Default: ``chrome``."""
++
++    curl_options: t.NotRequired[dict[int, t.Any]]
++    """Any extra libcurl options for the request."""
++
+ 
+ class OnlineParams(HTTPParams, RequestParams):
+     """Request parameters of a ``online`` engine."""
+@@ -141,13 +146,6 @@ def get_params(self, search_query: "SearchQuery", engine_category: str) -> Onlin
+         params: OnlineParams = {**default_request_params(), **base_params}
+ 
+         headers = params["headers"]
+-        headers["Accept-Encoding"] = "gzip, deflate"
+-        headers["Cache-Control"] = "no-cache"
+-        headers["DNT"] = "1"
+-        headers["Connection"] = "keep-alive"
+-
+-        # add an user agent
+-        headers["User-Agent"] = gen_useragent()
+ 
+         # add Accept-Language header
+         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-Language
+@@ -171,6 +169,9 @@ def _send_http_request(self, params: OnlineParams):
+             "cookies": params["cookies"],
+             "auth": params["auth"],
+         }
++        for key in ("curl_options", "impersonate"):
++            if params.get(key):
++                request_args[key] = params[key]
+ 
+         verify = params.get("verify")
+         if verify is not None:
+@@ -211,7 +212,7 @@ def _send_http_request(self, params: OnlineParams):
+             # unexpected redirect : record an error
+             # but the engine might still return valid results.
+             status_code = str(response.status_code or "")
+-            reason = response.reason_phrase or ""
++            reason = response.reason or ""
+             hostname = response.url.host
+             count_error(
+                 self.engine.name,
+@@ -256,7 +257,7 @@ def search(  # pyright: ignore[reportIncompatibleMethodOverride]
+             # requests timeout (connect or read)
+             self.handle_exception(result_container, e, suspend=True)
+             self.logger.debug("SSLError {}, verify={}".format(e, searx.network.get_network(self.engine.name).verify))
+-        except (httpx.TimeoutException, asyncio.TimeoutError) as e:
++        except (Timeout, asyncio.TimeoutError) as e:
+             # requests timeout (connect or read)
+             self.handle_exception(result_container, e, suspend=True)
+             self.logger.debug(
+@@ -264,7 +265,7 @@ def search(  # pyright: ignore[reportIncompatibleMethodOverride]
+                     default_timer() - start_time, timeout_limit, e.__class__.__name__
+                 )
+             )
+-        except (httpx.HTTPError, httpx.StreamError) as e:
++        except RequestException as e:
+             # other requests exception
+             self.handle_exception(result_container, e, suspend=True)
+             self.logger.debug(
+diff --git a/searx/settings.yml b/searx/settings.yml
+index a01f06e6a579..b429ec66ff24 100644
+--- a/searx/settings.yml
++++ b/searx/settings.yml
+@@ -183,20 +183,13 @@ outgoing:
+   useragent_suffix: ""
+   # The maximum number of concurrent connections that may be established.
+   pool_connections: 100
+-  # Allow the connection pool to maintain keep-alive connections below this
+-  # point.
+-  pool_maxsize: 20
+-  # See https://www.python-httpx.org/http2/
++  # Enables the use of HTTP2
+   enable_http2: true
+   # uncomment below section if you want to use a custom server certificate
+-  # see https://www.python-httpx.org/advanced/#changing-the-verification-defaults
+-  # and https://www.python-httpx.org/compatibility/#ssl-configuration
++  # see https://curl-cffi.readthedocs.io/en/latest/quick_start.html
+   #  verify: ~/.mitmproxy/mitmproxy-ca-cert.cer
+   #
+-  # uncomment below section if you want to use a proxyq see: SOCKS proxies
+-  #   https://2.python-requests.org/en/latest/user/advanced/#proxies
+-  # are also supported: see
+-  #   https://2.python-requests.org/en/latest/user/advanced/#socks
++  # uncomment below section if you want to use a proxy
+   #
+   #  proxies:
+   #    all://:
+diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
+index 5fed08b688de..cdc30c54d558 100644
+--- a/searx/settings_defaults.py
++++ b/searx/settings_defaults.py
+@@ -253,8 +253,6 @@ def apply_schema(settings: dict[str, t.Any], schema: dict[str, t.Any], path_list
+         'verify': SettingsValue((bool, str), True),
+         'max_request_timeout': SettingsValue((None, numbers.Real), None),
+         'pool_connections': SettingsValue(int, 100),
+-        'pool_maxsize': SettingsValue(int, 10),
+-        'keepalive_expiry': SettingsValue(numbers.Real, 5.0),
+         # default maximum redirect
+         # from https://github.com/psf/requests/blob/8c211a96cdbe9fe320d63d9e1ae15c5c07e179f8/requests/models.py#L55
+         'max_redirects': SettingsValue(int, 30),
+diff --git a/searx/webapp.py b/searx/webapp.py
+index b59bcdc7ef7a..8be32523087e 100755
+--- a/searx/webapp.py
++++ b/searx/webapp.py
+@@ -18,7 +18,7 @@
+ from urllib.parse import urlencode, urlparse, unquote
+ 
+ import warnings
+-import httpx
++from curl_cffi.requests.exceptions import RequestException
+ 
+ from pygments import highlight
+ from pygments.lexers import get_lexer_by_name
+@@ -1027,7 +1027,7 @@ def image_proxy():
+             return '', 400
+ 
+         forward_resp = True
+-    except httpx.HTTPError:
++    except RequestException:
+         logger.exception('HTTP error')
+         return '', 400
+     finally:
+@@ -1036,7 +1036,7 @@ def image_proxy():
+             # we make sure to close the response between searxng and the HTTP server
+             try:
+                 resp.close()
+-            except httpx.HTTPError:
++            except RequestException:
+                 logger.exception('HTTP error on closing')
+ 
+     def close_stream():
+@@ -1046,7 +1046,7 @@ def close_stream():
+                 resp.close()
+             del resp
+             del stream
+-        except httpx.HTTPError as e:
++        except RequestException as e:
+             logger.debug('Exception while closing response', e)
+ 
+     try:
+@@ -1054,7 +1054,7 @@ def close_stream():
+         response = Response(stream, mimetype=resp.headers['Content-Type'], headers=headers, direct_passthrough=True)
+         response.call_on_close(close_stream)
+         return response
+-    except httpx.HTTPError:
++    except RequestException:
+         close_stream()
+         return '', 400
+ 
+diff --git a/searx/webutils.py b/searx/webutils.py
+index 9c3e8a0c9c94..43d42bf83cb2 100644
+--- a/searx/webutils.py
++++ b/searx/webutils.py
+@@ -42,18 +42,17 @@
+     None: gettext('unexpected crash'),
+     'timeout': timeout_text,
+     'asyncio.TimeoutError': timeout_text,
+-    'httpx.TimeoutException': timeout_text,
+-    'httpx.ConnectTimeout': timeout_text,
+-    'httpx.ReadTimeout': timeout_text,
+-    'httpx.WriteTimeout': timeout_text,
+-    'httpx.HTTPStatusError': gettext('HTTP error'),
+-    'httpx.ConnectError': gettext("HTTP connection error"),
+-    'httpx.RemoteProtocolError': http_protocol_error_text,
+-    'httpx.LocalProtocolError': http_protocol_error_text,
+-    'httpx.ProtocolError': http_protocol_error_text,
+-    'httpx.ReadError': network_error_text,
+-    'httpx.WriteError': network_error_text,
+-    'httpx.ProxyError': gettext("proxy error"),
++    'curl_cffi.requests.exceptions.Timeout': timeout_text,
++    'curl_cffi.requests.exceptions.ConnectTimeout': timeout_text,
++    'curl_cffi.requests.exceptions.ReadTimeout': timeout_text,
++    'curl_cffi.requests.exceptions.HTTPError': gettext('HTTP error'),
++    'curl_cffi.requests.exceptions.ConnectionError': gettext("HTTP connection error"),
++    'curl_cffi.requests.exceptions.DNSError': gettext("HTTP connection error"),
++    'curl_cffi.requests.exceptions.IncompleteRead': http_protocol_error_text,
++    'curl_cffi.requests.exceptions.SSLError': ssl_cert_error_text,
++    'curl_cffi.requests.exceptions.CertificateVerifyError': ssl_cert_error_text,
++    'curl_cffi.requests.exceptions.ProxyError': gettext("proxy error"),
++    'curl_cffi.requests.exceptions.RequestException': network_error_text,
+     'searx.exceptions.SearxEngineCaptchaException': gettext("CAPTCHA"),
+     'searx.exceptions.SearxEngineTooManyRequestsException': gettext("too many requests"),
+     'searx.exceptions.SearxEngineAccessDeniedException': gettext("access denied"),
+diff --git a/tests/unit/network/test_network.py b/tests/unit/network/test_network.py
+index 46dc62ad991b..89275196036c 100644
+--- a/tests/unit/network/test_network.py
++++ b/tests/unit/network/test_network.py
+@@ -1,9 +1,10 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ # pylint: disable=missing-module-docstring,disable=missing-class-docstring,invalid-name
+ 
+-import httpx
+-from mock import patch
++from curl_cffi.requests.exceptions import RequestException
++from mock import Mock, patch
+ 
++from searx.network.client import AsyncClient
+ from searx.network.network import Network, NETWORKS
+ from tests import SearxTestCase
+ 
+@@ -83,11 +84,16 @@ def test_get_kwargs_clients(self):
+         self.assertEqual(len(kwargs), 2)
+ 
+         self.assertEqual(kwargs['timeout'], 2)
+-        self.assertEqual(kwargs['follow_redirects'], True)
++        self.assertEqual(kwargs['allow_redirects'], True)
+ 
+         self.assertTrue(kwargs_client['verify'])
+         self.assertEqual(kwargs_client['max_redirects'], 5)
+ 
++        kwargs = {'impersonate': 'chrome99_android', 'curl_options': {1: 'x'}, 'timeout': 1}
++        kwargs_client = Network.extract_kwargs_clients(kwargs)
++        self.assertEqual(kwargs_client, {'impersonate': 'chrome99_android', 'curl_options': {1: 'x'}})
++        self.assertEqual(kwargs, {'timeout': 1})
++
+     async def test_get_client(self):
+         network = Network(verify=True)
+         client1 = await network.get_client()
+@@ -103,6 +109,9 @@ async def test_get_client(self):
+         self.assertNotEqual(client1, client5)
+         self.assertEqual(client3, client6)
+ 
++        client7 = await network.get_client(impersonate="chrome99_android", enable_http3=True)
++        self.assertNotEqual(client1, client7)
++
+         await network.aclose()
+ 
+     async def test_aclose(self):
+@@ -112,8 +121,8 @@ async def test_aclose(self):
+ 
+     async def test_request(self):
+         a_text = 'Lorem Ipsum'
+-        response = httpx.Response(status_code=200, text=a_text)
+-        with patch.object(httpx.AsyncClient, 'request', return_value=response):
++        response = Mock(status_code=200, text=a_text)
++        with patch.object(AsyncClient, 'request', return_value=response):
+             network = Network(enable_http=True)
+             response = await network.request('GET', 'https://example.com/')
+             self.assertEqual(response.text, a_text)
+@@ -135,34 +144,34 @@ async def get_response(*args, **kwargs):  # pylint: disable=unused-argument
+             nonlocal first
+             if first:
+                 first = False
+-                return httpx.Response(status_code=403, text=TestNetworkRequestRetries.TEXT)
+-            return httpx.Response(status_code=200, text=TestNetworkRequestRetries.TEXT)
++                return Mock(status_code=403, text=TestNetworkRequestRetries.TEXT)
++            return Mock(status_code=200, text=TestNetworkRequestRetries.TEXT)
+ 
+         return get_response
+ 
+     async def test_retries_ok(self):
+-        with patch.object(httpx.AsyncClient, 'request', new=TestNetworkRequestRetries.get_response_404_then_200()):
++        with patch.object(AsyncClient, 'request', new=TestNetworkRequestRetries.get_response_404_then_200()):
+             network = Network(enable_http=True, retries=1, retry_on_http_error=403)
+             response = await network.request('GET', 'https://example.com/', raise_for_httperror=False)
+             self.assertEqual(response.text, TestNetworkRequestRetries.TEXT)
+             await network.aclose()
+ 
+     async def test_retries_fail_int(self):
+-        with patch.object(httpx.AsyncClient, 'request', new=TestNetworkRequestRetries.get_response_404_then_200()):
++        with patch.object(AsyncClient, 'request', new=TestNetworkRequestRetries.get_response_404_then_200()):
+             network = Network(enable_http=True, retries=0, retry_on_http_error=403)
+             response = await network.request('GET', 'https://example.com/', raise_for_httperror=False)
+             self.assertEqual(response.status_code, 403)
+             await network.aclose()
+ 
+     async def test_retries_fail_list(self):
+-        with patch.object(httpx.AsyncClient, 'request', new=TestNetworkRequestRetries.get_response_404_then_200()):
++        with patch.object(AsyncClient, 'request', new=TestNetworkRequestRetries.get_response_404_then_200()):
+             network = Network(enable_http=True, retries=0, retry_on_http_error=[403, 429])
+             response = await network.request('GET', 'https://example.com/', raise_for_httperror=False)
+             self.assertEqual(response.status_code, 403)
+             await network.aclose()
+ 
+     async def test_retries_fail_bool(self):
+-        with patch.object(httpx.AsyncClient, 'request', new=TestNetworkRequestRetries.get_response_404_then_200()):
++        with patch.object(AsyncClient, 'request', new=TestNetworkRequestRetries.get_response_404_then_200()):
+             network = Network(enable_http=True, retries=0, retry_on_http_error=True)
+             response = await network.request('GET', 'https://example.com/', raise_for_httperror=False)
+             self.assertEqual(response.status_code, 403)
+@@ -175,10 +184,10 @@ async def get_response(*args, **kwargs):  # pylint: disable=unused-argument
+             nonlocal request_count
+             request_count += 1
+             if request_count < 3:
+-                raise httpx.RequestError('fake exception', request=None)
+-            return httpx.Response(status_code=200, text=TestNetworkRequestRetries.TEXT)
++                raise RequestException('fake exception')
++            return Mock(status_code=200, text=TestNetworkRequestRetries.TEXT)
+ 
+-        with patch.object(httpx.AsyncClient, 'request', new=get_response):
++        with patch.object(AsyncClient, 'request', new=get_response):
+             network = Network(enable_http=True, retries=2)
+             response = await network.request('GET', 'https://example.com/', raise_for_httperror=False)
+             self.assertEqual(response.status_code, 200)
+@@ -187,11 +196,11 @@ async def get_response(*args, **kwargs):  # pylint: disable=unused-argument
+ 
+     async def test_retries_exception(self):
+         async def get_response(*args, **kwargs):
+-            raise httpx.RequestError('fake exception', request=None)
++            raise RequestException('fake exception')
+ 
+-        with patch.object(httpx.AsyncClient, 'request', new=get_response):
++        with patch.object(AsyncClient, 'request', new=get_response):
+             network = Network(enable_http=True, retries=0)
+-            with self.assertRaises(httpx.RequestError):
++            with self.assertRaises(RequestException):
+                 await network.request('GET', 'https://example.com/', raise_for_httperror=False)
+             await network.aclose()
+ 
+@@ -211,22 +220,22 @@ def stream(*args, **kwargs):  # pylint: disable=unused-argument
+             nonlocal first
+             if first:
+                 first = False
+-                raise httpx.RequestError('fake exception', request=None)
+-            return httpx.Response(status_code=200, text=TestNetworkStreamRetries.TEXT)
++                raise RequestException('fake exception')
++            return Mock(status_code=200, text=TestNetworkStreamRetries.TEXT)
+ 
+         return stream
+ 
+     async def test_retries_ok(self):
+-        with patch.object(httpx.AsyncClient, 'stream', new=TestNetworkStreamRetries.get_response_exception_then_200()):
++        with patch.object(AsyncClient, 'stream', new=TestNetworkStreamRetries.get_response_exception_then_200()):
+             network = Network(enable_http=True, retries=1, retry_on_http_error=403)
+             response = await network.stream('GET', 'https://example.com/')
+             self.assertEqual(response.text, TestNetworkStreamRetries.TEXT)
+             await network.aclose()
+ 
+     async def test_retries_fail(self):
+-        with patch.object(httpx.AsyncClient, 'stream', new=TestNetworkStreamRetries.get_response_exception_then_200()):
++        with patch.object(AsyncClient, 'stream', new=TestNetworkStreamRetries.get_response_exception_then_200()):
+             network = Network(enable_http=True, retries=0, retry_on_http_error=403)
+-            with self.assertRaises(httpx.RequestError):
++            with self.assertRaises(RequestException):
+                 await network.stream('GET', 'https://example.com/')
+             await network.aclose()
+ 
+@@ -237,10 +246,10 @@ def stream(*args, **kwargs):  # pylint: disable=unused-argument
+             nonlocal first
+             if first:
+                 first = False
+-                return httpx.Response(status_code=403, text=TestNetworkRequestRetries.TEXT)
+-            return httpx.Response(status_code=200, text=TestNetworkRequestRetries.TEXT)
++                return Mock(status_code=403, text=TestNetworkRequestRetries.TEXT)
++            return Mock(status_code=200, text=TestNetworkRequestRetries.TEXT)
+ 
+-        with patch.object(httpx.AsyncClient, 'stream', new=stream):
++        with patch.object(AsyncClient, 'stream', new=stream):
+             network = Network(enable_http=True, retries=0, retry_on_http_error=403)
+             response = await network.stream('GET', 'https://example.com/', raise_for_httperror=False)
+             self.assertEqual(response.status_code, 403)
+diff --git a/tests/unit/processors/test_online.py b/tests/unit/processors/test_online.py
+index b8758083b922..01fee8e7eda3 100644
+--- a/tests/unit/processors/test_online.py
++++ b/tests/unit/processors/test_online.py
+@@ -35,4 +35,4 @@ def test_get_params_useragent(self):
+         online_processor = online.OnlineProcessor(engine)
+         search_query = SearchQuery('test', [EngineRef(TEST_ENGINE_NAME, 'general')], 'all', 0, 1, None, None, None)
+         params = self._get_params(online_processor, search_query, 'general')
+-        self.assertIn('User-Agent', params['headers'])
++        self.assertNotIn('User-Agent', params['headers'])
