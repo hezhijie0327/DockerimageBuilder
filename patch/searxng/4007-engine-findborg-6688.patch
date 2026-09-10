@@ -1,0 +1,377 @@
+diff --git a/searx/engines/brave.py b/searx/engines/brave.py
+index 8d0994227a0..4bdee797275 100644
+--- a/searx/engines/brave.py
++++ b/searx/engines/brave.py
+@@ -136,6 +136,7 @@
+     eval_xpath_list,
+     extract_text,
+     get_embedded_stream_url,
++    html_to_text,
+     js_obj_str_to_json_str,
+     js_obj_str_to_python,
+ )
+@@ -280,9 +281,9 @@ def response(resp: SXNG_Response) -> EngineResults:
+     json_resp: dict[str, t.Any] = json_data["data"][1]["data"]["body"]["response"]
+
+     if brave_category == "images":
+-        return _parse_images(json_resp)
++        return parse_images_json(json_resp["results"])
+     if brave_category == "videos":
+-        return _parse_videos(json_resp)
++        return parse_videos_json(json_resp["results"])
+
+     raise ValueError(f"Unsupported brave category: {brave_category}")
+
+@@ -375,40 +376,88 @@ def _parse_news(resp: SXNG_Response) -> EngineResults:
+     return res
+
+
+-def _parse_images(json_resp: dict[str, t.Any]) -> EngineResults:
++def parse_web_json(results: list[dict[str, t.Any]]) -> EngineResults:
+     res = EngineResults()
+
+-    for result in json_resp["results"]:
+-        item = res.types.LegacyResult(
+-            template="images.html",
+-            url=result["url"],
+-            title=result["title"],
+-            source=result["source"],
+-            img_src=result["properties"]["url"],
+-            thumbnail_src=result["thumbnail"]["src"],
++    for result in results:
++        thumbnail_obj = result.get("thumbnail")
++        thumbnail = ""
++        if thumbnail_obj and not thumbnail_obj.get("logo", False):
++            thumbnail = thumbnail_obj.get("src") or ""
++
++        res.add(
++            res.types.MainResult(
++                url=result["url"],
++                title=html_to_text(result["title"]),
++                content=html_to_text(result.get("description", "")),
++                publishedDate=_extract_published_date(result.get("age")),
++                thumbnail=thumbnail,
++            ),
+         )
+-        res.add(item)
+
+     return res
+
+
+-def _parse_videos(json_resp: dict[str, t.Any]) -> EngineResults:
++def parse_news_json(results: list[dict[str, t.Any]]) -> EngineResults:
+     res = EngineResults()
+
+-    for result in json_resp["results"]:
+-        item = res.types.LegacyResult(
+-            template="videos.html",
+-            url=result["url"],
+-            title=result["title"],
+-            content=result["description"],
+-            length=result["video"]["duration"],
+-            duration=result["video"]["duration"],
+-            publishedDate=_extract_published_date(result["age"]),
++    for result in results:
++        publishedDate = None
++        try:
++            publishedDate = parser.parse(result["age"])
++        except parser.ParserError:
++            pass
++
++        res.add(
++            res.types.MainResult(
++                url=result["url"],
++                title=html_to_text(result["title"]),
++                content=html_to_text(result["description"]),
++                thumbnail=result["thumbnail"]["src"],
++                publishedDate=publishedDate,
++            )
+         )
+-        if result["thumbnail"] is not None:
+-            item["thumbnail"] = result["thumbnail"]["src"]
+
+-        res.add(item)
++    return res
++
++
++def parse_images_json(results: list[dict[str, t.Any]]) -> EngineResults:
++    res = EngineResults()
++
++    for result in results:
++        res.add(
++            res.types.LegacyResult(
++                template="images.html",
++                url=result["url"],
++                title=result["title"],
++                source=result["source"],
++                img_src=result["properties"]["url"],
++                thumbnail_src=result["thumbnail"]["src"],
++            )
++        )
++
++    return res
++
++
++def parse_videos_json(results: list[dict[str, t.Any]]) -> EngineResults:
++    res = EngineResults()
++
++    for result in results:
++        thumbnail = ""
++        if result["thumbnail"] is not None:
++            thumbnail = result["thumbnail"]["src"]
++        res.add(
++            res.types.LegacyResult(
++                template="videos.html",
++                url=result["url"],
++                title=result["title"],
++                content=result["description"],
++                length=result["video"]["duration"],
++                duration=result["video"]["duration"],
++                publishedDate=_extract_published_date(result["age"]),
++                thumbnail=thumbnail,
++            )
++        )
+
+     return res
+
+diff --git a/searx/engines/braveapi.py b/searx/engines/braveapi.py
+index 83ea1800c49..62885f14018 100644
+--- a/searx/engines/braveapi.py
++++ b/searx/engines/braveapi.py
+@@ -27,11 +27,10 @@
+ import typing as t
+
+ from urllib.parse import urlencode
+-from dateutil import parser
+
++from searx.engines.brave import parse_videos_json
+ from searx.exceptions import SearxEngineAPIException
+ from searx.result_types import EngineResults
+-from searx.utils import html_to_text
+
+ if t.TYPE_CHECKING:
+     from searx.extended_types import SXNG_Response
+@@ -94,43 +93,9 @@ def request(query: str, params: "OnlineParams") -> None:
+     params["headers"]["Accept"] = "application/json"
+
+
+-def _extract_published_date(published_date_raw: str):
+-    """Extract and parse the published date from the API response.
+-
+-    Args:
+-        published_date_raw: Raw date string from the API
+-
+-    Returns:
+-        Parsed datetime object or None if parsing fails
+-    """
+-    if not published_date_raw:
+-        return None
+-
+-    try:
+-        return parser.parse(published_date_raw)
+-    except parser.ParserError:
+-        return None
+-
+-
+ def response(resp: "SXNG_Response") -> EngineResults:
+     """Process the API response and return results."""
+-    res = EngineResults()
+     data = resp.json()
+
+-    for result in (data.get("web") or {}).get("results", []):
+-        thumbnail_obj = result.get("thumbnail")
+-        thumbnail = ""
+-        if thumbnail_obj and not thumbnail_obj.get("logo", False):
+-            thumbnail = thumbnail_obj.get("src") or ""
+-
+-        res.add(
+-            res.types.MainResult(
+-                url=result["url"],
+-                title=html_to_text(result["title"]),
+-                content=html_to_text(result.get("description", "")),
+-                publishedDate=_extract_published_date(result.get("age")),
+-                thumbnail=thumbnail,
+-            ),
+-        )
+-
+-    return res
++    results_json = (data.get("web") or {}).get("results", [])
++    return parse_videos_json(results_json)
+diff --git a/searx/engines/findborg.py b/searx/engines/findborg.py
+new file mode 100644
+index 00000000000..49c86141ac4
+--- /dev/null
++++ b/searx/engines/findborg.py
+@@ -0,0 +1,57 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""Findborg_ is a small search engine that gets its results from Brave.
++
++.. _Findborg: https://www.findborg.com/about/
++"""
++
++import typing as t
++from urllib.parse import urlencode
++
++from searx.engines.brave import parse_images_json, parse_news_json, parse_videos_json, parse_web_json
++from searx.extended_types import SXNG_Response
++from searx.result_types import EngineResults
++
++if t.TYPE_CHECKING:
++    from searx.search.processors import OnlineParams
++
++about = {
++    "website": "https://www.findborg.com",
++    "official_api_documentation": None,
++    "use_official_api": False,
++    "require_api_key": False,
++    "results": "JSON",
++}
++categories: list[str] = None  # type: ignore[reportAssignmentType]
++time_range_support = True
++
++FindborgCategType = t.Literal["search", "images", "videos", "news"]
++findborg_categ: FindborgCategType = None  # type: ignore[reportAssignmentType]
++
++
++base_url = "https://www.findborg.com"
++
++
++def setup(_: dict[str, t.Any]):
++    if findborg_categ not in t.get_args(FindborgCategType):
++        raise ValueError("invalid category: %s" % findborg_categ)
++
++
++def request(query: str, params: "OnlineParams"):
++    args = {"q": query, "type": findborg_categ}
++    if params["time_range"]:
++        args["time"] = params["time_range"]
++    params["url"] = f"{base_url}/apis/proxy.php?{urlencode(args)}"
++
++
++def response(resp: "SXNG_Response") -> EngineResults:
++    data: dict[str, t.Any] = resp.json()["data"]  # type: ignore[reportAny]
++
++    match findborg_categ:
++        case "search":
++            return parse_web_json(data["web"]["results"])
++        case "news":
++            return parse_news_json(data["results"])
++        case "videos":
++            return parse_videos_json(data["results"])
++        case "images":
++            return parse_images_json(data["results"])
+diff --git a/searx/engines/tusksearch.py b/searx/engines/tusksearch.py
+index b9e6142ff00..d620fbe0a75 100644
+--- a/searx/engines/tusksearch.py
++++ b/searx/engines/tusksearch.py
+@@ -9,12 +9,10 @@
+ import random
+ import typing as t
+ from urllib.parse import urlencode
+-from dateutil import parser
+
++from searx.engines.brave import parse_images_json, parse_news_json, parse_videos_json, parse_web_json
+ from searx.exceptions import SearxEngineAPIException
+ from searx.network import get
+-from searx.utils import html_to_text
+-from searx.result_types import EngineResults
+
+ if t.TYPE_CHECKING:
+     from searx.extended_types import SXNG_Response
+@@ -32,7 +30,8 @@
+ paging = True
+
+ categories = ["general"]
+-tusk_categ = "web"
++TuskCategType = t.Literal["web", "images", "videos", "news"]
++tusk_categ: TuskCategType = "web"
+ """Category to search in. Can be either "web", "images", "videos" or "news"."""
+
+
+@@ -40,7 +39,7 @@
+
+
+ def setup(_: dict[str, t.Any]) -> bool | None:
+-    if tusk_categ not in ("web", "images", "videos", "news"):
++    if tusk_categ not in t.get_args(TuskCategType):
+         raise ValueError("invalid search type: %s" % tusk_categ)
+
+
+@@ -101,65 +100,17 @@ def request(query: str, params: "OnlineParams") -> None:
+
+
+ def response(resp: "SXNG_Response"):
+-    res = EngineResults()
+-
+     json_resp = resp.json()["results"]
+
+-    if tusk_categ == "web":
+-        for result in (json_resp.get("web") or {}).get("results", []):
+-            res.add(
+-                res.types.MainResult(
+-                    url=result["url"],
+-                    title=html_to_text(result["title"]),
+-                    content=html_to_text(result["description"]),
+-                    thumbnail=(result["thumbnail"] or {}).get("src") or "",
+-                )
+-            )
+-    elif tusk_categ == "news":
+-        for result in (json_resp.get("news") or {}).get("results", []):
+-            publishedDate = None
+-            try:
+-                publishedDate = parser.parse(result["age"])
+-            except parser.ParserError:
+-                pass
+-
+-            res.add(
+-                res.types.MainResult(
+-                    url=result["url"],
+-                    title=html_to_text(result["title"]),
+-                    content=html_to_text(result["description"]),
+-                    thumbnail=result["thumbnail"]["src"],
+-                    publishedDate=publishedDate,
+-                )
+-            )
+-    elif tusk_categ == "videos":
+-        for result in (json_resp.get("videos") or {}).get("results", []):
+-            publishedDate = None
+-            try:
+-                publishedDate = parser.parse(result["age"])
+-            except parser.ParserError:
+-                pass
+-
+-            res.add(
+-                res.types.LegacyResult(
+-                    template="videos.html",
+-                    url=result["url"],
+-                    title=html_to_text(result["title"]),
+-                    content=html_to_text(result["description"]),
+-                    thumbnail=result["thumbnail"]["src"],
+-                    publishedDate=publishedDate,
+-                    length=result["video"].get("duration"),
+-                )
+-            )
+-    elif tusk_categ == "images":
+-        for result in json_resp:
+-            res.add(
+-                res.types.Image(
+-                    url=result["url"],
+-                    title=html_to_text(result["title"]),
+-                    img_src=result["properties"]["url"],
+-                    thumbnail_src=result["thumbnail"]["src"],
+-                )
+-            )
+-
+-    return res
++    match tusk_categ:
++        case "web":
++            results = (json_resp.get("web") or {}).get("results", [])
++            return parse_web_json(results)
++        case "news":
++            results = (json_resp.get("news") or {}).get("results", [])
++            return parse_news_json(results)
++        case "videos":
++            results = (json_resp.get("videos") or {}).get("results", [])
++            return parse_videos_json(results)
++        case "images":
++            return parse_images_json(json_resp)
