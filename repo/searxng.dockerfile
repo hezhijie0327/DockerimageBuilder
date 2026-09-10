@@ -30,10 +30,17 @@ FROM node:${NODEJS_VERSION}-slim AS build_searxng_frontend
 WORKDIR /app
 
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/client/simple /app/client/simple
+COPY --from=get_info /tmp/BUILDTMP/SEARXNG/client/zjsearch /app/client/zjsearch
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/requirements.txt /app/requirements.txt
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /app/searx
 
 WORKDIR /app/client/simple
+
+RUN \
+    npm i \
+    && npm run build
+
+WORKDIR /app/client/zjsearch
 
 RUN \
     npm i \
