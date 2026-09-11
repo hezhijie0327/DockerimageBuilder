@@ -5009,10 +5009,10 @@ index 0000000..42f3cb6
 +}
 diff --git a/client/zjsearch/src/components/results/ImageGrid.tsx b/client/zjsearch/src/components/results/ImageGrid.tsx
 new file mode 100644
-index 0000000..d982810
+index 0000000..b593e96
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/ImageGrid.tsx
-@@ -0,0 +1,375 @@
+@@ -0,0 +1,447 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -5082,6 +5082,41 @@ index 0000000..d982810
 +  const settings = useSettings();
 +  const result = results[index];
 +  const touchStartX = useRef<number | null>(null);
++  const stageRef = useRef<HTMLDivElement | null>(null);
++  const [zoom, setZoom] = useState(1);
++  const [offset, setOffset] = useState({ x: 0, y: 0 });
++  const [dragging, setDragging] = useState(false);
++  const dragStart = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
++
++  const resetZoom = useCallback(() => {
++    setZoom(1);
++    setOffset({ x: 0, y: 0 });
++  }, []);
++
++  // wheel zoom, non-passive so the page never scrolls behind the viewer
++  useEffect(() => {
++    const el = stageRef.current;
++    if (!el) {
++      return;
++    }
++    const onWheel = (event: WheelEvent) => {
++      event.preventDefault();
++      setZoom((prev) => {
++        // allow zooming out to 50% so small thumbnails can shrink to context
++        const next = Math.min(5, Math.max(0.5, prev * (event.deltaY < 0 ? 1.15 : 1 / 1.15)));
++        return Math.round(next * 100) / 100;
++      });
++    };
++    el.addEventListener("wheel", onWheel, { passive: false });
++    return () => {
++      el.removeEventListener("wheel", onWheel);
++    };
++  }, []);
++
++  // reset whenever another image is opened
++  useEffect(() => {
++    resetZoom();
++  }, [index, resetZoom]);
 +
 +  const close = useCallback(
 +    (viaUser: boolean) => {
@@ -5096,10 +5131,11 @@ index 0000000..d982810
 +
 +  const nav = useCallback(
 +    (delta: number) => {
++      resetZoom();
 +      const next = (index + delta + results.length) % results.length;
 +      onNavigate(next);
 +    },
-+    [index, results.length, onNavigate],
++    [index, results.length, onNavigate, resetZoom],
 +  );
 +
 +  useEffect(() => {
@@ -5180,6 +5216,7 @@ index 0000000..d982810
 +      <div className="flex items-center justify-between p-3">
 +        <span className="text-xs text-zinc-500" dir="ltr">
 +          {index + 1} / {results.length}
++          {zoom !== 1 ? <span className="ms-2 opacity-80">{Math.round(zoom * 100)}%</span> : null}
 +        </span>
 +        <button
 +          aria-label={t("close")}
@@ -5194,8 +5231,43 @@ index 0000000..d982810
 +      </div>
 +
 +      {/* image */}
-+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-4">
-+        <ProgressiveImage alt={result.title_text} full={result.img_src ?? ""} thumbnail={thumbSrc} />
++      <div
++        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-4 pb-4"
++        ref={stageRef}
++      >
++        <div
++          className={`flex items-center justify-center ${zoom > 1 ? "touch-none" : ""}`}
++          onDoubleClick={() => {
++            resetZoom();
++          }}
++          onPointerDown={(event) => {
++            if (zoom <= 1) {
++              return;
++            }
++            dragStart.current = { x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y };
++            setDragging(true);
++            event.currentTarget.setPointerCapture(event.pointerId);
++          }}
++          onPointerMove={(event) => {
++            const start = dragStart.current;
++            if (!start) {
++              return;
++            }
++            setOffset({ x: start.ox + (event.clientX - start.x), y: start.oy + (event.clientY - start.y) });
++          }}
++          onPointerUp={(event) => {
++            dragStart.current = null;
++            setDragging(false);
++            event.currentTarget.releasePointerCapture(event.pointerId);
++          }}
++          style={{
++            transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
++            transition: dragging ? "none" : "transform 150ms ease-out",
++            cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
++          }}
++        >
++          <ProgressiveImage alt={result.title_text} full={result.img_src ?? ""} thumbnail={thumbSrc} />
++        </div>
 +        <div className="absolute bottom-2 right-5 flex gap-2">
 +          <button
 +            aria-label={t("previous_page")}
@@ -5628,17 +5700,18 @@ index 0000000..f892723
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 0000000..1da036d
+index 0000000..9eebf56
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,300 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
 +import { useT } from "../../lib/i18n.ts";
++import { useOverlay } from "../../lib/overlay.tsx";
 +import type { GlobalData, InfoboxData, SearchPageData } from "../../lib/types.ts";
-+import { ExternalLinkIcon } from "../icons.tsx";
-+import {} from "../Shell.tsx";
++import { ChevronDownIcon, DownloadIcon, ExternalLinkIcon } from "../icons.tsx";
++import { Link } from "../Shell.tsx";
 +
 +function Box({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
 +  return (
@@ -5662,6 +5735,8 @@ index 0000000..1da036d
 +  globals: GlobalData;
 +  onSearch: (q: string) => void;
 +}) {
++  const t = useT();
++  const [expanded, setExpanded] = useState(false);
 +  return (
 +    <div className="rounded-2xl border border-line bg-surface p-3">
 +      <div className={infobox.img_src ? "flex items-start gap-4" : ""}>
@@ -5679,82 +5754,193 @@ index 0000000..1da036d
 +        </h3>
 +      </div>
 +
-+      {infobox.attributes && infobox.attributes.length > 0 ? (
-+        <dl className="mt-3 space-y-1 text-xs">
-+          {infobox.attributes.map((attribute, index) => (
-+            <div className="flex gap-2" key={index}>
-+              <dt className="shrink-0 text-ink-3">{attribute.label}:</dt>
-+              <dd className="min-w-0 text-ink-2">
-+                {attribute.image_src ? (
-+                  <img
-+                    alt={attribute.image_alt}
-+                    className="inline-block max-h-24 rounded-lg align-middle"
-+                    decoding="async"
-+                    loading="lazy"
-+                    src={attribute.image_src}
-+                  />
-+                ) : (
-+                  <span dir="auto">{attribute.value}</span>
-+                )}
-+              </dd>
-+            </div>
-+          ))}
-+        </dl>
-+      ) : null}
-+
-+      {infobox.content_html ? (
-+        <div
-+          className="mt-3 text-[13px] leading-relaxed text-ink-2 [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/40 [&_a]:underline-offset-2"
-+          dangerouslySetInnerHTML={{ __html: infobox.content_html }}
-+          dir="auto"
-+        />
-+      ) : null}
-+
-+      {infobox.urls && infobox.urls.length > 0 ? (
-+        <ul className="mt-3 space-y-1 text-xs">
-+          {infobox.urls.map((url) => (
-+            <li className="truncate" key={url.url}>
-+              <a
-+                className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
-+                {...(globals.results_on_new_tab
-+                  ? { target: "_blank", rel: "noopener noreferrer" }
-+                  : { rel: "noreferrer" })}
-+                href={url.url}
-+              >
-+                <span className="truncate">{url.title}</span>
-+                <ExternalLinkIcon className="size-3 shrink-0" />
-+              </a>
-+            </li>
-+          ))}
-+        </ul>
-+      ) : null}
-+
-+      {infobox.related_topics && infobox.related_topics.length > 0 ? (
-+        <div className="mt-4 space-y-2">
-+          {infobox.related_topics.map((topic) => (
-+            <div key={topic.name}>
-+              <h4 className="text-xs font-medium text-ink" dir="auto">
-+                {topic.name}
-+              </h4>
-+              <div className="mt-1 flex flex-wrap gap-1.5">
-+                {topic.suggestions.map((suggestion) => (
-+                  <button
-+                    className="rounded-full bg-surface-2 px-2.5 py-1 text-xs text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
-+                    key={suggestion}
-+                    onClick={() => {
-+                      onSearch(suggestion);
-+                    }}
-+                    type="button"
-+                  >
-+                    {suggestion}
-+                  </button>
-+                ))}
++      <div className={`relative mt-3 ${expanded ? "" : "max-h-72 overflow-hidden"}`}>
++        {infobox.attributes && infobox.attributes.length > 0 ? (
++          <dl className="space-y-1 text-xs">
++            {infobox.attributes.map((attribute, index) => (
++              <div className="flex gap-2" key={index}>
++                <dt className="shrink-0 text-ink-3">{attribute.label}:</dt>
++                <dd className="min-w-0 text-ink-2">
++                  {attribute.image_src ? (
++                    <img
++                      alt={attribute.image_alt}
++                      className="inline-block max-h-24 rounded-lg align-middle"
++                      decoding="async"
++                      loading="lazy"
++                      src={attribute.image_src}
++                    />
++                  ) : (
++                    <span dir="auto">{attribute.value}</span>
++                  )}
++                </dd>
 +              </div>
-+            </div>
-+          ))}
-+        </div>
-+      ) : null}
++            ))}
++          </dl>
++        ) : null}
++
++        {infobox.content_html ? (
++          <div
++            className="mt-3 text-[13px] leading-relaxed text-ink-2 [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/40 [&_a]:underline-offset-2"
++            dangerouslySetInnerHTML={{ __html: infobox.content_html }}
++            dir="auto"
++          />
++        ) : null}
++
++        {infobox.urls && infobox.urls.length > 0 ? (
++          <ul className="mt-3 space-y-1 text-xs">
++            {infobox.urls.map((url) => (
++              <li className="truncate" key={url.url}>
++                <a
++                  className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
++                  {...(globals.results_on_new_tab
++                    ? { target: "_blank", rel: "noopener noreferrer" }
++                    : { rel: "noreferrer" })}
++                  href={url.url}
++                >
++                  <span className="truncate">{url.title}</span>
++                  <ExternalLinkIcon className="size-3 shrink-0" />
++                </a>
++              </li>
++            ))}
++          </ul>
++        ) : null}
++
++        {infobox.related_topics && infobox.related_topics.length > 0 ? (
++          <div className="mt-4 space-y-2">
++            {infobox.related_topics.map((topic) => (
++              <div key={topic.name}>
++                <h4 className="text-xs font-medium text-ink" dir="auto">
++                  {topic.name}
++                </h4>
++                <div className="mt-1 flex flex-wrap gap-1.5">
++                  {topic.suggestions.map((suggestion) => (
++                    <button
++                      className="rounded-full bg-surface-2 px-2.5 py-1 text-xs text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
++                      key={suggestion}
++                      onClick={() => {
++                        onSearch(suggestion);
++                      }}
++                      type="button"
++                    >
++                      {suggestion}
++                    </button>
++                  ))}
++                </div>
++              </div>
++            ))}
++          </div>
++        ) : null}
++        {expanded ? null : (
++          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
++        )}
++      </div>
++      <button
++        className="mt-2 flex w-full items-center justify-center gap-1 border-t border-line pt-2.5 text-xs text-ink-3 transition-colors hover:text-ink"
++        onClick={() => {
++          setExpanded((value) => !value);
++        }}
++        type="button"
++      >
++        {expanded ? t("collapse") : t("expand")}
++        <ChevronDownIcon className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
++      </button>
 +    </div>
++  );
++}
++
++export function DebugPanels({ data }: { data: SearchPageData }) {
++  const t = useT();
++  const { openOverlay } = useOverlay();
++  const hasEngineMsg = data.unresponsive_engines.length > 0 || data.timings.length > 0;
++  const maxTime = data.max_response_time ?? 0;
++  const globals = data.globals;
++  return (
++    <>
++      {hasEngineMsg ? (
++        <Box
++          open={data.results.length === 0}
++          title={
++            data.max_response_time
++              ? `${t("response_time")}: ${Math.round(data.max_response_time * 10) / 10} ${t("seconds")}`
++              : t("engines_messages")
++          }
++        >
++          {data.unresponsive_engines.length > 0 ? (
++            <table className="w-full text-xs">
++              <tbody>
++                {data.unresponsive_engines.map(([name, errorMessage]) => (
++                  <tr key={name}>
++                    <td className="py-0.5 pr-2 align-top">
++                      <button
++                        className="text-left font-medium text-ink-2 hover:text-accent"
++                        onClick={() => {
++                          openOverlay(`/stats?engine=${encodeURIComponent(name)}`, t("engine_stats"));
++                        }}
++                        type="button"
++                      >
++                        {name}
++                      </button>
++                    </td>
++                    <td className="py-0.5 text-danger" dir="auto">
++                      {errorMessage}
++                    </td>
++                  </tr>
++                ))}
++              </tbody>
++            </table>
++          ) : null}
++          {data.timings.length > 0 ? (
++            <table className="mt-1 w-full text-xs">
++              <tbody>
++                {data.timings.map((timing) => (
++                  <tr key={timing.name}>
++                    <td className="w-24 py-0.5 pr-2 truncate">
++                      <button
++                        className="text-left text-ink-2 hover:text-accent"
++                        onClick={() => {
++                          openOverlay(`/stats?engine=${encodeURIComponent(timing.name)}`, t("engine_stats"));
++                        }}
++                        type="button"
++                      >
++                        {timing.name}
++                      </button>
++                    </td>
++                    <td className="py-0.5">
++                      <div className="flex items-center gap-2">
++                        <span className="w-10 shrink-0 text-right text-ink-3">{Math.round(timing.time * 10) / 10}</span>
++                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
++                          <span
++                            className="block h-full rounded-full bg-accent/70"
++                            style={{ width: maxTime > 0 ? `${Math.max(2, (timing.time / maxTime) * 100)}%` : "0%" }}
++                          />
++                        </span>
++                      </div>
++                    </td>
++                  </tr>
++                ))}
++              </tbody>
++            </table>
++          ) : null}
++        </Box>
++      ) : null}
++
++      {globals.search_formats.length > 0 ? (
++        <Box title={t("download_results")}>
++          <div className="flex flex-wrap gap-1.5">
++            {globals.search_formats.map((format) => (
++              <a
++                className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
++                href={`${window.location.pathname}${window.location.search}${window.location.search.includes("?") ? "&" : "?"}format=${format}`}
++                key={format}
++              >
++                <DownloadIcon className="size-3.5" />
++                {format}
++              </a>
++            ))}
++          </div>
++        </Box>
++      ) : null}
++    </>
 +  );
 +}
 +
@@ -5773,6 +5959,8 @@ index 0000000..1da036d
 +          ))}
 +        </section>
 +      ) : null}
++
++      <DebugPanels data={data} />
 +
 +      {globals.method === "POST" ? (
 +        <Box title={t("search_url")}>
@@ -5818,10 +6006,10 @@ index 0000000..1da036d
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..c3f1e3f
+index 0000000..da1f5fc
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,1196 @@
+@@ -0,0 +1,1208 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
@@ -5831,6 +6019,7 @@ index 0000000..c3f1e3f
 +import {
 +  CalendarIcon,
 +  ClockIcon,
++  CloseIcon,
 +  DownloadIcon,
 +  ExternalLinkIcon,
 +  FileIcon,
@@ -6165,6 +6354,8 @@ index 0000000..c3f1e3f
 +
 +export function VideoCard({ eager, result, globals, mediaOpen }: CardProps) {
 +  const t = useT();
++  const [previewOpen, setPreviewOpen] = useState(false);
++  const hasMedia = Boolean(result.iframe_src);
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
@@ -6176,15 +6367,9 @@ index 0000000..c3f1e3f
 +          <div className="mt-1">
 +            <MetaLine result={result} />
 +          </div>
-+          {result.iframe_src ? (
-+            <div className="mt-2">
-+              {mediaOpen ? (
-+                <MediaPreview src={result.iframe_src} video />
-+              ) : (
-+                <MediaCollapse hideLabel={t("hide_video")} showLabel={t("show_video")}>
-+                  {() => <EmbedFrame src={result.iframe_src ?? ""} />}
-+                </MediaCollapse>
-+              )}
++          {hasMedia && previewOpen ? (
++            <div className="mt-2 animate-fade-in">
++              <MediaPreview src={result.iframe_src ?? ""} video={!mediaOpen} />
 +            </div>
 +          ) : null}
 +          <p
@@ -6194,15 +6379,30 @@ index 0000000..c3f1e3f
 +          />
 +        </div>
 +        {result.thumbnail ? (
-+          <ResultLink className="shrink-0 self-start" globals={globals} result={result}>
-+            <Thumb
-+              alt={result.title_text}
-+              className="h-24 w-40"
-+              eager={eager}
-+              lengthDisplay={formatLength(result.length_display, result.length_seconds)}
-+              src={result.thumbnail}
-+            />
-+          </ResultLink>
++          <div className="relative shrink-0">
++            <ResultLink className="block" globals={globals} result={result}>
++              <Thumb
++                alt={result.title_text}
++                className="h-24 w-40"
++                eager={eager}
++                lengthDisplay={formatLength(result.length_display, result.length_seconds)}
++                src={result.thumbnail}
++              />
++            </ResultLink>
++            {hasMedia ? (
++              <button
++                aria-label={previewOpen ? t("hide_video") : t("show_video")}
++                className="absolute end-1 top-1 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++                onClick={() => {
++                  setPreviewOpen((value) => !value);
++                }}
++                title={previewOpen ? t("hide_video") : t("show_video")}
++                type="button"
++              >
++                {previewOpen ? <CloseIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
++              </button>
++            ) : null}
++          </div>
 +        ) : null}
 +      </div>
 +      <EnginesLine result={result} />
@@ -7283,10 +7483,10 @@ index 0000000..7075ab0
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..fbb25b9
+index 0000000..e9ff796
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,542 @@
+@@ -0,0 +1,544 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -7383,8 +7583,6 @@ index 0000000..fbb25b9
 +  no_more_results: "There are no more results. You can try to:",
 +  refresh_page: "Refresh the page.",
 +  try_other_query: "Search for another query or select another category (above).",
-+  change_engines_prefs: "Change the search engine used in the preferences:",
-+  switch_instance: "Switch to another instance:",
 +  try_other_query_plain: "Search for another query or select another category.",
 +  go_previous_page: "Go back to the previous page using the previous page button.",
 +  error_loading_next_page: "Error loading the next page",
@@ -7500,6 +7698,9 @@ index 0000000..fbb25b9
 +  meta_results: "results",
 +  meta_in: "in",
 +  more_categories: "More categories",
++  no_web_results: "No web results were found.",
++  expand: "Show more",
++  collapse: "Show less",
 +  hotkeys_hint: "Press ? anytime for keyboard shortcuts",
 +  hotkeys_desc:
 +    'Navigate search results with hotkeys (JavaScript required). Press "?" on the main or results page to get help.',
@@ -7639,8 +7840,6 @@ index 0000000..fbb25b9
 +  no_more_results: "没有更多结果了,你可以尝试:",
 +  refresh_page: "刷新页面",
 +  try_other_query: "更换关键词或选择其他分类(见上方)。",
-+  change_engines_prefs: "在偏好设置中调整所用的搜索引擎:",
-+  switch_instance: "切换到其他实例:",
 +  try_other_query_plain: "更换关键词或选择其他分类。",
 +  go_previous_page: "使用“上一页”按钮返回上一页。",
 +  error_loading_next_page: "加载下一页时出错",
@@ -7756,6 +7955,9 @@ index 0000000..fbb25b9
 +  meta_results: "条相关结果",
 +  meta_in: "用时",
 +  more_categories: "更多分类",
++  no_web_results: "未找到网页结果。",
++  expand: "查看更多",
++  collapse: "收起",
 +  hotkeys_hint: "随时按 ? 查看键盘快捷键",
 +  hotkeys_desc: "使用快捷键导航搜索结果(需要 JavaScript)。在主页或结果页按 ? 查看帮助。",
 +  hotkeys_default: "默认",
@@ -10365,20 +10567,27 @@ index 0000000..fa32cff
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..37ab788
+index 0000000..30642e7
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,670 @@
+@@ -0,0 +1,734 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
 +import { HelpModal } from "../components/HelpModal.tsx";
-+import { ArrowUpIcon, CategoryIcon, ChevronLeftIcon, ChevronRightIcon, InfoIcon } from "../components/icons.tsx";
++import {
++  ArrowUpIcon,
++  CategoryIcon,
++  ChevronLeftIcon,
++  ChevronRightIcon,
++  InfoIcon,
++  SearchIcon,
++} from "../components/icons.tsx";
 +import { Answers } from "../components/results/Answers.tsx";
 +import { NewsCard, ProductGrid, ResultCard, ResultSkeleton, VideoGrid } from "../components/results/cards.tsx";
 +import { ImageGrid } from "../components/results/ImageGrid.tsx";
 +import { Pagination } from "../components/results/Pagination.tsx";
-+import { Sidebar } from "../components/results/Sidebar.tsx";
++import { Infobox, Sidebar } from "../components/results/Sidebar.tsx";
 +import { SearchBox } from "../components/SearchBox.tsx";
 +import { CategoryTabs, type FilterValues, SearchFilters } from "../components/SearchControls.tsx";
 +import { HeaderActions, Link, Shell } from "../components/Shell.tsx";
@@ -10419,9 +10628,19 @@ index 0000000..37ab788
 +  );
 +}
 +
-+function NoResults({ pageno }: { pageno: number }) {
++function NoResults({ pageno, hasInfobox }: { pageno: number; hasInfobox: boolean }) {
 +  const t = useT();
 +  const firstPage = pageno === 1;
++  if (hasInfobox && firstPage) {
++    return (
++      <div className="rounded-2xl border border-line bg-surface p-4 text-sm text-ink-2">
++        <p className="flex items-center gap-2">
++          <InfoIcon className="size-4 shrink-0 text-accent" />
++          {t("no_web_results")}
++        </p>
++      </div>
++    );
++  }
 +  return (
 +    <div className="mx-auto max-w-md rounded-2xl border border-line bg-surface p-6 text-sm text-ink-2 animate-fade-up">
 +      <p className="flex items-center gap-2 font-medium text-ink">
@@ -10438,18 +10657,6 @@ index 0000000..37ab788
 +              </button>
 +            </li>
 +            <li>{t("try_other_query")}</li>
-+            <li>
-+              {t("change_engines_prefs")}{" "}
-+              <Link className="text-accent hover:underline" href="/preferences">
-+                /preferences
-+              </Link>
-+            </li>
-+            <li>
-+              {t("switch_instance")}{" "}
-+              <a className="text-accent hover:underline" href="https://searx.space" rel="noreferrer" target="_blank">
-+                https://searx.space
-+              </a>
-+            </li>
 +          </>
 +        ) : (
 +          <li>{t("go_previous_page")}</li>
@@ -10645,6 +10852,7 @@ index 0000000..37ab788
 +  const settings = useSettings();
 +  const [helpOpen, setHelpOpen] = useState(false);
 +  const [hotkeysSelected, setHotkeysSelected] = useState(-1);
++  const [suggestionPage, setSuggestionPage] = useState(0);
 +  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 +  const listRef = useRef<HTMLDivElement | null>(null);
 +  const [appended, setAppended] = useState<ResultItem[]>([]);
@@ -10817,6 +11025,7 @@ index 0000000..37ab788
 +  // biome-ignore lint/correctness/useExhaustiveDependencies: href is the trigger
 +  useEffect(() => {
 +    setHotkeysSelected(-1);
++    setSuggestionPage(0);
 +  }, [href]);
 +
 +  // client-side calculator answer (server plugin "calculator" enabled)
@@ -10828,6 +11037,7 @@ index 0000000..37ab788
 +    return calc ? ({ template: "answer/legacy.html", answer: `${calc.expr} = ${calc.value}`, url: "" } as const) : null;
 +  }, [data.q, hasPlugin]);
 +  const showSkeletons = loading && !error;
++  const suggestionPages = Math.ceil(data.suggestions.length / 5);
 +
 +  return (
 +    <Shell globals={globals} hideTopNav>
@@ -10873,6 +11083,62 @@ index 0000000..37ab788
 +                {Math.round((data.max_response_time ?? 0) * 10) / 10} {t("seconds")}
 +              </p>
 +            ) : null}
++            {!showSkeletons && data.suggestions.length > 0 ? (
++              <div className="mt-2.5 flex items-center gap-2">
++                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
++                  {data.suggestions.slice(suggestionPage * 5, suggestionPage * 5 + 5).map((suggestion) => (
++                    <button
++                      className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
++                      dir="auto"
++                      key={suggestion.q}
++                      onClick={() => {
++                        submitQuery(suggestion.q);
++                      }}
++                      type="button"
++                    >
++                      <SearchIcon className="size-3.5 shrink-0 text-ink-3" />
++                      <span className="truncate">{suggestion.title}</span>
++                    </button>
++                  ))}
++                </div>
++                {suggestionPages > 1 ? (
++                  <div className="flex shrink-0 items-center gap-1">
++                    <button
++                      aria-label={t("previous_page")}
++                      className="grid size-9 place-items-center rounded-full border border-line text-ink-2 transition-colors hover:border-ink-3 hover:text-ink disabled:opacity-40"
++                      disabled={suggestionPage === 0}
++                      onClick={() => {
++                        setSuggestionPage((page) => Math.max(0, page - 1));
++                      }}
++                      type="button"
++                    >
++                      <ChevronLeftIcon className="size-3.5" />
++                    </button>
++                    <span className="text-xs text-ink-3">
++                      {suggestionPage + 1}/{suggestionPages}
++                    </span>
++                    <button
++                      aria-label={t("next_page")}
++                      className="grid size-9 place-items-center rounded-full border border-line text-ink-2 transition-colors hover:border-ink-3 hover:text-ink disabled:opacity-40"
++                      disabled={suggestionPage === suggestionPages - 1}
++                      onClick={() => {
++                        setSuggestionPage((page) => Math.min(suggestionPages - 1, page + 1));
++                      }}
++                      type="button"
++                    >
++                      <ChevronRightIcon className="size-3.5" />
++                    </button>
++                  </div>
++                ) : null}
++              </div>
++            ) : null}
++            {!showSkeletons && data.infoboxes.length > 0 ? (
++              <div className="mt-3 lg:hidden">
++                {data.infoboxes.map((infobox, index) => (
++                  <Infobox globals={globals} infobox={infobox} key={index} onSearch={submitQuery} />
++                ))}
++              </div>
++            ) : null}
 +            {error ? (
 +              <div
 +                className="mb-4 rounded-2xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger"
@@ -10897,7 +11163,7 @@ index 0000000..37ab788
 +
 +                {allResults.length === 0 && data.answers.length === 0 ? (
 +                  <div className="mt-6">
-+                    <NoResults pageno={data.pageno} />
++                    <NoResults hasInfobox={data.infoboxes.length > 0} pageno={data.pageno} />
 +                  </div>
 +                ) : isImagePage ? (
 +                  <div className="mt-4">
@@ -11026,11 +11292,11 @@ index 0000000..37ab788
 +            )}
 +          </div>
 +
-+          {!isImagePage && !isVideoPage && !isProductPage ? (
-+            <div className="w-full shrink-0 pt-4 lg:w-80 lg:max-h-[calc(100dvh-9rem)] lg:self-start lg:overflow-y-auto lg:pb-6 [scrollbar-width:thin]">
-+              <Sidebar data={data} onSearch={submitQuery} />
-+            </div>
-+          ) : null}
++          <div className="hidden w-full shrink-0 pt-4 lg:block lg:w-80 lg:max-h-[calc(100dvh-9rem)] lg:self-start lg:overflow-y-auto lg:pb-6 [scrollbar-width:thin]">
++            {/* keep the column reserved but blank while the new query loads -
++                  stale infoboxes from the previous query must not linger */}
++            {showSkeletons ? null : <Sidebar data={data} onSearch={submitQuery} />}
++          </div>
 +        </div>
 +      </main>
 +
@@ -11314,10 +11580,10 @@ index 0000000..948991e
 +export const StatsPage = lazy(() => import("./StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..afecb26
+index 0000000..23b7b1c
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,363 @@
+@@ -0,0 +1,362 @@
 +/* SPDX-License-Identifier: AGPL-3.0-or-later */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -11522,7 +11788,6 @@ index 0000000..afecb26
 +  .highlight {
 +    background: var(--highlight-bg);
 +    color: var(--ink);
-+    font-weight: 600;
 +    border-radius: 3px;
 +    padding: 0 1px;
 +    box-decoration-break: clone;
@@ -11921,7 +12186,7 @@ index 0000000..fc19e95
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..66a147e
+index 0000000..d53dabc
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
 @@ -0,0 +1,547 @@
@@ -12036,7 +12301,7 @@ index 0000000..66a147e
 +    {%- if result.magnetlink %}"magnetlink": {{ result.magnetlink|tojson }},{% endif %}
 +    {%- if result.torrentfile %}"torrentfile": {{ result.torrentfile|tojson }},{% endif %}
 +    {%- if result.seed is defined %}"seed": {{ result.seed | int or 0 }},{% endif %}
-+    {%- if result.leech is defined %}"leech": {{ result.leech or 0 }},{% endif %}
++    {%- if result.leech is defined %}"leech": {{ result.leech | int or 0 }},{% endif %}
 +    {%- if result.filesize %}"filesize": {{ result.filesize|tojson }},{% endif %}
 +    {%- if result.files %}"files": {{ result.files | int or 0 }},{% endif %}
 +  {%- elif result.template == 'map.html' %}
