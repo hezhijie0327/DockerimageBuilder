@@ -4326,10 +4326,10 @@ index 0000000..9c4de37
 +}
 diff --git a/client/zjsearch/src/components/icons.tsx b/client/zjsearch/src/components/icons.tsx
 new file mode 100644
-index 0000000..5e0ed5e
+index 0000000..82e47e1
 --- /dev/null
 +++ b/client/zjsearch/src/components/icons.tsx
-@@ -0,0 +1,479 @@
+@@ -0,0 +1,486 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/** Inline SVG icon set (stroke style, 24x24 grid) + brand marks. */
@@ -4749,6 +4749,13 @@ index 0000000..5e0ed5e
 +  <>
 +    <polyline points="4 17 10 11 4 5" />
 +    <path d="m12 19 8 0" />
++  </>,
++);
++
++export const EyeIcon = makeIcon(
++  <>
++    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
++    <circle cx="12" cy="12" r="3" />
 +  </>,
 +);
 +
@@ -5700,18 +5707,17 @@ index 0000000..f892723
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 0000000..9eebf56
+index 0000000..a51c428
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,327 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
 +import { useT } from "../../lib/i18n.ts";
 +import { useOverlay } from "../../lib/overlay.tsx";
 +import type { GlobalData, InfoboxData, SearchPageData } from "../../lib/types.ts";
-+import { ChevronDownIcon, DownloadIcon, ExternalLinkIcon } from "../icons.tsx";
-+import { Link } from "../Shell.tsx";
++import { ChevronDownIcon, DownloadIcon, ExternalLinkIcon, SearchIcon } from "../icons.tsx";
 +
 +function Box({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
 +  return (
@@ -5767,6 +5773,9 @@ index 0000000..9eebf56
 +                      className="inline-block max-h-24 rounded-lg align-middle"
 +                      decoding="async"
 +                      loading="lazy"
++                      onError={(event) => {
++                        event.currentTarget.style.display = "none";
++                      }}
 +                      src={attribute.image_src}
 +                    />
 +                  ) : (
@@ -5845,6 +5854,33 @@ index 0000000..9eebf56
 +        <ChevronDownIcon className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
 +      </button>
 +    </div>
++  );
++}
++
++export function SuggestionsBox({ data, onSearch }: { data: SearchPageData; onSearch: (q: string) => void }) {
++  const t = useT();
++  if (data.suggestions.length === 0) {
++    return null;
++  }
++  return (
++    <Box open title={t("suggestions")}>
++      <div className="grid grid-cols-2 gap-2">
++        {data.suggestions.slice(0, 8).map((suggestion) => (
++          <button
++            className="flex items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left text-[13px] text-ink-2 transition-colors hover:border-accent hover:text-ink"
++            dir="auto"
++            key={suggestion.q}
++            onClick={() => {
++              onSearch(suggestion.q);
++            }}
++            type="button"
++          >
++            <SearchIcon className="size-3.5 shrink-0 text-ink-3" />
++            <span className="truncate">{suggestion.title}</span>
++          </button>
++        ))}
++      </div>
++    </Box>
 +  );
 +}
 +
@@ -5960,8 +5996,6 @@ index 0000000..9eebf56
 +        </section>
 +      ) : null}
 +
-+      <DebugPanels data={data} />
-+
 +      {globals.method === "POST" ? (
 +        <Box title={t("search_url")}>
 +          <div className="flex items-start gap-2">
@@ -6006,7 +6040,7 @@ index 0000000..9eebf56
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..da1f5fc
+index 0000000..764af81
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
 @@ -0,0 +1,1208 @@
@@ -6022,6 +6056,7 @@ index 0000000..da1f5fc
 +  CloseIcon,
 +  DownloadIcon,
 +  ExternalLinkIcon,
++  EyeIcon,
 +  FileIcon,
 +  FilmIcon,
 +  MagnetIcon,
@@ -7124,30 +7159,29 @@ index 0000000..da1f5fc
 +                  />
 +                ) : null}
 +              </ResultLink>
++              {result.iframe_src && isPlaying ? (
++                <div className="absolute inset-0 animate-fade-in overflow-hidden rounded-xl border border-line bg-black">
++                  <iframe
++                    allowFullScreen
++                    className="size-full"
++                    referrerPolicy="origin"
++                    src={result.iframe_src ?? ""}
++                    title={result.title_text}
++                  />
++                </div>
++              ) : null}
 +              {result.iframe_src ? (
-+                isPlaying ? (
-+                  <div className="absolute inset-0 animate-fade-in overflow-hidden rounded-xl border border-line bg-black">
-+                    <iframe
-+                      allowFullScreen
-+                      className="size-full"
-+                      referrerPolicy="origin"
-+                      src={result.iframe_src ?? ""}
-+                      title={result.title_text}
-+                    />
-+                  </div>
-+                ) : (
-+                  <button
-+                    aria-label={t("show_video")}
-+                    className="absolute bottom-2 end-2 grid size-12 place-items-center rounded-full bg-accent-strong text-accent-contrast opacity-0 shadow-pop transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
-+                    onClick={() => {
-+                      setPlaying(index);
-+                    }}
-+                    title={t("show_video")}
-+                    type="button"
-+                  >
-+                    <PlayIcon className="size-5 translate-x-px" />
-+                  </button>
-+                )
++                <button
++                  aria-label={isPlaying ? t("hide_video") : t("show_video")}
++                  className="absolute end-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong"
++                  onClick={() => {
++                    setPlaying(isPlaying ? null : index);
++                  }}
++                  title={isPlaying ? t("hide_video") : t("show_video")}
++                  type="button"
++                >
++                  {isPlaying ? <CloseIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
++                </button>
 +              ) : null}
 +            </div>
 +            <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
@@ -10567,10 +10601,10 @@ index 0000000..fa32cff
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..30642e7
+index 0000000..0e6a762
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,734 @@
+@@ -0,0 +1,690 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -10581,13 +10615,12 @@ index 0000000..30642e7
 +  ChevronLeftIcon,
 +  ChevronRightIcon,
 +  InfoIcon,
-+  SearchIcon,
 +} from "../components/icons.tsx";
 +import { Answers } from "../components/results/Answers.tsx";
 +import { NewsCard, ProductGrid, ResultCard, ResultSkeleton, VideoGrid } from "../components/results/cards.tsx";
 +import { ImageGrid } from "../components/results/ImageGrid.tsx";
 +import { Pagination } from "../components/results/Pagination.tsx";
-+import { Infobox, Sidebar } from "../components/results/Sidebar.tsx";
++import { DebugPanels, Infobox, Sidebar, SuggestionsBox } from "../components/results/Sidebar.tsx";
 +import { SearchBox } from "../components/SearchBox.tsx";
 +import { CategoryTabs, type FilterValues, SearchFilters } from "../components/SearchControls.tsx";
 +import { HeaderActions, Link, Shell } from "../components/Shell.tsx";
@@ -11079,61 +11112,18 @@ index 0000000..30642e7
 +            </div>
 +            {!showSkeletons && !error ? (
 +              <p className="mt-2 ps-3.5 text-xs text-ink-3">
-+                {t("meta_found")} {allResults.length} {t("meta_results")} · {t("meta_in")}{" "}
-+                {Math.round((data.max_response_time ?? 0) * 10) / 10} {t("seconds")}
++                {t("meta_found")} {allResults.length} {t("meta_results")}
 +              </p>
 +            ) : null}
-+            {!showSkeletons && data.suggestions.length > 0 ? (
-+              <div className="mt-2.5 flex items-center gap-2">
-+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-+                  {data.suggestions.slice(suggestionPage * 5, suggestionPage * 5 + 5).map((suggestion) => (
-+                    <button
-+                      className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
-+                      dir="auto"
-+                      key={suggestion.q}
-+                      onClick={() => {
-+                        submitQuery(suggestion.q);
-+                      }}
-+                      type="button"
-+                    >
-+                      <SearchIcon className="size-3.5 shrink-0 text-ink-3" />
-+                      <span className="truncate">{suggestion.title}</span>
-+                    </button>
-+                  ))}
-+                </div>
-+                {suggestionPages > 1 ? (
-+                  <div className="flex shrink-0 items-center gap-1">
-+                    <button
-+                      aria-label={t("previous_page")}
-+                      className="grid size-9 place-items-center rounded-full border border-line text-ink-2 transition-colors hover:border-ink-3 hover:text-ink disabled:opacity-40"
-+                      disabled={suggestionPage === 0}
-+                      onClick={() => {
-+                        setSuggestionPage((page) => Math.max(0, page - 1));
-+                      }}
-+                      type="button"
-+                    >
-+                      <ChevronLeftIcon className="size-3.5" />
-+                    </button>
-+                    <span className="text-xs text-ink-3">
-+                      {suggestionPage + 1}/{suggestionPages}
-+                    </span>
-+                    <button
-+                      aria-label={t("next_page")}
-+                      className="grid size-9 place-items-center rounded-full border border-line text-ink-2 transition-colors hover:border-ink-3 hover:text-ink disabled:opacity-40"
-+                      disabled={suggestionPage === suggestionPages - 1}
-+                      onClick={() => {
-+                        setSuggestionPage((page) => Math.min(suggestionPages - 1, page + 1));
-+                      }}
-+                      type="button"
-+                    >
-+                      <ChevronRightIcon className="size-3.5" />
-+                    </button>
-+                  </div>
-+                ) : null}
++            {!showSkeletons ? (
++              <div className="mt-2 flex flex-col gap-3 lg:hidden">
++                <SuggestionsBox data={data} onSearch={submitQuery} />
++                <DebugPanels data={data} />
 +              </div>
 +            ) : null}
++
 +            {!showSkeletons && data.infoboxes.length > 0 ? (
-+              <div className="mt-3 lg:hidden">
++              <div className="mt-3 flex flex-col gap-3 lg:hidden">
 +                {data.infoboxes.map((infobox, index) => (
 +                  <Infobox globals={globals} infobox={infobox} key={index} onSearch={submitQuery} />
 +                ))}
@@ -11292,10 +11282,10 @@ index 0000000..30642e7
 +            )}
 +          </div>
 +
-+          <div className="hidden w-full shrink-0 pt-4 lg:block lg:w-80 lg:max-h-[calc(100dvh-9rem)] lg:self-start lg:overflow-y-auto lg:pb-6 [scrollbar-width:thin]">
-+            {/* keep the column reserved but blank while the new query loads -
-+                  stale infoboxes from the previous query must not linger */}
++          <div className="hidden w-full shrink-0 pt-4 lg:flex lg:flex-col lg:gap-3 lg:w-80 lg:pb-6">
 +            {showSkeletons ? null : <Sidebar data={data} onSearch={submitQuery} />}
++            {showSkeletons ? null : <SuggestionsBox data={data} onSearch={submitQuery} />}
++            {showSkeletons ? null : <DebugPanels data={data} />}
 +          </div>
 +        </div>
 +      </main>
@@ -11307,13 +11297,14 @@ index 0000000..30642e7
 +}
 diff --git a/client/zjsearch/src/pages/StatsPage.tsx b/client/zjsearch/src/pages/StatsPage.tsx
 new file mode 100644
-index 0000000..ff02723
+index 0000000..e69f51b
 --- /dev/null
 +++ b/client/zjsearch/src/pages/StatsPage.tsx
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,261 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useMemo, useState } from "react";
++import { ChevronLeftIcon } from "../components/icons.tsx";
 +import { Link, Shell } from "../components/Shell.tsx";
 +import { useT } from "../lib/i18n.ts";
 +import type { EngineStat, StatsPageData } from "../lib/types.ts";
@@ -11481,6 +11472,20 @@ index 0000000..ff02723
 +            )}
 +          </h1>
 +        )}
++        {embedded && data.selected_engine_name ? (
++          <div className="pt-5">
++            <Link
++              className="inline-flex items-center gap-1 text-xs text-ink-3 transition-colors hover:text-accent"
++              href="/stats"
++            >
++              <ChevronLeftIcon className="size-3.5" />
++              {t("engine_stats")}
++            </Link>
++            <h2 className="mt-2 text-xl font-semibold tracking-tight text-ink" dir="auto">
++              {data.selected_engine_name}
++            </h2>
++          </div>
++        ) : null}
 +
 +        {engines.length === 0 ? (
 +          <p className="text-sm text-ink-2">{t("no_data_available")}</p>
