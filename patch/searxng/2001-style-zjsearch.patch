@@ -215,10 +215,10 @@ index 0000000..21dacb7
 +  image_proxy: true
 diff --git a/client/zjsearch/make-patch.ps1 b/client/zjsearch/make-patch.ps1
 new file mode 100644
-index 0000000..97332b7
+index 0000000..4e6c1b5
 --- /dev/null
 +++ b/client/zjsearch/make-patch.ps1
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,57 @@
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine. PowerShell twin of
 +# make-patch.sh - keep the two in sync.
@@ -228,10 +228,12 @@ index 0000000..97332b7
 +#   git apply --check zjsearch-theme.patch && git apply zjsearch-theme.patch
 +#   cd client/zjsearch ; npm install ; npm run build
 +#
-+# Default base: the fork's master branch (falls back to origin/master, then
-+# d834a52), so the patch carries the whole theme delta relative to master.
-+# Only client/zjsearch and searx/templates/zjsearch are included; both are
-+# required - the map-page fix lives in the data templates, not the client.
++# Default base: master (falls back to origin/master; if neither exists,
++# origin/master is fetched from origin first), so the patch carries the whole
++# theme delta relative to master. The diff runs against the working tree, so
++# uncommitted edits are included (untracked files are not). Only client/zjsearch
++# and searx/templates/zjsearch are included; both are required - the map-page
++# fix lives in the data templates, not the client.
 +
 +param(
 +    [string]$Base = "",
@@ -241,9 +243,20 @@ index 0000000..97332b7
 +$ErrorActionPreference = "Stop"
 +
 +if (-not $Base) {
-+    foreach ($ref in @("master", "origin/master", "origin/main", "d834a52")) {
++    foreach ($ref in @("master", "origin/master")) {
 +        & git rev-parse -q --verify "$ref" *> $null
 +        if ($LASTEXITCODE -eq 0) { $Base = $ref; break }
++    }
++    if (-not $Base) {
++        Write-Host "no master/origin/master locally - fetching origin/master ..."
++        # explicit refspec so the remote-tracking ref exists even in
++        # single-branch clones (fetching a bare branch name only fills FETCH_HEAD)
++        & git fetch --quiet origin "+refs/heads/master:refs/remotes/origin/master"
++        if ($LASTEXITCODE -ne 0) {
++            Write-Host "error: could not fetch origin/master - check the network, or pass -Base <ref>"
++            exit 1
++        }
++        $Base = "origin/master"
 +    }
 +}
 +
@@ -251,25 +264,24 @@ index 0000000..97332b7
 +
 +# byte-exact redirect through cmd: PowerShell's own ">" re-encodes git output
 +# (UTF-16 / BOM), which git apply would reject
-+cmd /c "git diff --text $Base HEAD -- client/zjsearch searx/templates/zjsearch > `"$Out`""
++cmd /c "git diff --text $Base -- client/zjsearch searx/templates/zjsearch > `"$Out`""
 +
 +$content = Get-Content $Out -Raw
 +$files = ([regex]::Matches($content, "(?m)^diff --git")).Count
 +if ($files -eq 0) {
-+    Write-Error "no changes between $Base and HEAD - nothing to patch"
++    Write-Error "no changes between $Base and the working tree - nothing to patch"
 +    exit 1
 +}
-+$head = (& git rev-parse --short HEAD).Trim()
-+Write-Host "wrote $Out : $files files, $Base..$head"
++Write-Host "wrote $Out : $files files, $Base..worktree"
 +Select-String -Path $Out -Pattern "^diff --git" | ForEach-Object {
 +    Write-Host ("  " + ($_.Line -replace "^diff --git a/", "" -replace " b/.*$", ""))
 +}
 diff --git a/client/zjsearch/make-patch.sh b/client/zjsearch/make-patch.sh
 new file mode 100644
-index 0000000..2d08c3a
+index 0000000..a18463a
 --- /dev/null
 +++ b/client/zjsearch/make-patch.sh
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,50 @@
 +#!/usr/bin/env bash
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine:
@@ -279,34 +291,46 @@ index 0000000..2d08c3a
 +#   git apply --check zjsearch-theme.patch && git apply zjsearch-theme.patch
 +#   cd client/zjsearch && npm install && npm run build
 +#
-+# Default base: the fork's master branch (falls back to origin/master, then
-+# d834a52), so the patch carries the whole theme delta relative to master.
-+# Only client/zjsearch and searx/templates/zjsearch are included; both are
-+# required - the map-page fix lives in the data templates, not the client.
++# Default base: master (falls back to origin/master; if neither exists,
++# origin/master is fetched from origin first), so the patch carries the whole
++# theme delta relative to master. The diff runs against the working tree, so
++# uncommitted edits are included (untracked files are not). Only client/zjsearch
++# and searx/templates/zjsearch are included; both are required - the map-page
++# fix lives in the data templates, not the client.
 +
 +set -euo pipefail
 +
 +base=${1:-}
 +if [ -z "$base" ]; then
-+  for ref in master origin/master origin/main d834a52; do
++  for ref in master origin/master; do
 +    if git rev-parse -q --verify "$ref" >/dev/null 2>&1; then
 +      base=$ref
 +      break
 +    fi
 +  done
++  if [ -z "$base" ]; then
++    echo "no master/origin/master locally - fetching origin/master ..." >&2
++    # explicit refspec so the remote-tracking ref exists even in
++    # single-branch clones (fetching a bare branch name only fills FETCH_HEAD)
++    if ! git fetch --quiet origin +refs/heads/master:refs/remotes/origin/master; then
++      echo "error: could not fetch origin/master - check the network, or pass an explicit base: $0 <base-ref> [out-file]" >&2
++      exit 1
++    fi
++    base=origin/master
++  fi
 +fi
 +out=${2:-zjsearch-theme.patch}
 +
 +cd "$(dirname "$0")/../.."
 +
-+git diff --text "$base" HEAD -- client/zjsearch searx/templates/zjsearch > "$out"
++git diff --text "$base" -- client/zjsearch searx/templates/zjsearch > "$out"
 +
 +files=$(grep -c '^diff --git' "$out" || true)
 +if [ "$files" = "0" ]; then
-+  echo "no changes between $base and HEAD - nothing to patch" >&2
++  echo "no changes between $base and the working tree - nothing to patch" >&2
 +  exit 1
 +fi
-+echo "wrote $out: $files files, $base..$(git rev-parse --short HEAD)"
++echo "wrote $out: $files files, $base..worktree"
 +grep '^diff --git' "$out" | sed 's/^diff --git a\///; s/ b\/.*//; s/^/  /'
 diff --git a/client/zjsearch/package-lock.json b/client/zjsearch/package-lock.json
 new file mode 100644
@@ -3165,15 +3189,15 @@ index 0000000..567194f
 +}
 diff --git a/client/zjsearch/src/app.tsx b/client/zjsearch/src/app.tsx
 new file mode 100644
-index 0000000..858ff9e
+index 0000000..1eca7c9
 --- /dev/null
 +++ b/client/zjsearch/src/app.tsx
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,74 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { BrandMark } from "./components/icons.tsx";
 +import { Shell } from "./components/Shell.tsx";
-+import { I18nContext } from "./lib/i18n.ts";
++import { I18nContext, useT } from "./lib/i18n.ts";
 +import { OverlayProvider } from "./lib/overlay.tsx";
 +import { RouterProvider, useRouter } from "./lib/router.tsx";
 +import type { ClientSettings } from "./lib/settings.ts";
@@ -3188,6 +3212,7 @@ index 0000000..858ff9e
 +
 +function Pages() {
 +  const { data, error } = useRouter();
++  const t = useT();
 +
 +  if (!data) {
 +    return (
@@ -3221,7 +3246,7 @@ index 0000000..858ff9e
 +          <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center gap-4 px-4 pb-24 text-center animate-fade-up">
 +            <BrandMark className="size-14 rounded-[22%]" />
 +            <h1 className="text-5xl font-bold tracking-tight text-ink">404</h1>
-+            <p className="text-sm text-ink-2">{globals.strings.page_not_found}</p>
++            <p className="text-sm text-ink-2">{t("page_not_found")}</p>
 +          </main>
 +        </Shell>
 +      );
@@ -3229,10 +3254,10 @@ index 0000000..858ff9e
 +}
 +
 +export function App({ initialData, settings }: { initialData: AnyPageData | null; settings: ClientSettings }) {
-+  const strings = initialData?.globals.strings ?? {};
++  const locale = initialData?.globals.locale ?? "en";
 +  return (
 +    <SettingsContext.Provider value={settings}>
-+      <I18nContext.Provider value={strings}>
++      <I18nContext.Provider value={locale}>
 +        <RouterProvider initialData={initialData}>
 +          <OverlayProvider>
 +            <Pages />
@@ -3467,16 +3492,16 @@ index 0000000..e42b873
 +}
 diff --git a/client/zjsearch/src/components/HelpModal.tsx b/client/zjsearch/src/components/HelpModal.tsx
 new file mode 100644
-index 0000000..b51e404
+index 0000000..8855ec6
 --- /dev/null
 +++ b/client/zjsearch/src/components/HelpModal.tsx
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,132 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/** Keyboard shortcuts help dialog (opened with "?"). */
 +
 +import { useEffect } from "react";
-+import { useT } from "../lib/i18n.ts";
++import { type Translate, useT } from "../lib/i18n.ts";
 +import { CloseIcon } from "./icons.tsx";
 +
 +interface HelpColumn {
@@ -3484,47 +3509,62 @@ index 0000000..b51e404
 +  rows: Array<[string, string]>;
 +}
 +
-+const SHORTCUT_ROWS: Array<[string, string]> = [
-+  ["? / ?", "Show / hide this help"],
-+  ["j ↓ · k ↑", "Focus next / previous result"],
-+  ["← →", "Previous / next page"],
-+  ["n p", "Next / previous page"],
-+  ["o ⏎", "Open focused result"],
-+  ["t v", "Open in a new tab"],
-+  ["y", "Copy URL of the focused result"],
-+  ["i", "Focus the search box"],
-+  ["Esc", "Close panels, blur the search box"],
-+];
++function shortcutRows(layout: "default" | "vim", t: Translate): Array<[string, string]> {
++  if (layout === "vim") {
++    return [
++      ["?", t("help_show_hide")],
++      ["j", t("help_focus_next")],
++      ["k", t("help_focus_prev")],
++      ["n", t("help_page_next")],
++      ["p", t("help_page_prev")],
++      ["o ⏎", t("help_open")],
++      ["v", t("help_open_new_tab")],
++      ["y", t("help_yank")],
++      ["i", t("help_focus_search")],
++      ["Esc", t("help_esc")],
++    ];
++  }
++  return [
++    ["? / ?", t("help_show_hide")],
++    ["↓", t("help_focus_next")],
++    ["↑", t("help_focus_prev")],
++    ["→", t("help_page_next")],
++    ["←", t("help_page_prev")],
++    ["o ⏎", t("help_open")],
++    ["t", t("help_open_new_tab")],
++    ["y", t("help_yank")],
++    ["i /", t("help_focus_search")],
++    ["Esc", t("help_esc")],
++  ];
++}
 +
-+const OPERATOR_ROWS: Array<[string, string]> = [
-+  ["filetype:", "Limit results to a file extension"],
-+  ["site:", "Limit results to a specific site"],
-+  ["inurl:", "Word or phrase in the URL"],
-+  ["intitle:", "Word or phrase in the title"],
-+  ['"words"', "Exact phrase"],
-+  ["AND", "Both terms: cats AND dogs"],
-+  ["OR", "Either term: cats OR dogs"],
-+  ["+ -", "Force include / exclude a term"],
-+  ["*", "Wildcard within a phrase"],
-+];
++function operatorRows(t: Translate): Array<[string, string]> {
++  return [
++    ["filetype:", t("op_filetype")],
++    ["site:", t("op_site")],
++    ["inurl:", t("op_inurl")],
++    ["intitle:", t("op_intitle")],
++    ['"words"', t("op_exact")],
++    ["AND", t("op_and")],
++    ["OR", t("op_or")],
++    ["+ -", t("op_inclexc")],
++    ["*", t("op_wildcard")],
++  ];
++}
 +
-+const BANG_ROWS: Array<[string, string]> = [
-+  ["!bang", "All DuckDuckGo bangs work here"],
-+  ["!images !i", "Image search bang"],
-+  ["!videos !v", "Video search bang"],
-+  ["!news !n", "News search bang"],
-+  ["!maps !m", "Map search bang"],
-+  ["keyword", "Open the first result"],
-+  ["ip", "Show your IP address"],
-+  ["hash md5 …", "Hash a string (enable the plugin)"],
-+  ["random", "Random values generator"],
-+];
-+
-+const COLUMNS: HelpColumn[] = [
-+  { title: "Keyboard shortcuts", rows: SHORTCUT_ROWS },
-+  { title: "Search operators", rows: OPERATOR_ROWS },
-+  { title: "Bangs & widgets", rows: BANG_ROWS },
-+];
++function bangRows(t: Translate): Array<[string, string]> {
++  return [
++    ["!bang", t("bang_all")],
++    ["!images !i", t("bang_images")],
++    ["!videos !v", t("bang_videos")],
++    ["!news !n", t("bang_news")],
++    ["!maps !m", t("bang_maps")],
++    ["keyword", t("bang_keyword")],
++    ["ip", t("widget_ip")],
++    ["hash md5 …", t("widget_hash")],
++    ["random", t("widget_random")],
++  ];
++}
 +
 +export function HelpModal({ layout, onClose }: { layout: "default" | "vim"; onClose: () => void }) {
 +  const t = useT();
@@ -3541,27 +3581,11 @@ index 0000000..b51e404
 +    };
 +  }, [onClose]);
 +
-+  // the vim column labels differ slightly from the default ones
-+  const columns = COLUMNS.map((column) => {
-+    if (column.title !== "Keyboard shortcuts") {
-+      return column;
-+    }
-+    const rows: Array<[string, string]> =
-+      layout === "vim"
-+        ? [
-+            ["?", "Show / hide this help"],
-+            ["j / ↓", "Focus next result"],
-+            ["k / ↑", "Focus previous result"],
-+            ["n", "Next page"],
-+            ["p", "Previous page"],
-+            ["o ⏎", "Open focused result"],
-+            ["v", "Open in a new tab"],
-+            ["y", "Copy URL of the focused result"],
-+            ["i", "Focus the search box"],
-+          ]
-+        : column.rows;
-+    return { title: column.title, rows };
-+  });
++  const columns: HelpColumn[] = [
++    { title: t("help_shortcuts"), rows: shortcutRows(layout, t) },
++    { title: t("help_operators"), rows: operatorRows(t) },
++    { title: t("help_bangs"), rows: bangRows(t) },
++  ];
 +
 +  return (
 +    <div aria-modal="true" className="fixed inset-0 z-50 animate-fade-in" role="dialog">
@@ -4034,10 +4058,10 @@ index 0000000..9dbb358
 +}
 diff --git a/client/zjsearch/src/components/Shell.tsx b/client/zjsearch/src/components/Shell.tsx
 new file mode 100644
-index 0000000..b3c8866
+index 0000000..7568437
 --- /dev/null
 +++ b/client/zjsearch/src/components/Shell.tsx
-@@ -0,0 +1,194 @@
+@@ -0,0 +1,183 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import type { MouseEvent, ReactNode } from "react";
@@ -4045,7 +4069,7 @@ index 0000000..b3c8866
 +import { useOverlay } from "../lib/overlay.tsx";
 +import { useRouter } from "../lib/router.tsx";
 +import type { GlobalData } from "../lib/types.ts";
-+import { BarChartIcon, HeartIcon, InfoIcon, SlidersIcon } from "./icons.tsx";
++import { BarChartIcon, HeartIcon, SlidersIcon } from "./icons.tsx";
 +
 +/** Anchor that performs SPA navigation for internal URLs. */
 +export function Link({
@@ -4102,24 +4126,13 @@ index 0000000..b3c8866
 +const iconBtn =
 +  "grid size-8 sm:size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink";
 +
-+/** Right-side icon group: About / Stats / Preferences open as slide-in
++/** Right-side icon group: Stats / Preferences open as slide-in
 +    panels (URL unchanged); theme style lives in the preferences panel. */
 +export function HeaderActions({ globals }: { globals: GlobalData }) {
 +  const t = useT();
 +  const { openOverlay } = useOverlay();
 +  return (
 +    <div className="flex items-center gap-0.5 sm:gap-1">
-+      <button
-+        aria-label={t("about")}
-+        className={iconBtn}
-+        onClick={() => {
-+          openOverlay(globals.about_url, t("about"));
-+        }}
-+        title={t("about")}
-+        type="button"
-+      >
-+        <InfoIcon className="size-[18px]" />
-+      </button>
 +      {globals.donation_url ? (
 +        <a
 +          aria-label={t("donate")}
@@ -7066,18 +7079,21 @@ index 0000000..b6f8e06
 +}
 diff --git a/client/zjsearch/src/features/hotkeys.ts b/client/zjsearch/src/features/hotkeys.ts
 new file mode 100644
-index 0000000..3ee01f7
+index 0000000..5bc69f7
 --- /dev/null
 +++ b/client/zjsearch/src/features/hotkeys.ts
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,122 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
 + * Keyboard navigation for the results page, mirroring the upstream
 + * default and vim layouts (client_settings.hotkeys).
++ *
++ * All actions are delegated to the HotkeyTarget: the page owns the
++ * selection state and knows which elements are navigable.
 + */
 +
-+import { useEffect, useRef, useState } from "react";
++import { useEffect, useRef } from "react";
 +
 +export interface HotkeyTarget {
 +  /** select previous / next result (clamped) */
@@ -7093,27 +7109,15 @@ index 0000000..3ee01f7
 +}
 +
 +const TEXT_ENTRY = new Set(["INPUT", "TEXTAREA", "SELECT"]);
++/** elements with native Enter/space activation - never intercept their keys */
++const NATIVE_ACTIVATION = new Set(["A", "BUTTON"]);
 +
 +export function useHotkeys(layout: "default" | "vim", target: HotkeyTarget, onHelp: () => void) {
-+  const [selected, setSelected] = useState(-1);
-+  const listRef = useRef<HTMLElement | null>(null);
-+
-+  const cards = () => (listRef.current ? Array.from(listRef.current.querySelectorAll("article.result")) : []);
-+
-+  const move = (delta: number) => {
-+    const items = cards();
-+    if (items.length === 0) {
-+      return;
-+    }
-+    const next = Math.min(items.length - 1, Math.max(0, selected + delta));
-+    setSelected(next);
-+    items[next]?.scrollIntoView({ block: "center", behavior: "smooth" });
-+  };
-+
 +  const ref = useRef(target);
 +  ref.current = target;
++  const helpRef = useRef(onHelp);
++  helpRef.current = onHelp;
 +
-+  // biome-ignore lint/correctness/useExhaustiveDependencies: handlers are read through ref.current
 +  useEffect(() => {
 +    const onKeyDown = (event: KeyboardEvent) => {
 +      if (event.ctrlKey || event.altKey || event.metaKey) {
@@ -7128,34 +7132,38 @@ index 0000000..3ee01f7
 +        }
 +        return;
 +      }
++      if (NATIVE_ACTIVATION.has(tag)) {
++        // a focused link or button keeps its native keyboard behavior
++        return;
++      }
++      // keys arriving through an IME composition are input, not commands
++      if (event.isComposing || event.keyCode === 229) {
++        return;
++      }
 +
 +      const t = ref.current;
 +      const vim = layout === "vim";
 +      const key = event.key;
 +
-+      if (key === "?") {
++      // the CJK punctuation mode of Chinese IMEs emits the full-width "？"
++      if (key === "?" || key === "？") {
 +        event.preventDefault();
-+        onHelp();
++        helpRef.current();
 +        return;
 +      }
-+      if (vim && key === "j") {
++      if (vim && (key === "j" || key === "k")) {
 +        event.preventDefault();
-+        move(1);
-+        return;
-+      }
-+      if (vim && key === "k") {
-+        event.preventDefault();
-+        move(-1);
++        t.move(key === "j" ? 1 : -1);
 +        return;
 +      }
 +      if (!vim && (key === "ArrowDown" || key === "ArrowRight")) {
 +        event.preventDefault();
-+        key === "ArrowRight" ? t.page(1) : move(1);
++        key === "ArrowRight" ? t.page(1) : t.move(1);
 +        return;
 +      }
 +      if (!vim && (key === "ArrowUp" || key === "ArrowLeft")) {
 +        event.preventDefault();
-+        key === "ArrowLeft" ? t.page(-1) : move(-1);
++        key === "ArrowLeft" ? t.page(-1) : t.move(-1);
 +        return;
 +      }
 +      if (key === "n") {
@@ -7168,7 +7176,7 @@ index 0000000..3ee01f7
 +        t.page(-1);
 +        return;
 +      }
-+      if (key === "o" || (vim && key === "Enter")) {
++      if (key === "o" || key === "Enter") {
 +        event.preventDefault();
 +        t.open(false);
 +        return;
@@ -7186,7 +7194,7 @@ index 0000000..3ee01f7
 +        }
 +        return;
 +      }
-+      if (key === "/") {
++      if (key === "i" || key === "/" || key === "／") {
 +        event.preventDefault();
 +        t.focusSearch();
 +      }
@@ -7195,12 +7203,7 @@ index 0000000..3ee01f7
 +    return () => {
 +      window.removeEventListener("keydown", onKeyDown);
 +    };
-+  }, [layout, onHelp]);
-+
-+  const selectRef = useRef(selected);
-+  selectRef.current = selected;
-+
-+  return { selected, setSelected, listRef };
++  }, [layout]);
 +}
 diff --git a/client/zjsearch/src/lib/engineDescriptions.ts b/client/zjsearch/src/lib/engineDescriptions.ts
 new file mode 100644
@@ -7292,31 +7295,535 @@ index 0000000..7075ab0
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..3dbb4d2
+index 0000000..dd45719
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,526 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
-+ * Minimal i18n: the server translates the full UI string catalog into the
-+ * page payload (globals.strings), the client only looks keys up.
++ * ZJSearch maintains its own UI string catalog instead of relying on the
++ * upstream searx/translations catalogs: English is the source, Simplified
++ * Chinese is the only translation, and every other locale falls back to
++ * English. Strings are looked up by key with useT() / t("key").
 + */
 +
 +import { createContext, useContext } from "react";
 +
 +export type Translate = (key: string) => string;
 +
-+const MISSING: Translate = (key) => key;
++// source strings (English)
++const EN: Record<string, string> = {
++  about: "About",
++  donate: "Donate",
++  preferences: "Preferences",
++  search_placeholder: "Search for...",
++  clear: "clear",
++  search: "search",
++  powered_by: "Powered by",
++  source_code: "Source code",
++  issue_tracker: "Issue tracker",
++  engine_stats: "Engine stats",
++  public_instances: "Public instances",
++  privacy_policy: "Privacy policy",
++  contact_maintainer: "Contact instance maintainer",
++  search_language: "Search language",
++  default_language: "Default language",
++  autodetect: "Auto-detect",
++  safesearch: "SafeSearch",
++  strict: "Strict",
++  moderate: "Moderate",
++  none: "None",
++  time_range: "Time range",
++  anytime: "Anytime",
++  last_day: "Last day",
++  last_week: "Last week",
++  last_month: "Last month",
++  last_year: "Last year",
++  answers: "Answers",
++  try_searching_for: "Try searching for:",
++  suggestions: "Suggestions",
++  info: "Info",
++  engines_messages: "Messages from the search engines",
++  response_time: "Response time",
++  seconds: "seconds",
++  search_url: "Search URL",
++  copy: "Copy",
++  copied: "Copied",
++  download_results: "Download results",
++  back_to_top: "Back to top",
++  previous_page: "Previous page",
++  next_page: "Next page",
++  length: "Length",
++  views: "Views",
++  author: "Author",
++  cached: "cached",
++  show_media: "show media",
++  hide_media: "hide media",
++  show_video: "show video",
++  hide_video: "hide video",
++  show_map: "show map",
++  hide_map: "hide map",
++  no_description: "This site did not provide any description.",
++  magnet_link: "magnet link",
++  torrent_file: "torrent file",
++  seeder: "Seeder",
++  leecher: "Leecher",
++  filesize: "Filesize",
++  files: "Number of Files",
++  repository: "Repository",
++  filename: "Filename",
++  download: "Download",
++  date: "Date",
++  type: "Type",
++  resolution: "Resolution",
++  image_formats: "Image formats",
++  original_format: "original format",
++  source: "Source",
++  engines: "Engines",
++  view_source: "View source",
++  address: "address",
++  temperature: "Temperature",
++  feels_like: "Feels Like",
++  wind: "Wind",
++  pressure: "Pressure",
++  humidity: "Humidity",
++  examples: "Examples",
++  definitions: "Definitions",
++  synonyms: "Synonyms",
++  sorry: "Sorry!",
++  no_results_found: "No results were found. You can try to:",
++  no_more_results: "There are no more results. You can try to:",
++  refresh_page: "Refresh the page.",
++  try_other_query: "Search for another query or select another category (above).",
++  change_engines_prefs: "Change the search engine used in the preferences:",
++  switch_instance: "Switch to another instance:",
++  try_other_query_plain: "Search for another query or select another category.",
++  go_previous_page: "Go back to the previous page using the previous page button.",
++  error_loading_next_page: "Error loading the next page",
++  no_item_found: "No item found",
++  no_cookies: "There is currently no data available. ",
++  page_not_found: "Page not found",
++  hotkeys_vim: "Vim-like",
++  general: "General",
++  user_interface: "User interface",
++  privacy: "Privacy",
++  special_queries: "Special Queries",
++  cookies: "Cookies",
++  save: "Save",
++  reset_defaults: "Reset defaults",
++  back: "Back",
++  close: "Close",
++  invalid_settings: "Invalid settings, please edit your preferences",
++  allow: "Allow",
++  keywords: "Keywords (first word in query)",
++  name: "Name",
++  description: "Description",
++  instant_answer_modules: "This is the list of SearXNG's instant answering modules.",
++  plugins_list: "This is the list of plugins.",
++  autocomplete: "Autocomplete",
++  show_queries_as_you_type: "Show possible queries as you type",
++  favicon_resolver: "Favicon Resolver",
++  display_favicons: "Display favicons near search results",
++  filter_content: "Filter content",
++  doi: "Digital Object Identifier (DOI)",
++  open_access_doi_resolver: "Open Access DOI resolver",
++  select_doi_service: "Select service used by DOI rewrite",
++  currently_used_engines: "Currently used search engines",
++  enable_all: "Enable all",
++  disable_all: "Disable all",
++  engine_name: "Engine name",
++  bang: "!bang",
++  weight: "Weight",
++  max_time: "Max time",
++  reliability: "Reliability",
++  view_error_logs: "View error logs and submit a bug report",
++  no_https: "No HTTPS",
++  bang_for_engine: "!bang for this engine",
++  bang_for_categories: "!bang for its categories",
++  engine_tokens: "Engine tokens",
++  access_tokens: "Access tokens for private engines",
++  interface_language: "Interface language",
++  change_layout_language: "Change the language of the layout",
++  theme: "Theme",
++  change_layout: "Change the layout of SearXNG",
++  theme_style: "Theme style",
++  choose_auto: "Choose auto to follow your browser settings",
++  results_in_new_tabs: "Results in new tabs",
++  open_result_new_tabs: "Open result links in new browser tabs",
++  search_on_category_select: "Search on category select",
++  hotkeys: "Hotkeys",
++  http_method: "HTTP Method",
++  change_forms_submit: "Change how forms are submitted",
++  image_proxy: "Image proxy",
++  proxy_images: "Proxy image results through SearXNG",
++  query_in_title: "Query in the page's title",
++  query_in_title_desc: "When enabled, the result page's title contains your query. Your browser can record this title",
++  url_formatting: "URL formatting",
++  pretty: "Pretty",
++  full: "Full",
++  host: "Host",
++  change_url_formatting: "Change result URL formatting",
++  default_categories: "Default categories",
++  what_language: "What language do you prefer for search?",
++  choose_autodetect: "Choose Auto-detect to let SearXNG detect the language of your query.",
++  preview_banner: "This is a preview of the settings used by the 'Search URL' you used to get here.",
++  press_save_to_copy: "Press save to copy these preferences to your browser.",
++  view_browser_prefs: "Click here to view your browser preferences instead:",
++  cookies_convenience: "These cookies serve your sole convenience; we don't use them to track you.",
++  cookies_transparency: "With this list, you can assess the transparency of SearXNG.",
++  cookie_name: "Cookie name",
++  value: "Value",
++  search_url_of_prefs: "Search URL of the currently saved preferences",
++  url_to_restore: "URL to restore your preferences in another browser",
++  copy_prefs_hash: "Copy preferences hash",
++  insert_prefs_hash: "Insert copied preferences hash (without URL) to restore",
++  prefs_hash: "Preferences hash",
++  median: "Median",
++  p80: "P80",
++  p95: "P95",
++  total: "Total",
++  http: "HTTP",
++  processing: "Processing",
++  scores: "Scores",
++  result_count: "Result count",
++  errors_and_exceptions: "Errors and exceptions",
++  warnings: "Warnings",
++  exception: "Exception",
++  message: "Message",
++  percentage: "Percentage",
++  parameter: "Parameter",
++  function: "Function",
++  code: "Code",
++  no_data_available: "There is currently no data available. ",
++  auto: "auto",
++  light: "light",
++  dark: "dark",
++  black: "black",
++  updated: "Updated at",
++  popularity: "Popularity",
++  license: "License",
++  homepage: "Project homepage",
++  editor: "Editor",
++  publisher: "Publisher",
++  center_alignment: "Center Alignment",
++  center_alignment_desc: "Display results in the center of the page (Oscar layout).",
++  hotkeys_hint: "Press ? anytime for keyboard shortcuts",
++  hotkeys_desc:
++    'Navigate search results with hotkeys (JavaScript required). Press "?" on the main or results page to get help.',
++  hotkeys_default: "default",
++  search_on_category_select_desc:
++    "Perform a search immediately if a category is selected. Disable to select multiple categories",
++  engine_tab_bang_hint:
++    "This tab does not exist in the user interface, but you can search with these engines via !bangs.",
++  settings_in_cookies: "These settings are stored in your cookies. This allows us not to store this data about you.",
++  cookies_list_desc: "This is the list of cookies and their values SearXNG is storing on your computer.",
++  prefs_url_privacy_note:
++    "Note: specifying custom settings in the search URL can reduce privacy by leaking data to the clicked result sites.",
++  url_restore_desc:
++    "A URL containing your preferences. This URL can be used to restore your settings on a different device.",
++  loading: "Loading...",
++  on: "on",
++  off: "off",
++  saved: "Saved",
++  forecast: "Forecast",
++  help_shortcuts: "Keyboard shortcuts",
++  help_operators: "Search operators",
++  help_bangs: "Bangs & widgets",
++  help_show_hide: "Show / hide this help",
++  help_focus_next: "Focus next result",
++  help_focus_prev: "Focus previous result",
++  help_page_next: "Next page",
++  help_page_prev: "Previous page",
++  help_open: "Open focused result",
++  help_open_new_tab: "Open in a new tab",
++  help_yank: "Copy URL of the focused result",
++  help_focus_search: "Focus the search box",
++  help_esc: "Close panels, blur the search box",
++  op_filetype: "Limit results to a file extension",
++  op_site: "Limit results to a specific site",
++  op_inurl: "Word or phrase in the URL",
++  op_intitle: "Word or phrase in the title",
++  op_exact: "Exact phrase",
++  op_and: "Both terms: cats AND dogs",
++  op_or: "Either term: cats OR dogs",
++  op_inclexc: "Force include / exclude a term",
++  op_wildcard: "Wildcard within a phrase",
++  bang_all: "All DuckDuckGo bangs work here",
++  bang_images: "Image search bang",
++  bang_videos: "Video search bang",
++  bang_news: "News search bang",
++  bang_maps: "Map search bang",
++  bang_keyword: "Open the first result",
++  widget_ip: "Show your IP address",
++  widget_hash: "Hash a string (enable the plugin)",
++  widget_random: "Random values generator",
++};
 +
-+export const I18nContext = createContext<Record<string, string>>({});
++// Simplified Chinese
++const ZH_CN: Record<string, string> = {
++  about: "关于",
++  donate: "捐助",
++  preferences: "偏好设置",
++  search_placeholder: "搜索...",
++  clear: "清空",
++  search: "搜索",
++  powered_by: "功能来自",
++  source_code: "源代码",
++  issue_tracker: "问题追踪",
++  engine_stats: "引擎统计",
++  public_instances: "公共实例",
++  privacy_policy: "隐私政策",
++  contact_maintainer: "联系实例维护者",
++  search_language: "搜索语言",
++  default_language: "默认语言",
++  autodetect: "自动检测",
++  safesearch: "安全搜索",
++  strict: "严格",
++  moderate: "适中",
++  none: "关闭",
++  time_range: "时间范围",
++  anytime: "任意时间",
++  last_day: "一天内",
++  last_week: "一周内",
++  last_month: "一个月内",
++  last_year: "一年内",
++  answers: "回答",
++  try_searching_for: "试试搜索:",
++  suggestions: "搜索建议",
++  info: "信息",
++  engines_messages: "来自搜索引擎的消息",
++  response_time: "响应时间",
++  seconds: "秒",
++  search_url: "搜索 URL",
++  copy: "复制",
++  copied: "已复制",
++  download_results: "下载结果",
++  back_to_top: "回到顶部",
++  previous_page: "上一页",
++  next_page: "下一页",
++  length: "时长",
++  views: "观看次数",
++  author: "作者",
++  cached: "已缓存",
++  show_media: "显示媒体",
++  hide_media: "隐藏媒体",
++  show_video: "显示视频",
++  hide_video: "隐藏视频",
++  show_map: "显示地图",
++  hide_map: "隐藏地图",
++  no_description: "该网站没有提供描述。",
++  magnet_link: "磁力链接",
++  torrent_file: "种子文件",
++  seeder: "做种",
++  leecher: "下载",
++  filesize: "文件大小",
++  files: "文件数",
++  repository: "代码仓库",
++  filename: "文件名",
++  download: "下载",
++  date: "日期",
++  type: "类型",
++  resolution: "分辨率",
++  image_formats: "图片格式",
++  original_format: "原始格式",
++  source: "来源",
++  engines: "引擎",
++  view_source: "查看源码",
++  address: "地址",
++  temperature: "温度",
++  feels_like: "体感温度",
++  wind: "风速",
++  pressure: "气压",
++  humidity: "湿度",
++  examples: "示例",
++  definitions: "定义",
++  synonyms: "同义词",
++  sorry: "很抱歉!",
++  no_results_found: "未找到任何结果,你可以尝试:",
++  no_more_results: "没有更多结果了,你可以尝试:",
++  refresh_page: "刷新页面",
++  try_other_query: "更换关键词或选择其他分类(见上方)。",
++  change_engines_prefs: "在偏好设置中调整所用的搜索引擎:",
++  switch_instance: "切换到其他实例:",
++  try_other_query_plain: "更换关键词或选择其他分类。",
++  go_previous_page: "使用“上一页”按钮返回上一页。",
++  error_loading_next_page: "加载下一页时出错",
++  no_item_found: "未找到条目",
++  no_cookies: "当前没有可用数据。",
++  page_not_found: "页面不存在",
++  hotkeys_vim: "Vim 风格",
++  general: "常规",
++  user_interface: "界面",
++  privacy: "隐私",
++  special_queries: "特殊查询",
++  cookies: "Cookie",
++  save: "保存",
++  reset_defaults: "恢复默认设置",
++  back: "返回",
++  close: "关闭",
++  invalid_settings: "设置无效,请编辑你的偏好设置",
++  allow: "允许",
++  keywords: "关键词(查询中的第一个词)",
++  name: "名称",
++  description: "描述",
++  instant_answer_modules: "这是 SearXNG 即时回答模块的列表。",
++  plugins_list: "这是插件的列表。",
++  autocomplete: "自动补全",
++  show_queries_as_you_type: "输入时显示可能的查询",
++  favicon_resolver: "网站图标解析服务",
++  display_favicons: "在搜索结果旁显示网站图标",
++  filter_content: "过滤内容",
++  doi: "数字对象标识符(DOI)",
++  open_access_doi_resolver: "开放获取 DOI 解析器",
++  select_doi_service: "选择 DOI 重写使用的服务",
++  currently_used_engines: "当前使用的搜索引擎",
++  enable_all: "全部启用",
++  disable_all: "全部禁用",
++  engine_name: "引擎名称",
++  bang: "!bang",
++  weight: "权重",
++  max_time: "最长时间",
++  reliability: "可靠性",
++  view_error_logs: "查看错误日志并提交问题报告",
++  no_https: "无 HTTPS",
++  bang_for_engine: "该引擎的 !bang",
++  bang_for_categories: "该分类的 !bang",
++  engine_tokens: "引擎令牌",
++  access_tokens: "私有引擎的访问令牌",
++  interface_language: "界面语言",
++  change_layout_language: "更改界面语言",
++  theme: "主题",
++  change_layout: "更改 SearXNG 的布局",
++  theme_style: "主题样式",
++  choose_auto: "选择“自动”可跟随浏览器设置",
++  results_in_new_tabs: "在新标签页打开结果",
++  open_result_new_tabs: "在浏览器新标签页中打开结果链接",
++  search_on_category_select: "选择分类时立即搜索",
++  hotkeys: "快捷键",
++  http_method: "HTTP 方法",
++  change_forms_submit: "更改表单的提交方式",
++  image_proxy: "图片代理",
++  proxy_images: "通过 SearXNG 代理图片结果",
++  query_in_title: "查询词写入页面标题",
++  query_in_title_desc: "启用后,结果页的标题将包含你的查询词,浏览器可能会记录该标题。",
++  url_formatting: "URL 格式",
++  pretty: "简洁",
++  full: "完整",
++  host: "主机名",
++  change_url_formatting: "更改结果 URL 的格式",
++  default_categories: "默认分类",
++  what_language: "你希望用什么语言进行搜索?",
++  choose_autodetect: "选择自动检测可让 SearXNG 判断查询的语言。",
++  preview_banner: "这是你来到本页所用的“搜索 URL”中携带的设置预览。",
++  press_save_to_copy: "按下“保存”即可将这些偏好设置复制到你的浏览器。",
++  view_browser_prefs: "点击此处查看浏览器中保存的偏好设置:",
++  cookies_convenience: "这些 Cookie 只为方便你使用;我们不会用它们追踪你。",
++  cookies_transparency: "通过这份列表,你可以检视 SearXNG 的透明度。",
++  cookie_name: "Cookie 名称",
++  value: "值",
++  search_url_of_prefs: "当前已保存偏好设置的搜索 URL",
++  url_to_restore: "在其他浏览器恢复你偏好设置的 URL",
++  copy_prefs_hash: "复制偏好设置哈希",
++  insert_prefs_hash: "粘贴已复制的偏好哈希(不含 URL)以恢复",
++  prefs_hash: "偏好设置哈希",
++  median: "中位数",
++  p80: "P80",
++  p95: "P95",
++  total: "总计",
++  http: "HTTP",
++  processing: "处理",
++  scores: "得分",
++  result_count: "结果数量",
++  errors_and_exceptions: "错误与异常",
++  warnings: "警告",
++  exception: "异常",
++  message: "消息",
++  percentage: "百分比",
++  parameter: "参数",
++  function: "函数",
++  code: "代码",
++  no_data_available: "当前没有可用数据。",
++  auto: "自动",
++  light: "浅色",
++  dark: "深色",
++  black: "纯黑",
++  updated: "更新于",
++  popularity: "热度",
++  license: "许可证",
++  homepage: "项目主页",
++  editor: "编者",
++  publisher: "出版方",
++  center_alignment: "居中布局",
++  center_alignment_desc: "在页面中央显示结果(仿 Oscar 布局)。",
++  hotkeys_hint: "随时按 ? 查看键盘快捷键",
++  hotkeys_desc: "使用快捷键导航搜索结果(需要 JavaScript)。在主页或结果页按 ? 查看帮助。",
++  hotkeys_default: "默认",
++  search_on_category_select_desc: "选择分类后立即执行搜索。禁用后可同时选择多个分类",
++  engine_tab_bang_hint: "此标签页未在界面中展示,但你可以通过 !bang 使用这些引擎。",
++  settings_in_cookies: "这些设置保存在你的 Cookie 中,我们不会在服务器上存储你的相关数据。",
++  cookies_list_desc: "这是 SearXNG 在你的电脑上存储的 Cookie 及其取值列表。",
++  prefs_url_privacy_note: "注意:在搜索 URL 中携带自定义设置可能会向点击的结果站点泄露数据,降低隐私性。",
++  url_restore_desc: "包含你偏好设置的 URL。在其他设备上打开它即可恢复这些设置。",
++  loading: "加载中…",
++  on: "开",
++  off: "关",
++  saved: "已保存",
++  forecast: "天气预报",
++  help_shortcuts: "键盘快捷键",
++  help_operators: "搜索运算符",
++  help_bangs: "Bang 与小工具",
++  help_show_hide: "显示 / 隐藏本帮助",
++  help_focus_next: "聚焦下一条结果",
++  help_focus_prev: "聚焦上一条结果",
++  help_page_next: "下一页",
++  help_page_prev: "上一页",
++  help_open: "打开选中的结果",
++  help_open_new_tab: "在新标签页打开",
++  help_yank: "复制选中结果的链接",
++  help_focus_search: "聚焦搜索框",
++  help_esc: "关闭面板,搜索框失焦",
++  op_filetype: "将结果限定为指定扩展名",
++  op_site: "将结果限定为特定站点",
++  op_inurl: "词或短语出现在 URL 中",
++  op_intitle: "词或短语出现在标题中",
++  op_exact: "精确匹配短语",
++  op_and: "同时包含:cats AND dogs",
++  op_or: "任一包含:cats OR dogs",
++  op_inclexc: "强制包含 / 排除某个词",
++  op_wildcard: "短语内通配符",
++  bang_all: "支持所有 DuckDuckGo bang",
++  bang_images: "图片搜索 bang",
++  bang_videos: "视频搜索 bang",
++  bang_news: "新闻搜索 bang",
++  bang_maps: "地图搜索 bang",
++  bang_keyword: "直接打开第一条结果",
++  widget_ip: "显示你的 IP 地址",
++  widget_hash: "计算字符串哈希(需启用插件)",
++  widget_random: "随机值生成器",
++};
++
++/** locales the theme translates itself; every other locale falls back to EN */
++const THEME_STRINGS: Record<string, Record<string, string>> = {
++  en: EN,
++  "zh-CN": ZH_CN,
++};
++
++function themeLocaleTag(locale: string): string {
++  const tag = locale.toLowerCase();
++  // Simplified Chinese only (zh-CN, zh-Hans-CN, zh); Traditional stays English
++  if (tag.startsWith("zh") && !tag.includes("hant")) {
++    return "zh-CN";
++  }
++  return "en";
++}
++
++export const I18nContext = createContext<string>("en");
 +
 +export function useT(): Translate {
-+  const strings = useContext(I18nContext);
-+  if (!strings || Object.keys(strings).length === 0) {
-+    return MISSING;
-+  }
-+  return (key: string) => strings[key] ?? key;
++  const locale = useContext(I18nContext);
++  const theme = THEME_STRINGS[themeLocaleTag(locale)] ?? EN;
++  return (key: string) => theme[key] ?? EN[key] ?? key;
 +}
 diff --git a/client/zjsearch/src/lib/overlay.tsx b/client/zjsearch/src/lib/overlay.tsx
 new file mode 100644
@@ -7924,10 +8431,10 @@ index 0000000..09d24fc
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..c669121
+index 0000000..0dabc58
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,408 @@
+@@ -0,0 +1,407 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -7984,7 +8491,6 @@ index 0000000..c669121
 +  about_url: string;
 +  search_syntax_url: string;
 +  rtl: boolean;
-+  strings: Record<string, string>;
 +}
 +
 +// ------------------------------------------------------------------ results
@@ -8383,10 +8889,10 @@ index 0000000..0fdb05d
 +void bootstrap();
 diff --git a/client/zjsearch/src/pages/IndexPage.tsx b/client/zjsearch/src/pages/IndexPage.tsx
 new file mode 100644
-index 0000000..985e7c0
+index 0000000..d016714
 --- /dev/null
 +++ b/client/zjsearch/src/pages/IndexPage.tsx
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,130 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useState } from "react";
@@ -8395,6 +8901,7 @@ index 0000000..985e7c0
 +import { SearchBox } from "../components/SearchBox.tsx";
 +import { CategoryTabs, defaultFilterValues } from "../components/SearchControls.tsx";
 +import { Shell } from "../components/Shell.tsx";
++import { type HotkeyTarget, useHotkeys } from "../features/hotkeys.ts";
 +import { useT } from "../lib/i18n.ts";
 +import { useRouter } from "../lib/router.tsx";
 +import { useSettings } from "../lib/settings.ts";
@@ -8436,6 +8943,21 @@ index 0000000..985e7c0
 +  const settings = useSettings();
 +  const t = useT();
 +
++  // "?" opens the shortcuts help on the home page too; the result-navigation
++  // keys have nothing to act on here
++  const hotkeyTarget: HotkeyTarget = {
++    move: () => {},
++    open: () => {},
++    yank: () => null,
++    page: () => {},
++    focusSearch: () => {
++      (document.querySelector('input[name="q"]') as HTMLInputElement | null)?.focus();
++    },
++  };
++  useHotkeys(settings.hotkeys, hotkeyTarget, () => {
++    setHelpOpen((open) => !open);
++  });
++
 +  return (
 +    <Shell globals={globals} variant="hero">
 +      <main className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 pb-24">
@@ -8445,7 +8967,7 @@ index 0000000..985e7c0
 +        </h1>
 +        {/* raised stacking level: fade-up leaves a residual transform (a
 +            stacking context) on every animated sibling, which would let the
-+            category tabs and the hotkeys hint paint over the z-30 dropdown */}
++            category tabs paint over the z-30 dropdown */}
 +        <div className="relative z-10 mt-12 w-full animate-fade-up [animation-delay:60ms]">
 +          <SearchBox
 +            initialQuery=""
@@ -9761,10 +10283,10 @@ index 0000000..aaa9c5b
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..5e50189
+index 0000000..1214a0b
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,652 @@
+@@ -0,0 +1,661 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -9958,11 +10480,7 @@ index 0000000..5e50189
 +        title={label}
 +        type="button"
 +      >
-+        {expanded ? (
-+          <ChevronLeftIcon className="size-4" />
-+        ) : (
-+          <ChevronRightIcon className="size-4" />
-+        )}
++        {expanded ? <ChevronLeftIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
 +      </button>
 +    </div>
 +  );
@@ -10148,21 +10666,30 @@ index 0000000..5e50189
 +  };
 +
 +  // ----- keyboard navigation (default / vim layouts) -----
++  // navigable cards are marked with data-hotkey-index (the index into
++  // allResults); grids without per-result cards (images) are skipped
 +  const selectedCard = () => {
-+    const cards = listRef.current ? Array.from(listRef.current.querySelectorAll("article")) : [];
-+    return hotkeysSelected >= 0 ? (cards[hotkeysSelected] as HTMLElement | undefined) : undefined;
++    if (hotkeysSelected < 0 || !listRef.current) {
++      return undefined;
++    }
++    return listRef.current.querySelector<HTMLElement>(`[data-hotkey-index="${hotkeysSelected}"]`) ?? undefined;
 +  };
 +  const hotkeyTarget = {
 +    move: (delta: number) => {
-+      const cards = listRef.current ? Array.from(listRef.current.querySelectorAll("article")) : [];
++      const cards = listRef.current
++        ? Array.from(listRef.current.querySelectorAll<HTMLElement>("[data-hotkey-index]"))
++        : [];
 +      if (cards.length === 0) {
 +        return;
 +      }
-+      setHotkeysSelected((prev) => {
-+        const next = Math.min(cards.length - 1, Math.max(0, prev + delta));
-+        cards[next]?.scrollIntoView({ block: "center", behavior: "smooth" });
-+        return next;
-+      });
++      const pos =
++        hotkeysSelected < 0 ? -1 : cards.findIndex((card) => card.dataset.hotkeyIndex === String(hotkeysSelected));
++      const next = cards[Math.min(cards.length - 1, Math.max(0, pos + delta))];
++      if (!next) {
++        return;
++      }
++      next.scrollIntoView({ block: "center", behavior: "smooth" });
++      setHotkeysSelected(Number(next.dataset.hotkeyIndex));
 +    },
 +    open: (newTab: boolean) => {
 +      const href = selectedCard()?.querySelector("a[href]")?.getAttribute("href");
@@ -10186,7 +10713,7 @@ index 0000000..5e50189
 +    },
 +  };
 +  useHotkeys(settings.hotkeys, hotkeyTarget, () => {
-+    setHelpOpen(true);
++    setHelpOpen((open) => !open);
 +  });
 +
 +  const allResults = useMemo(() => [...data.results, ...appended], [data.results, appended]);
@@ -10254,7 +10781,7 @@ index 0000000..5e50189
 +
 +      <main className="zjs-results-main mx-auto w-full flex-1 px-4 sm:px-6">
 +        <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
-+          <div className="min-w-0 flex-1 pt-4">
++          <div className="min-w-0 flex-1 pt-4" ref={listRef}>
 +            {error ? (
 +              <div
 +                className="mb-4 rounded-2xl border border-danger/30 bg-danger/10 p-4 text-sm text-danger"
@@ -10296,6 +10823,7 @@ index 0000000..5e50189
 +                        className={`animate-fade-up rounded-2xl ${
 +                          index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
 +                        }`}
++                        data-hotkey-index={index}
 +                        key={index}
 +                        style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
 +                      >
@@ -10314,6 +10842,7 @@ index 0000000..5e50189
 +                        className={`animate-fade-up rounded-2xl ${
 +                          index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
 +                        }`}
++                        data-hotkey-index={index}
 +                        key={index}
 +                        style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
 +                      >
@@ -10322,7 +10851,7 @@ index 0000000..5e50189
 +                    ))}
 +                  </div>
 +                ) : (
-+                  <div className="mt-2" ref={listRef}>
++                  <div className="mt-2">
 +                    {consolidateGroups(groupResults(allResults)).map((group, groupIndex) => {
 +                      const label = globals.category_labels[group.template] ?? group.template;
 +                      if (SECTION_TEMPLATES.has(group.template)) {
@@ -10354,6 +10883,7 @@ index 0000000..5e50189
 +                                      className={`animate-fade-up rounded-2xl ${
 +                                        index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
 +                                      }`}
++                                      data-hotkey-index={index}
 +                                      key={index}
 +                                      style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
 +                                    >
@@ -10377,6 +10907,7 @@ index 0000000..5e50189
 +                              className={`animate-fade-up rounded-2xl ${
 +                                index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
 +                              }`}
++                              data-hotkey-index={index}
 +                              key={index}
 +                              style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
 +                            >
@@ -11275,10 +11806,10 @@ index 0000000..fc19e95
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..bfd96cd
+index 0000000..86a7841
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,765 @@
+@@ -0,0 +1,547 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -11291,223 +11822,6 @@ index 0000000..bfd96cd
 +{# ---------------------------------------------------------------- strings #}
 +
 +{#- Localized UI strings, keyed for the React i18n helper. -#}
-+{% macro _strings() -%}
-+{
-+  "about": {{ _('About')|tojson }},
-+  "donate": {{ _('Donate')|tojson }},
-+  "preferences": {{ _('Preferences')|tojson }},
-+  "search_placeholder": {{ _('Search for...')|tojson }},
-+  "clear": {{ _('clear')|tojson }},
-+  "search": {{ _('search')|tojson }},
-+  "display_front_page": {{ _('Display the front page')|tojson }},
-+  "powered_by": {{ _('Powered by')|tojson }},
-+  "tagline": {{ _('a privacy-respecting, open metasearch engine')|tojson }},
-+  "source_code": {{ _('Source code')|tojson }},
-+  "issue_tracker": {{ _('Issue tracker')|tojson }},
-+  "engine_stats": {{ _('Engine stats')|tojson }},
-+  "public_instances": {{ _('Public instances')|tojson }},
-+  "privacy_policy": {{ _('Privacy policy')|tojson }},
-+  "contact_maintainer": {{ _('Contact instance maintainer')|tojson }},
-+  "search_language": {{ _('Search language')|tojson }},
-+  "default_language": {{ _('Default language')|tojson }},
-+  "autodetect": {{ _('Auto-detect')|tojson }},
-+  "safesearch": {{ _('SafeSearch')|tojson }},
-+  "strict": {{ _('Strict')|tojson }},
-+  "moderate": {{ _('Moderate')|tojson }},
-+  "none": {{ _('None')|tojson }},
-+  "time_range": {{ _('Time range')|tojson }},
-+  "anytime": {{ _('Anytime')|tojson }},
-+  "last_day": {{ _('Last day')|tojson }},
-+  "last_week": {{ _('Last week')|tojson }},
-+  "last_month": {{ _('Last month')|tojson }},
-+  "last_year": {{ _('Last year')|tojson }},
-+  "answers": {{ _('Answers')|tojson }},
-+  "try_searching_for": {{ _('Try searching for:')|tojson }},
-+  "suggestions": {{ _('Suggestions')|tojson }},
-+  "info": {{ _('Info')|tojson }},
-+  "engines_messages": {{ _('Messages from the search engines')|tojson }},
-+  "response_time": {{ _('Response time')|tojson }},
-+  "seconds": {{ _('seconds')|tojson }},
-+  "search_url": {{ _('Search URL')|tojson }},
-+  "copy": {{ _('Copy')|tojson }},
-+  "copied": {{ _('Copied')|tojson }},
-+  "download_results": {{ _('Download results')|tojson }},
-+  "back_to_top": {{ _('Back to top')|tojson }},
-+  "previous_page": {{ _('Previous page')|tojson }},
-+  "next_page": {{ _('Next page')|tojson }},
-+  "length": {{ _('Length')|tojson }},
-+  "views": {{ _('Views')|tojson }},
-+  "author": {{ _('Author')|tojson }},
-+  "cached": {{ _('cached')|tojson }},
-+  "show_media": {{ _('show media')|tojson }},
-+  "hide_media": {{ _('hide media')|tojson }},
-+  "show_video": {{ _('show video')|tojson }},
-+  "hide_video": {{ _('hide video')|tojson }},
-+  "show_map": {{ _('show map')|tojson }},
-+  "hide_map": {{ _('hide map')|tojson }},
-+  "no_description": {{ _('This site did not provide any description.')|tojson }},
-+  "magnet_link": {{ _('magnet link')|tojson }},
-+  "torrent_file": {{ _('torrent file')|tojson }},
-+  "seeder": {{ _('Seeder')|tojson }},
-+  "leecher": {{ _('Leecher')|tojson }},
-+  "filesize": {{ _('Filesize')|tojson }},
-+  "files": {{ _('Number of Files')|tojson }},
-+  "repository": {{ _('Repository')|tojson }},
-+  "filename": {{ _('Filename')|tojson }},
-+  "download": {{ _('Download')|tojson }},
-+  "date": {{ _('Date')|tojson }},
-+  "type": {{ _('Type')|tojson }},
-+  "resolution": {{ _('Resolution')|tojson }},
-+  "image_formats": {{ _('Image formats')|tojson }},
-+  "original_format": {{ _('original format')|tojson }},
-+  "source": {{ _('Source')|tojson }},
-+  "engines": {{ _('Engines')|tojson }},
-+  "view_source": {{ _('View source')|tojson }},
-+  "address": {{ _('address')|tojson }},
-+  "temperature": {{ _('Temperature')|tojson }},
-+  "feels_like": {{ _('Feels Like')|tojson }},
-+  "wind": {{ _('Wind')|tojson }},
-+  "pressure": {{ _('Pressure')|tojson }},
-+  "humidity": {{ _('Humidity')|tojson }},
-+  "examples": {{ _('Examples')|tojson }},
-+  "definitions": {{ _('Definitions')|tojson }},
-+  "synonyms": {{ _('Synonyms')|tojson }},
-+  "sorry": {{ _('Sorry!')|tojson }},
-+  "no_results_found": {{ _('No results were found. You can try to:')|tojson }},
-+  "no_more_results": {{ _('There are no more results. You can try to:')|tojson }},
-+  "refresh_page": {{ _('Refresh the page.')|tojson }},
-+  "try_other_query": {{ _('Search for another query or select another category (above).')|tojson }},
-+  "change_engines_prefs": {{ _('Change the search engine used in the preferences:')|tojson }},
-+  "switch_instance": {{ _('Switch to another instance:')|tojson }},
-+  "try_other_query_plain": {{ _('Search for another query or select another category.')|tojson }},
-+  "go_previous_page": {{ _('Go back to the previous page using the previous page button.')|tojson }},
-+  "error_loading_next_page": {{ _('Error loading the next page')|tojson }},
-+  "no_item_found": {{ _('No item found')|tojson }},
-+  "no_cookies": {{ _('There is currently no data available. ')|tojson }},
-+  "page_not_found": {{ _('Page not found')|tojson }},
-+  "hotkeys_vim": {{ _('Vim-like')|tojson }},
-+  "hotkeys_default": {{ _('default')|tojson }},
-+  "hotkeys_hint": {{ _('Press ? anytime for keyboard shortcuts')|tojson }},
-+  "general": {{ _('General')|tojson }},
-+  "user_interface": {{ _('User interface')|tojson }},
-+  "privacy": {{ _('Privacy')|tojson }},
-+  "special_queries": {{ _('Special Queries')|tojson }},
-+  "cookies": {{ _('Cookies')|tojson }},
-+  "save": {{ _('Save')|tojson }},
-+  "reset_defaults": {{ _('Reset defaults')|tojson }},
-+  "back": {{ _('Back')|tojson }},
-+  "close": {{ _('Close')|tojson }},
-+  "loading": {{ _('Loading...')|tojson }},
-+  "invalid_settings": {{ _('Invalid settings, please edit your preferences')|tojson }},
-+  "allow": {{ _('Allow')|tojson }},
-+  "keywords": {{ _('Keywords (first word in query)')|tojson }},
-+  "name": {{ _('Name')|tojson }},
-+  "description": {{ _('Description')|tojson }},
-+  "examples": {{ _('Examples')|tojson }},
-+  "instant_answer_modules": {{ _("This is the list of SearXNG's instant answering modules.")|tojson }},
-+  "plugins_list": {{ _('This is the list of plugins.')|tojson }},
-+  "autocomplete": {{ _('Autocomplete')|tojson }},
-+  "show_queries_as_you_type": {{ _('Show possible queries as you type')|tojson }},
-+  "favicon_resolver": {{ _('Favicon Resolver')|tojson }},
-+  "display_favicons": {{ _('Display favicons near search results')|tojson }},
-+  "filter_content": {{ _('Filter content')|tojson }},
-+  "doi": {{ _('Digital Object Identifier (DOI)')|tojson }},
-+  "open_access_doi_resolver": {{ _('Open Access DOI resolver')|tojson }},
-+  "select_doi_service": {{ _('Select service used by DOI rewrite')|tojson }},
-+  "currently_used_engines": {{ _('Currently used search engines')|tojson }},
-+  "engine_tab_bang_hint": {{ _('This tab does not exist in the user interface, but you can search with these engines via !bangs.')|tojson }},
-+  "enable_all": {{ _('Enable all')|tojson }},
-+  "disable_all": {{ _('Disable all')|tojson }},
-+  "engine_name": {{ _('Engine name')|tojson }},
-+  "bang": {{ _('!bang')|tojson }},
-+  "weight": {{ _('Weight')|tojson }},
-+  "max_time": {{ _('Max time')|tojson }},
-+  "reliability": {{ _('Reliability')|tojson }},
-+  "view_error_logs": {{ _('View error logs and submit a bug report')|tojson }},
-+  "no_https": {{ _('No HTTPS')|tojson }},
-+  "bang_for_engine": {{ _('!bang for this engine')|tojson }},
-+  "bang_for_categories": {{ _('!bang for its categories')|tojson }},
-+  "engine_tokens": {{ _('Engine tokens')|tojson }},
-+  "access_tokens": {{ _('Access tokens for private engines')|tojson }},
-+  "interface_language": {{ _('Interface language')|tojson }},
-+  "change_layout_language": {{ _('Change the language of the layout')|tojson }},
-+  "theme": {{ _('Theme')|tojson }},
-+  "change_layout": {{ _('Change the layout of SearXNG')|tojson }},
-+  "theme_style": {{ _('Theme style')|tojson }},
-+  "choose_auto": {{ _('Choose auto to follow your browser settings')|tojson }},
-+  "results_in_new_tabs": {{ _('Results in new tabs')|tojson }},
-+  "open_result_new_tabs": {{ _('Open result links in new browser tabs')|tojson }},
-+  "search_on_category_select": {{ _('Search on category select')|tojson }},
-+  "search_on_category_select_desc": {{ _('Perform a search immediately if a category is selected. Disable to select multiple categories')|tojson }},
-+  "hotkeys": {{ _('Hotkeys')|tojson }},
-+  "hotkeys_desc": {{ _('Navigate search results with hotkeys (JavaScript required). Press "h" key on main or result page to get help.')|tojson }},
-+  "http_method": {{ _('HTTP Method')|tojson }},
-+  "change_forms_submit": {{ _('Change how forms are submitted')|tojson }},
-+  "image_proxy": {{ _('Image proxy')|tojson }},
-+  "proxy_images": {{ _('Proxy image results through SearXNG')|tojson }},
-+  "query_in_title": {{ _("Query in the page's title")|tojson }},
-+  "query_in_title_desc": {{ _("When enabled, the result page's title contains your query. Your browser can record this title")|tojson }},
-+  "url_formatting": {{ _('URL formatting')|tojson }},
-+  "pretty": {{ _('Pretty')|tojson }},
-+  "full": {{ _('Full')|tojson }},
-+  "host": {{ _('Host')|tojson }},
-+  "change_url_formatting": {{ _('Change result URL formatting')|tojson }},
-+  "default_categories": {{ _('Default categories')|tojson }},
-+  "what_language": {{ _('What language do you prefer for search?')|tojson }},
-+  "choose_autodetect": {{ _('Choose Auto-detect to let SearXNG detect the language of your query.')|tojson }},
-+  "preview_banner": {{ _("This is a preview of the settings used by the 'Search URL' you used to get here.")|tojson }},
-+  "press_save_to_copy": {{ _('Press save to copy these preferences to your browser.')|tojson }},
-+  "view_browser_prefs": {{ _('Click here to view your browser preferences instead:')|tojson }},
-+  "settings_in_cookies": {{ _('These settings are stored in your cookies. This allows us not to store this data about you.')|tojson }},
-+  "cookies_convenience": {{ _("These cookies serve your sole convenience; we don't use them to track you.")|tojson }},
-+  "cookies_list_desc": {{ _('This is the list of cookies and their values SearXNG is storing on your computer.')|tojson }},
-+  "cookies_transparency": {{ _('With this list, you can assess the transparency of SearXNG.')|tojson }},
-+  "cookie_name": {{ _('Cookie name')|tojson }},
-+  "value": {{ _('Value')|tojson }},
-+  "search_url_of_prefs": {{ _('Search URL of the currently saved preferences')|tojson }},
-+  "prefs_url_privacy_note": {{ _('Note: specifying custom settings in the search URL can reduce privacy by leaking data to the clicked result sites.')|tojson }},
-+  "url_to_restore": {{ _('URL to restore your preferences in another browser')|tojson }},
-+  "url_restore_desc": {{ _('A URL containing your preferences. This URL can be used to restore your settings on a different device.')|tojson }},
-+  "copy_prefs_hash": {{ _('Copy preferences hash')|tojson }},
-+  "insert_prefs_hash": {{ _('Insert copied preferences hash (without URL) to restore')|tojson }},
-+  "prefs_hash": {{ _('Preferences hash')|tojson }},
-+  "median": {{ _('Median')|tojson }},
-+  "p80": {{ _('P80')|tojson }},
-+  "p95": {{ _('P95')|tojson }},
-+  "total": {{ _('Total')|tojson }},
-+  "http": {{ _('HTTP')|tojson }},
-+  "processing": {{ _('Processing')|tojson }},
-+  "scores": {{ _('Scores')|tojson }},
-+  "result_count": {{ _('Result count')|tojson }},
-+  "errors_and_exceptions": {{ _('Errors and exceptions')|tojson }},
-+  "warnings": {{ _('Warnings')|tojson }},
-+  "exception": {{ _('Exception')|tojson }},
-+  "message": {{ _('Message')|tojson }},
-+  "percentage": {{ _('Percentage')|tojson }},
-+  "parameter": {{ _('Parameter')|tojson }},
-+  "function": {{ _('Function')|tojson }},
-+  "code": {{ _('Code')|tojson }},
-+  "no_data_available": {{ _('There is currently no data available. ')|tojson }},
-+  "auto": {{ _('auto')|tojson }},
-+  "light": {{ _('light')|tojson }},
-+  "dark": {{ _('dark')|tojson }},
-+  "black": {{ _('black')|tojson }},
-+  "on": {{ _('on')|tojson }},
-+  "off": {{ _('off')|tojson }},
-+  "saved": {{ _('Saved')|tojson }},
-+  "enable_all": {{ _('Enable all')|tojson }},
-+  "disable_all": {{ _('Disable all')|tojson }},
-+  "forecast": {{ _('Forecast')|tojson }},
-+  "updated": {{ _('Updated at')|tojson }},
-+  "popularity": {{ _('Popularity')|tojson }},
-+  "license": {{ _('License')|tojson }},
-+  "homepage": {{ _('Project homepage')|tojson }},
-+  "editor": {{ _('Editor')|tojson }},
-+  "publisher": {{ _('Publisher')|tojson }},
-+  "center_alignment": {{ _('Center Alignment')|tojson }},
-+  "center_alignment_desc": {{ _('Display results in the center of the page (Oscar layout).')|tojson }}
-+}
-+{%- endmacro %}
 +
 +{# ----------------------------------------------------------------- globals #}
 +
@@ -11557,8 +11871,7 @@ index 0000000..bfd96cd
 +  "locale": {{ locale_rfc5646|tojson }},
 +  "about_url": {{ url_for('info', pagename='about')|tojson }},
 +  "search_syntax_url": {{ url_for('info', pagename='search-syntax')|tojson }},
-+  "rtl": {{ 'true' if rtl else 'false' }},
-+  "strings": {{ _strings() }}
++  "rtl": {{ 'true' if rtl else 'false' }}
 +}
 +{%- endmacro %}
 +
