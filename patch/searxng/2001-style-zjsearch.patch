@@ -213,6 +213,101 @@ index 0000000..21dacb7
 +  secret_key: "zjsearch-local-dev-secret-key"
 +  limiter: false
 +  image_proxy: true
+diff --git a/client/zjsearch/make-patch.ps1 b/client/zjsearch/make-patch.ps1
+new file mode 100644
+index 0000000..97332b7
+--- /dev/null
++++ b/client/zjsearch/make-patch.ps1
+@@ -0,0 +1,45 @@
++# Export the zjsearch theme changes (client sources + server data templates)
++# as a single patch to apply on another machine. PowerShell twin of
++# make-patch.sh - keep the two in sync.
++#
++#   powershell -ExecutionPolicy Bypass -File make-patch.ps1 [-Base <ref>] [-Out <file>]
++#   # on the target machine:
++#   git apply --check zjsearch-theme.patch && git apply zjsearch-theme.patch
++#   cd client/zjsearch ; npm install ; npm run build
++#
++# Default base: the fork's master branch (falls back to origin/master, then
++# d834a52), so the patch carries the whole theme delta relative to master.
++# Only client/zjsearch and searx/templates/zjsearch are included; both are
++# required - the map-page fix lives in the data templates, not the client.
++
++param(
++    [string]$Base = "",
++    [string]$Out = "zjsearch-theme.patch"
++)
++
++$ErrorActionPreference = "Stop"
++
++if (-not $Base) {
++    foreach ($ref in @("master", "origin/master", "origin/main", "d834a52")) {
++        & git rev-parse -q --verify "$ref" *> $null
++        if ($LASTEXITCODE -eq 0) { $Base = $ref; break }
++    }
++}
++
++Set-Location (Join-Path $PSScriptRoot "..\..")
++
++# byte-exact redirect through cmd: PowerShell's own ">" re-encodes git output
++# (UTF-16 / BOM), which git apply would reject
++cmd /c "git diff --text $Base HEAD -- client/zjsearch searx/templates/zjsearch > `"$Out`""
++
++$content = Get-Content $Out -Raw
++$files = ([regex]::Matches($content, "(?m)^diff --git")).Count
++if ($files -eq 0) {
++    Write-Error "no changes between $Base and HEAD - nothing to patch"
++    exit 1
++}
++$head = (& git rev-parse --short HEAD).Trim()
++Write-Host "wrote $Out : $files files, $Base..$head"
++Select-String -Path $Out -Pattern "^diff --git" | ForEach-Object {
++    Write-Host ("  " + ($_.Line -replace "^diff --git a/", "" -replace " b/.*$", ""))
++}
+diff --git a/client/zjsearch/make-patch.sh b/client/zjsearch/make-patch.sh
+new file mode 100644
+index 0000000..2d08c3a
+--- /dev/null
++++ b/client/zjsearch/make-patch.sh
+@@ -0,0 +1,38 @@
++#!/usr/bin/env bash
++# Export the zjsearch theme changes (client sources + server data templates)
++# as a single patch to apply on another machine:
++#
++#   ./make-patch.sh [base-ref] [out-file]
++#   # on the target machine:
++#   git apply --check zjsearch-theme.patch && git apply zjsearch-theme.patch
++#   cd client/zjsearch && npm install && npm run build
++#
++# Default base: the fork's master branch (falls back to origin/master, then
++# d834a52), so the patch carries the whole theme delta relative to master.
++# Only client/zjsearch and searx/templates/zjsearch are included; both are
++# required - the map-page fix lives in the data templates, not the client.
++
++set -euo pipefail
++
++base=${1:-}
++if [ -z "$base" ]; then
++  for ref in master origin/master origin/main d834a52; do
++    if git rev-parse -q --verify "$ref" >/dev/null 2>&1; then
++      base=$ref
++      break
++    fi
++  done
++fi
++out=${2:-zjsearch-theme.patch}
++
++cd "$(dirname "$0")/../.."
++
++git diff --text "$base" HEAD -- client/zjsearch searx/templates/zjsearch > "$out"
++
++files=$(grep -c '^diff --git' "$out" || true)
++if [ "$files" = "0" ]; then
++  echo "no changes between $base and HEAD - nothing to patch" >&2
++  exit 1
++fi
++echo "wrote $out: $files files, $base..$(git rev-parse --short HEAD)"
++grep '^diff --git' "$out" | sed 's/^diff --git a\///; s/ b\/.*//; s/^/  /'
 diff --git a/client/zjsearch/package-lock.json b/client/zjsearch/package-lock.json
 new file mode 100644
 index 0000000..fe65161
@@ -3757,19 +3852,17 @@ index 0000000..51e86b0
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..514a5f7
+index 0000000..9dbb358
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,178 @@
+@@ -0,0 +1,176 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
-+import { useEffect, useState } from "react";
 +import { useT } from "../lib/i18n.ts";
 +import { useSettings } from "../lib/settings.ts";
 +import type { GlobalData, SearchPageData } from "../lib/types.ts";
 +import type { DropdownOption } from "./Dropdown.tsx";
 +import { Dropdown } from "./Dropdown.tsx";
-+import { CategoryIcon } from "./icons.tsx";
 +
 +interface CategoryTabsProps {
 +  globals: GlobalData;
@@ -5432,7 +5525,7 @@ index 0000000..f892723
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 0000000..1af6427
+index 0000000..6fb33d7
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
 @@ -0,0 +1,286 @@
@@ -5467,7 +5560,7 @@ index 0000000..1af6427
 +  onSearch: (q: string) => void;
 +}) {
 +  return (
-+    <div className="px-1 py-1">
++    <div className="rounded-2xl border border-line bg-surface p-3">
 +      <div className={infobox.img_src ? "flex items-start gap-4" : ""}>
 +        {infobox.img_src ? (
 +          <img
@@ -5572,7 +5665,7 @@ index 0000000..1af6427
 +  return (
 +    <aside className="flex flex-col gap-3">
 +      {hasInfobox ? (
-+        <section aria-label={t("info")} className="rounded-2xl bg-surface/60 px-2 py-2">
++        <section aria-label={t("info")} className="flex flex-col gap-3">
 +          {data.infoboxes.map((infobox, index) => (
 +            <Infobox globals={globals} infobox={infobox} key={index} onSearch={onSearch} />
 +          ))}
@@ -9668,15 +9761,15 @@ index 0000000..aaa9c5b
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..10b4fe9
+index 0000000..5e50189
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,657 @@
+@@ -0,0 +1,652 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
 +import { HelpModal } from "../components/HelpModal.tsx";
-+import { ArrowUpIcon, CategoryIcon, ChevronRightIcon, InfoIcon } from "../components/icons.tsx";
++import { ArrowUpIcon, CategoryIcon, ChevronLeftIcon, ChevronRightIcon, InfoIcon } from "../components/icons.tsx";
 +import { Answers } from "../components/results/Answers.tsx";
 +import { NewsCard, ProductGrid, ResultCard, ResultSkeleton, VideoGrid } from "../components/results/cards.tsx";
 +import { ImageGrid } from "../components/results/ImageGrid.tsx";
@@ -9810,6 +9903,9 @@ index 0000000..10b4fe9
 +    section type is consolidated into a single group at its first position. */
 +const SECTION_TEMPLATES = new Set(["images", "videos", "news"]);
 +
++/** items shown in a collapsed strip; the chevron expands to the full set */
++const SECTION_CAPS: Record<string, number> = { images: 8, videos: 6, news: 6 };
++
 +function consolidateGroups(
 +  groups: Array<{ template: string; items: Array<{ result: ResultItem; index: number }> }>,
 +): Array<{ template: string; items: Array<{ result: ResultItem; index: number }> }> {
@@ -9833,18 +9929,20 @@ index 0000000..10b4fe9
 +}
 +
 +/** Kagi/Google-style section header for a same-type result group: category
-+    icon + translated label + count, and a chevron that switches to the
-+    dedicated single-category search. */
++    icon + translated label + count, and a chevron that expands the group to
++    its full-page layout client-side (no re-fetch). */
 +function GroupHeader({
 +  category,
 +  label,
 +  count,
-+  onAll,
++  expanded,
++  onToggle,
 +}: {
 +  category: string;
 +  label: string;
 +  count: number;
-+  onAll: (categories: string[]) => void;
++  expanded: boolean;
++  onToggle: () => void;
 +}) {
 +  return (
 +    <div className="flex items-center justify-between gap-2 pb-1 pt-5 first:pt-1">
@@ -9856,13 +9954,15 @@ index 0000000..10b4fe9
 +      <button
 +        aria-label={label}
 +        className="grid size-7 place-items-center rounded-full text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
-+        onClick={() => {
-+          onAll([category]);
-+        }}
++        onClick={onToggle}
 +        title={label}
 +        type="button"
 +      >
-+        <ChevronRightIcon className="size-4" />
++        {expanded ? (
++          <ChevronLeftIcon className="size-4" />
++        ) : (
++          <ChevronRightIcon className="size-4" />
++        )}
 +      </button>
 +    </div>
 +  );
@@ -9945,6 +10045,7 @@ index 0000000..10b4fe9
 +  const settings = useSettings();
 +  const [helpOpen, setHelpOpen] = useState(false);
 +  const [hotkeysSelected, setHotkeysSelected] = useState(-1);
++  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 +  const listRef = useRef<HTMLDivElement | null>(null);
 +  const [appended, setAppended] = useState<ResultItem[]>([]);
 +  const [appendState, setAppendState] = useState<"idle" | "loading" | "error" | "done">("idle");
@@ -10224,63 +10325,50 @@ index 0000000..10b4fe9
 +                  <div className="mt-2" ref={listRef}>
 +                    {consolidateGroups(groupResults(allResults)).map((group, groupIndex) => {
 +                      const label = globals.category_labels[group.template] ?? group.template;
-+                      if (group.template === "images") {
++                      if (SECTION_TEMPLATES.has(group.template)) {
++                        // section chevron expands/collapses client-side from the
++                        // already-fetched results (a real category search stays
++                        // available via the category tabs)
++                        const expanded = expandedSection === group.template;
++                        const shown = expanded ? group.items : group.items.slice(0, SECTION_CAPS[group.template]);
 +                        return (
 +                          <section key={`${group.template}-${groupIndex}`}>
 +                            <GroupHeader
-+                              category="images"
++                              category={group.template}
 +                              count={group.items.length}
++                              expanded={expanded}
 +                              label={label}
-+                              onAll={onSearchCategories}
++                              onToggle={() => {
++                                setExpandedSection(expanded ? null : group.template);
++                              }}
 +                            />
 +                            <div className="mt-1">
-+                              <ImageGrid results={group.items.slice(0, 8).map(({ result }) => result)} />
-+                            </div>
-+                          </section>
-+                        );
-+                      }
-+                      if (group.template === "videos") {
-+                        return (
-+                          <section key={`${group.template}-${groupIndex}`}>
-+                            <GroupHeader
-+                              category="videos"
-+                              count={group.items.length}
-+                              label={label}
-+                              onAll={onSearchCategories}
-+                            />
-+                            <div className="mt-1">
-+                              <VideoGrid
-+                                globals={globals}
-+                                results={group.items.slice(0, 6).map(({ result }) => result)}
-+                              />
-+                            </div>
-+                          </section>
-+                        );
-+                      }
-+                      if (group.template === "news") {
-+                        return (
-+                          <section key={`${group.template}-${groupIndex}`}>
-+                            <GroupHeader
-+                              category="news"
-+                              count={group.items.length}
-+                              label={label}
-+                              onAll={onSearchCategories}
-+                            />
-+                            <div className="mt-1 space-y-1">
-+                              {group.items.slice(0, 6).map(({ result, index }) => (
-+                                <div
-+                                  className={`animate-fade-up rounded-2xl ${
-+                                    index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
-+                                  }`}
-+                                  key={index}
-+                                  style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
-+                                >
-+                                  <NewsCard globals={globals} result={result} />
++                              {group.template === "images" ? (
++                                <ImageGrid results={shown.map(({ result }) => result)} />
++                              ) : group.template === "videos" ? (
++                                <VideoGrid globals={globals} results={shown.map(({ result }) => result)} />
++                              ) : (
++                                <div className="space-y-1">
++                                  {shown.map(({ result, index }) => (
++                                    <div
++                                      className={`animate-fade-up rounded-2xl ${
++                                        index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
++                                      }`}
++                                      key={index}
++                                      style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
++                                    >
++                                      <NewsCard globals={globals} result={result} />
++                                    </div>
++                                  ))}
 +                                </div>
-+                              ))}
++                              )}
 +                            </div>
 +                          </section>
 +                        );
++                      }
++                      if (expandedSection) {
++                        // an expanded section takes over the page - hide the rest
++                        return null;
 +                      }
 +                      return (
 +                        <div key={groupIndex}>
