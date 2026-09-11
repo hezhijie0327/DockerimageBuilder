@@ -1,104 +1,6 @@
-diff --git a/AGENTS.md b/AGENTS.md
-new file mode 100644
-index 000000000000..1a06847656d3
---- /dev/null
-+++ b/AGENTS.md
-@@ -0,0 +1,92 @@
-+# AGENTS.md
-+
-+Guidance for AI agents working in this repository.
-+
-+## Repository
-+
-+Fork of [SearXNG](https://github.com/searxng/searxng) (metasearch engine, Python/Flask + Jinja2).
-+Current working branch: `skin`. The purpose of this fork is the custom theme
-+**zjsearch** — a from-scratch React + TypeScript UI — alongside the upstream
-+`simple` theme, **without modifying any Python code**.
-+
-+Key directories:
-+
-+- `searx/` — SearXNG core (webapp.py, search, engines, templates). Avoid editing.
-+- `searx/templates/zjsearch/` — zjsearch theme templates ("data shells").
-+- `searx/templates/zjsearch/data/macros.html` — the server → client data contract.
-+- `client/zjsearch/` — React 19 + TS + Vite 8 + Tailwind v4 workspace for zjsearch.
-+- `client/simple/`, `searx/templates/simple/` — upstream theme, do not refactor.
-+- `searx/static/themes/<theme>/` — built assets (committed to git, like upstream).
-+- `utils/lib_sxng_themes.sh`, `utils/lib_sxng_vite.sh` — make targets for themes.
-+
-+## Commands
-+
-+```sh
-+make themes.zjsearch        # npm install + vite build -> searx/static/themes/zjsearch
-+make themes.zjsearch.lint   # biome check + tsc --noEmit (run inside client/zjsearch)
-+make themes.zjsearch.dev    # vite dev server (HMR), proxies API calls to :8888
-+make run                    # dev instance on http://127.0.0.1:8888 (granian, reloads ./searx)
-+```
-+
-+- Local instance for theme work (default_theme: zjsearch, all search formats on):
-+  `SEARXNG_SETTINGS_PATH=$PWD/client/zjsearch/dev-settings.yml ./manage webapp.run`
-+- First setup: `./manage pyenv.install` (Python venv in `./local/py3`).
-+- Theme changes require `make themes.zjsearch`; the browser caches assets for 30 s
-+  (WhiteNoise), reload twice or wait after rebuilding.
-+
-+## zjsearch architecture (Page-Data pattern)
-+
-+The server renders **no UI**. Every zjsearch Jinja template is a thin shell that
-+serializes the render context into `<script id="page-data" type="application/json">`
-+and boots `zjsearch.min.js`; React renders 100% of the interface.
-+
-+- The data contract lives in `searx/templates/zjsearch/data/macros.html` and is
-+  mirrored by TS types in `client/zjsearch/src/lib/types.ts`. **Keep both in sync.**
-+- Macros apply server filters during serialization: `image_proxify`, `favicon_url`,
-+  `get_pretty_url`, query highlighting (`title_html`/`content_html` are escaped
-+  HTML — render with `dangerouslySetInnerHTML`).
-+- Client-side navigation (`src/lib/router.tsx`) fetches the same URLs and extracts
-+  the embedded page-data JSON from the HTML response; on network failure it falls
-+  back to a full page load.
-+- Client settings come from the base64 `client_settings` attribute on the module
-+  script tag (`get_client_settings()` in webapp.py). Note: its `theme_static_path`
-+  is hardcoded to the simple theme — zjsearch uses its own `THEME_STATIC` constant.
-+- i18n: all UI strings are translated server-side into `globals.strings` (see the
-+  `_strings()` macro). Use msgids that match `searx/translations/*.po` exactly
-+  (e.g. lowercase `_('auto')`, not `_('Auto')`) or translations silently fall back.
-+- About/Stats/Preferences open as slide-in drawers (`src/lib/overlay.tsx`); the
-+  panel fetches page-data and renders the same page components with
-+  `embedded`/`hideTopNav` props. Internal links inside a panel are browsed within
-+  the panel (click-capture in overlay.tsx).
-+
-+## Conventions & gotchas
-+
-+- Jinja macros need `with context` imports to see render variables; Jinja macro
-+  output is Markup (never escaped), and `|tojson` is the only safe way to embed
-+  dynamic values — hand-built JSON must place `, ` separators **between** items,
-+  never before a closing brace.
-+- Theme style light/dark uses the `simple_style` cookie; `black` is OLED black
-+  (html gets both `dark` and `black` classes). Auto = no cookie + system setting.
-+  The html class is set by an inline script in `base.html` and mirrored by
-+  `applyThemeStyle()` in `client/zjsearch/src/lib/theme.ts` — keep both in sync.
-+- `POST /preferences` form semantics (upstream `Preferences.parse_form`):
-+  absent booleans are false; absent `category_*` clears the category
-+  selection; **`engine_<name>__<category>` and `plugin_<id>` are REVERSED —
-+  a posted key marks that engine/plugin as *disabled***, and every omitted
-+  key is re-enabled (a save must always post the complete disabled set);
-+  other absent key/value settings are left unchanged. The preferences UI
-+  auto-saves (debounced) with these semantics — no save button, and the
-+  initial mount must NOT post (it would flip engines/plugins).
-+- Results hotkeys (default / vim, see `src/features/hotkeys.ts`) must not fire
-+  while focus is in text inputs; hash-only changes (`#image-viewer`) are ignored
-+  by the router's popstate handler.
-+- Respect `prefers-reduced-motion`; RTL uses Tailwind logical properties (`ps-`,
-+  `me-`, `start-`, `end-`) against a single stylesheet.
-+- The empty `searx/templates/<name>/` directory alone registers a theme in the
-+  UI — never leave a half-created theme dir behind.
-+
-+## Docs worth reading first
-+
-+- `client/zjsearch/README.rst` — theme architecture and workflow.
-+- `docs/dev/templates.rst` — result field reference (the upstream render contract).
-+- `docs/dev/plugins/` — server plugin registry used by the preferences UI.
 diff --git a/client/zjsearch/.gitignore b/client/zjsearch/.gitignore
 new file mode 100644
-index 000000000000..de4d1f007dd1
+index 0000000..de4d1f0
 --- /dev/null
 +++ b/client/zjsearch/.gitignore
 @@ -0,0 +1,2 @@
@@ -106,7 +8,7 @@ index 000000000000..de4d1f007dd1
 +node_modules
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 000000000000..86f1c2e11120
+index 0000000..86f1c2e
 --- /dev/null
 +++ b/client/zjsearch/README.rst
 @@ -0,0 +1,115 @@
@@ -227,7 +129,7 @@ index 000000000000..86f1c2e11120
 +parity is on the roadmap.
 diff --git a/client/zjsearch/biome.json b/client/zjsearch/biome.json
 new file mode 100644
-index 000000000000..09c2c7ffd9c6
+index 0000000..09c2c7f
 --- /dev/null
 +++ b/client/zjsearch/biome.json
 @@ -0,0 +1,51 @@
@@ -284,7 +186,7 @@ index 000000000000..09c2c7ffd9c6
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 000000000000..21dacb7dd3c3
+index 0000000..21dacb7
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
 @@ -0,0 +1,23 @@
@@ -313,7 +215,7 @@ index 000000000000..21dacb7dd3c3
 +  image_proxy: true
 diff --git a/client/zjsearch/package-lock.json b/client/zjsearch/package-lock.json
 new file mode 100644
-index 000000000000..fe65161ea0d5
+index 0000000..fe65161
 --- /dev/null
 +++ b/client/zjsearch/package-lock.json
 @@ -0,0 +1,2803 @@
@@ -3122,7 +3024,7 @@ index 000000000000..fe65161ea0d5
 +}
 diff --git a/client/zjsearch/package.json b/client/zjsearch/package.json
 new file mode 100644
-index 000000000000..567194f855e8
+index 0000000..567194f
 --- /dev/null
 +++ b/client/zjsearch/package.json
 @@ -0,0 +1,40 @@
@@ -3168,7 +3070,7 @@ index 000000000000..567194f855e8
 +}
 diff --git a/client/zjsearch/src/app.tsx b/client/zjsearch/src/app.tsx
 new file mode 100644
-index 000000000000..858ff9ead4a8
+index 0000000..858ff9e
 --- /dev/null
 +++ b/client/zjsearch/src/app.tsx
 @@ -0,0 +1,73 @@
@@ -3247,48 +3149,19 @@ index 000000000000..858ff9ead4a8
 +}
 diff --git a/client/zjsearch/src/brand/empty_favicon.svg b/client/zjsearch/src/brand/empty_favicon.svg
 new file mode 100644
-index 000000000000..76396d24a42c
---- /dev/null
-+++ b/client/zjsearch/src/brand/empty_favicon.svg
-@@ -0,0 +1,6 @@
-+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="#9d9fa6" stroke-width="2.5" stroke-linecap="round">
-+  <circle cx="24" cy="24" r="17" fill="#eceef2" stroke="none"/>
-+  <circle cx="24" cy="24" r="17"/>
-+  <path d="M7 24 H41"/>
-+  <path d="M24 7 C30 13 30 35 24 41 C18 35 18 13 24 7 Z"/>
-+</svg>
+index 0000000..76396d2
+Binary files /dev/null and b/client/zjsearch/src/brand/empty_favicon.svg differ
 diff --git a/client/zjsearch/src/brand/favicon.svg b/client/zjsearch/src/brand/favicon.svg
 new file mode 100644
-index 000000000000..30b902071ef8
---- /dev/null
-+++ b/client/zjsearch/src/brand/favicon.svg
-@@ -0,0 +1,12 @@
-+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-+  <defs>
-+    <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1">
-+      <stop offset="0" stop-color="#ffd76b"/>
-+      <stop offset="1" stop-color="#f0b429"/>
-+    </linearGradient>
-+  </defs>
-+  <rect width="100" height="100" rx="22" fill="#211f1c"/>
-+  <circle cx="43" cy="43" r="24" fill="url(#lens)" stroke="#f5f2ea" stroke-width="9"/>
-+  <path d="M61 61 L82 82" stroke="#f5f2ea" stroke-width="11" stroke-linecap="round"/>
-+  <path d="M33 36 a13 13 0 0 1 10 -6" stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.85"/>
-+</svg>
+index 0000000..30b9020
+Binary files /dev/null and b/client/zjsearch/src/brand/favicon.svg differ
 diff --git a/client/zjsearch/src/brand/img_load_error.svg b/client/zjsearch/src/brand/img_load_error.svg
 new file mode 100644
-index 000000000000..0670f41db779
---- /dev/null
-+++ b/client/zjsearch/src/brand/img_load_error.svg
-@@ -0,0 +1,5 @@
-+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="#9d9fa6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-+  <rect x="4" y="4" width="40" height="40" rx="8" fill="#eceef2" stroke="none"/>
-+  <circle cx="17" cy="17" r="4"/>
-+  <path d="M8 36 L20 24 L28 32 L34 26 L40 32"/>
-+</svg>
+index 0000000..0670f41
+Binary files /dev/null and b/client/zjsearch/src/brand/img_load_error.svg differ
 diff --git a/client/zjsearch/src/components/Dropdown.tsx b/client/zjsearch/src/components/Dropdown.tsx
 new file mode 100644
-index 000000000000..e42b873320b3
+index 0000000..e42b873
 --- /dev/null
 +++ b/client/zjsearch/src/components/Dropdown.tsx
 @@ -0,0 +1,176 @@
@@ -3470,7 +3343,7 @@ index 000000000000..e42b873320b3
 +}
 diff --git a/client/zjsearch/src/components/HelpModal.tsx b/client/zjsearch/src/components/HelpModal.tsx
 new file mode 100644
-index 000000000000..b51e40422124
+index 0000000..b51e404
 --- /dev/null
 +++ b/client/zjsearch/src/components/HelpModal.tsx
 @@ -0,0 +1,133 @@
@@ -3609,7 +3482,7 @@ index 000000000000..b51e40422124
 +}
 diff --git a/client/zjsearch/src/components/SearchBox.tsx b/client/zjsearch/src/components/SearchBox.tsx
 new file mode 100644
-index 000000000000..51e86b0d0a5c
+index 0000000..51e86b0
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchBox.tsx
 @@ -0,0 +1,240 @@
@@ -3855,10 +3728,10 @@ index 000000000000..51e86b0d0a5c
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 000000000000..db14e7ccf3ef
+index 0000000..514a5f7
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,195 @@
+@@ -0,0 +1,178 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useEffect, useState } from "react";
@@ -3872,6 +3745,9 @@ index 000000000000..db14e7ccf3ef
 +interface CategoryTabsProps {
 +  globals: GlobalData;
 +  selected: string[];
++  /** multi-selection changes (toggle) must reach the parent so that
++      query submits (Enter / search box) use the up-to-date selection */
++  onSelectionChange?: (categories: string[]) => void;
 +  onSearch: (categories: string[]) => void;
 +  /** wrap onto multiple lines (index hero) instead of scrolling one row */
 +  wrap?: boolean;
@@ -3882,18 +3758,13 @@ index 000000000000..db14e7ccf3ef
 + * searches the clicked category, shift+click toggles multi-selection.
 + * Otherwise it behaves like toggling checkboxes and the magnifier submits.
 + */
-+export function CategoryTabs({ globals, selected, onSearch, wrap = false }: CategoryTabsProps) {
++export function CategoryTabs({ globals, selected, onSelectionChange, onSearch, wrap = false }: CategoryTabsProps) {
 +  const t = useT();
 +  const settings = useSettings();
-+  const [selection, setSelection] = useState<string[]>(selected);
-+
-+  // re-sync when the server payload changes (back/forward navigation)
-+  useEffect(() => {
-+    setSelection(selected);
-+  }, [selected]);
 +
 +  const toggle = (category: string) => {
-+    setSelection((prev) => (prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category]));
++    const next = selected.includes(category) ? selected.filter((item) => item !== category) : [...selected, category];
++    onSelectionChange?.(next.length > 0 ? next : [globals.default_category]);
 +  };
 +
 +  const onClick = (category: string, event: React.MouseEvent) => {
@@ -3902,11 +3773,6 @@ index 000000000000..db14e7ccf3ef
 +      return;
 +    }
 +    onSearch([category]);
-+  };
-+
-+  const submitSelection = () => {
-+    const categories = selection.length > 0 ? selection : [globals.default_category];
-+    onSearch(categories);
 +  };
 +
 +  const tabs = globals.categories_as_tabs.length > 0 ? globals.categories_as_tabs : globals.categories;
@@ -3920,7 +3786,7 @@ index 000000000000..db14e7ccf3ef
 +      }`}
 +    >
 +      {tabs.map((category) => {
-+        const isSelected = selection.includes(category);
++        const isSelected = selected.includes(category);
 +        return (
 +          <button
 +            aria-pressed={isSelected}
@@ -3944,16 +3810,6 @@ index 000000000000..db14e7ccf3ef
 +          </button>
 +        );
 +      })}
-+      {!settings.search_on_category_select ? (
-+        <button
-+          aria-label={t("search")}
-+          className="ms-1 grid size-7 shrink-0 place-items-center rounded-full bg-accent-strong text-accent-contrast transition-colors hover:bg-accent-strong-hover"
-+          onClick={submitSelection}
-+          type="button"
-+        >
-+          <CategoryIcon category="general" className="size-3.5" />
-+        </button>
-+      ) : null}
 +    </div>
 +  );
 +}
@@ -4056,7 +3912,7 @@ index 000000000000..db14e7ccf3ef
 +}
 diff --git a/client/zjsearch/src/components/Shell.tsx b/client/zjsearch/src/components/Shell.tsx
 new file mode 100644
-index 000000000000..b3c88660c007
+index 0000000..b3c8866
 --- /dev/null
 +++ b/client/zjsearch/src/components/Shell.tsx
 @@ -0,0 +1,194 @@
@@ -4256,7 +4112,7 @@ index 000000000000..b3c88660c007
 +}
 diff --git a/client/zjsearch/src/components/icons.tsx b/client/zjsearch/src/components/icons.tsx
 new file mode 100644
-index 000000000000..f2f73b6e8afc
+index 0000000..f2f73b6
 --- /dev/null
 +++ b/client/zjsearch/src/components/icons.tsx
 @@ -0,0 +1,471 @@
@@ -4733,7 +4589,7 @@ index 000000000000..f2f73b6e8afc
 +}
 diff --git a/client/zjsearch/src/components/results/Answers.tsx b/client/zjsearch/src/components/results/Answers.tsx
 new file mode 100644
-index 000000000000..3e63149c50ff
+index 0000000..3e63149
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Answers.tsx
 @@ -0,0 +1,190 @@
@@ -4929,7 +4785,7 @@ index 000000000000..3e63149c50ff
 +}
 diff --git a/client/zjsearch/src/components/results/ImageGrid.tsx b/client/zjsearch/src/components/results/ImageGrid.tsx
 new file mode 100644
-index 000000000000..9bd3c87ca43f
+index 0000000..9bd3c87
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/ImageGrid.tsx
 @@ -0,0 +1,374 @@
@@ -5309,7 +5165,7 @@ index 000000000000..9bd3c87ca43f
 +}
 diff --git a/client/zjsearch/src/components/results/MapView.tsx b/client/zjsearch/src/components/results/MapView.tsx
 new file mode 100644
-index 000000000000..ea357504dbac
+index 0000000..ea35750
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/MapView.tsx
 @@ -0,0 +1,146 @@
@@ -5461,7 +5317,7 @@ index 000000000000..ea357504dbac
 +}
 diff --git a/client/zjsearch/src/components/results/Pagination.tsx b/client/zjsearch/src/components/results/Pagination.tsx
 new file mode 100644
-index 000000000000..f8927232d9ee
+index 0000000..f892723
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Pagination.tsx
 @@ -0,0 +1,80 @@
@@ -5547,7 +5403,7 @@ index 000000000000..f8927232d9ee
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 000000000000..1af64271702b
+index 0000000..1af6427
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
 @@ -0,0 +1,286 @@
@@ -5839,10 +5695,10 @@ index 000000000000..1af64271702b
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 000000000000..cbcb8408353f
+index 0000000..beffe92
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,1194 @@
+@@ -0,0 +1,1196 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
@@ -7005,6 +6861,8 @@ index 000000000000..cbcb8408353f
 +      return props.onOpenImage ? <ImageListCard {...props} onOpen={props.onOpenImage} /> : <DefaultCard {...props} />;
 +    case "videos":
 +      return <VideoCard {...props} />;
++    case "news":
++      return <NewsCard globals={props.globals} result={props.result} />;
 +    case "torrent":
 +      return <TorrentCard {...props} />;
 +    case "map":
@@ -7039,7 +6897,7 @@ index 000000000000..cbcb8408353f
 +}
 diff --git a/client/zjsearch/src/features/calculator.ts b/client/zjsearch/src/features/calculator.ts
 new file mode 100644
-index 000000000000..b6f8e068d7f8
+index 0000000..b6f8e06
 --- /dev/null
 +++ b/client/zjsearch/src/features/calculator.ts
 @@ -0,0 +1,41 @@
@@ -7086,7 +6944,7 @@ index 000000000000..b6f8e068d7f8
 +}
 diff --git a/client/zjsearch/src/features/hotkeys.ts b/client/zjsearch/src/features/hotkeys.ts
 new file mode 100644
-index 000000000000..3ee01f75afb4
+index 0000000..3ee01f7
 --- /dev/null
 +++ b/client/zjsearch/src/features/hotkeys.ts
 @@ -0,0 +1,132 @@
@@ -7224,7 +7082,7 @@ index 000000000000..3ee01f75afb4
 +}
 diff --git a/client/zjsearch/src/lib/engineDescriptions.ts b/client/zjsearch/src/lib/engineDescriptions.ts
 new file mode 100644
-index 000000000000..b9848b6d00eb
+index 0000000..b9848b6
 --- /dev/null
 +++ b/client/zjsearch/src/lib/engineDescriptions.ts
 @@ -0,0 +1,27 @@
@@ -7257,7 +7115,7 @@ index 000000000000..b9848b6d00eb
 +}
 diff --git a/client/zjsearch/src/lib/format.ts b/client/zjsearch/src/lib/format.ts
 new file mode 100644
-index 000000000000..7075ab01111c
+index 0000000..7075ab0
 --- /dev/null
 +++ b/client/zjsearch/src/lib/format.ts
 @@ -0,0 +1,49 @@
@@ -7312,7 +7170,7 @@ index 000000000000..7075ab01111c
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 000000000000..3dbb4d26e92e
+index 0000000..3dbb4d2
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
 @@ -0,0 +1,22 @@
@@ -7340,7 +7198,7 @@ index 000000000000..3dbb4d26e92e
 +}
 diff --git a/client/zjsearch/src/lib/overlay.tsx b/client/zjsearch/src/lib/overlay.tsx
 new file mode 100644
-index 000000000000..17e5b059339c
+index 0000000..17e5b05
 --- /dev/null
 +++ b/client/zjsearch/src/lib/overlay.tsx
 @@ -0,0 +1,188 @@
@@ -7534,7 +7392,7 @@ index 000000000000..17e5b059339c
 +}
 diff --git a/client/zjsearch/src/lib/pageData.ts b/client/zjsearch/src/lib/pageData.ts
 new file mode 100644
-index 000000000000..dd6090bb42aa
+index 0000000..dd6090b
 --- /dev/null
 +++ b/client/zjsearch/src/lib/pageData.ts
 @@ -0,0 +1,49 @@
@@ -7589,7 +7447,7 @@ index 000000000000..dd6090bb42aa
 +}
 diff --git a/client/zjsearch/src/lib/router.tsx b/client/zjsearch/src/lib/router.tsx
 new file mode 100644
-index 000000000000..102cb2a31911
+index 0000000..102cb2a
 --- /dev/null
 +++ b/client/zjsearch/src/lib/router.tsx
 @@ -0,0 +1,244 @@
@@ -7839,7 +7697,7 @@ index 000000000000..102cb2a31911
 +}
 diff --git a/client/zjsearch/src/lib/settings.ts b/client/zjsearch/src/lib/settings.ts
 new file mode 100644
-index 000000000000..3dd67489d103
+index 0000000..3dd6748
 --- /dev/null
 +++ b/client/zjsearch/src/lib/settings.ts
 @@ -0,0 +1,55 @@
@@ -7900,7 +7758,7 @@ index 000000000000..3dd67489d103
 +}
 diff --git a/client/zjsearch/src/lib/theme.ts b/client/zjsearch/src/lib/theme.ts
 new file mode 100644
-index 000000000000..09d24fc604a7
+index 0000000..09d24fc
 --- /dev/null
 +++ b/client/zjsearch/src/lib/theme.ts
 @@ -0,0 +1,38 @@
@@ -7944,7 +7802,7 @@ index 000000000000..09d24fc604a7
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 000000000000..c669121141ed
+index 0000000..c669121
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
 @@ -0,0 +1,408 @@
@@ -8358,7 +8216,7 @@ index 000000000000..c669121141ed
 +}
 diff --git a/client/zjsearch/src/main.tsx b/client/zjsearch/src/main.tsx
 new file mode 100644
-index 000000000000..0fdb05d69282
+index 0000000..0fdb05d
 --- /dev/null
 +++ b/client/zjsearch/src/main.tsx
 @@ -0,0 +1,39 @@
@@ -8403,10 +8261,10 @@ index 000000000000..0fdb05d69282
 +void bootstrap();
 diff --git a/client/zjsearch/src/pages/IndexPage.tsx b/client/zjsearch/src/pages/IndexPage.tsx
 new file mode 100644
-index 000000000000..c65292d51a4a
+index 0000000..985e7c0
 --- /dev/null
 +++ b/client/zjsearch/src/pages/IndexPage.tsx
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,114 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useState } from "react";
@@ -8463,7 +8321,10 @@ index 000000000000..c65292d51a4a
 +          {globals.instance_name}
 +          <span className="text-accent-strong">.</span>
 +        </h1>
-+        <div className="mt-12 w-full animate-fade-up [animation-delay:60ms]">
++        {/* raised stacking level: fade-up leaves a residual transform (a
++            stacking context) on every animated sibling, which would let the
++            category tabs and the hotkeys hint paint over the z-30 dropdown */}
++        <div className="relative z-10 mt-12 w-full animate-fade-up [animation-delay:60ms]">
 +          <SearchBox
 +            initialQuery=""
 +            onQueryChange={setQuery}
@@ -8481,6 +8342,7 @@ index 000000000000..c65292d51a4a
 +              setSelected(categories);
 +              submitSearch(query, categories);
 +            }}
++            onSelectionChange={setSelected}
 +            selected={selected}
 +            wrap
 +          />
@@ -8519,7 +8381,7 @@ index 000000000000..c65292d51a4a
 +}
 diff --git a/client/zjsearch/src/pages/InfoPage.tsx b/client/zjsearch/src/pages/InfoPage.tsx
 new file mode 100644
-index 000000000000..d51a406a1601
+index 0000000..d51a406
 --- /dev/null
 +++ b/client/zjsearch/src/pages/InfoPage.tsx
 @@ -0,0 +1,37 @@
@@ -8562,7 +8424,7 @@ index 000000000000..d51a406a1601
 +}
 diff --git a/client/zjsearch/src/pages/PreferencesPage.tsx b/client/zjsearch/src/pages/PreferencesPage.tsx
 new file mode 100644
-index 000000000000..aaa9c5bf419f
+index 0000000..aaa9c5b
 --- /dev/null
 +++ b/client/zjsearch/src/pages/PreferencesPage.tsx
 @@ -0,0 +1,1209 @@
@@ -9777,15 +9639,15 @@ index 000000000000..aaa9c5bf419f
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 000000000000..a54c789d1295
+index 0000000..10b4fe9
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,536 @@
+@@ -0,0 +1,657 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
 +import { HelpModal } from "../components/HelpModal.tsx";
-+import { ArrowUpIcon, InfoIcon } from "../components/icons.tsx";
++import { ArrowUpIcon, CategoryIcon, ChevronRightIcon, InfoIcon } from "../components/icons.tsx";
 +import { Answers } from "../components/results/Answers.tsx";
 +import { NewsCard, ProductGrid, ResultCard, ResultSkeleton, VideoGrid } from "../components/results/cards.tsx";
 +import { ImageGrid } from "../components/results/ImageGrid.tsx";
@@ -9912,6 +9774,69 @@ index 000000000000..a54c789d1295
 +    }
 +  }
 +  return groups;
++}
++
++/** Sections that get a Kagi/Google-style header.  Special-typed results
++    interleave heavily in mixed searches (one group per engine), so each
++    section type is consolidated into a single group at its first position. */
++const SECTION_TEMPLATES = new Set(["images", "videos", "news"]);
++
++function consolidateGroups(
++  groups: Array<{ template: string; items: Array<{ result: ResultItem; index: number }> }>,
++): Array<{ template: string; items: Array<{ result: ResultItem; index: number }> }> {
++  const first: Map<string, { template: string; items: Array<{ result: ResultItem; index: number }> }> = new Map();
++  const out: Array<{ template: string; items: Array<{ result: ResultItem; index: number }> }> = [];
++  for (const group of groups) {
++    if (!SECTION_TEMPLATES.has(group.template)) {
++      out.push(group);
++      continue;
++    }
++    const merged = first.get(group.template);
++    if (merged) {
++      merged.items.push(...group.items);
++    } else {
++      const created = { template: group.template, items: [...group.items] };
++      first.set(group.template, created);
++      out.push(created);
++    }
++  }
++  return out;
++}
++
++/** Kagi/Google-style section header for a same-type result group: category
++    icon + translated label + count, and a chevron that switches to the
++    dedicated single-category search. */
++function GroupHeader({
++  category,
++  label,
++  count,
++  onAll,
++}: {
++  category: string;
++  label: string;
++  count: number;
++  onAll: (categories: string[]) => void;
++}) {
++  return (
++    <div className="flex items-center justify-between gap-2 pb-1 pt-5 first:pt-1">
++      <h2 className="flex items-center gap-1.5 text-sm font-semibold text-ink">
++        <CategoryIcon category={category} className="size-4 text-accent" />
++        {label}
++        <span className="font-normal text-ink-3">{count}</span>
++      </h2>
++      <button
++        aria-label={label}
++        className="grid size-7 place-items-center rounded-full text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
++        onClick={() => {
++          onAll([category]);
++        }}
++        title={label}
++        type="button"
++      >
++        <ChevronRightIcon className="size-4" />
++      </button>
++    </div>
++  );
 +}
 +
 +function InfiniteScrollSentinel({ onNext, error, loading }: { onNext: () => void; error: boolean; loading: boolean }) {
@@ -10168,19 +10093,29 @@ index 000000000000..a54c789d1295
 +    <Shell globals={globals} hideTopNav>
 +      <header className="border-b border-line">
 +        <div className="zjs-results-header-row mx-auto flex w-full items-center gap-4 px-4 pt-3 sm:px-6">
-+          {/* brand mark only - no home link needed, everything opens as a drawer;
++          {/* brand links back to the home page (SPA navigation);
 +              hidden on small screens so the query box keeps enough width */}
-+          <span className="hidden min-[480px]:block shrink-0 select-none text-xl font-extrabold tracking-tight text-ink">
++          <Link
++            ariaLabel={globals.instance_name}
++            className="hidden min-[480px]:block shrink-0 select-none text-xl font-extrabold tracking-tight text-ink"
++            href="/"
++            title={globals.instance_name}
++          >
 +            {globals.instance_name}
 +            <span className="text-accent-strong">.</span>
-+          </span>
++          </Link>
 +          <div className="min-w-0 flex-1">
 +            <SearchBox initialQuery={data.q} onSubmitQuery={submitQuery} />
 +          </div>
 +          <HeaderActions globals={globals} />
 +        </div>
 +        <div className="zjs-results-header-row mx-auto px-4 pt-1 sm:px-6">
-+          <CategoryTabs globals={globals} onSearch={onSearchCategories} selected={selectedCategories} />
++          <CategoryTabs
++            globals={globals}
++            onSearch={onSearchCategories}
++            onSelectionChange={setSelectedCategories}
++            selected={selectedCategories}
++          />
 +        </div>
 +        <div className="zjs-results-header-row mx-auto px-4 pb-1 sm:px-6">
 +          <SearchFilters globals={globals} onChange={onFilters} values={filterValues} />
@@ -10258,19 +10193,67 @@ index 000000000000..a54c789d1295
 +                  </div>
 +                ) : (
 +                  <div className="mt-2" ref={listRef}>
-+                    {groupResults(allResults).map((group, groupIndex) =>
-+                      group.template === "images" ? (
-+                        <div className="grid grid-cols-2 gap-3 py-2 sm:grid-cols-3 lg:grid-cols-4" key={groupIndex}>
-+                          {group.items.map(({ result, index }) => (
-+                            <ResultCard
-+                              globals={globals}
-+                              key={index}
-+                              onOpenImage={() => window.open(result.img_src ?? result.url, "_blank", "noopener")}
-+                              result={result}
++                    {consolidateGroups(groupResults(allResults)).map((group, groupIndex) => {
++                      const label = globals.category_labels[group.template] ?? group.template;
++                      if (group.template === "images") {
++                        return (
++                          <section key={`${group.template}-${groupIndex}`}>
++                            <GroupHeader
++                              category="images"
++                              count={group.items.length}
++                              label={label}
++                              onAll={onSearchCategories}
 +                            />
-+                          ))}
-+                        </div>
-+                      ) : (
++                            <div className="mt-1">
++                              <ImageGrid results={group.items.slice(0, 8).map(({ result }) => result)} />
++                            </div>
++                          </section>
++                        );
++                      }
++                      if (group.template === "videos") {
++                        return (
++                          <section key={`${group.template}-${groupIndex}`}>
++                            <GroupHeader
++                              category="videos"
++                              count={group.items.length}
++                              label={label}
++                              onAll={onSearchCategories}
++                            />
++                            <div className="mt-1">
++                              <VideoGrid
++                                globals={globals}
++                                results={group.items.slice(0, 6).map(({ result }) => result)}
++                              />
++                            </div>
++                          </section>
++                        );
++                      }
++                      if (group.template === "news") {
++                        return (
++                          <section key={`${group.template}-${groupIndex}`}>
++                            <GroupHeader
++                              category="news"
++                              count={group.items.length}
++                              label={label}
++                              onAll={onSearchCategories}
++                            />
++                            <div className="mt-1 space-y-1">
++                              {group.items.slice(0, 6).map(({ result, index }) => (
++                                <div
++                                  className={`animate-fade-up rounded-2xl ${
++                                    index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
++                                  }`}
++                                  key={index}
++                                  style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
++                                >
++                                  <NewsCard globals={globals} result={result} />
++                                </div>
++                              ))}
++                            </div>
++                          </section>
++                        );
++                      }
++                      return (
 +                        <div key={groupIndex}>
 +                          {group.items.map(({ result, index }) => (
 +                            <div
@@ -10284,8 +10267,8 @@ index 000000000000..a54c789d1295
 +                            </div>
 +                          ))}
 +                        </div>
-+                      ),
-+                    )}
++                      );
++                    })}
 +                  </div>
 +                )}
 +
@@ -10319,7 +10302,7 @@ index 000000000000..a54c789d1295
 +}
 diff --git a/client/zjsearch/src/pages/StatsPage.tsx b/client/zjsearch/src/pages/StatsPage.tsx
 new file mode 100644
-index 000000000000..1ed7cd716a20
+index 0000000..1ed7cd7
 --- /dev/null
 +++ b/client/zjsearch/src/pages/StatsPage.tsx
 @@ -0,0 +1,244 @@
@@ -10569,7 +10552,7 @@ index 000000000000..1ed7cd716a20
 +}
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 000000000000..23b7b1c6043e
+index 0000000..23b7b1c
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
 @@ -0,0 +1,362 @@
@@ -10937,7 +10920,7 @@ index 000000000000..23b7b1c6043e
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
-index 000000000000..5856f85ccefc
+index 0000000..5856f85
 --- /dev/null
 +++ b/client/zjsearch/tools/assets.ts
 @@ -0,0 +1,38 @@
@@ -10981,7 +10964,7 @@ index 000000000000..5856f85ccefc
 +}
 diff --git a/client/zjsearch/tsconfig.json b/client/zjsearch/tsconfig.json
 new file mode 100644
-index 000000000000..74fbfb000a73
+index 0000000..74fbfb0
 --- /dev/null
 +++ b/client/zjsearch/tsconfig.json
 @@ -0,0 +1,21 @@
@@ -11008,7 +10991,7 @@ index 000000000000..74fbfb000a73
 +}
 diff --git a/client/zjsearch/vite.config.ts b/client/zjsearch/vite.config.ts
 new file mode 100644
-index 000000000000..641c35fca094
+index 0000000..641c35f
 --- /dev/null
 +++ b/client/zjsearch/vite.config.ts
 @@ -0,0 +1,84 @@
@@ -11098,7 +11081,7 @@ index 000000000000..641c35fca094
 +} satisfies import("vite").UserConfig;
 diff --git a/searx/templates/zjsearch/404.html b/searx/templates/zjsearch/404.html
 new file mode 100644
-index 000000000000..f920be37f8e0
+index 0000000..f920be3
 --- /dev/null
 +++ b/searx/templates/zjsearch/404.html
 @@ -0,0 +1,4 @@
@@ -11108,7 +11091,7 @@ index 000000000000..f920be37f8e0
 +{% block page_data %}{{ page_404() }}{% endblock %}
 diff --git a/searx/templates/zjsearch/base.html b/searx/templates/zjsearch/base.html
 new file mode 100644
-index 000000000000..fc19e959ef84
+index 0000000..fc19e95
 --- /dev/null
 +++ b/searx/templates/zjsearch/base.html
 @@ -0,0 +1,61 @@
@@ -11175,10 +11158,10 @@ index 000000000000..fc19e959ef84
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 000000000000..0743403bba44
+index 0000000..bfd96cd
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,760 @@
+@@ -0,0 +1,765 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -11514,14 +11497,19 @@ index 000000000000..0743403bba44
 +  {%- elif result.template == 'map.html' %}
 +    {%- if result.address %}
 +    {%- set a = result.address %}
++    {%- set addr_fields = {
++      'name': a.get('name'),
++      'road': a.get('road'),
++      'house_number': a.get('house_number'),
++      'postcode': a.get('postcode'),
++      'locality': a.get('locality'),
++      'country': a.get('country'),
++      'country_code': a.get('country_code'),
++    } -%}
 +    "address": {
-+      {%- if a.get('name') %}"name": {{ a['name']|tojson }},{% endif %}
-+      {%- if a.get('road') %}"road": {{ a['road']|tojson }},{% endif %}
-+      {%- if a.get('house_number') %}"house_number": {{ a['house_number']|tojson }},{% endif %}
-+      {%- if a.get('postcode') %}"postcode": {{ a['postcode']|tojson }},{% endif %}
-+      {%- if a.get('locality') %}"locality": {{ a['locality']|tojson }},{% endif %}
-+      {%- if a.get('country') %}"country": {{ a['country']|tojson }},{% endif %}
-+      {%- if a.get('country_code') %}"country_code": {{ a['country_code']|tojson }}{% endif %}
++      {%- for k, v in addr_fields.items() if v -%}
++      {{ k|tojson }}: {{ v|tojson }}{{ ", " if not loop.last }}
++      {%- endfor -%}
 +    },
 +    {%- endif %}
 +    {%- if result.links %}
@@ -11941,7 +11929,7 @@ index 000000000000..0743403bba44
 +{%- endmacro %}
 diff --git a/searx/templates/zjsearch/index.html b/searx/templates/zjsearch/index.html
 new file mode 100644
-index 000000000000..1b89d2dd578e
+index 0000000..1b89d2d
 --- /dev/null
 +++ b/searx/templates/zjsearch/index.html
 @@ -0,0 +1,4 @@
@@ -11951,7 +11939,7 @@ index 000000000000..1b89d2dd578e
 +{% block page_data %}{{ page_index(selected_categories) }}{% endblock %}
 diff --git a/searx/templates/zjsearch/info.html b/searx/templates/zjsearch/info.html
 new file mode 100644
-index 000000000000..3702ff08b370
+index 0000000..3702ff0
 --- /dev/null
 +++ b/searx/templates/zjsearch/info.html
 @@ -0,0 +1,4 @@
@@ -11961,7 +11949,7 @@ index 000000000000..3702ff08b370
 +{% block page_data %}{{ page_info(all_pages, active_page, active_pagename) }}{% endblock %}
 diff --git a/searx/templates/zjsearch/manifest.json b/searx/templates/zjsearch/manifest.json
 new file mode 100644
-index 000000000000..ab76488ab473
+index 0000000..ab76488
 --- /dev/null
 +++ b/searx/templates/zjsearch/manifest.json
 @@ -0,0 +1,25 @@
@@ -11992,7 +11980,7 @@ index 000000000000..ab76488ab473
 +}
 diff --git a/searx/templates/zjsearch/opensearch.xml b/searx/templates/zjsearch/opensearch.xml
 new file mode 100644
-index 000000000000..68e8cd6f3e49
+index 0000000..68e8cd6
 --- /dev/null
 +++ b/searx/templates/zjsearch/opensearch.xml
 @@ -0,0 +1,21 @@
@@ -12019,7 +12007,7 @@ index 000000000000..68e8cd6f3e49
 +</OpenSearchDescription>
 diff --git a/searx/templates/zjsearch/opensearch_response_rss.xml b/searx/templates/zjsearch/opensearch_response_rss.xml
 new file mode 100644
-index 000000000000..336ed03293b0
+index 0000000..336ed03
 --- /dev/null
 +++ b/searx/templates/zjsearch/opensearch_response_rss.xml
 @@ -0,0 +1,29 @@
@@ -12054,7 +12042,7 @@ index 000000000000..336ed03293b0
 +</rss>
 diff --git a/searx/templates/zjsearch/preferences.html b/searx/templates/zjsearch/preferences.html
 new file mode 100644
-index 000000000000..97a254f292b1
+index 0000000..97a254f
 --- /dev/null
 +++ b/searx/templates/zjsearch/preferences.html
 @@ -0,0 +1,13 @@
@@ -12073,7 +12061,7 @@ index 000000000000..97a254f292b1
 +{%- endblock %}
 diff --git a/searx/templates/zjsearch/results.html b/searx/templates/zjsearch/results.html
 new file mode 100644
-index 000000000000..d8cf3583ebaf
+index 0000000..d8cf358
 --- /dev/null
 +++ b/searx/templates/zjsearch/results.html
 @@ -0,0 +1,15 @@
@@ -12094,7 +12082,7 @@ index 000000000000..d8cf3583ebaf
 +{%- endblock %}
 diff --git a/searx/templates/zjsearch/rss.xsl b/searx/templates/zjsearch/rss.xsl
 new file mode 100644
-index 000000000000..5b8494310a8c
+index 0000000..5b84943
 --- /dev/null
 +++ b/searx/templates/zjsearch/rss.xsl
 @@ -0,0 +1,44 @@
@@ -12144,7 +12132,7 @@ index 000000000000..5b8494310a8c
 +</xsl:stylesheet>
 diff --git a/searx/templates/zjsearch/stats.html b/searx/templates/zjsearch/stats.html
 new file mode 100644
-index 000000000000..8efbf105278e
+index 0000000..8efbf10
 --- /dev/null
 +++ b/searx/templates/zjsearch/stats.html
 @@ -0,0 +1,4 @@
