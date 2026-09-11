@@ -186,10 +186,10 @@ index 0000000..09c2c7f
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 0000000..21dacb7
+index 0000000..1825466
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
-@@ -0,0 +1,23 @@
+@@ -0,0 +1,30 @@
 +# zjsearch theme dev instance settings (not tracked by git).
 +# Run with:
 +#   SEARXNG_SETTINGS_PATH=client/zjsearch/dev-settings.yml ./manage webapp.run
@@ -213,6 +213,13 @@ index 0000000..21dacb7
 +  secret_key: "zjsearch-local-dev-secret-key"
 +  limiter: false
 +  image_proxy: true
++
++# proxy so region-blocked engines are reachable from this network
++outgoing:
++  request_timeout: 5.0
++  proxies:
++    all://:
++      - http://10.192.7.1:7890
 diff --git a/client/zjsearch/make-patch.ps1 b/client/zjsearch/make-patch.ps1
 new file mode 100644
 index 0000000..4e6c1b5
@@ -3189,13 +3196,14 @@ index 0000000..567194f
 +}
 diff --git a/client/zjsearch/src/app.tsx b/client/zjsearch/src/app.tsx
 new file mode 100644
-index 0000000..1eca7c9
+index 0000000..273c341
 --- /dev/null
 +++ b/client/zjsearch/src/app.tsx
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,93 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
-+import { BrandMark } from "./components/icons.tsx";
++import { Suspense } from "react";
++import { BrandMark, SpinnerIcon } from "./components/icons.tsx";
 +import { Shell } from "./components/Shell.tsx";
 +import { I18nContext, useT } from "./lib/i18n.ts";
 +import { OverlayProvider } from "./lib/overlay.tsx";
@@ -3205,10 +3213,8 @@ index 0000000..1eca7c9
 +import type { AnyPageData } from "./lib/types.ts";
 +import { isInfoPageData, isPreferencesPageData, isSearchPageData, isStatsPageData } from "./lib/types.ts";
 +import { IndexPage } from "./pages/IndexPage.tsx";
-+import { InfoPage } from "./pages/InfoPage.tsx";
-+import { PreferencesPage } from "./pages/PreferencesPage.tsx";
++import { InfoPage, PreferencesPage, StatsPage } from "./pages/lazyPages.ts";
 +import { ResultsPage } from "./pages/ResultsPage.tsx";
-+import { StatsPage } from "./pages/StatsPage.tsx";
 +
 +function Pages() {
 +  const { data, error } = useRouter();
@@ -3229,13 +3235,25 @@ index 0000000..1eca7c9
 +  }
 +
 +  if (isPreferencesPageData(data)) {
-+    return <PreferencesPage data={data} />;
++    return (
++      <Suspense fallback={<PageFallback />}>
++        <PreferencesPage data={data} />
++      </Suspense>
++    );
 +  }
 +  if (isStatsPageData(data)) {
-+    return <StatsPage data={data} />;
++    return (
++      <Suspense fallback={<PageFallback />}>
++        <StatsPage data={data} />
++      </Suspense>
++    );
 +  }
 +  if (isInfoPageData(data)) {
-+    return <InfoPage data={data} />;
++    return (
++      <Suspense fallback={<PageFallback />}>
++        <InfoPage data={data} />
++      </Suspense>
++    );
 +  }
 +  switch (globals.page) {
 +    case "index":
@@ -3251,6 +3269,14 @@ index 0000000..1eca7c9
 +        </Shell>
 +      );
 +  }
++}
++
++function PageFallback() {
++  return (
++    <div className="grid min-h-[60vh] place-items-center">
++      <SpinnerIcon className="size-6 animate-spin-slow text-ink-3" />
++    </div>
++  );
 +}
 +
 +export function App({ initialData, settings }: { initialData: AnyPageData | null; settings: ClientSettings }) {
@@ -4785,10 +4811,10 @@ index 0000000..5e0ed5e
 +}
 diff --git a/client/zjsearch/src/components/results/Answers.tsx b/client/zjsearch/src/components/results/Answers.tsx
 new file mode 100644
-index 0000000..2b01beb
+index 0000000..42f3cb6
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Answers.tsx
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,192 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useT } from "../../lib/i18n.ts";
@@ -4827,7 +4853,9 @@ index 0000000..2b01beb
 +  return (
 +    <div>
 +      <div className="flex items-start gap-3">
-+        {current.symbol ? <img alt="" className="size-10" src={current.symbol} /> : null}
++        {current.symbol ? (
++          <img alt="" className="size-10" decoding="async" loading="lazy" src={current.symbol} />
++        ) : null}
 +        <div className="min-w-0">
 +          <p className="text-sm font-medium text-ink" dir="auto">
 +            {current.summary}
@@ -4981,10 +5009,10 @@ index 0000000..2b01beb
 +}
 diff --git a/client/zjsearch/src/components/results/ImageGrid.tsx b/client/zjsearch/src/components/results/ImageGrid.tsx
 new file mode 100644
-index 0000000..198dea3
+index 0000000..d982810
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/ImageGrid.tsx
-@@ -0,0 +1,374 @@
+@@ -0,0 +1,375 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -5308,6 +5336,7 @@ index 0000000..198dea3
 +        className={`w-full object-cover transition-all duration-300 group-hover:scale-[1.02] ${
 +          loaded ? "opacity-100" : "h-44 opacity-0"
 +        }`}
++        decoding="async"
 +        loading="lazy"
 +        onError={(event) => {
 +          event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
@@ -5599,17 +5628,17 @@ index 0000000..f892723
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 0000000..a1430dd
+index 0000000..1da036d
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
-@@ -0,0 +1,286 @@
+@@ -0,0 +1,184 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
 +import { useT } from "../../lib/i18n.ts";
 +import type { GlobalData, InfoboxData, SearchPageData } from "../../lib/types.ts";
-+import { DownloadIcon, ExternalLinkIcon, SearchIcon } from "../icons.tsx";
-+import { Link } from "../Shell.tsx";
++import { ExternalLinkIcon } from "../icons.tsx";
++import {} from "../Shell.tsx";
 +
 +function Box({ title, children, open = false }: { title: string; children: ReactNode; open?: boolean }) {
 +  return (
@@ -5640,6 +5669,7 @@ index 0000000..a1430dd
 +          <img
 +            alt={infobox.title}
 +            className="aspect-square w-32 shrink-0 rounded-lg object-cover sm:w-36"
++            decoding="async"
 +            loading="lazy"
 +            src={infobox.img_src}
 +          />
@@ -5659,6 +5689,7 @@ index 0000000..a1430dd
 +                  <img
 +                    alt={attribute.image_alt}
 +                    className="inline-block max-h-24 rounded-lg align-middle"
++                    decoding="async"
 +                    loading="lazy"
 +                    src={attribute.image_src}
 +                  />
@@ -5731,9 +5762,6 @@ index 0000000..a1430dd
 +  const t = useT();
 +  const globals = data.globals;
 +  const hasInfobox = data.infoboxes.length > 0;
-+  const hasSuggestions = data.suggestions.length > 0;
-+  const hasEngineMsg = data.unresponsive_engines.length > 0 || data.timings.length > 0;
-+  const maxTime = data.max_response_time ?? 0;
 +  const searchUrl = window.location.href;
 +
 +  return (
@@ -5746,90 +5774,6 @@ index 0000000..a1430dd
 +        </section>
 +      ) : null}
 +
-+      {hasSuggestions ? (
-+        <Box open title={t("suggestions")}>
-+          <div className="grid grid-cols-2 gap-2">
-+            {/* cap the list: more than 8 chips turns the sidebar into noise */}
-+            {data.suggestions.slice(0, 8).map((suggestion) => (
-+              <button
-+                className="flex items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left text-[13px] text-ink-2 transition-colors hover:border-accent hover:text-ink"
-+                dir="auto"
-+                key={suggestion.q}
-+                onClick={() => {
-+                  onSearch(suggestion.q);
-+                }}
-+                type="button"
-+              >
-+                <SearchIcon className="size-3.5 shrink-0 text-ink-3" />
-+                <span className="truncate">{suggestion.title}</span>
-+              </button>
-+            ))}
-+          </div>
-+        </Box>
-+      ) : null}
-+
-+      {hasEngineMsg ? (
-+        <Box
-+          open={data.results.length === 0}
-+          title={
-+            data.max_response_time
-+              ? `${t("response_time")}: ${Math.round(data.max_response_time * 10) / 10} ${t("seconds")}`
-+              : t("engines_messages")
-+          }
-+        >
-+          {data.unresponsive_engines.length > 0 ? (
-+            <table className="w-full text-xs">
-+              <tbody>
-+                {data.unresponsive_engines.map(([name, errorMessage]) => (
-+                  <tr key={name}>
-+                    <td className="py-0.5 pr-2 align-top">
-+                      <Link
-+                        className="font-medium text-ink-2 hover:text-accent"
-+                        href={`/stats?engine=${encodeURIComponent(name)}`}
-+                      >
-+                        {name}
-+                      </Link>
-+                    </td>
-+                    <td className="py-0.5 text-danger" dir="auto">
-+                      {errorMessage}
-+                    </td>
-+                  </tr>
-+                ))}
-+              </tbody>
-+            </table>
-+          ) : null}
-+          {data.timings.length > 0 ? (
-+            <table className="mt-1 w-full text-xs">
-+              <tbody>
-+                {data.timings.map((timing) => (
-+                  <tr key={timing.name}>
-+                    <td className="w-24 py-0.5 pr-2 truncate">
-+                      <Link
-+                        className="text-ink-2 hover:text-accent"
-+                        href={`/stats?engine=${encodeURIComponent(timing.name)}`}
-+                      >
-+                        {timing.name}
-+                      </Link>
-+                    </td>
-+                    <td className="py-0.5">
-+                      <div className="flex items-center gap-2">
-+                        <span className="w-10 shrink-0 text-right text-ink-3">{Math.round(timing.time * 10) / 10}</span>
-+                        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-+                          <span
-+                            className="block h-full rounded-full bg-accent/70"
-+                            style={{ width: maxTime > 0 ? `${Math.max(2, (timing.time / maxTime) * 100)}%` : "0%" }}
-+                          />
-+                        </span>
-+                      </div>
-+                    </td>
-+                  </tr>
-+                ))}
-+              </tbody>
-+            </table>
-+          ) : null}
-+        </Box>
-+      ) : null}
-+
 +      {globals.method === "POST" ? (
 +        <Box title={t("search_url")}>
 +          <div className="flex items-start gap-2">
@@ -5840,23 +5784,6 @@ index 0000000..a1430dd
 +              {searchUrl}
 +            </pre>
 +            <CopyButton text={searchUrl} />
-+          </div>
-+        </Box>
-+      ) : null}
-+
-+      {globals.search_formats.length > 0 ? (
-+        <Box title={t("download_results")}>
-+          <div className="flex flex-wrap gap-1.5">
-+            {globals.search_formats.map((format) => (
-+              <a
-+                className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
-+                href={`${window.location.pathname}${window.location.search}${window.location.search.includes("?") ? "&" : "?"}format=${format}`}
-+                key={format}
-+              >
-+                <DownloadIcon className="size-3.5" />
-+                {format}
-+              </a>
-+            ))}
 +          </div>
 +        </Box>
 +      ) : null}
@@ -5891,10 +5818,10 @@ index 0000000..a1430dd
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..6ed96d4
+index 0000000..c3f1e3f
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,1183 @@
+@@ -0,0 +1,1196 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
@@ -5953,6 +5880,7 @@ index 0000000..6ed96d4
 +    <img
 +      alt=""
 +      className="size-4 shrink-0 rounded-sm object-contain"
++      decoding="async"
 +      loading="lazy"
 +      onError={(event) => {
 +        event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
@@ -6066,18 +5994,22 @@ index 0000000..6ed96d4
 +  alt,
 +  className,
 +  lengthDisplay,
++  eager,
 +}: {
 +  src: string;
 +  alt: string;
 +  className?: string;
 +  lengthDisplay?: string | null;
++  eager?: boolean;
 +}) {
 +  return (
 +    <div className={`relative shrink-0 overflow-hidden rounded-xl bg-surface-2 ${className ?? ""}`}>
 +      <img
 +        alt={alt}
 +        className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-+        loading="lazy"
++        decoding="async"
++        fetchPriority={eager ? "high" : undefined}
++        loading={eager ? "eager" : "lazy"}
 +        onError={(event) => {
 +          event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
 +        }}
@@ -6175,9 +6107,11 @@ index 0000000..6ed96d4
 +  autoOpenMap?: boolean;
 +  /** music-intent pages show the media preview expanded with our own player */
 +  mediaOpen?: boolean;
++  /** first results load their thumbnail eagerly (LCP) */
++  eager?: boolean;
 +}
 +
-+export function DefaultCard({ result, globals, mediaOpen }: CardProps) {
++export function DefaultCard({ eager, result, globals, mediaOpen }: CardProps) {
 +  const t = useT();
 +  return (
 +    <ResultArticle priority={result.priority}>
@@ -6217,6 +6151,7 @@ index 0000000..6ed96d4
 +            <Thumb
 +              alt={result.title_text}
 +              className="h-24 w-40"
++              eager={eager}
 +              lengthDisplay={formatLength(result.length_display, result.length_seconds)}
 +              src={result.thumbnail}
 +            />
@@ -6228,7 +6163,7 @@ index 0000000..6ed96d4
 +  );
 +}
 +
-+export function VideoCard({ result, globals, mediaOpen }: CardProps) {
++export function VideoCard({ eager, result, globals, mediaOpen }: CardProps) {
 +  const t = useT();
 +  return (
 +    <ResultArticle priority={result.priority}>
@@ -6263,6 +6198,7 @@ index 0000000..6ed96d4
 +            <Thumb
 +              alt={result.title_text}
 +              className="h-24 w-40"
++              eager={eager}
 +              lengthDisplay={formatLength(result.length_display, result.length_seconds)}
 +              src={result.thumbnail}
 +            />
@@ -6412,6 +6348,7 @@ index 0000000..6ed96d4
 +              <img
 +                alt={result.title_text}
 +                className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
++                decoding="async"
 +                loading="lazy"
 +                onError={(event) => {
 +                  event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
@@ -6905,6 +6842,7 @@ index 0000000..6ed96d4
 +          <img
 +            alt={result.title_text}
 +            className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
++            decoding="async"
 +            loading="lazy"
 +            onError={(event) => {
 +              event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
@@ -6956,6 +6894,7 @@ index 0000000..6ed96d4
 +                  <img
 +                    alt={result.title_text}
 +                    className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
++                    decoding="async"
 +                    loading="lazy"
 +                    onError={(event) => {
 +                      event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
@@ -6976,6 +6915,7 @@ index 0000000..6ed96d4
 +                  <img
 +                    alt=""
 +                    className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
++                    decoding="async"
 +                    loading="lazy"
 +                    onError={(event) => {
 +                      event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
@@ -7891,10 +7831,10 @@ index 0000000..fbb25b9
 +}
 diff --git a/client/zjsearch/src/lib/overlay.tsx b/client/zjsearch/src/lib/overlay.tsx
 new file mode 100644
-index 0000000..8ddb2ad
+index 0000000..ce7e8b1
 --- /dev/null
 +++ b/client/zjsearch/src/lib/overlay.tsx
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,198 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -7904,11 +7844,9 @@ index 0000000..8ddb2ad
 + * that a direct visit would use.
 + */
 +
-+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
++import { createContext, type ReactNode, Suspense, useCallback, useContext, useEffect, useState } from "react";
 +import { CloseIcon } from "../components/icons.tsx";
-+import { InfoPage } from "../pages/InfoPage.tsx";
-+import { PreferencesPage } from "../pages/PreferencesPage.tsx";
-+import { StatsPage } from "../pages/StatsPage.tsx";
++import { InfoPage, PreferencesPage, StatsPage } from "../pages/lazyPages.ts";
 +import { useT } from "./i18n.ts";
 +import { extractPageData } from "./pageData.ts";
 +import type { AnyPageData } from "./types.ts";
@@ -8055,7 +7993,9 @@ index 0000000..8ddb2ad
 +              ) : state.error ? (
 +                <p className="p-6 text-sm text-danger">{state.error}</p>
 +              ) : state.data ? (
-+                <OverlayContent data={state.data} />
++                <Suspense fallback={chunkFallback}>
++                  <OverlayContent data={state.data} />
++                </Suspense>
 +              ) : null}
 +            </div>
 +          </div>
@@ -8064,6 +8004,14 @@ index 0000000..8ddb2ad
 +    </OverlayContext.Provider>
 +  );
 +}
++
++const chunkFallback = (
++  <div aria-busy="true" className="space-y-3 p-6">
++    {Array.from({ length: 6 }, (_, i) => (
++      <div className="zjs-skeleton h-12" key={i} />
++    ))}
++  </div>
++);
 +
 +function OverlayContent({ data }: { data: AnyPageData }) {
 +  if (isPreferencesPageData(data)) {
@@ -10417,7 +10365,7 @@ index 0000000..fa32cff
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..4ff082d
+index 0000000..37ab788
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
 @@ -0,0 +1,670 @@
@@ -11054,7 +11002,7 @@ index 0000000..4ff082d
 +                              key={index}
 +                              style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
 +                            >
-+                              <ResultCard autoOpenMap={isMapPage} globals={globals} result={result} />
++                              <ResultCard autoOpenMap={isMapPage} eager={index < 4} globals={globals} result={result} />
 +                            </div>
 +                          ))}
 +                        </div>
@@ -11343,6 +11291,27 @@ index 0000000..ff02723
 +    </Shell>
 +  );
 +}
+diff --git a/client/zjsearch/src/pages/lazyPages.ts b/client/zjsearch/src/pages/lazyPages.ts
+new file mode 100644
+index 0000000..948991e
+--- /dev/null
++++ b/client/zjsearch/src/pages/lazyPages.ts
+@@ -0,0 +1,15 @@
++// SPDX-License-Identifier: AGPL-3.0-or-later
++
++/** Secondary pages load on demand: the entry bundle stays lean and these
++    chunks are only fetched the first time a drawer (or a direct visit)
++    needs them. */
++
++import { lazy } from "react";
++
++export const InfoPage = lazy(() => import("./InfoPage.tsx").then((m) => ({ default: m.InfoPage })));
++
++export const PreferencesPage = lazy(() =>
++  import("./PreferencesPage.tsx").then((m) => ({ default: m.PreferencesPage })),
++);
++
++export const StatsPage = lazy(() => import("./StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
 index 0000000..afecb26
@@ -11952,7 +11921,7 @@ index 0000000..fc19e95
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..86a7841
+index 0000000..66a147e
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
 @@ -0,0 +1,547 @@
@@ -12066,10 +12035,10 @@ index 0000000..86a7841
 +  {%- elif result.template == 'torrent.html' %}
 +    {%- if result.magnetlink %}"magnetlink": {{ result.magnetlink|tojson }},{% endif %}
 +    {%- if result.torrentfile %}"torrentfile": {{ result.torrentfile|tojson }},{% endif %}
-+    {%- if result.seed is defined %}"seed": {{ result.seed or 0 }},{% endif %}
++    {%- if result.seed is defined %}"seed": {{ result.seed | int or 0 }},{% endif %}
 +    {%- if result.leech is defined %}"leech": {{ result.leech or 0 }},{% endif %}
 +    {%- if result.filesize %}"filesize": {{ result.filesize|tojson }},{% endif %}
-+    {%- if result.files %}"files": {{ result.files or 0 }},{% endif %}
++    {%- if result.files %}"files": {{ result.files | int or 0 }},{% endif %}
 +  {%- elif result.template == 'map.html' %}
 +    {%- if result.address %}
 +    {%- set a = result.address %}
