@@ -3342,10 +3342,10 @@ index 0000000..0670f41
 +</svg>
 diff --git a/client/zjsearch/src/components/Dropdown.tsx b/client/zjsearch/src/components/Dropdown.tsx
 new file mode 100644
-index 0000000..a449321
+index 0000000..b77c7e9
 --- /dev/null
 +++ b/client/zjsearch/src/components/Dropdown.tsx
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,224 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -3354,7 +3354,8 @@ index 0000000..a449321
 + * dismissal.
 + */
 +
-+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
++import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
++import { createPortal } from "react-dom";
 +import { CheckIcon } from "./icons.tsx";
 +
 +export interface DropdownOption {
@@ -3393,25 +3394,48 @@ index 0000000..a449321
 +  const [active, setActive] = useState(-1);
 +  const rootRef = useRef<HTMLDivElement>(null);
 +  const current = options.find((option) => option.value === value);
++  const triggerRef = useRef<HTMLButtonElement>(null);
++  const menuRef = useRef<HTMLUListElement>(null);
++  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
 +
-+  // close on outside clicks
++  // close on outside clicks (the portaled menu counts as inside)
 +  useEffect(() => {
 +    if (!open) {
 +      return;
 +    }
 +    const onPointerDown = (event: PointerEvent) => {
-+      if (!rootRef.current?.contains(event.target as Node)) {
++      const target = event.target as Node;
++      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) {
 +        setOpen(false);
 +      }
 +    };
++    // a fixed-position menu cannot follow its trigger — close on scroll/resize
++    const onMove = () => {
++      setOpen(false);
++    };
 +    window.addEventListener("pointerdown", onPointerDown);
++    window.addEventListener("scroll", onMove, true);
++    window.addEventListener("resize", onMove);
 +    return () => {
 +      window.removeEventListener("pointerdown", onPointerDown);
++      window.removeEventListener("scroll", onMove, true);
++      window.removeEventListener("resize", onMove);
 +    };
 +  }, [open]);
 +
 +  const openMenu = () => {
 +    setActive(options.findIndex((option) => option.value === value));
++    // the menu renders in a portal (fixed positioning) so overflow-x-auto
++    // ancestors — the tab and filter rows — cannot clip it
++    const rect = triggerRef.current?.getBoundingClientRect();
++    if (rect) {
++      setMenuStyle({
++        position: "fixed",
++        top: rect.bottom + 6,
++        ...(align === "end" ? { right: window.innerWidth - rect.right } : { left: rect.left }),
++        minWidth: Math.max(rect.width, 176),
++      });
++    }
 +    setOpen(true);
 +  };
 +
@@ -3483,6 +3507,7 @@ index 0000000..a449321
 +          }
 +        }}
 +        onKeyDown={onKeyDown}
++        ref={triggerRef}
 +        role="combobox"
 +        type="button"
 +      >
@@ -3502,43 +3527,46 @@ index 0000000..a449321
 +        )}
 +      </button>
 +
-+      {open ? (
-+        <ul
-+          aria-label={ariaLabel}
-+          className={`absolute top-full z-40 mt-1.5 max-h-80 min-w-44 overflow-auto rounded-2xl border border-line bg-surface py-1.5 shadow-pop animate-fade-in ${
-+            align === "end" ? "end-0" : "start-0"
-+          } ${menuClassName}`}
-+          role="listbox"
-+        >
-+          {options.map((option, index) => {
-+            const selected = option.value === value;
-+            return (
-+              <li aria-selected={selected} key={option.value} role="option">
-+                <button
-+                  className={`flex w-full items-center justify-between gap-4 px-4 py-2 text-left text-sm ${
-+                    index === active ? "bg-surface-2" : ""
-+                  }`}
-+                  onClick={() => {
-+                    pick(index);
-+                  }}
-+                  onMouseEnter={() => {
-+                    setActive(index);
-+                  }}
-+                  type="button"
-+                >
-+                  <span className="flex min-w-0 items-center gap-2">
-+                    {option.icon ? <span className="shrink-0 text-ink-3">{option.icon}</span> : null}
-+                    <span className={`truncate ${selected ? "font-medium text-ink" : "text-ink-2"}`}>
-+                      {option.label}
-+                    </span>
-+                  </span>
-+                  {selected ? <CheckIcon className="size-4 shrink-0 text-accent-strong" /> : null}
-+                </button>
-+              </li>
-+            );
-+          })}
-+        </ul>
-+      ) : null}
++      {open && menuStyle
++        ? createPortal(
++            <ul
++              aria-label={ariaLabel}
++              className={`fixed z-50 max-h-80 overflow-auto rounded-2xl border border-line bg-surface py-1.5 shadow-pop animate-fade-in ${menuClassName}`}
++              ref={menuRef}
++              role="listbox"
++              style={menuStyle}
++            >
++              {options.map((option, index) => {
++                const selected = option.value === value;
++                return (
++                  <li aria-selected={selected} key={option.value} role="option">
++                    <button
++                      className={`flex w-full items-center justify-between gap-4 px-4 py-2 text-left text-sm ${
++                        index === active ? "bg-surface-2" : ""
++                      }`}
++                      onClick={() => {
++                        pick(index);
++                      }}
++                      onMouseEnter={() => {
++                        setActive(index);
++                      }}
++                      type="button"
++                    >
++                      <span className="flex min-w-0 items-center gap-2">
++                        {option.icon ? <span className="shrink-0 text-ink-3">{option.icon}</span> : null}
++                        <span className={`truncate ${selected ? "font-medium text-ink" : "text-ink-2"}`}>
++                          {option.label}
++                        </span>
++                      </span>
++                      {selected ? <CheckIcon className="size-4 shrink-0 text-accent-strong" /> : null}
++                    </button>
++                  </li>
++                );
++              })}
++            </ul>,
++            document.body,
++          )
++        : null}
 +    </div>
 +  );
 +}
@@ -4838,10 +4866,10 @@ index 0000000..856f2a2
 +}
 diff --git a/client/zjsearch/src/components/results/Answers.tsx b/client/zjsearch/src/components/results/Answers.tsx
 new file mode 100644
-index 0000000..07dbf89
+index 0000000..5c27b56
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Answers.tsx
-@@ -0,0 +1,691 @@
+@@ -0,0 +1,682 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useState } from "react";
@@ -4849,7 +4877,7 @@ index 0000000..07dbf89
 +import { tryEvaluateExpression } from "../../features/calculator.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import { useSettings } from "../../lib/settings.ts";
-+import type { AnswerData, WeatherItem } from "../../lib/types.ts";
++import type { AnswerData, LegacyAnswerData, WeatherItem } from "../../lib/types.ts";
 +import { LocationIcon } from "../icons.tsx";
 +
 +const MAX_SOURCES_SHOWN = 3;
@@ -5369,102 +5397,13 @@ index 0000000..07dbf89
 +}
 +
 +/** Special-query answers (random, statistics, hash, self-info, time zone)
-+    arrive as plain legacy text; the patterns below give each of them a
-+    purpose-built layout, falling back to plain text for anything else. */
++    carry a structured *data* payload emitted by their plugins; the layouts
++    below render strictly from those fields — no parsing of the localized
++    *answer* text — and unknown payloads fall back to plain text. */
 +function LegacyAnswer({ answer }: { answer: Extract<AnswerData, { template: "answer/legacy.html" }> }) {
 +  const settings = useSettings();
 +  const text = answer.answer;
-+  const hashMatch = /^(.+?)\s*(?:hash digest|散列摘要)\s*:\s*([a-f0-9]{32,128})$/i.exec(text);
-+  const statsMatch = /^\[(.+?)\] (\w+)\((.+)\) = (.+?)\s*$/.exec(text);
-+  const zoneMatch = /^(.+?): (.+ \d[^)]*) \(([A-Z]{2,5})\)$/.exec(text);
-+  const ipMatch = /^(.*IP.*?[：:])\s*(\d{1,3}(?:\.\d{1,3}){3})$/u.exec(text);
-+  const uaMatch = /^(.*(?:user-agent|用户代理).*?[：:])\s*(.+)$/iu.exec(text);
-+  const isColor = /^#[0-9a-f]{6}$/i.test(text);
-+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
-+  const isBareValue = !isColor && !isUuid && !/\s/.test(text) && text.length <= 64;
-+
-+  if (hashMatch) {
-+    const algo = hashMatch[1] ?? "";
-+    const digest = hashMatch[2] ?? "";
-+    return (
-+      <div>
-+        <div className="flex items-center justify-between gap-3">
-+          <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
-+            {algo}
-+          </span>
-+          <CopyButton value={digest} />
-+        </div>
-+        <p className="mt-2 break-all font-mono text-sm text-ink" dir="ltr">
-+          {digest}
-+        </p>
-+      </div>
-+    );
-+  }
-+  if (statsMatch) {
-+    const fn = statsMatch[2] ?? "";
-+    const args = statsMatch[3] ?? "";
-+    const result = statsMatch[4] ?? "";
-+    return (
-+      <div>
-+        <p className="truncate text-xs text-ink-3" dir="ltr">
-+          <span className="font-mono font-medium text-accent-strong">{fn}</span>({args})
-+        </p>
-+        <div className="mt-1 flex items-center justify-between gap-3">
-+          <p className="text-2xl font-semibold text-ink" dir="ltr">
-+            {result}
-+          </p>
-+          <CopyButton value={result} />
-+        </div>
-+      </div>
-+    );
-+  }
-+  if (zoneMatch) {
-+    const zone = zoneMatch[1] ?? "";
-+    const time = zoneMatch[2] ?? "";
-+    const abbr = zoneMatch[3] ?? "";
-+    return (
-+      <div className="flex items-center justify-between gap-3">
-+        <div className="min-w-0">
-+          <p className="truncate font-mono text-xs text-ink-3" dir="ltr">
-+            {zone}
-+          </p>
-+          <p className="mt-1 text-xl font-medium text-ink" dir="auto">
-+            {time}
-+          </p>
-+        </div>
-+        <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2">{abbr}</span>
-+      </div>
-+    );
-+  }
-+  if (ipMatch || uaMatch) {
-+    const match = ipMatch ?? uaMatch;
-+    const label = (match?.[1] ?? "").replace(/[：:]\s*$/, "");
-+    const value = match?.[2] ?? "";
-+    return (
-+      <div>
-+        <p className="text-xs text-ink-3">{label}</p>
-+        <div className="mt-1 flex items-center justify-between gap-3">
-+          <p className={`min-w-0 text-ink ${ipMatch ? "font-mono text-lg" : "break-all font-mono text-sm"}`} dir="ltr">
-+            {value}
-+          </p>
-+          <CopyButton value={value} />
-+        </div>
-+      </div>
-+    );
-+  }
-+  if (isColor || isUuid || isBareValue) {
-+    return (
-+      <div className="flex items-center gap-3">
-+        {isColor ? (
-+          <span className="size-10 shrink-0 rounded-xl border border-line" style={{ backgroundColor: text }} />
-+        ) : null}
-+        <p className="min-w-0 flex-1 break-all font-mono text-sm text-ink" dir="ltr">
-+          {text}
-+        </p>
-+        <CopyButton value={text} />
-+      </div>
-+    );
-+  }
++  const data = answer.data;
 +  let hostname = "";
 +  if (answer.url) {
 +    try {
@@ -5472,6 +5411,86 @@ index 0000000..07dbf89
 +    } catch {
 +      hostname = answer.url;
 +    }
++  }
++  if (data?.kind === "hash") {
++    return (
++      <div>
++        <div className="flex items-center justify-between gap-3">
++          <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
++            {data.algo}
++          </span>
++          <CopyButton value={data.digest} />
++        </div>
++        <p className="mt-2 break-all font-mono text-sm text-ink" dir="ltr">
++          {data.digest}
++        </p>
++      </div>
++    );
++  }
++  if (data?.kind === "stats") {
++    return (
++      <div>
++        <p className="truncate text-xs text-ink-3" dir="ltr">
++          <span className="font-mono font-medium text-accent-strong">{data.func}</span>({data.args})
++        </p>
++        <div className="mt-1 flex items-center justify-between gap-3">
++          <p className="text-2xl font-semibold text-ink" dir="ltr">
++            {data.result}
++          </p>
++          <CopyButton value={data.result} />
++        </div>
++      </div>
++    );
++  }
++  if (data?.kind === "time") {
++    return (
++      <div className="flex items-center justify-between gap-3">
++        <div className="min-w-0">
++          {data.zone ? (
++            <p className="truncate font-mono text-xs text-ink-3" dir="ltr">
++              {data.zone}
++            </p>
++          ) : null}
++          <p className="mt-1 text-xl font-medium text-ink" dir="auto">
++            {data.time}
++          </p>
++        </div>
++        {data.abbr ? (
++          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2">
++            {data.abbr}
++          </span>
++        ) : null}
++      </div>
++    );
++  }
++  if (data?.kind === "self") {
++    return (
++      <div>
++        <p className="text-xs text-ink-3">{data.label}</p>
++        <div className="mt-1 flex items-center justify-between gap-3">
++          <p
++            className={`min-w-0 text-ink ${data.value.includes(" ") ? "break-all font-mono text-sm" : "font-mono text-lg"}`}
++            dir="ltr"
++          >
++            {data.value}
++          </p>
++          <CopyButton value={data.value} />
++        </div>
++      </div>
++    );
++  }
++  if (data?.kind === "value") {
++    return (
++      <div className="flex items-center gap-3">
++        {data.swatch === "true" ? (
++          <span className="size-10 shrink-0 rounded-xl border border-line" style={{ backgroundColor: data.value }} />
++        ) : null}
++        <p className="min-w-0 flex-1 break-all font-mono text-sm text-ink" dir="ltr">
++          {data.value}
++        </p>
++        <CopyButton value={data.value} />
++      </div>
++    );
 +  }
 +  return (
 +    <p className="text-sm leading-relaxed text-ink" dir="auto">
@@ -10099,10 +10118,10 @@ index 0000000..e09d74a
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..77c8de2
+index 0000000..eba4de8
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,421 @@
+@@ -0,0 +1,435 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -10291,6 +10310,16 @@ index 0000000..77c8de2
 +  synonyms: string[];
 +}
 +
++/** Structured payload of the special-query answers (see
++    searx/plugins/{hash_plugin,self_info,time_zone}.py and
++    searx/answerers/{random,statistics}.py). */
++export type LegacyAnswerData =
++  | { kind: "hash"; algo: string; digest: string }
++  | { kind: "stats"; func: string; args: string; result: string }
++  | { kind: "time"; zone?: string; time: string; abbr?: string }
++  | { kind: "self"; label: string; value: string }
++  | { kind: "value"; value: string; swatch?: string };
++
 +export interface WeatherItem {
 +  summary: string;
 +  symbol: string;
@@ -10320,6 +10349,10 @@ index 0000000..77c8de2
 +      template: "answer/legacy.html";
 +      answer: string;
 +      url: string;
++      /** structured payload emitted by the special-query plugins (hash,
++          statistics, time zone, self-info, random); themes render from this
++          instead of parsing the localized *answer* text */
++      data?: LegacyAnswerData;
 +    }
 +  | {
 +      template: "answer/translations.html";
@@ -12055,10 +12088,10 @@ index 0000000..a8d635d
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..2e0bf4e
+index 0000000..5518562
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,817 @@
+@@ -0,0 +1,826 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -12375,7 +12408,22 @@ index 0000000..2e0bf4e
 +  });
 +
 +  const submitQuery = (q: string) => {
-+    search(buildParams({ q, pageno: 1 }));
++    // a bang search pins its resolved category into selectedCategories; a
++    // plain follow-up query must fall back to the user's default category
++    // (the preferences cookie) instead of silently keeping the bang's
++    const previousWasBang = data.q.trim().startsWith("!");
++    const nextIsBang = q.trim().startsWith("!");
++    const cookieDefault = document.cookie
++      .match(/(?:^|; *)categories=([^;]*)/)?.[1]
++      ?.split(",")
++      .filter(Boolean);
++    const categories =
++      previousWasBang && !nextIsBang
++        ? cookieDefault && cookieDefault.length > 0
++          ? cookieDefault
++          : [globals.default_category]
++        : selectedCategories;
++    search(buildParams({ q, pageno: 1, categories }));
 +  };
 +
 +  const onSearchCategories = (categories: string[]) => {
@@ -12384,15 +12432,9 @@ index 0000000..2e0bf4e
 +  };
 +
 +  const onFilters = (next: Partial<FilterValues>) => {
++    // filters apply on the next search submit (magnifier / Enter) — switching
++    // one alone must not fire a new search
 +    setFilterValues((prev) => ({ ...prev, ...next }));
-+    search(
-+      buildParams({
-+        language: next.language ?? filterValues.language,
-+        time_range: next.time_range ?? filterValues.time_range,
-+        safesearch: next.safesearch ?? filterValues.safesearch,
-+        pageno: 1,
-+      }),
-+    );
 +  };
 +
 +  const onPage = (pageno: number) => {
@@ -12596,7 +12638,7 @@ index 0000000..2e0bf4e
 +              <SearchFilters globals={globals} onChange={onFilters} values={filterValues} />
 +            </div>
 +            {!showSkeletons && !error ? (
-+              <p className="mt-2 ps-3.5 text-xs text-ink-3">
++              <p className="mt-2 text-xs text-ink-3">
 +                {t("meta_found")} {allResults.length} {t("meta_results")}
 +              </p>
 +            ) : null}
@@ -13774,10 +13816,10 @@ index 0000000..7403554
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..2972476
+index 0000000..aa5fa0d
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,556 @@
+@@ -0,0 +1,558 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -14051,10 +14093,12 @@ index 0000000..2972476
 +    {{ _weather_item(f, answer) }}{{ ", " if not loop.last }}
 +    {%- endfor -%}
 +  ]
-+  {%- else %}
-+  , "answer": {{ (answer.answer or '')|tojson }}
-+  , "url": {{ (answer.url or '')|tojson }}
-+  {%- endif %}
++{%- else %}
++, "answer": {{ (answer.answer or '')|tojson }}
++, "url": {{ (answer.url or '')|tojson }}
++{%- if answer.data %}
++, "data": { {%- for key, value in answer.data.items() %}{{ key|tojson }}: {{ value|tojson }}{{ ", " if not loop.last }}{%- endfor -%} }{% endif %}
++{%- endif %}
 +}
 +{%- endmacro %}
 +
