@@ -34,6 +34,11 @@ COPY --from=get_info /tmp/BUILDTMP/SEARXNG/client/zjsearch /app/client/zjsearch
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/requirements.txt /app/requirements.txt
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /app/searx
 
+RUN \
+    apt update \
+    && apt install -qy \
+        git
+
 WORKDIR /app/client/simple
 
 RUN \
