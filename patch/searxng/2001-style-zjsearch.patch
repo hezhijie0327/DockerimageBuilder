@@ -4838,19 +4838,99 @@ index 0000000..856f2a2
 +}
 diff --git a/client/zjsearch/src/components/results/Answers.tsx b/client/zjsearch/src/components/results/Answers.tsx
 new file mode 100644
-index 0000000..a65037a
+index 0000000..07dbf89
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Answers.tsx
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,691 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useState } from "react";
++import type { CalculationAnswer } from "../../features/calculator.ts";
++import { tryEvaluateExpression } from "../../features/calculator.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import { useSettings } from "../../lib/settings.ts";
 +import type { AnswerData, WeatherItem } from "../../lib/types.ts";
 +import { LocationIcon } from "../icons.tsx";
 +
 +const MAX_SOURCES_SHOWN = 3;
++
++/** Interactive calculator for the "calculator" plugin: the query-detected
++    expression seeds the display and the keypad keeps evaluating live, like
++    the Google/DDG calculator cards. */
++export function CalculatorAnswer({ calc }: { calc: CalculationAnswer }) {
++  const [expression, setExpression] = useState(calc.expr);
++  const result = tryEvaluateExpression(expression);
++  const press = (key: string) => {
++    setExpression((prev) => prev + key);
++  };
++  const keys: Array<{
++    label: string;
++    insert?: string;
++    span?: string;
++    kind?: "op" | "eq";
++    action?: () => void;
++  }> = [
++    { label: "AC", action: () => setExpression("") },
++    { label: "⌫", action: () => setExpression((prev) => prev.slice(0, -1)) },
++    { label: "(", insert: "(" },
++    { label: ")", insert: ")" },
++    { label: "÷", insert: "/", kind: "op" },
++    { label: "7", insert: "7" },
++    { label: "8", insert: "8" },
++    { label: "9", insert: "9" },
++    { label: "×", insert: "*", kind: "op" },
++    { label: "^", insert: "^", kind: "op" },
++    { label: "4", insert: "4" },
++    { label: "5", insert: "5" },
++    { label: "6", insert: "6" },
++    { label: "−", insert: "-", kind: "op" },
++    { label: "%", insert: "%", kind: "op" },
++    { label: "1", insert: "1" },
++    { label: "2", insert: "2" },
++    { label: "3", insert: "3" },
++    { label: "+", insert: "+", kind: "op" },
++    { label: "=", kind: "eq" },
++    { label: "0", insert: "0", span: "col-span-3" },
++    { label: ".", insert: "." },
++  ];
++  return (
++    <div className="rounded-2xl border border-accent/25 bg-accent-soft/50 px-4 py-3 animate-fade-up">
++      <div className="min-h-16 rounded-2xl border border-line bg-surface px-4 py-2 text-end">
++        <p className="truncate text-xs text-ink-3" dir="ltr">
++          {expression}
++          {result ? " =" : ""}
++        </p>
++        <p className="min-h-10 truncate text-4xl font-semibold text-ink" dir="ltr">
++          {result ? result.value : ""}
++        </p>
++      </div>
++      <div className="mt-3 grid grid-cols-5 gap-2">
++        {keys.map((key) => (
++          <button
++            className={`h-11 rounded-xl text-sm transition-colors ${
++              key.kind === "eq"
++                ? "row-span-2 bg-accent-strong text-base text-accent-contrast hover:opacity-90"
++                : key.kind === "op"
++                  ? "bg-surface-2 text-accent-strong hover:bg-line/40"
++                  : "bg-surface-2 text-ink hover:bg-line/40"
++            } ${key.span ?? ""}`}
++            key={key.label}
++            onClick={() => {
++              if (key.action) {
++                key.action();
++              } else if (key.insert) {
++                press(key.insert);
++              }
++            }}
++            type="button"
++          >
++            {key.label}
++          </button>
++        ))}
++      </div>
++    </div>
++  );
++}
 +
 +/** SVG temperature trend over the next hourly slots (accent area line with
 +    temp / time labels every third slot), horizontally scrollable. */
@@ -5074,79 +5154,317 @@ index 0000000..a65037a
 +  );
 +}
 +
-+function TranslationsAnswer({ answer }: { answer: Extract<AnswerData, { template: "answer/translations.html" }> }) {
++/** Translation engines stamp the language pair into their answer URLs in
++    engine-specific shapes: lingva uses /from/to/ path segments, mymemory
++    uses sl/tl query parameters, libretranslate uses source/target. */
++function parseLangPair(url: string): { from: string; to: string } | null {
++  let parsed: URL;
++  try {
++    parsed = new URL(url);
++  } catch {
++    return null;
++  }
++  const lang = /^[a-z]{2,3}(?:-[a-zA-Z]{2,4})?$/i;
++  const [pathFrom, pathTo] = parsed.pathname.split("/").filter(Boolean);
++  if (pathFrom && pathTo && lang.test(pathFrom) && lang.test(pathTo)) {
++    return { from: pathFrom, to: pathTo };
++  }
++  const from = parsed.searchParams.get("source") ?? parsed.searchParams.get("sl") ?? parsed.searchParams.get("from");
++  const to = parsed.searchParams.get("target") ?? parsed.searchParams.get("tl") ?? parsed.searchParams.get("to");
++  if (from && to && lang.test(from) && lang.test(to)) {
++    return { from, to };
++  }
++  return null;
++}
++
++/** Dictionary/translation answer.  Two layouts by payload shape:
++    - translation (lingva, no definitions): language-pair chip + the translated
++      text as the hero;
++    - dictionary (wordnik): the queried word heads numbered definitions — the
++      definition IS the answer, so nothing important hides behind a collapse. */
++function TranslationsAnswer({
++  answer,
++  query,
++}: {
++  answer: Extract<AnswerData, { template: "answer/translations.html" }>;
++  query?: string;
++}) {
 +  const t = useT();
 +  const first = answer.translations[0];
 +  if (!first) {
 +    return null;
 +  }
++  const rest = answer.translations.slice(1);
++  // the raw query keeps its bang tokens and the "en-de " language-pair prefix
++  // of dictionary engines — both are noise everywhere it could be displayed
++  const cleanQuery = query
++    ?.replace(/^(\s*![^\s]+)+/, "")
++    .replace(/^\s*[a-z]{2,3}-[a-zA-Z]{2,4}\s+/i, "")
++    .trim();
++  const langPair = parseLangPair(answer.url);
++  const showExamples = (max: number) =>
++    first.examples.length > 0 ? (
++      <div className="mt-2 space-y-1">
++        {first.examples.slice(0, max).map((example, i) => (
++          <p className="text-sm italic leading-relaxed text-ink-2" dir="auto" key={i}>
++            “{example}”
++          </p>
++        ))}
++      </div>
++    ) : null;
++  if (first.definitions.length === 0) {
++    // pure translation (lingva, mymemory): the translated text is the hero,
++    // alternatives and match examples follow
++    return (
++      <div>
++        <div className="flex flex-wrap items-center gap-2">
++          {langPair ? (
++            <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
++              {langPair.from} → {langPair.to}
++            </span>
++          ) : null}
++          {cleanQuery && cleanQuery !== first.text ? (
++            <span className="min-w-0 truncate text-xs text-ink-3" dir="auto">
++              {cleanQuery}
++            </span>
++          ) : null}
++        </div>
++        <p className="mt-2.5 text-xl font-medium leading-snug text-ink" dir="auto">
++          {first.text}
++        </p>
++        {showExamples(3)}
++        {rest.length > 0 ? (
++          <div className="mt-3 space-y-2 border-t border-line pt-3">
++            {rest.map((item, index) => (
++              <div key={index}>
++                <p className="text-sm font-medium text-ink" dir="auto">
++                  {item.text}
++                </p>
++                {item.definitions.map((definition, i) => (
++                  <p className="mt-0.5 text-xs leading-relaxed text-ink-2" dir="auto" key={i}>
++                    {definition}
++                  </p>
++                ))}
++              </div>
++            ))}
++          </div>
++        ) : null}
++        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
++          <span className="rounded-full bg-surface-2 px-2 py-0.5">{answer.engine}</span>
++        </div>
++      </div>
++    );
++  }
++  const hasMore =
++    first.definitions.length > 4 || rest.length > 0 || first.examples.length > 0 || first.synonyms.length > 0;
 +  return (
 +    <div>
-+      <p className="text-base font-medium text-ink" dir="auto">
-+        {first.text}
++      <p className="text-lg font-semibold text-ink" dir="auto">
++        {cleanQuery ?? first.text}
 +        {first.transliteration ? (
-+          <span className="ml-2 text-sm font-normal text-ink-3">{first.transliteration}</span>
++          <span className="ms-2 text-sm font-normal text-ink-3">{first.transliteration}</span>
 +        ) : null}
 +      </p>
-+      {answer.translations.length > 1 ||
-+      first.definitions.length > 0 ||
-+      first.examples.length > 0 ||
-+      first.synonyms.length > 0 ? (
-+        <details className="mt-1.5">
++      {first.definitions.length > 0 ? (
++        <ol className="mt-2 space-y-1.5">
++          {first.definitions.slice(0, 4).map((definition, i) => (
++            <li className="flex gap-2 text-sm leading-relaxed text-ink-2" key={i}>
++              <span className="shrink-0 text-ink-3">{i + 1}.</span>
++              <span dir="auto">{definition}</span>
++            </li>
++          ))}
++        </ol>
++      ) : null}
++      {showExamples(2)}
++      {first.examples.length > 0 ? (
++        <div className="mt-2 space-y-1">
++          {first.examples.slice(0, 2).map((example, i) => (
++            <p className="text-sm italic leading-relaxed text-ink-2" dir="auto" key={i}>
++              “{example}”
++            </p>
++          ))}
++        </div>
++      ) : null}
++      {first.synonyms.length > 0 ? (
++        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
++          <span>{t("synonyms")}:</span>
++          {first.synonyms.slice(0, 6).map((synonym) => (
++            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-2" dir="auto" key={synonym}>
++              {synonym}
++            </span>
++          ))}
++        </div>
++      ) : null}
++      {hasMore ? (
++        <details className="mt-2">
 +          <summary className="cursor-pointer text-xs text-ink-3 transition-colors hover:text-ink">
 +            {t("definitions")}
 +          </summary>
 +          <div className="mt-2 space-y-3">
-+            {answer.translations.map((item, index) => (
-+              <div className="text-xs" key={index}>
++            {first.definitions.length > 4 ? (
++              <ol className="space-y-1.5" start={5}>
++                {first.definitions.slice(4).map((definition, i) => (
++                  <li className="flex gap-2 text-sm leading-relaxed text-ink-2" key={i}>
++                    <span className="shrink-0 text-ink-3">{i + 5}.</span>
++                    <span dir="auto">{definition}</span>
++                  </li>
++                ))}
++              </ol>
++            ) : null}
++            {rest.map((item, index) => (
++              <div className="text-sm" key={index}>
 +                <p className="font-medium text-ink" dir="auto">
 +                  {item.text}
 +                  {item.transliteration ? (
-+                    <span className="ml-1.5 font-normal text-ink-3">{item.transliteration}</span>
++                    <span className="ms-1.5 font-normal text-ink-3">{item.transliteration}</span>
 +                  ) : null}
 +                </p>
 +                {item.definitions.length > 0 ? (
-+                  <div className="mt-1">
-+                    <span className="text-ink-3">{t("definitions")}:</span>
-+                    <ul className="ml-4 list-disc">
-+                      {item.definitions.map((definition, i) => (
-+                        <li className="text-ink-2" key={i}>
-+                          {definition}
-+                        </li>
-+                      ))}
-+                    </ul>
-+                  </div>
-+                ) : null}
-+                {item.examples.length > 0 ? (
-+                  <div className="mt-1">
-+                    <span className="text-ink-3">{t("examples")}:</span>
-+                    <ul className="ml-4 list-disc">
-+                      {item.examples.map((example, i) => (
-+                        <li className="text-ink-2" key={i}>
-+                          {example}
-+                        </li>
-+                      ))}
-+                    </ul>
-+                  </div>
-+                ) : null}
-+                {item.synonyms.length > 0 ? (
-+                  <div className="mt-1">
-+                    <span className="text-ink-3">{t("synonyms")}:</span>
-+                    <span className="ml-1 text-ink-2">{item.synonyms.join(", ")}</span>
-+                  </div>
++                  <ol className="mt-1 space-y-1.5">
++                    {item.definitions.map((definition, i) => (
++                      <li className="flex gap-2 text-ink-2" key={i}>
++                        <span className="shrink-0 text-ink-3">{i + 1}.</span>
++                        <span dir="auto">{definition}</span>
++                      </li>
++                    ))}
++                  </ol>
 +                ) : null}
 +              </div>
 +            ))}
++            {first.synonyms.length > 0 ? (
++              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
++                <span>{t("synonyms")}:</span>
++                {first.synonyms.slice(6).map((synonym) => (
++                  <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-2" dir="auto" key={synonym}>
++                    {synonym}
++                  </span>
++                ))}
++              </div>
++            ) : null}
 +          </div>
 +        </details>
 +      ) : null}
-+      {answer.engine ? <p className="mt-1.5 text-xs text-ink-3">{answer.engine}</p> : null}
++      {answer.engine ? <p className="mt-2 text-xs text-ink-3">{answer.engine}</p> : null}
 +    </div>
 +  );
 +}
 +
++function CopyButton({ value }: { value: string }) {
++  const t = useT();
++  const [copied, setCopied] = useState(false);
++  return (
++    <button
++      className="shrink-0 rounded-lg border border-line px-2 py-1 text-xs text-ink-3 transition-colors hover:text-ink"
++      onClick={() => {
++        navigator.clipboard?.writeText(value).then(() => {
++          setCopied(true);
++          window.setTimeout(() => setCopied(false), 1200);
++        });
++      }}
++      type="button"
++    >
++      {copied ? t("copied") : t("copy")}
++    </button>
++  );
++}
++
++/** Special-query answers (random, statistics, hash, self-info, time zone)
++    arrive as plain legacy text; the patterns below give each of them a
++    purpose-built layout, falling back to plain text for anything else. */
 +function LegacyAnswer({ answer }: { answer: Extract<AnswerData, { template: "answer/legacy.html" }> }) {
 +  const settings = useSettings();
++  const text = answer.answer;
++  const hashMatch = /^(.+?)\s*(?:hash digest|散列摘要)\s*:\s*([a-f0-9]{32,128})$/i.exec(text);
++  const statsMatch = /^\[(.+?)\] (\w+)\((.+)\) = (.+?)\s*$/.exec(text);
++  const zoneMatch = /^(.+?): (.+ \d[^)]*) \(([A-Z]{2,5})\)$/.exec(text);
++  const ipMatch = /^(.*IP.*?[：:])\s*(\d{1,3}(?:\.\d{1,3}){3})$/u.exec(text);
++  const uaMatch = /^(.*(?:user-agent|用户代理).*?[：:])\s*(.+)$/iu.exec(text);
++  const isColor = /^#[0-9a-f]{6}$/i.test(text);
++  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
++  const isBareValue = !isColor && !isUuid && !/\s/.test(text) && text.length <= 64;
++
++  if (hashMatch) {
++    const algo = hashMatch[1] ?? "";
++    const digest = hashMatch[2] ?? "";
++    return (
++      <div>
++        <div className="flex items-center justify-between gap-3">
++          <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
++            {algo}
++          </span>
++          <CopyButton value={digest} />
++        </div>
++        <p className="mt-2 break-all font-mono text-sm text-ink" dir="ltr">
++          {digest}
++        </p>
++      </div>
++    );
++  }
++  if (statsMatch) {
++    const fn = statsMatch[2] ?? "";
++    const args = statsMatch[3] ?? "";
++    const result = statsMatch[4] ?? "";
++    return (
++      <div>
++        <p className="truncate text-xs text-ink-3" dir="ltr">
++          <span className="font-mono font-medium text-accent-strong">{fn}</span>({args})
++        </p>
++        <div className="mt-1 flex items-center justify-between gap-3">
++          <p className="text-2xl font-semibold text-ink" dir="ltr">
++            {result}
++          </p>
++          <CopyButton value={result} />
++        </div>
++      </div>
++    );
++  }
++  if (zoneMatch) {
++    const zone = zoneMatch[1] ?? "";
++    const time = zoneMatch[2] ?? "";
++    const abbr = zoneMatch[3] ?? "";
++    return (
++      <div className="flex items-center justify-between gap-3">
++        <div className="min-w-0">
++          <p className="truncate font-mono text-xs text-ink-3" dir="ltr">
++            {zone}
++          </p>
++          <p className="mt-1 text-xl font-medium text-ink" dir="auto">
++            {time}
++          </p>
++        </div>
++        <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2">{abbr}</span>
++      </div>
++    );
++  }
++  if (ipMatch || uaMatch) {
++    const match = ipMatch ?? uaMatch;
++    const label = (match?.[1] ?? "").replace(/[：:]\s*$/, "");
++    const value = match?.[2] ?? "";
++    return (
++      <div>
++        <p className="text-xs text-ink-3">{label}</p>
++        <div className="mt-1 flex items-center justify-between gap-3">
++          <p className={`min-w-0 text-ink ${ipMatch ? "font-mono text-lg" : "break-all font-mono text-sm"}`} dir="ltr">
++            {value}
++          </p>
++          <CopyButton value={value} />
++        </div>
++      </div>
++    );
++  }
++  if (isColor || isUuid || isBareValue) {
++    return (
++      <div className="flex items-center gap-3">
++        {isColor ? (
++          <span className="size-10 shrink-0 rounded-xl border border-line" style={{ backgroundColor: text }} />
++        ) : null}
++        <p className="min-w-0 flex-1 break-all font-mono text-sm text-ink" dir="ltr">
++          {text}
++        </p>
++        <CopyButton value={text} />
++      </div>
++    );
++  }
 +  let hostname = "";
 +  if (answer.url) {
 +    try {
@@ -5157,7 +5475,7 @@ index 0000000..a65037a
 +  }
 +  return (
 +    <p className="text-sm leading-relaxed text-ink" dir="auto">
-+      {answer.answer}
++      {text}
 +      {answer.url ? (
 +        <a
 +          href={answer.url}
@@ -5171,7 +5489,7 @@ index 0000000..a65037a
 +  );
 +}
 +
-+export function Answers({ answers }: { answers: AnswerData[] }) {
++export function Answers({ answers, query }: { answers: AnswerData[]; query?: string }) {
 +  const t = useT();
 +  if (answers.length === 0) {
 +    return null;
@@ -5204,7 +5522,7 @@ index 0000000..a65037a
 +      {visible.map((answer, index) => (
 +        <div className="rounded-2xl border border-accent/25 bg-accent-soft/50 px-4 py-3 animate-fade-up" key={index}>
 +          {answer.template === "answer/translations.html" ? (
-+            <TranslationsAnswer answer={answer} />
++            <TranslationsAnswer answer={answer} query={query} />
 +          ) : answer.template === "answer/weather.html" ? (
 +            <WeatherAnswer answer={answer} sources={weatherSources} />
 +          ) : (
@@ -6274,7 +6592,7 @@ index 0000000..c02469e
 +}
 diff --git a/client/zjsearch/src/components/results/PackageGrid.tsx b/client/zjsearch/src/components/results/PackageGrid.tsx
 new file mode 100644
-index 0000000..e851c6c
+index 0000000..7316cca
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/PackageGrid.tsx
 @@ -0,0 +1,135 @@
@@ -6304,7 +6622,7 @@ index 0000000..e851c6c
 +  const t = useT();
 +  return (
 +    <article
-+      className={`group rounded-2xl ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++      className={`group -m-2 rounded-2xl p-2 ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
 +      data-hotkey-index={hotkeyIndex}
 +    >
 +      <ResultLink
@@ -6834,10 +7152,10 @@ index 0000000..a51c428
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..ba8d797
+index 0000000..c6c24f7
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,1474 @@
+@@ -0,0 +1,1551 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
@@ -6855,6 +7173,7 @@ index 0000000..ba8d797
 +  ExternalLinkIcon,
 +  FileIcon,
 +  FilmIcon,
++  ImageIcon,
 +  MagnetIcon,
 +  MusicIcon,
 +  PackageIcon,
@@ -7292,23 +7611,34 @@ index 0000000..ba8d797
 +}
 +
 +/** News-intent layout: same link style as every card, compact snippet, 16:9 thumb. */
++/** News layout: editorial list with the photo on the left (as opposed to the
++    web-result thumb on the right) and the recency date leading the meta row. */
 +export function NewsCard({ result, globals }: CardProps) {
 +  return (
 +    <ResultArticle priority={result.priority}>
-+      <PrettyUrl globals={globals} result={result} />
-+      <div className="mt-1">
-+        <Title globals={globals} result={result} />
++      <div className="flex gap-4">
++        {result.thumbnail ? (
++          <ResultLink className="shrink-0" globals={globals} result={result}>
++            <Thumb alt={result.title_text} className="aspect-video w-40" src={result.thumbnail} />
++          </ResultLink>
++        ) : null}
++        <div className="min-w-0 flex-1">
++          <PrettyUrl globals={globals} result={result} />
++          <div className="mt-1">
++            <Title globals={globals} result={result} />
++          </div>
++          <div className="mt-1">
++            <MetaLine result={result} />
++          </div>
++          {result.content_html ? (
++            <p
++              className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              dangerouslySetInnerHTML={{ __html: result.content_html }}
++              dir="auto"
++            />
++          ) : null}
++        </div>
 +      </div>
-+      <div className="mt-1">
-+        <MetaLine result={result} />
-+      </div>
-+      {result.content_html ? (
-+        <p
-+          className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-2"
-+          dangerouslySetInnerHTML={{ __html: result.content_html }}
-+          dir="auto"
-+        />
-+      ) : null}
 +      <EnginesLine result={result} />
 +    </ResultArticle>
 +  );
@@ -8269,6 +8599,71 @@ index 0000000..ba8d797
 +      {cells}
 +    </div>
 +  );
++}
++
++/** App-store tiles for the apps category (google play, fdroid, apk mirror):
++    square store icon beside the app name, short description below. */
++export function AppsGrid({
++  results,
++  globals,
++  selected,
++  indexOffset = 0,
++}: {
++  results: ResultItem[];
++  globals: GlobalData;
++  selected?: number;
++  /** hotkey indices are page-global: offset by the grid's first result index */
++  indexOffset?: number;
++}) {
++  const cells = results.map((result, index) => {
++    const hotkeyIndex = indexOffset + index;
++    return (
++      <article
++        className={`group -m-2 rounded-2xl p-2 ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++        data-hotkey-index={hotkeyIndex}
++        key={`${result.url}-${index}`}
++      >
++        <div className="flex items-center gap-3">
++          <ResultLink className="relative block shrink-0" globals={globals} result={result}>
++            {result.thumbnail ? (
++              <img
++                alt={result.title_text}
++                className="size-14 rounded-xl border border-line bg-surface-2 object-cover"
++                decoding="async"
++                loading="lazy"
++                onError={(event) => {
++                  event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
++                }}
++                src={result.thumbnail}
++              />
++            ) : (
++              <span className="grid size-14 place-items-center rounded-xl border border-line bg-surface-2 text-ink-3">
++                <ImageIcon className="size-6" />
++              </span>
++            )}
++          </ResultLink>
++          <h3 className="line-clamp-2 min-h-[2.5rem] text-base font-medium leading-snug">
++            <ResultLink
++              className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++              globals={globals}
++              result={result}
++            >
++              <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++            </ResultLink>
++          </h3>
++        </div>
++        {result.content_html ? (
++          <p
++            className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-ink-2"
++            dangerouslySetInnerHTML={{ __html: result.content_html }}
++            dir="auto"
++          />
++        ) : null}
++        <p className="mt-1.5 truncate text-xs text-ink-3">{result.engines[0]}</p>
++      </article>
++    );
++  });
++  return <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">{cells}</div>;
 +}
 +
 +export function ResultCard(props: CardProps) {
@@ -9651,10 +10046,10 @@ index 0000000..3dd6748
 +}
 diff --git a/client/zjsearch/src/lib/theme.ts b/client/zjsearch/src/lib/theme.ts
 new file mode 100644
-index 0000000..09d24fc
+index 0000000..e09d74a
 --- /dev/null
 +++ b/client/zjsearch/src/lib/theme.ts
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,47 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/** Light/dark theme handling shared by the quick toggle and the preferences UI. */
@@ -9692,6 +10087,15 @@ index 0000000..09d24fc
 +  } else {
 +    document.cookie = `simple_style=${style}; path=/; max-age=157680000; samesite=lax`;
 +  }
++}
++
++/** Live-follow system theme switches while the page is open (auto mode). */
++export function watchSystemTheme() {
++  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
++    if (readThemeStyle() === "auto") {
++      applyThemeStyle("auto");
++    }
++  });
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
@@ -10122,15 +10526,16 @@ index 0000000..77c8de2
 +}
 diff --git a/client/zjsearch/src/main.tsx b/client/zjsearch/src/main.tsx
 new file mode 100644
-index 0000000..0fdb05d
+index 0000000..a7b69f5
 --- /dev/null
 +++ b/client/zjsearch/src/main.tsx
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,41 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { createRoot } from "react-dom/client";
 +import { App } from "./app.tsx";
 +import { extractPageData, parseClientSettings, parseEmbeddedPageData } from "./lib/pageData.ts";
++import { watchSystemTheme } from "./lib/theme.ts";
 +import type { AnyPageData } from "./lib/types.ts";
 +import "./styles/global.css";
 +
@@ -10159,6 +10564,7 @@ index 0000000..0fdb05d
 +  if (!container) {
 +    return;
 +  }
++  watchSystemTheme();
 +  const initialData = await bootData();
 +  const settings = parseClientSettings();
 +  createRoot(container).render(<App initialData={initialData} settings={settings} />);
@@ -11649,17 +12055,18 @@ index 0000000..a8d635d
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..5336dec
+index 0000000..2e0bf4e
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,806 @@
+@@ -0,0 +1,817 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 +import { HelpModal } from "../components/HelpModal.tsx";
 +import { ArrowUpIcon, CategoryIcon, ChevronDownIcon, GripVerticalIcon, InfoIcon } from "../components/icons.tsx";
-+import { Answers } from "../components/results/Answers.tsx";
++import { Answers, CalculatorAnswer } from "../components/results/Answers.tsx";
 +import {
++  AppsGrid,
 +  DictionaryCard,
 +  NewsCard,
 +  PaperCard,
@@ -12118,6 +12525,8 @@ index 0000000..5336dec
 +    singleCategory === "define" ||
 +    bangCategory === "dictionaries" ||
 +    bangCategory === "define";
++  const isAppsPage = singleCategory === "apps" || bangCategory === "apps";
++  const isPackagesPage = singleCategory === "packages" || bangCategory === "packages";
 +  // science intent renders every result in the scholarly layout; a
 +  // paper-only bang search (`!pubmed ...`) gets the same treatment
 +  const isSciencePage =
@@ -12140,12 +12549,11 @@ index 0000000..5336dec
 +  }, [href]);
 +
 +  // client-side calculator answer (server plugin "calculator" enabled)
-+  const calcAnswer = useMemo(() => {
++  const calc = useMemo(() => {
 +    if (!hasPlugin("calculator")) {
 +      return null;
 +    }
-+    const calc = tryEvaluateExpression(data.q);
-+    return calc ? ({ template: "answer/legacy.html", answer: `${calc.expr} = ${calc.value}`, url: "" } as const) : null;
++    return tryEvaluateExpression(data.q);
 +  }, [data.q, hasPlugin]);
 +  const showSkeletons = loading && !error;
 +
@@ -12225,7 +12633,8 @@ index 0000000..5336dec
 +              <>
 +                <Corrections data={data} onSearch={submitQuery} />
 +                <div className="mt-3 space-y-3">
-+                  <Answers answers={calcAnswer ? [calcAnswer, ...data.answers] : data.answers} />
++                  {calc ? <CalculatorAnswer calc={calc} /> : null}
++                  <Answers answers={data.answers} query={data.q} />
 +                </div>
 +
 +                {allResults.length === 0 && data.answers.length === 0 ? (
@@ -12262,6 +12671,14 @@ index 0000000..5336dec
 +                        <DictionaryCard globals={globals} result={result} />
 +                      </div>
 +                    ))}
++                  </div>
++                ) : isAppsPage ? (
++                  <div className="mt-4">
++                    <AppsGrid globals={globals} results={allResults} selected={hotkeysSelected} />
++                  </div>
++                ) : isPackagesPage ? (
++                  <div className="mt-4">
++                    <PackageGrid globals={globals} results={allResults} selected={hotkeysSelected} />
 +                  </div>
 +                ) : isSciencePage ? (
 +                  <div className="mt-2 space-y-1">
@@ -13288,10 +13705,10 @@ index 0000000..f920be3
 +{% block page_data %}{{ page_404() }}{% endblock %}
 diff --git a/searx/templates/zjsearch/base.html b/searx/templates/zjsearch/base.html
 new file mode 100644
-index 0000000..fc19e95
+index 0000000..7403554
 --- /dev/null
 +++ b/searx/templates/zjsearch/base.html
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,63 @@
 +{#- zjsearch theme: application shell.
 +
 +The zjsearch theme renders no UI on the server.  Every page is a thin shell that
@@ -13312,15 +13729,17 @@ index 0000000..fc19e95
 +  <title>{% block title %}{% endblock %}{{ instance_name }}</title>
 +  <script>
 +    // resolve the light/dark mode before first paint: explicit preference from
-+    // the cookie, otherwise follow the system setting
++    // the cookie (the server writes "auto" when the preference is auto),
++    // otherwise follow the system setting
 +    (function () {
 +      var style = "";
 +      try {
 +        var m = document.cookie.match(/(?:^|; *)simple_style=(\w+)/);
 +        style = m ? m[1] : "";
 +      } catch (e) { /* ignore */ }
++      var auto = style !== "light" && style !== "dark" && style !== "black";
 +      var dark = style === "dark" || style === "black" ||
-+        (!style && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
++        (auto && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
 +      document.documentElement.classList.toggle("dark", dark);
 +      document.documentElement.classList.toggle("black", style === "black");
 +    })();
