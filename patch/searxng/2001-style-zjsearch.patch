@@ -3926,10 +3926,10 @@ index 0000000..6d6ffaf
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..b1d76dd
+index 0000000..df2f9b2
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,218 @@
+@@ -0,0 +1,190 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import type { ReactNode } from "react";
@@ -3938,7 +3938,7 @@ index 0000000..b1d76dd
 +import type { GlobalData, SearchPageData } from "../lib/types.ts";
 +import type { DropdownOption } from "./Dropdown.tsx";
 +import { Dropdown } from "./Dropdown.tsx";
-+import { CategoryIcon, ClockIcon, EllipsisIcon, LanguagesIcon, ShieldIcon } from "./icons.tsx";
++import { CategoryIcon, ClockIcon, LanguagesIcon, ShieldIcon } from "./icons.tsx";
 +
 +interface CategoryTabsProps {
 +  globals: GlobalData;
@@ -3955,6 +3955,7 @@ index 0000000..b1d76dd
 + * Category pills.  With `search_on_category_select` a plain click immediately
 + * searches the clicked category, shift+click toggles multi-selection.
 + * Otherwise it behaves like toggling checkboxes and the magnifier submits.
++ * Every category is laid out flat - narrow viewports scroll the row.
 + */
 +export function CategoryTabs({ globals, selected, onSelectionChange, onSearch, wrap = false }: CategoryTabsProps) {
 +  const t = useT();
@@ -3974,14 +3975,9 @@ index 0000000..b1d76dd
 +  };
 +
 +  const tabs = globals.categories_as_tabs.length > 0 ? globals.categories_as_tabs : globals.categories;
-+  // Kagi-style: the common categories stay in the row, the rest live in a
-+  // kebab menu
-+  const overflowTabs = tabs.filter((category) => !PRIMARY_CATEGORIES.has(category));
 +
 +  return (
 +    <div className={`flex items-center gap-0.5 py-1 ${wrap ? "flex-wrap justify-center gap-y-0.5" : ""}`}>
-+      {/* the scroll container holds only the row: the kebab menu must be able
-+          to escape it, an overflow clip here would cut the dropdown off */}
 +      <div
 +        className={`flex min-w-0 items-center gap-0.5 ${
 +          wrap
@@ -3989,63 +3985,39 @@ index 0000000..b1d76dd
 +            : "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 +        }`}
 +      >
-+        {tabs
-+          .filter((category) => PRIMARY_CATEGORIES.has(category))
-+          .map((category) => {
-+            const isSelected = selected.includes(category);
-+            return (
-+              <button
-+                aria-pressed={isSelected}
-+                className={`relative flex shrink-0 items-center gap-1.5 px-4 py-2 text-[13px] transition-colors ${
-+                  isSelected ? "font-medium text-accent" : "text-ink-2 hover:text-ink"
++        {tabs.map((category) => {
++          const isSelected = selected.includes(category);
++          return (
++            <button
++              aria-pressed={isSelected}
++              className={`relative flex shrink-0 items-center gap-1.5 px-4 py-2 text-[13px] transition-colors ${
++                isSelected ? "font-medium text-accent" : "text-ink-2 hover:text-ink"
++              }`}
++              key={category}
++              onClick={(event) => {
++                onClick(category, event);
++              }}
++              title={settings.search_on_category_select ? undefined : t("search")}
++              type="button"
++            >
++              <CategoryIcon category={category} className="size-3.5 shrink-0" />
++              <span>{globals.category_labels[category] ?? category}</span>
++              <span
++                aria-hidden="true"
++                className={`absolute inset-x-4 -bottom-0.5 h-0.5 rounded-full transition-opacity ${
++                  isSelected ? "bg-accent-strong opacity-100" : "opacity-0"
 +                }`}
-+                key={category}
-+                onClick={(event) => {
-+                  onClick(category, event);
-+                }}
-+                title={settings.search_on_category_select ? undefined : t("search")}
-+                type="button"
-+              >
-+                <CategoryIcon category={category} className="size-3.5 shrink-0" />
-+                <span>{globals.category_labels[category] ?? category}</span>
-+                <span
-+                  aria-hidden="true"
-+                  className={`absolute inset-x-4 -bottom-0.5 h-0.5 rounded-full transition-opacity ${
-+                    isSelected ? "bg-accent-strong opacity-100" : "opacity-0"
-+                  }`}
-+                />
-+              </button>
-+            );
-+          })}
++              />
++            </button>
++          );
++        })}
 +      </div>
-+      {overflowTabs.length > 0 ? (
-+        <Dropdown
-+          align={wrap ? "end" : "start"}
-+          ariaLabel={overflowTabs.map((category) => globals.category_labels[category] ?? category).join(", ")}
-+          icon={
-+            <EllipsisIcon
-+              className={`size-4 ${overflowTabs.some((category) => selected.includes(category)) ? "text-accent" : ""}`}
-+            />
-+          }
-+          iconOnly
-+          onChange={(category) => {
-+            onClick(category, { shiftKey: false } as React.MouseEvent);
-+          }}
-+          options={overflowTabs.map((category) => ({
-+            value: category,
-+            label: globals.category_labels[category] ?? category,
-+            icon: <CategoryIcon category={category} className="size-3.5" />,
-+          }))}
-+          value={overflowTabs.find((category) => selected.includes(category)) ?? ""}
-+        />
-+      ) : null}
 +    </div>
 +  );
 +}
 +
 +/** categories that stay in the tab row; everything else folds into the
 +    kebab menu (Kagi-style) */
-+const PRIMARY_CATEGORIES = new Set(["general", "images", "videos", "news", "music", "map"]);
 +
 +export interface FilterValues {
 +  language: string;
@@ -4327,10 +4299,10 @@ index 0000000..9c4de37
 +}
 diff --git a/client/zjsearch/src/components/icons.tsx b/client/zjsearch/src/components/icons.tsx
 new file mode 100644
-index 0000000..82e47e1
+index 0000000..a9551cd
 --- /dev/null
 +++ b/client/zjsearch/src/components/icons.tsx
-@@ -0,0 +1,486 @@
+@@ -0,0 +1,501 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/** Inline SVG icon set (stroke style, 24x24 grid) + brand marks. */
@@ -4392,6 +4364,13 @@ index 0000000..82e47e1
 +);
 +
 +export const PlayIcon = makeIcon(<polygon points="6 3 20 12 6 21 6 3" />);
++
++export const PauseIcon = makeIcon(
++  <>
++    <rect height="16" width="3" x="7" y="4" />
++    <rect height="16" width="3" x="14" y="4" />
++  </>,
++);
 +
 +export const NewsIcon = makeIcon(
 +  <>
@@ -4512,6 +4491,13 @@ index 0000000..82e47e1
 +  <>
 +    <path d="M12 19V5" />
 +    <path d="m5 12 7-7 7 7" />
++  </>,
++);
++
++export const ArrowDownIcon = makeIcon(
++  <>
++    <path d="M12 5v14" />
++    <path d="m19 12-7 7-7-7" />
 +  </>,
 +);
 +
@@ -4806,6 +4792,7 @@ index 0000000..82e47e1
 +  map: LocationIcon,
 +  music: MusicIcon,
 +  news: NewsIcon,
++  packages: PackageIcon,
 +  radio: RadioIcon,
 +  science: FlaskIcon,
 +  "social media": PeopleIcon,
@@ -5015,12 +5002,180 @@ index 0000000..42f3cb6
 +    </section>
 +  );
 +}
+diff --git a/client/zjsearch/src/components/results/FilesGrid.tsx b/client/zjsearch/src/components/results/FilesGrid.tsx
+new file mode 100644
+index 0000000..c055f98
+--- /dev/null
++++ b/client/zjsearch/src/components/results/FilesGrid.tsx
+@@ -0,0 +1,162 @@
++// SPDX-License-Identifier: AGPL-3.0-or-later
++
++/** Files-intent layout: square "file tiles" mirroring the media grids.
++    Torrents and file downloads have no cover art, so the tile shows a
++    type icon with the detected extension, the filesize takes the duration
++    badge slot, and the magnet link is the card's inline primary action. */
++
++import { formatDate } from "../../lib/format.ts";
++import { useT } from "../../lib/i18n.ts";
++import type { GlobalData, ResultItem } from "../../lib/types.ts";
++import { ArrowDownIcon, ArrowUpIcon, DownloadIcon, FileIcon, FilmIcon, MagnetIcon, MusicIcon } from "../icons.tsx";
++import { ResultLink, THEME_STATIC } from "./cards.tsx";
++import { Strip } from "./Strip.tsx";
++
++function detectExtension(title: string): string | null {
++  const match = /\.([a-z0-9]{1,4})$/i.exec(title.trim());
++  return match?.[1]?.toUpperCase() ?? null;
++}
++
++function TileIcon({ result }: { result: ResultItem }) {
++  if (result.mtype === "audio") {
++    return <MusicIcon className="size-10" />;
++  }
++  if (result.mtype === "video") {
++    return <FilmIcon className="size-10" />;
++  }
++  return <FileIcon className="size-10" />;
++}
++
++export function FilesGrid({
++  results,
++  globals,
++  selected,
++  indexOffset = 0,
++  variant = "grid",
++}: {
++  results: ResultItem[];
++  globals: GlobalData;
++  selected?: number;
++  /** hotkey indices are page-global: offset by the grid's first result index */
++  indexOffset?: number;
++  /** "strip" renders the same cells in a fixed-row horizontal carousel */
++  variant?: "grid" | "strip";
++}) {
++  const t = useT();
++  const cells = results.map((result, index) => {
++    const extension = detectExtension(result.filename || result.title_text);
++    const size = result.filesize || result.size || null;
++    const date = result.published_date ? formatDate(result.published_date) : result.time || null;
++    const hasHealth = result.seed !== undefined || result.leech !== undefined;
++    const hotkeyIndex = indexOffset + index;
++    const downloadHref =
++      result.torrentfile ||
++      (result.embedded && result.mtype !== "audio" && result.mtype !== "video" ? result.embedded : null);
++    const hasActions = Boolean(result.magnetlink || downloadHref);
++    return (
++      <article
++        className={`group rounded-2xl ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++        data-hotkey-index={hotkeyIndex}
++        key={`${result.url}-${index}`}
++      >
++        <ResultLink
++          className="relative block aspect-square overflow-hidden rounded-xl border border-line bg-gradient-to-br from-surface-2 to-surface"
++          globals={globals}
++          result={result}
++        >
++          <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-ink-3">
++            <TileIcon result={result} />
++            {extension ? (
++              <span className="text-[11px] font-semibold uppercase tracking-widest">{extension}</span>
++            ) : null}
++          </span>
++          {size ? (
++            <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
++              {size}
++            </span>
++          ) : null}
++          {result.favicon ? (
++            <img
++              alt=""
++              className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
++              decoding="async"
++              loading="lazy"
++              onError={(event) => {
++                event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
++              }}
++              src={result.favicon}
++            />
++          ) : null}
++        </ResultLink>
++        <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
++          <ResultLink
++            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++            globals={globals}
++            result={result}
++          >
++            <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++          </ResultLink>
++        </h3>
++        <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-ink-3">
++          {hasHealth ? (
++            <span className="inline-flex items-center gap-2">
++              {result.seed !== undefined ? (
++                <span className="inline-flex items-center gap-0.5 font-medium text-ok">
++                  <ArrowUpIcon className="size-3" />
++                  {result.seed}
++                </span>
++              ) : null}
++              {result.leech !== undefined ? (
++                <span className="inline-flex items-center gap-0.5 font-medium text-danger">
++                  <ArrowDownIcon className="size-3" />
++                  {result.leech}
++                </span>
++              ) : null}
++            </span>
++          ) : (
++            <span className="truncate" dir="auto">
++              {result.engines[0]}
++            </span>
++          )}
++          <span className="shrink-0">{date}</span>
++        </div>
++        {hasHealth || hasActions ? (
++          <div className="mt-1.5 flex items-center justify-between gap-2">
++            <span className="truncate text-xs text-ink-3">{hasHealth ? result.engines[0] : ""}</span>
++            {hasActions ? (
++              <span className="flex shrink-0 items-center gap-1.5">
++                {result.magnetlink ? (
++                  <a
++                    aria-label={t("magnet_link")}
++                    className="grid size-7 place-items-center rounded-full bg-accent-soft text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                    href={result.magnetlink}
++                    title={t("magnet_link")}
++                  >
++                    <MagnetIcon className="size-3.5" />
++                  </a>
++                ) : null}
++                {downloadHref ? (
++                  <a
++                    aria-label={result.torrentfile ? t("torrent_file") : t("download")}
++                    className="grid size-7 place-items-center rounded-full bg-surface-2 text-ink-2 transition-colors hover:text-ink"
++                    download
++                    href={downloadHref}
++                    rel="noreferrer"
++                    target="_blank"
++                    title={result.torrentfile ? t("torrent_file") : t("download")}
++                  >
++                    <DownloadIcon className="size-3.5" />
++                  </a>
++                ) : null}
++              </span>
++            ) : null}
++          </div>
++        ) : null}
++      </article>
++    );
++  });
++  if (variant === "strip") {
++    return <Strip rows={1}>{cells}</Strip>;
++  }
++  return <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 xl:grid-cols-4">{cells}</div>;
++}
 diff --git a/client/zjsearch/src/components/results/ImageGrid.tsx b/client/zjsearch/src/components/results/ImageGrid.tsx
 new file mode 100644
-index 0000000..b593e96
+index 0000000..38151aa
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/ImageGrid.tsx
-@@ -0,0 +1,447 @@
+@@ -0,0 +1,521 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -5036,6 +5191,7 @@ index 0000000..b593e96
 +import type { ResultItem } from "../../lib/types.ts";
 +import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ExternalLinkIcon } from "../icons.tsx";
 +import { THEME_STATIC } from "./cards.tsx";
++import { Strip } from "./Strip.tsx";
 +
 +const IMAGE_VIEWER_HASH = "#image-viewer";
 +
@@ -5121,7 +5277,8 @@ index 0000000..b593e96
 +    };
 +  }, []);
 +
-+  // reset whenever another image is opened
++  // reset whenever another image is opened (resetZoom itself is stable)
++  // biome-ignore lint/correctness/useExhaustiveDependencies: index change must re-run the reset
 +  useEffect(() => {
 +    resetZoom();
 +  }, [index, resetZoom]);
@@ -5244,6 +5401,7 @@ index 0000000..b593e96
 +        ref={stageRef}
 +      >
 +        <div
++          aria-label={result.title_text}
 +          className={`flex items-center justify-center ${zoom > 1 ? "touch-none" : ""}`}
 +          onDoubleClick={() => {
 +            resetZoom();
@@ -5268,6 +5426,7 @@ index 0000000..b593e96
 +            setDragging(false);
 +            event.currentTarget.releasePointerCapture(event.pointerId);
 +          }}
++          role="img"
 +          style={{
 +            transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
 +            transition: dragging ? "none" : "transform 150ms ease-out",
@@ -5468,6 +5627,76 @@ index 0000000..b593e96
 +    </div>
 +  );
 +}
++
++/** Square strip tile: the masonry tile's look with a fixed footprint so the
++    mixed-search strip can keep uniform rows. */
++function StripTile({ result, onOpen }: { result: ResultItem; onOpen: () => void }) {
++  const [loaded, setLoaded] = useState(false);
++  const thumbSrc = result.thumbnail_src || result.img_src || "";
++  return (
++    <button
++      className={`group relative block aspect-square w-full overflow-hidden rounded-lg bg-surface-2 transition-opacity ${
++        loaded ? "opacity-100" : "opacity-70 animate-pulse-soft"
++      }`}
++      onClick={onOpen}
++      type="button"
++    >
++      <img
++        alt={result.title_text}
++        className={`size-full object-cover transition-all duration-300 group-hover:scale-[1.03] ${
++          loaded ? "opacity-100" : "opacity-0"
++        }`}
++        decoding="async"
++        loading="lazy"
++        onError={(event) => {
++          event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
++          setLoaded(true);
++        }}
++        onLoad={() => {
++          setLoaded(true);
++        }}
++        src={thumbSrc}
++      />
++      <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
++      <span className="pointer-events-none absolute inset-x-2 bottom-2 line-clamp-2 text-[11px] font-medium leading-4 text-white opacity-0 transition-opacity group-hover:opacity-100">
++        {result.title_text}
++      </span>
++    </button>
++  );
++}
++
++/** Mixed-search images section: a fixed two-row horizontal strip.  Tiles
++    open the shared lightbox, which can page through the full result set. */
++export function ImageStrip({ results, rows = 2 }: { results: ResultItem[]; rows?: 1 | 2 }) {
++  const [openIndex, setOpenIndex] = useState<number | null>(null);
++  return (
++    <>
++      <Strip rows={rows}>
++        {results.map((result, index) => (
++          <StripTile
++            key={`${result.url}-${index}`}
++            onOpen={() => {
++              setOpenIndex(index);
++            }}
++            result={result}
++          />
++        ))}
++      </Strip>
++      {openIndex !== null ? (
++        <Lightbox
++          index={openIndex}
++          onClose={() => {
++            setOpenIndex(null);
++          }}
++          onNavigate={(index) => {
++            setOpenIndex(index);
++          }}
++          results={results}
++        />
++      ) : null}
++    </>
++  );
++}
 diff --git a/client/zjsearch/src/components/results/MapView.tsx b/client/zjsearch/src/components/results/MapView.tsx
 new file mode 100644
 index 0000000..ea35750
@@ -5619,6 +5848,425 @@ index 0000000..ea35750
 +      ) : null}
 +    </div>
 +  );
++}
+diff --git a/client/zjsearch/src/components/results/MusicGrid.tsx b/client/zjsearch/src/components/results/MusicGrid.tsx
+new file mode 100644
+index 0000000..3696f86
+--- /dev/null
++++ b/client/zjsearch/src/components/results/MusicGrid.tsx
+@@ -0,0 +1,272 @@
++// SPDX-License-Identifier: AGPL-3.0-or-later
++
++/** Music-intent layout: square album-art tiles mirroring the video grid.
++    Playable results swap the tile for an in-place player - raw audio
++    streams get a custom mini player (blur + play/pause + seek), embeddable
++    sources play inside the tile like videos do. */
++
++import { useEffect, useRef, useState } from "react";
++import { formatDate, formatLength } from "../../lib/format.ts";
++import { useT } from "../../lib/i18n.ts";
++import type { GlobalData, ResultItem } from "../../lib/types.ts";
++import { CloseIcon, MusicIcon, PauseIcon, PlayIcon } from "../icons.tsx";
++import { ResultLink, THEME_STATIC } from "./cards.tsx";
++import { Strip } from "./Strip.tsx";
++
++function formatClock(seconds: number): string {
++  if (!Number.isFinite(seconds) || seconds < 0) {
++    return "--:--";
++  }
++  const total = Math.round(seconds);
++  const hours = Math.floor(total / 3600);
++  const minutes = Math.floor((total % 3600) / 60);
++  const secs = String(total % 60).padStart(2, "0");
++  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${secs}` : `${minutes}:${secs}`;
++}
++
++/** In-tile mini player for raw audio streams.  Reports playback failure so
++    the grid can fall back to the embeddable player when one exists. */
++function AudioTilePlayer({ src, onClose, onError }: { src: string; onClose: () => void; onError: () => void }) {
++  const t = useT();
++  const audioRef = useRef<HTMLAudioElement>(null);
++  const [playing, setPlaying] = useState(false);
++  const [time, setTime] = useState(0);
++  const [duration, setDuration] = useState(0);
++  const hasDuration = Number.isFinite(duration) && duration > 0;
++
++  useEffect(() => {
++    // the player mounts right after a click, so user activation allows this
++    audioRef.current?.play().catch(() => {});
++  }, []);
++
++  const toggle = () => {
++    const audio = audioRef.current;
++    if (!audio) {
++      return;
++    }
++    if (audio.paused) {
++      audio.play().catch(() => {});
++    } else {
++      audio.pause();
++    }
++  };
++
++  return (
++    <div className="absolute inset-0 z-10 flex animate-fade-in flex-col overflow-hidden rounded-xl border border-line bg-black/75 text-white backdrop-blur-md">
++      <audio
++        onError={onError}
++        onLoadedMetadata={(event) => {
++          setDuration(event.currentTarget.duration);
++        }}
++        onPause={() => {
++          setPlaying(false);
++        }}
++        onPlay={() => {
++          setPlaying(true);
++        }}
++        onTimeUpdate={(event) => {
++          setTime(event.currentTarget.currentTime);
++        }}
++        preload="metadata"
++        ref={audioRef}
++        src={src}
++      />
++      <button
++        aria-label={t("close")}
++        className="absolute end-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++        onClick={onClose}
++        title={t("close")}
++        type="button"
++      >
++        <CloseIcon className="size-3.5" />
++      </button>
++      <div className="flex flex-1 items-center justify-center">
++        <button
++          aria-label={playing ? t("pause") : t("play")}
++          className="grid size-14 place-items-center rounded-full bg-white text-black shadow-pop transition-transform hover:scale-105"
++          onClick={toggle}
++          title={playing ? t("pause") : t("play")}
++          type="button"
++        >
++          {playing ? <PauseIcon className="size-6" /> : <PlayIcon className="size-6 translate-x-0.5" />}
++        </button>
++      </div>
++      <div className="flex items-center gap-2 px-3 pb-3 text-[11px] font-medium tabular-nums">
++        <span>{formatClock(time)}</span>
++        <input
++          aria-label={t("length")}
++          className="w-full accent-white disabled:opacity-40"
++          disabled={!hasDuration}
++          max={hasDuration ? duration : 1}
++          min={0}
++          onChange={(event) => {
++            const audio = audioRef.current;
++            const value = Number(event.target.value);
++            if (audio && Number.isFinite(value)) {
++              audio.currentTime = value;
++              setTime(value);
++            }
++          }}
++          step={0.1}
++          type="range"
++          value={hasDuration ? Math.min(time, duration) : 0}
++        />
++        <span>{formatClock(duration)}</span>
++      </div>
++    </div>
++  );
++}
++
++function EmbedTile({ src, title, onClose }: { src: string; title: string; onClose: () => void }) {
++  const t = useT();
++  return (
++    <div className="absolute inset-0 z-10 animate-fade-in overflow-hidden rounded-xl border border-line bg-black">
++      <iframe allowFullScreen className="size-full" referrerPolicy="origin" src={src} title={title} />
++      <button
++        aria-label={t("close")}
++        className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++        onClick={onClose}
++        title={t("close")}
++        type="button"
++      >
++        <CloseIcon className="size-3.5" />
++      </button>
++    </div>
++  );
++}
++
++export function MusicGrid({
++  results,
++  globals,
++  selected,
++  indexOffset = 0,
++  variant = "grid",
++}: {
++  results: ResultItem[];
++  globals: GlobalData;
++  selected?: number;
++  /** hotkey indices are page-global: offset by the grid's first result index */
++  indexOffset?: number;
++  /** "strip" renders the same cells in a fixed-row horizontal carousel */
++  variant?: "grid" | "strip";
++}) {
++  const t = useT();
++  const [playing, setPlaying] = useState<number | null>(null);
++  const [mode, setMode] = useState<"audio" | "embed">("audio");
++  const cells = results.map((result, index) => {
++    const length = formatLength(result.length_display, result.length_seconds);
++    const isPlaying = playing === index;
++    const hotkeyIndex = indexOffset + index;
++    const audioSrc = result.audio_src || "";
++    const embedSrc = result.iframe_src || "";
++    const playable = Boolean(audioSrc || embedSrc);
++    return (
++      <article
++        className={`group rounded-2xl ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++        data-hotkey-index={hotkeyIndex}
++        key={`${result.url}-${index}`}
++      >
++        <div className="relative">
++          <ResultLink
++            className="relative block aspect-square overflow-hidden rounded-xl bg-surface-2"
++            globals={globals}
++            result={result}
++          >
++            {result.thumbnail ? (
++              <img
++                alt={result.title_text}
++                className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
++                decoding="async"
++                loading="lazy"
++                onError={(event) => {
++                  event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
++                }}
++                src={result.thumbnail}
++              />
++            ) : (
++              <span className="grid size-full place-items-center bg-gradient-to-br from-surface-2 to-surface text-ink-3">
++                <MusicIcon className="size-10" />
++              </span>
++            )}
++            {length ? (
++              <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
++                {length}
++              </span>
++            ) : null}
++            {result.favicon ? (
++              <img
++                alt=""
++                className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
++                decoding="async"
++                loading="lazy"
++                onError={(event) => {
++                  event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
++                }}
++                src={result.favicon}
++              />
++            ) : null}
++          </ResultLink>
++          {playable && isPlaying ? (
++            mode === "audio" && audioSrc ? (
++              <AudioTilePlayer
++                onClose={() => {
++                  setPlaying(null);
++                }}
++                onError={() => {
++                  // raw stream failed - fall back to the embed when one exists
++                  if (embedSrc) {
++                    setMode("embed");
++                  } else {
++                    setPlaying(null);
++                  }
++                }}
++                src={audioSrc}
++              />
++            ) : (
++              <EmbedTile
++                onClose={() => {
++                  setPlaying(null);
++                }}
++                src={embedSrc}
++                title={result.title_text}
++              />
++            )
++          ) : null}
++          {playable && !isPlaying ? (
++            <button
++              aria-label={t("play")}
++              className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white opacity-85 shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-ink group-hover:opacity-100"
++              onClick={() => {
++                setMode(audioSrc ? "audio" : "embed");
++                setPlaying(index);
++              }}
++              title={t("play")}
++              type="button"
++            >
++              <PlayIcon className="size-5 translate-x-px" />
++            </button>
++          ) : null}
++        </div>
++        <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
++          <ResultLink
++            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++            globals={globals}
++            result={result}
++          >
++            <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++          </ResultLink>
++        </h3>
++        <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
++          <span className="truncate" dir="auto">
++            {result.author || result.engines[0]}
++          </span>
++          <span className="shrink-0">{result.published_date ? formatDate(result.published_date) : null}</span>
++        </div>
++      </article>
++    );
++  });
++  if (variant === "strip") {
++    return <Strip rows={1}>{cells}</Strip>;
++  }
++  return <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 xl:grid-cols-4">{cells}</div>;
++}
+diff --git a/client/zjsearch/src/components/results/PackageGrid.tsx b/client/zjsearch/src/components/results/PackageGrid.tsx
+new file mode 100644
+index 0000000..0f431b1
+--- /dev/null
++++ b/client/zjsearch/src/components/results/PackageGrid.tsx
+@@ -0,0 +1,135 @@
++// SPDX-License-Identifier: AGPL-3.0-or-later
++
++/** Package results (crates.io, docker hub, pypi, ...): the file-tile
++    language of FilesGrid applied to software packages - icon tile with the
++    version badge, author/updated meta row, homepage/source actions. */
++
++import { formatDate } from "../../lib/format.ts";
++import { useT } from "../../lib/i18n.ts";
++import type { GlobalData, ResultItem } from "../../lib/types.ts";
++import { CodeIcon, ExternalLinkIcon, PackageIcon } from "../icons.tsx";
++import { ResultLink, THEME_STATIC } from "./cards.tsx";
++import { Strip } from "./Strip.tsx";
++
++function PackageCell({
++  result,
++  globals,
++  selected,
++  hotkeyIndex,
++}: {
++  result: ResultItem;
++  globals: GlobalData;
++  selected?: number;
++  hotkeyIndex: number;
++}) {
++  const t = useT();
++  return (
++    <article
++      className={`group rounded-2xl ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++      data-hotkey-index={hotkeyIndex}
++    >
++      <ResultLink
++        className="relative block aspect-square overflow-hidden rounded-xl border border-line bg-gradient-to-br from-surface-2 to-surface"
++        globals={globals}
++        result={result}
++      >
++        <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-ink-3">
++          <PackageIcon className="size-10" />
++          {result.version ? (
++            <span className="font-mono text-[11px] font-semibold tracking-wide">{result.version}</span>
++          ) : null}
++        </span>
++        {result.favicon ? (
++          <img
++            alt=""
++            className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
++            decoding="async"
++            loading="lazy"
++            onError={(event) => {
++              event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
++            }}
++            src={result.favicon}
++          />
++        ) : null}
++      </ResultLink>
++      <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
++        <ResultLink
++          className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++          globals={globals}
++          result={result}
++        >
++          <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++        </ResultLink>
++      </h3>
++      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-ink-3">
++        <span className="truncate" dir="auto">
++          {result.maintainer || result.author || result.engines[0]}
++        </span>
++        <span className="shrink-0">{result.published_date ? formatDate(result.published_date) : null}</span>
++      </div>
++      {result.homepage || result.source_code_url ? (
++        <div className="mt-1.5 flex items-center gap-1.5">
++          {result.homepage ? (
++            <a
++              aria-label={t("homepage")}
++              className="grid size-7 place-items-center rounded-full bg-accent-soft text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++              href={result.homepage}
++              rel="noreferrer"
++              target="_blank"
++              title={t("homepage")}
++            >
++              <ExternalLinkIcon className="size-3.5" />
++            </a>
++          ) : null}
++          {result.source_code_url ? (
++            <a
++              aria-label={t("repository")}
++              className="grid size-7 place-items-center rounded-full bg-surface-2 text-ink-2 transition-colors hover:text-ink"
++              href={result.source_code_url}
++              rel="noreferrer"
++              target="_blank"
++              title={t("repository")}
++            >
++              <CodeIcon className="size-3.5" />
++            </a>
++          ) : null}
++          <span className="truncate text-xs text-ink-3">{result.engines[0]}</span>
++        </div>
++      ) : (
++        <div className="mt-1.5 flex items-center">
++          <span className="truncate text-xs text-ink-3">{result.engines[0]}</span>
++        </div>
++      )}
++    </article>
++  );
++}
++
++export function PackageGrid({
++  results,
++  globals,
++  selected,
++  indexOffset = 0,
++  variant = "grid",
++}: {
++  results: ResultItem[];
++  globals: GlobalData;
++  selected?: number;
++  /** hotkey indices are page-global: offset by the grid's first result index */
++  indexOffset?: number;
++  /** "strip" renders the same cells in a fixed-row horizontal carousel */
++  variant?: "grid" | "strip";
++}) {
++  const cells = results.map((result, index) => (
++    <PackageCell
++      globals={globals}
++      hotkeyIndex={indexOffset + index}
++      key={`${result.url}-${index}`}
++      result={result}
++      selected={selected}
++    />
++  ));
++  if (variant === "strip") {
++    return <Strip rows={1}>{cells}</Strip>;
++  }
++  return <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 xl:grid-cols-4">{cells}</div>;
 +}
 diff --git a/client/zjsearch/src/components/results/Pagination.tsx b/client/zjsearch/src/components/results/Pagination.tsx
 new file mode 100644
@@ -6039,12 +6687,103 @@ index 0000000..a51c428
 +    </button>
 +  );
 +}
+diff --git a/client/zjsearch/src/components/results/Strip.tsx b/client/zjsearch/src/components/results/Strip.tsx
+new file mode 100644
+index 0000000..a87fabf
+--- /dev/null
++++ b/client/zjsearch/src/components/results/Strip.tsx
+@@ -0,0 +1,85 @@
++// SPDX-License-Identifier: AGPL-3.0-or-later
++
++/** Fixed-row horizontal strip with left/right paging arrows.  Section
++    layouts use it to keep a predictable footprint: every result stays
++    reachable by scrolling, nothing ever expands in place. */
++
++import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
++import { useT } from "../../lib/i18n.ts";
++import { ChevronLeftIcon, ChevronRightIcon } from "../icons.tsx";
++
++export function Strip({ children, rows = 1 }: { children: ReactNode[]; rows?: 1 | 2 }) {
++  const t = useT();
++  const trackRef = useRef<HTMLDivElement>(null);
++  const [atStart, setAtStart] = useState(true);
++  const [atEnd, setAtEnd] = useState(false);
++
++  const updateEdges = useCallback(() => {
++    const el = trackRef.current;
++    if (!el) {
++      return;
++    }
++    // RTL browsers run scrollLeft negative - the absolute value covers both
++    const position = Math.abs(el.scrollLeft);
++    const max = el.scrollWidth - el.clientWidth;
++    setAtStart(position <= 4);
++    setAtEnd(position >= max - 4);
++  }, []);
++
++  useEffect(() => {
++    updateEdges();
++    window.addEventListener("resize", updateEdges);
++    return () => {
++      window.removeEventListener("resize", updateEdges);
++    };
++  }, [updateEdges, children.length]);
++
++  const page = (direction: 1 | -1) => {
++    const el = trackRef.current;
++    if (!el) {
++      return;
++    }
++    const rtl = getComputedStyle(el).direction === "rtl";
++    el.scrollBy({ left: (rtl ? -1 : 1) * direction * el.clientWidth, behavior: "smooth" });
++  };
++
++  return (
++    <div className="relative">
++      <div
++        className={`grid auto-cols-[calc(50%-8px)] grid-flow-col gap-4 overflow-x-auto pb-1 sm:auto-cols-[calc(33.333%-10.67px)] lg:auto-cols-[calc(25%-12px)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
++          rows === 2 ? "grid-rows-2" : "grid-rows-1"
++        }`}
++        onScroll={updateEdges}
++        ref={trackRef}
++      >
++        {children}
++      </div>
++      {!atStart ? (
++        <button
++          aria-label={t("previous_page")}
++          className="absolute -start-4 top-1/2 z-10 grid size-9 -translate-y-1/2 place-items-center rounded-full border border-line bg-surface text-ink-2 shadow-pop transition-colors hover:text-accent"
++          onClick={() => {
++            page(-1);
++          }}
++          title={t("previous_page")}
++          type="button"
++        >
++          <ChevronLeftIcon className="size-4" />
++        </button>
++      ) : null}
++      {!atEnd ? (
++        <button
++          aria-label={t("next_page")}
++          className="absolute -end-4 top-1/2 z-10 grid size-9 -translate-y-1/2 place-items-center rounded-full border border-line bg-surface text-ink-2 shadow-pop transition-colors hover:text-accent"
++          onClick={() => {
++            page(1);
++          }}
++          title={t("next_page")}
++          type="button"
++        >
++          <ChevronRightIcon className="size-4" />
++        </button>
++      ) : null}
++    </div>
++  );
++}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..764af81
+index 0000000..544cd63
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,1208 @@
+@@ -0,0 +1,1353 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
@@ -6052,26 +6791,30 @@ index 0000000..764af81
 +import { useT } from "../../lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "../../lib/types.ts";
 +import {
++  ArrowDownIcon,
++  ArrowUpIcon,
 +  CalendarIcon,
 +  ClockIcon,
 +  CloseIcon,
++  CodeIcon,
 +  DownloadIcon,
 +  ExternalLinkIcon,
-+  EyeIcon,
 +  FileIcon,
 +  FilmIcon,
 +  MagnetIcon,
 +  MusicIcon,
 +  PackageIcon,
 +  PlayIcon,
++  StarIcon,
 +} from "../icons.tsx";
 +import { MapResult } from "./MapView.tsx";
++import { Strip } from "./Strip.tsx";
 +
 +export const THEME_STATIC = "/static/themes/zjsearch";
 +
 +// ------------------------------------------------------------- shared parts
 +
-+function ResultLink({
++export function ResultLink({
 +  result,
 +  globals,
 +  href,
@@ -6196,8 +6939,11 @@ index 0000000..764af81
 +const MAX_ENGINES_SHOWN = 3;
 +
 +function EnginesLine({ result }: { result: ResultItem }) {
-+  const shown = result.engines.slice(0, MAX_ENGINES_SHOWN);
-+  const hidden = result.engines.length - shown.length;
++  const t = useT();
++  const [expanded, setExpanded] = useState(false);
++  const engines = result.engines;
++  const shown = expanded ? engines : engines.slice(0, MAX_ENGINES_SHOWN);
++  const hidden = engines.length - MAX_ENGINES_SHOWN;
 +  return (
 +    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
 +      {shown.map((engine) => (
@@ -6205,10 +6951,28 @@ index 0000000..764af81
 +          {engine}
 +        </span>
 +      ))}
-+      {hidden > 0 ? (
-+        <span className="rounded-full bg-surface-2 px-2 py-0.5" title={result.engines.join(", ")}>
++      {!expanded && hidden > 0 ? (
++        <button
++          className="rounded-full bg-surface-2 px-2 py-0.5 transition-colors hover:text-ink"
++          onClick={() => {
++            setExpanded(true);
++          }}
++          title={engines.join(", ")}
++          type="button"
++        >
 +          +{hidden}
-+        </span>
++        </button>
++      ) : null}
++      {expanded && hidden > 0 ? (
++        <button
++          className="transition-colors hover:text-ink"
++          onClick={() => {
++            setExpanded(false);
++          }}
++          type="button"
++        >
++          {t("show_less")}
++        </button>
 +      ) : null}
 +    </div>
 +  );
@@ -6467,68 +7231,88 @@ index 0000000..764af81
 +  );
 +}
 +
++/** File-share layout: the magnet link doubles as the card's primary action
++    tile, health stats read as a colored seeder/leecher strip - the
++    "transfer" reading of the files category. */
 +export function TorrentCard({ result, globals }: CardProps) {
 +  const t = useT();
 +  return (
 +    <ResultArticle priority={result.priority}>
-+      <PrettyUrl globals={globals} result={result} />
-+      <div className="mt-1">
-+        <Title globals={globals} result={result} />
-+      </div>
-+      <div className="mt-1">
-+        <MetaLine result={result} />
-+      </div>
-+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
++      <div className="flex gap-4">
 +        {result.magnetlink ? (
 +          <a
-+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 transition-colors hover:text-ink"
++            aria-label={t("magnet_link")}
++            className="grid size-14 shrink-0 self-start place-items-center rounded-xl bg-accent-soft text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +            href={result.magnetlink}
++            title={t("magnet_link")}
 +          >
-+            <MagnetIcon className="size-3.5" />
-+            {t("magnet_link")}
++            <MagnetIcon className="size-6" />
 +          </a>
-+        ) : null}
-+        {result.torrentfile ? (
-+          <a
-+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 transition-colors hover:text-ink"
-+            href={result.torrentfile}
-+          >
-+            <DownloadIcon className="size-3.5" />
-+            {t("torrent_file")}
-+          </a>
-+        ) : null}
-+        {result.seed !== undefined ? (
-+          <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-ink-2">
-+            <span className="size-1.5 rounded-full bg-ok" />
-+            {result.seed} {t("seeder")}
++        ) : (
++          <span className="grid size-14 shrink-0 self-start place-items-center rounded-xl bg-surface-2 text-ink-3">
++            <FileIcon className="size-6" />
 +          </span>
-+        ) : null}
-+        {result.leech !== undefined ? (
-+          <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-ink-2">
-+            <span className="size-1.5 rounded-full bg-danger" />
-+            {result.leech} {t("leecher")}
-+          </span>
-+        ) : null}
-+        {result.filesize ? (
-+          <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-ink-2">
-+            <FileIcon className="size-3.5" />
-+            {result.filesize}
-+          </span>
-+        ) : null}
-+        {result.files ? (
-+          <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-ink-2">
-+            {result.files} {t("files")}
-+          </span>
-+        ) : null}
++        )}
++        <div className="min-w-0 flex-1">
++          <PrettyUrl globals={globals} result={result} />
++          <div className="mt-1">
++            <Title globals={globals} result={result} />
++          </div>
++          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
++            {result.seed !== undefined ? (
++              <span className="inline-flex items-center gap-1">
++                <ArrowUpIcon className="size-3.5 text-ok" />
++                <span className="font-semibold text-ok">{result.seed}</span>
++                {t("seeder")}
++              </span>
++            ) : null}
++            {result.leech !== undefined ? (
++              <span className="inline-flex items-center gap-1">
++                <ArrowDownIcon className="size-3.5 text-danger" />
++                <span className="font-semibold text-danger">{result.leech}</span>
++                {t("leecher")}
++              </span>
++            ) : null}
++            {result.filesize ? (
++              <span className="inline-flex items-center gap-1">
++                <FileIcon className="size-3.5" />
++                {result.filesize}
++              </span>
++            ) : null}
++            {result.files ? (
++              <span className="inline-flex items-center gap-1">
++                <PackageIcon className="size-3.5" />
++                {result.files} {t("files")}
++              </span>
++            ) : null}
++            {result.published_date ? (
++              <span className="inline-flex items-center gap-1">
++                <CalendarIcon className="size-3.5" />
++                {formatDate(result.published_date)}
++              </span>
++            ) : null}
++          </div>
++          {result.content_html ? (
++            <p
++              className="mt-1.5 line-clamp-2 text-sm text-ink-2"
++              dangerouslySetInnerHTML={{ __html: result.content_html }}
++              dir="auto"
++            />
++          ) : null}
++          {result.torrentfile ? (
++            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
++              <a
++                className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 transition-colors hover:text-ink"
++                href={result.torrentfile}
++              >
++                <DownloadIcon className="size-3.5" />
++                {t("torrent_file")}
++              </a>
++            </div>
++          ) : null}
++          <EnginesLine result={result} />
++        </div>
 +      </div>
-+      {result.content_html ? (
-+        <p
-+          className="mt-2 line-clamp-2 text-sm text-ink-2"
-+          dangerouslySetInnerHTML={{ __html: result.content_html }}
-+          dir="auto"
-+        />
-+      ) : null}
-+      <EnginesLine result={result} />
 +    </ResultArticle>
 +  );
 +}
@@ -6691,204 +7475,241 @@ index 0000000..764af81
 +  );
 +}
 +
++/** General file-download layout, sharing the transfer-card language of the
++    torrent card: type icon tile, compact stat strip, primary action. */
 +export function FileCard({ result, globals }: CardProps) {
 +  const t = useT();
-+  const attributes: Array<[string, string | undefined]> = [
++  const isMedia = result.mtype === "audio" || result.mtype === "video";
++  const tileClass = isMedia ? "bg-accent-soft text-accent" : "bg-surface-2 text-ink-3";
++  const tileIcon =
++    result.mtype === "audio" ? (
++      <MusicIcon className="size-6" />
++    ) : result.mtype === "video" ? (
++      <FilmIcon className="size-6" />
++    ) : (
++      <FileIcon className="size-6" />
++    );
++  const stats: Array<[string, string | undefined]> = [
 +    [t("author"), result.author],
 +    [t("filename"), result.filename],
 +    [t("filesize"), result.size],
 +    [t("date"), result.time],
 +    [t("type"), result.mimetype],
 +  ];
-+  const isMedia = result.mtype === "audio" || result.mtype === "video";
 +  return (
 +    <ResultArticle priority={result.priority}>
-+      <PrettyUrl globals={globals} result={result} />
-+      <div className="mt-1 flex items-baseline gap-2">
-+        <FileIcon className="size-4 shrink-0 text-ink-3" />
-+        <Title globals={globals} result={result} />
++      <div className="flex gap-4">
++        <span className={`grid size-14 shrink-0 self-start place-items-center rounded-xl ${tileClass}`}>
++          {tileIcon}
++        </span>
++        <div className="min-w-0 flex-1">
++          <PrettyUrl globals={globals} result={result} />
++          <div className="mt-1">
++            <Title globals={globals} result={result} />
++          </div>
++          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
++            {stats
++              .filter(([, value]) => Boolean(value))
++              .map(([label, value]) => (
++                <span className="inline-flex min-w-0 items-center gap-1" key={label}>
++                  {label}:
++                  <span className="truncate text-ink-2" dir="auto">
++                    {value}
++                  </span>
++                </span>
++              ))}
++          </div>
++          {result.abstract_html ? (
++            <p
++              className="mt-1.5 line-clamp-3 text-sm text-ink-2"
++              dangerouslySetInnerHTML={{ __html: result.abstract_html }}
++              dir="auto"
++            />
++          ) : null}
++          {result.content_html ? (
++            <p
++              className="mt-1 line-clamp-2 text-sm text-ink-2"
++              dangerouslySetInnerHTML={{ __html: result.content_html }}
++              dir="auto"
++            />
++          ) : null}
++          {result.embedded ? (
++            isMedia ? (
++              result.mtype === "video" ? (
++                <MediaCollapse hideLabel={t("hide_media")} showLabel={t("show_media")}>
++                  {() => (
++                    <video
++                      className="w-full max-w-lg rounded-xl"
++                      controls
++                      poster={result.thumbnail}
++                      preload="metadata"
++                      src={result.embedded}
++                    />
++                  )}
++                </MediaCollapse>
++              ) : (
++                // audio: inline player, no collapse - music results should be
++                // playable in one click (preload="none" keeps it cheap)
++                <div className="mt-2 flex max-w-md items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2">
++                  <MusicIcon className="size-4 shrink-0 text-accent" />
++                  <audio className="h-8 w-full" controls preload="none" src={result.embedded} />
++                </div>
++              )
++            ) : (
++              <a
++                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                download
++                href={result.embedded}
++                rel="noreferrer"
++                target="_blank"
++              >
++                <DownloadIcon className="size-3.5" />
++                {t("download")}
++              </a>
++            )
++          ) : null}
++          <EnginesLine result={result} />
++        </div>
 +      </div>
-+      <div className="mt-1">
-+        <MetaLine result={result} />
-+      </div>
-+      {result.abstract_html ? (
-+        <p
-+          className="mt-1.5 text-sm text-ink-2"
-+          dangerouslySetInnerHTML={{ __html: result.abstract_html }}
-+          dir="auto"
-+        />
-+      ) : null}
-+      {result.content_html ? (
-+        <p className="mt-1 text-sm text-ink-2" dangerouslySetInnerHTML={{ __html: result.content_html }} dir="auto" />
-+      ) : null}
-+      <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
-+        {attributes
-+          .filter(([, value]) => Boolean(value))
-+          .map(([label, value]) => (
-+            <div className="flex gap-1" key={label}>
-+              <dt>{label}:</dt>
-+              <dd className="text-ink-2">{value}</dd>
-+            </div>
-+          ))}
-+      </dl>
-+      {result.embedded ? (
-+        isMedia ? (
-+          result.mtype === "video" ? (
-+            <MediaCollapse hideLabel={t("hide_media")} showLabel={t("show_media")}>
-+              {() => (
-+                <video
-+                  className="w-full max-w-lg rounded-xl"
-+                  controls
-+                  poster={result.thumbnail}
-+                  preload="metadata"
-+                  src={result.embedded}
-+                />
-+              )}
-+            </MediaCollapse>
-+          ) : (
-+            // audio: inline player, no collapse - music results should be
-+            // playable in one click (preload="none" keeps it cheap)
-+            <audio className="mt-2 w-full max-w-md" controls preload="none" src={result.embedded} />
-+          )
-+        ) : (
-+          <a
-+            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 hover:text-ink"
-+            download
-+            href={result.embedded}
-+            rel="noreferrer"
-+            target="_blank"
-+          >
-+            <DownloadIcon className="size-3.5" />
-+            {t("download")}
-+          </a>
-+        )
-+      ) : null}
-+      <EnginesLine result={result} />
 +    </ResultArticle>
 +  );
 +}
 +
++/** Scholarly layout (science intent, arxiv/pubmed/...): authors · venue ·
++    date meta line, clamped abstract, PDF/HTML actions and a compact DOI
++    link.  Non-paper results on a science page (e.g. pdb figures) degrade
++    gracefully - the card simply renders without the paper-specific bits. */
 +export function PaperCard({ result, globals }: CardProps) {
 +  const t = useT();
-+  const details: Array<[string, ReactNode]> = [];
-+  if (result.authors && result.authors.length > 0) {
-+    details.push([t("author"), result.authors.join(", ")]);
-+  }
-+  if (result.published_date) {
-+    details.push([t("date"), formatDate(result.published_date)]);
-+  }
++  const venueBits: string[] = [];
 +  if (result.journal) {
-+    details.push([
-+      "",
-+      <>
-+        {result.journal}
-+        {result.volume ? `, ${result.volume}` : ""}
-+        {result.number ? ` (${result.number})` : ""}
-+        {result.pages ? `, ${result.pages}` : ""}
-+      </>,
-+    ]);
++    venueBits.push(result.journal);
 +  }
-+  if (result.editor) {
-+    details.push(["Editor", result.editor]);
++  if (result.volume) {
++    venueBits.push(`vol. ${result.volume}`);
 +  }
-+  if (result.publisher) {
-+    details.push(["Publisher", result.publisher]);
++  if (result.number) {
++    venueBits.push(`no. ${result.number}`);
 +  }
-+  if (result.paper_type) {
-+    details.push([t("type"), result.paper_type]);
++  if (result.pages) {
++    venueBits.push(`pp. ${result.pages}`);
 +  }
-+  if (result.doi) {
-+    details.push([
-+      "DOI",
-+      <a
-+        className="text-accent hover:underline"
-+        href={`https://${globals.doi_resolver}/${result.doi}`}
-+        key="doi"
-+        rel="noreferrer"
-+        target="_blank"
-+      >
-+        {result.doi}
-+      </a>,
-+    ]);
++  let authors = result.author ?? "";
++  if (result.authors && result.authors.length > 0) {
++    authors = result.authors.slice(0, 3).join(", ");
++    if (result.authors.length > 3) {
++      authors += ` ${t("et_al")}`;
++    }
 +  }
-+  if (result.issn && result.issn.length > 0) {
-+    details.push(["ISSN", result.issn.join(", ")]);
-+  }
-+  if (result.isbn && result.isbn.length > 0) {
-+    details.push(["ISBN", result.isbn.join(", ")]);
-+  }
++  const metaBits: Array<string | null> = [
++    authors || null,
++    venueBits.length > 0 ? venueBits.join(", ") : null,
++    result.published_date ? formatDate(result.published_date) : null,
++  ];
++  // every optional extra (PDF/HTML, DOI, citation note, subject tags) lives
++  // in ONE footer row in a fixed order, so cards share the same skeleton no
++  // matter which fields the source engine provides
++  const maxTags = 2;
++  const tags = result.tags ?? [];
++  const [tagsExpanded, setTagsExpanded] = useState(false);
++  const hasFooter = Boolean(result.pdf_url || result.html_url || result.doi || result.comments || tags.length > 0);
 +  return (
 +    <ResultArticle priority={result.priority}>
-+      <PrettyUrl globals={globals} result={result} />
-+      <div className="mt-1">
-+        <Title globals={globals} result={result} />
-+      </div>
-+      <div className="mt-1">
-+        <MetaLine result={result} />
-+      </div>
-+      {result.content_html ? (
-+        <p
-+          className="mt-1.5 line-clamp-4 text-sm leading-relaxed text-ink-2"
-+          dangerouslySetInnerHTML={{ __html: result.content_html }}
-+          dir="auto"
-+        />
-+      ) : null}
-+      {result.comments ? (
-+        <p className="mt-1.5 text-sm italic text-ink-3" dir="auto">
-+          {result.comments}
-+        </p>
-+      ) : null}
-+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-+        {details.map(([label, value], index) => (
-+          <div className="col-span-2 grid grid-cols-subgrid items-baseline" key={index}>
-+            {label ? <dt className="text-ink-3">{label}:</dt> : <dt />}
-+            <dd className="text-ink-2">{value}</dd>
++      <div className="flex gap-4">
++        <div className="min-w-0 flex-1">
++          <PrettyUrl globals={globals} result={result} />
++          <div className="mt-1">
++            <Title globals={globals} result={result} />
 +          </div>
-+        ))}
-+      </dl>
-+      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-+        {result.pdf_url ? (
-+          <a
-+            className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
-+            href={result.pdf_url}
-+            rel="noreferrer"
-+            target="_blank"
-+          >
-+            <FileIcon className="size-3.5" />
-+            PDF
-+          </a>
-+        ) : null}
-+        {result.html_url ? (
-+          <a
-+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
-+            href={result.html_url}
-+            rel="noreferrer"
-+            target="_blank"
-+          >
-+            <ExternalLinkIcon className="size-3.5" />
-+            HTML
-+          </a>
-+        ) : null}
-+        {result.doi ? (
-+          <a
-+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
-+            href={`https://www.altmetric.com/details/doi/${result.doi}`}
-+            rel="noreferrer"
-+            target="_blank"
-+          >
-+            Altmetric
-+          </a>
++          {metaBits.some(Boolean) ? (
++            <p className="mt-1 truncate text-xs text-ink-3" dir="auto">
++              {metaBits.filter(Boolean).join(" · ")}
++            </p>
++          ) : null}
++          {result.content_html ? (
++            <p
++              className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-ink-2"
++              dangerouslySetInnerHTML={{ __html: result.content_html }}
++              dir="auto"
++            />
++          ) : null}
++          {hasFooter ? (
++            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
++              {result.pdf_url ? (
++                <a
++                  className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                  href={result.pdf_url}
++                  rel="noreferrer"
++                  target="_blank"
++                >
++                  <FileIcon className="size-3.5" />
++                  PDF
++                </a>
++              ) : null}
++              {result.html_url ? (
++                <a
++                  className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
++                  href={result.html_url}
++                  rel="noreferrer"
++                  target="_blank"
++                >
++                  <ExternalLinkIcon className="size-3.5" />
++                  HTML
++                </a>
++              ) : null}
++              {result.doi ? (
++                <a
++                  className="min-w-0 truncate font-mono text-[11px] text-ink-3 hover:text-accent"
++                  dir="ltr"
++                  href={`https://${globals.doi_resolver}/${result.doi}`}
++                  rel="noreferrer"
++                  target="_blank"
++                >
++                  DOI {result.doi}
++                </a>
++              ) : null}
++              {result.comments ? (
++                <span className="min-w-0 truncate text-ink-3 italic" dir="auto" title={result.comments}>
++                  {result.comments}
++                </span>
++              ) : null}
++              {tags.slice(0, tagsExpanded ? tags.length : maxTags).map((tag) => (
++                <span className="max-w-40 truncate text-ink-3" key={tag} title={tag}>
++                  #{tag}
++                </span>
++              ))}
++              {tags.length > maxTags && !tagsExpanded ? (
++                <button
++                  className="text-ink-3 transition-colors hover:text-ink"
++                  onClick={() => {
++                    setTagsExpanded(true);
++                  }}
++                  title={tags.join(", ")}
++                  type="button"
++                >
++                  +{tags.length - maxTags}
++                </button>
++              ) : null}
++              {tags.length > maxTags && tagsExpanded ? (
++                <button
++                  className="text-ink-3 transition-colors hover:text-ink"
++                  onClick={() => {
++                    setTagsExpanded(false);
++                  }}
++                  type="button"
++                >
++                  {t("show_less")}
++                </button>
++              ) : null}
++            </div>
++          ) : null}
++        </div>
++        {result.thumbnail ? (
++          <ResultLink className="shrink-0 self-start" globals={globals} result={result}>
++            <Thumb alt={result.title_text} className="h-28 w-28" src={result.thumbnail} />
++          </ResultLink>
 +        ) : null}
 +      </div>
-+      {result.tags && result.tags.length > 0 ? (
-+        <div className="mt-2 flex flex-wrap gap-1.5">
-+          {result.tags.map((tag) => (
-+            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-3" key={tag}>
-+              {tag}
-+            </span>
-+          ))}
-+        </div>
-+      ) : null}
 +      <EnginesLine result={result} />
 +    </ResultArticle>
 +  );
@@ -6896,6 +7717,7 @@ index 0000000..764af81
 +
 +export function PackageCard({ result, globals }: CardProps) {
 +  const t = useT();
++  const [tagsExpanded, setTagsExpanded] = useState(false);
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <PrettyUrl globals={globals} result={result} />
@@ -6915,40 +7737,47 @@ index 0000000..764af81
 +          dir="auto"
 +        />
 +      ) : null}
-+      <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
++      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
 +        {result.maintainer ? (
-+          <div className="flex gap-1">
-+            <dt>{t("author")}:</dt>
-+            <dd className="text-ink-2">{result.maintainer}</dd>
-+          </div>
++          <span className="inline-flex min-w-0 items-center gap-1">
++            {t("author")}:
++            <span className="truncate text-ink-2" dir="auto">
++              {result.maintainer}
++            </span>
++          </span>
 +        ) : null}
 +        {result.published_date ? (
-+          <div className="flex gap-1">
-+            <dt>Updated:</dt>
-+            <dd className="text-ink-2">{formatDate(result.published_date)}</dd>
-+          </div>
++          <span className="inline-flex items-center gap-1">
++            <CalendarIcon className="size-3.5" />
++            {formatDate(result.published_date)}
++          </span>
 +        ) : null}
 +        {result.popularity ? (
-+          <div className="flex gap-1">
-+            <dt>Popularity:</dt>
-+            <dd className="text-ink-2">{result.popularity}</dd>
-+          </div>
++          <span className="inline-flex items-center gap-1">
++            <StarIcon className="size-3.5" />
++            <span className="text-ink-2">{result.popularity}</span>
++          </span>
 +        ) : null}
 +        {result.license_name ? (
-+          <div className="flex gap-1">
-+            <dt>License:</dt>
-+            <dd className="text-ink-2">
++          <span className="inline-flex items-center gap-1">
++            {t("license")}:
++            <span className="text-ink-2">
 +              {result.license_url ? (
-+                <a className="text-accent hover:underline" href={result.license_url} rel="noreferrer" target="_blank">
++                <a
++                  className="hover:text-accent hover:underline"
++                  href={result.license_url}
++                  rel="noreferrer"
++                  target="_blank"
++                >
 +                  {result.license_name}
 +                </a>
 +              ) : (
 +                result.license_name
 +              )}
-+            </dd>
-+          </div>
++            </span>
++          </span>
 +        ) : null}
-+      </dl>
++      </div>
 +      <div className="mt-2 flex flex-wrap gap-2 text-xs">
 +        {result.homepage ? (
 +          <a
@@ -6968,7 +7797,7 @@ index 0000000..764af81
 +            rel="noreferrer"
 +            target="_blank"
 +          >
-+            <PackageIcon className="size-3.5" />
++            <CodeIcon className="size-3.5" />
 +            Source code
 +          </a>
 +        ) : null}
@@ -6986,12 +7815,35 @@ index 0000000..764af81
 +        ))}
 +      </div>
 +      {result.tags && result.tags.length > 0 ? (
-+        <div className="mt-2 flex flex-wrap gap-1.5">
-+          {result.tags.map((tag) => (
-+            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink-3" key={tag}>
-+              {tag}
++        <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-ink-3">
++          {result.tags.slice(0, 4).map((tag) => (
++            <span className="max-w-48 truncate" key={tag} title={tag}>
++              #{tag}
 +            </span>
 +          ))}
++          {result.tags.length > 4 && !tagsExpanded ? (
++            <button
++              className="transition-colors hover:text-ink"
++              onClick={() => {
++                setTagsExpanded(true);
++              }}
++              title={result.tags.join(", ")}
++              type="button"
++            >
++              +{result.tags.length - 4}
++            </button>
++          ) : null}
++          {result.tags.length > 4 && tagsExpanded ? (
++            <button
++              className="transition-colors hover:text-ink"
++              onClick={() => {
++                setTagsExpanded(false);
++              }}
++              type="button"
++            >
++              {t("show_less")}
++            </button>
++          ) : null}
 +        </div>
 +      ) : null}
 +      <EnginesLine result={result} />
@@ -7109,103 +7961,135 @@ index 0000000..764af81
 +
 +/** Kagi-style video tiles for video-only result pages.  Tiles with an
 +    embeddable source get a Spotify-style hover play button that expands the
-+    player in place. */
-+export function VideoGrid({ results, globals }: { results: ResultItem[]; globals: GlobalData }) {
++    player in place.  Cells carry data-hotkey-index so the results hotkeys
++    can walk the grid like the list layouts. */
++export function VideoGrid({
++  results,
++  globals,
++  selected,
++  indexOffset = 0,
++  variant = "grid",
++}: {
++  results: ResultItem[];
++  globals: GlobalData;
++  selected?: number;
++  /** hotkey indices are page-global: offset by the grid's first result index */
++  indexOffset?: number;
++  /** "strip" renders the same cells in a fixed-row horizontal carousel */
++  variant?: "grid" | "strip";
++}) {
 +  const t = useT();
 +  const [playing, setPlaying] = useState<number | null>(null);
-+  return (
-+    <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-+      {results.map((result, index) => {
-+        const length = formatLength(result.length_display, result.length_seconds);
-+        const isPlaying = playing === index;
-+        return (
-+          <article className="group" key={`${result.url}-${index}`}>
-+            <div className="relative">
-+              <ResultLink
-+                className="relative block aspect-video overflow-hidden rounded-xl bg-surface-2"
-+                globals={globals}
-+                result={result}
-+              >
-+                {result.thumbnail ? (
-+                  <img
-+                    alt={result.title_text}
-+                    className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-+                    decoding="async"
-+                    loading="lazy"
-+                    onError={(event) => {
-+                      event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
-+                    }}
-+                    src={result.thumbnail}
-+                  />
-+                ) : (
-+                  <span className="grid size-full place-items-center text-ink-3">
-+                    <PlayIcon className="size-8" />
-+                  </span>
-+                )}
-+                {length ? (
-+                  <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
-+                    {length}
-+                  </span>
-+                ) : null}
-+                {result.favicon ? (
-+                  <img
-+                    alt=""
-+                    className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
-+                    decoding="async"
-+                    loading="lazy"
-+                    onError={(event) => {
-+                      event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
-+                    }}
-+                    src={result.favicon}
-+                  />
-+                ) : null}
-+              </ResultLink>
-+              {result.iframe_src && isPlaying ? (
-+                <div className="absolute inset-0 animate-fade-in overflow-hidden rounded-xl border border-line bg-black">
-+                  <iframe
-+                    allowFullScreen
-+                    className="size-full"
-+                    referrerPolicy="origin"
-+                    src={result.iframe_src ?? ""}
-+                    title={result.title_text}
-+                  />
-+                </div>
-+              ) : null}
-+              {result.iframe_src ? (
-+                <button
-+                  aria-label={isPlaying ? t("hide_video") : t("show_video")}
-+                  className="absolute end-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong"
-+                  onClick={() => {
-+                    setPlaying(isPlaying ? null : index);
-+                  }}
-+                  title={isPlaying ? t("hide_video") : t("show_video")}
-+                  type="button"
-+                >
-+                  {isPlaying ? <CloseIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
-+                </button>
-+              ) : null}
-+            </div>
-+            <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
-+              <ResultLink
-+                className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
-+                globals={globals}
-+                result={result}
-+              >
-+                <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
-+              </ResultLink>
-+            </h3>
-+            <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
-+              <span className="truncate" dir="auto">
-+                {result.author || result.engines[0]}
++  const cells = results.map((result, index) => {
++    const length = formatLength(result.length_display, result.length_seconds);
++    const isPlaying = playing === index;
++    const hotkeyIndex = indexOffset + index;
++    return (
++      <article
++        className={`group rounded-2xl ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++        data-hotkey-index={hotkeyIndex}
++        key={`${result.url}-${index}`}
++      >
++        <div className="relative">
++          <ResultLink
++            className="relative block aspect-video overflow-hidden rounded-xl bg-surface-2"
++            globals={globals}
++            result={result}
++          >
++            {result.thumbnail ? (
++              <img
++                alt={result.title_text}
++                className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
++                decoding="async"
++                loading="lazy"
++                onError={(event) => {
++                  event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
++                }}
++                src={result.thumbnail}
++              />
++            ) : (
++              <span className="grid size-full place-items-center text-ink-3">
++                <PlayIcon className="size-8" />
 +              </span>
-+              <span className="shrink-0">{result.published_date ? formatDate(result.published_date) : null}</span>
++            )}
++            {length ? (
++              <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
++                {length}
++              </span>
++            ) : null}
++            {result.favicon ? (
++              <img
++                alt=""
++                className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
++                decoding="async"
++                loading="lazy"
++                onError={(event) => {
++                  event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
++                }}
++                src={result.favicon}
++              />
++            ) : null}
++          </ResultLink>
++          {result.iframe_src && isPlaying ? (
++            <div className="absolute inset-0 z-10 animate-fade-in overflow-hidden rounded-xl border border-line bg-black">
++              <iframe
++                allowFullScreen
++                className="size-full"
++                referrerPolicy="origin"
++                src={result.iframe_src ?? ""}
++                title={result.title_text}
++              />
 +            </div>
-+            {result.views ? <div className="mt-0.5 text-xs text-ink-3">{result.views}</div> : null}
-+          </article>
-+        );
-+      })}
-+    </div>
-+  );
++          ) : null}
++          {result.iframe_src && isPlaying ? (
++            <button
++              aria-label={t("hide_video")}
++              className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++              onClick={() => {
++                setPlaying(null);
++              }}
++              title={t("hide_video")}
++              type="button"
++            >
++              <CloseIcon className="size-3.5" />
++            </button>
++          ) : result.iframe_src ? (
++            <button
++              aria-label={t("play")}
++              className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white opacity-85 shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-ink group-hover:opacity-100"
++              onClick={() => {
++                setPlaying(index);
++              }}
++              title={t("play")}
++              type="button"
++            >
++              <PlayIcon className="size-5 translate-x-px" />
++            </button>
++          ) : null}
++        </div>
++        <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
++          <ResultLink
++            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++            globals={globals}
++            result={result}
++          >
++            <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++          </ResultLink>
++        </h3>
++        <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
++          <span className="truncate" dir="auto">
++            {result.author || result.engines[0]}
++          </span>
++          <span className="shrink-0">{result.published_date ? formatDate(result.published_date) : null}</span>
++        </div>
++        {result.views ? <div className="mt-0.5 text-xs text-ink-3">{result.views}</div> : null}
++      </article>
++    );
++  });
++  if (variant === "strip") {
++    return <Strip rows={1}>{cells}</Strip>;
++  }
++  return <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{cells}</div>;
 +}
 +
 +export function FallbackCard(props: CardProps) {
@@ -7463,23 +8347,28 @@ index 0000000..b9848b6
 +}
 diff --git a/client/zjsearch/src/lib/format.ts b/client/zjsearch/src/lib/format.ts
 new file mode 100644
-index 0000000..7075ab0
+index 0000000..7e554fd
 --- /dev/null
 +++ b/client/zjsearch/src/lib/format.ts
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,54 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/** Client side formatting helpers (dates, durations, response times). */
 +
 +const DAY_MS = 86_400_000;
 +
-+/** Relative date for recent timestamps, locale date otherwise. */
++/** Relative date for recent timestamps, locale date otherwise.
++    Future timestamps (sloppy engine metadata) get the absolute date too. */
 +export function formatDate(iso: string): string {
 +  const date = new Date(iso);
 +  if (Number.isNaN(date.getTime())) {
 +    return iso;
 +  }
++  const absolute = () => date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 +  const diff = Date.now() - date.getTime();
++  if (diff < 0) {
++    return absolute();
++  }
 +  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 +  if (diff < DAY_MS) {
 +    return rtf.format(-Math.round(diff / 3_600_000), "hour");
@@ -7490,7 +8379,7 @@ index 0000000..7075ab0
 +  if (diff < 365 * DAY_MS) {
 +    return rtf.format(-Math.round(diff / (30 * DAY_MS)), "month");
 +  }
-+  return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
++  return absolute();
 +}
 +
 +/** Video/audio duration: passthrough display string or seconds -> h:mm:ss. */
@@ -7518,10 +8407,10 @@ index 0000000..7075ab0
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..e9ff796
+index 0000000..acc5a82
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,544 @@
+@@ -0,0 +1,554 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -7584,15 +8473,18 @@ index 0000000..e9ff796
 +  hide_media: "hide media",
 +  show_video: "show video",
 +  hide_video: "hide video",
++  play: "Play",
++  pause: "Pause",
++  et_al: "et al.",
 +  show_map: "show map",
 +  hide_map: "hide map",
 +  no_description: "This site did not provide any description.",
 +  magnet_link: "magnet link",
 +  torrent_file: "torrent file",
-+  seeder: "Seeder",
-+  leecher: "Leecher",
++  seeder: "seeders",
++  leecher: "leechers",
 +  filesize: "Filesize",
-+  files: "Number of Files",
++  files: "files",
 +  repository: "Repository",
 +  filename: "Filename",
 +  download: "Download",
@@ -7723,6 +8615,8 @@ index 0000000..e9ff796
 +  updated: "Updated at",
 +  popularity: "Popularity",
 +  license: "License",
++  packages: "Packages",
++  show_less: "Show less",
 +  homepage: "Project homepage",
 +  editor: "Editor",
 +  publisher: "Publisher",
@@ -7841,6 +8735,9 @@ index 0000000..e9ff796
 +  hide_media: "隐藏媒体",
 +  show_video: "显示视频",
 +  hide_video: "隐藏视频",
++  play: "播放",
++  pause: "暂停",
++  et_al: "等",
 +  show_map: "显示地图",
 +  hide_map: "隐藏地图",
 +  no_description: "该网站没有提供描述。",
@@ -7849,7 +8746,7 @@ index 0000000..e9ff796
 +  seeder: "做种",
 +  leecher: "下载",
 +  filesize: "文件大小",
-+  files: "文件数",
++  files: "个文件",
 +  repository: "代码仓库",
 +  filename: "文件名",
 +  download: "下载",
@@ -7980,6 +8877,8 @@ index 0000000..e9ff796
 +  updated: "更新于",
 +  popularity: "热度",
 +  license: "许可证",
++  packages: "软件包",
++  show_less: "收起",
 +  homepage: "项目主页",
 +  editor: "编者",
 +  publisher: "出版方",
@@ -9140,10 +10039,10 @@ index 0000000..0fdb05d
 +void bootstrap();
 diff --git a/client/zjsearch/src/pages/IndexPage.tsx b/client/zjsearch/src/pages/IndexPage.tsx
 new file mode 100644
-index 0000000..fb4e604
+index 0000000..8ab3e18
 --- /dev/null
 +++ b/client/zjsearch/src/pages/IndexPage.tsx
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,163 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useState } from "react";
@@ -9261,6 +10160,7 @@ index 0000000..fb4e604
 +                }}
 +                onSelectionChange={setSelected}
 +                selected={selected}
++                wrap
 +              />
 +            </div>
 +            <div className="relative z-10 mt-2 flex w-full flex-wrap items-center gap-1.5 animate-fade-in">
@@ -10602,26 +11502,31 @@ index 0000000..fa32cff
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..0e6a762
+index 0000000..f5242b2
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,690 @@
+@@ -0,0 +1,740 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
 +import { HelpModal } from "../components/HelpModal.tsx";
-+import {
-+  ArrowUpIcon,
-+  CategoryIcon,
-+  ChevronLeftIcon,
-+  ChevronRightIcon,
-+  InfoIcon,
-+} from "../components/icons.tsx";
++import { ArrowUpIcon, CategoryIcon, InfoIcon } from "../components/icons.tsx";
 +import { Answers } from "../components/results/Answers.tsx";
-+import { NewsCard, ProductGrid, ResultCard, ResultSkeleton, VideoGrid } from "../components/results/cards.tsx";
-+import { ImageGrid } from "../components/results/ImageGrid.tsx";
++import {
++  NewsCard,
++  PaperCard,
++  ProductGrid,
++  ResultCard,
++  ResultSkeleton,
++  VideoGrid,
++} from "../components/results/cards.tsx";
++import { FilesGrid } from "../components/results/FilesGrid.tsx";
++import { ImageGrid, ImageStrip } from "../components/results/ImageGrid.tsx";
++import { MusicGrid } from "../components/results/MusicGrid.tsx";
++import { PackageGrid } from "../components/results/PackageGrid.tsx";
 +import { Pagination } from "../components/results/Pagination.tsx";
 +import { DebugPanels, Infobox, Sidebar, SuggestionsBox } from "../components/results/Sidebar.tsx";
++import { Strip } from "../components/results/Strip.tsx";
 +import { SearchBox } from "../components/SearchBox.tsx";
 +import { CategoryTabs, type FilterValues, SearchFilters } from "../components/SearchControls.tsx";
 +import { HeaderActions, Link, Shell } from "../components/Shell.tsx";
@@ -10725,6 +11630,20 @@ index 0000000..0e6a762
 +  );
 +}
 +
++/** Mixed searches group results by template; music results that carry the
++    default template (genius, ...) and torrent/file downloads belong to
++    their own sections so every category shares one presentation. */
++function groupKey(result: ResultItem): string {
++  const template = result.template || "default";
++  if (template === "default" && result.category === "music") {
++    return "music";
++  }
++  if (template === "torrent" || template === "file") {
++    return "files";
++  }
++  return template;
++}
++
 +/** Consecutive same-template results form groups (image strips in mixed mode). */
 +function groupResults(
 +  results: ResultItem[],
@@ -10732,7 +11651,7 @@ index 0000000..0e6a762
 +  const groups: Array<{ template: string; items: Array<{ result: ResultItem; index: number }> }> = [];
 +  for (let index = 0; index < results.length; index += 1) {
 +    const result = results[index];
-+    const template = result?.template ?? "default";
++    const template = result ? groupKey(result) : "default";
 +    const last = groups[groups.length - 1];
 +    if (last && last.template === template) {
 +      last.items.push({ result: result as ResultItem, index });
@@ -10743,13 +11662,11 @@ index 0000000..0e6a762
 +  return groups;
 +}
 +
-+/** Sections that get a Kagi/Google-style header.  Special-typed results
-+    interleave heavily in mixed searches (one group per engine), so each
-+    section type is consolidated into a single group at its first position. */
-+const SECTION_TEMPLATES = new Set(["images", "videos", "news"]);
-+
-+/** items shown in a collapsed strip; the chevron expands to the full set */
-+const SECTION_CAPS: Record<string, number> = { images: 8, videos: 6, news: 6 };
++/** Sections that get a Kagi/Google-style header.  They render as fixed-row
++    horizontal strips (paged with left/right arrows) in this fixed order
++    after the untyped results - nothing expands in place. */
++const SECTION_TEMPLATES = new Set(["images", "videos", "news", "music", "files", "packages"]);
++const SECTION_ORDER = ["images", "videos", "news", "music", "files", "packages"];
 +
 +function consolidateGroups(
 +  groups: Array<{ template: string; items: Array<{ result: ResultItem; index: number }> }>,
@@ -10773,38 +11690,16 @@ index 0000000..0e6a762
 +  return out;
 +}
 +
-+/** Kagi/Google-style section header for a same-type result group: category
-+    icon + translated label + count, and a chevron that expands the group to
-+    its full-page layout client-side (no re-fetch). */
-+function GroupHeader({
-+  category,
-+  label,
-+  count,
-+  expanded,
-+  onToggle,
-+}: {
-+  category: string;
-+  label: string;
-+  count: number;
-+  expanded: boolean;
-+  onToggle: () => void;
-+}) {
++/** Kagi/Google-style section header: category icon + translated label +
++    result count.  Browsing happens inside the strip below it. */
++function GroupHeader({ category, label, count }: { category: string; label: string; count: number }) {
 +  return (
-+    <div className="flex items-center justify-between gap-2 pb-1 pt-5 first:pt-1">
++    <div className="flex items-center gap-1.5 pb-1 pt-5 first:pt-1">
 +      <h2 className="flex items-center gap-1.5 text-sm font-semibold text-ink">
 +        <CategoryIcon category={category} className="size-4 text-accent" />
 +        {label}
 +        <span className="font-normal text-ink-3">{count}</span>
 +      </h2>
-+      <button
-+        aria-label={label}
-+        className="grid size-7 place-items-center rounded-full text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
-+        onClick={onToggle}
-+        title={label}
-+        type="button"
-+      >
-+        {expanded ? <ChevronLeftIcon className="size-4" /> : <ChevronRightIcon className="size-4" />}
-+      </button>
 +    </div>
 +  );
 +}
@@ -10886,8 +11781,6 @@ index 0000000..0e6a762
 +  const settings = useSettings();
 +  const [helpOpen, setHelpOpen] = useState(false);
 +  const [hotkeysSelected, setHotkeysSelected] = useState(-1);
-+  const [suggestionPage, setSuggestionPage] = useState(0);
-+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
 +  const listRef = useRef<HTMLDivElement | null>(null);
 +  const [appended, setAppended] = useState<ResultItem[]>([]);
 +  const [appendState, setAppendState] = useState<"idle" | "loading" | "error" | "done">("idle");
@@ -11055,11 +11948,22 @@ index 0000000..0e6a762
 +  const isNewsPage = singleCategory === "news" && !isImagePage && !isVideoPage;
 +  const isMapPage = singleCategory === "map" && !isImagePage && !isVideoPage;
 +  const isMusicPage = singleCategory === "music" && !isImagePage && !isVideoPage;
++  // science intent renders every result in the scholarly layout; a
++  // paper-only bang search (`!pubmed ...`) gets the same treatment
++  const isSciencePage =
++    (singleCategory === "science" || data.only_template === "paper") && !isImagePage && !isVideoPage && !isMusicPage;
++  // files intent (or a torrent-only bang search) gets the file-tile grid;
++  // torrents keep the transfer card inside mixed searches
++  const isFilesPage =
++    (singleCategory === "files" || data.only_template === "torrent") &&
++    !isImagePage &&
++    !isVideoPage &&
++    !isMusicPage &&
++    !isSciencePage;
 +
 +  // biome-ignore lint/correctness/useExhaustiveDependencies: href is the trigger
 +  useEffect(() => {
 +    setHotkeysSelected(-1);
-+    setSuggestionPage(0);
 +  }, [href]);
 +
 +  // client-side calculator answer (server plugin "calculator" enabled)
@@ -11071,7 +11975,6 @@ index 0000000..0e6a762
 +    return calc ? ({ template: "answer/legacy.html", answer: `${calc.expr} = ${calc.value}`, url: "" } as const) : null;
 +  }, [data.q, hasPlugin]);
 +  const showSkeletons = loading && !error;
-+  const suggestionPages = Math.ceil(data.suggestions.length / 5);
 +
 +  return (
 +    <Shell globals={globals} hideTopNav>
@@ -11162,9 +12065,13 @@ index 0000000..0e6a762
 +                  </div>
 +                ) : isVideoPage ? (
 +                  <div className="mt-4">
-+                    <VideoGrid globals={globals} results={allResults} />
++                    <VideoGrid globals={globals} results={allResults} selected={hotkeysSelected} />
 +                  </div>
 +                ) : isMusicPage ? (
++                  <div className="mt-4">
++                    <MusicGrid globals={globals} results={allResults} selected={hotkeysSelected} />
++                  </div>
++                ) : isSciencePage ? (
 +                  <div className="mt-2 space-y-1">
 +                    {allResults.map((result, index) => (
 +                      <div
@@ -11175,9 +12082,13 @@ index 0000000..0e6a762
 +                        key={index}
 +                        style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
 +                      >
-+                        <ResultCard globals={globals} mediaOpen result={result} />
++                        <PaperCard globals={globals} result={result} />
 +                      </div>
 +                    ))}
++                  </div>
++                ) : isFilesPage ? (
++                  <div className="mt-4">
++                    <FilesGrid globals={globals} results={allResults} selected={hotkeysSelected} />
 +                  </div>
 +                ) : isProductPage ? (
 +                  <div className="mt-4">
@@ -11200,71 +12111,110 @@ index 0000000..0e6a762
 +                  </div>
 +                ) : (
 +                  <div className="mt-2">
-+                    {consolidateGroups(groupResults(allResults)).map((group, groupIndex) => {
-+                      const label = globals.category_labels[group.template] ?? group.template;
-+                      if (SECTION_TEMPLATES.has(group.template)) {
-+                        // section chevron expands/collapses client-side from the
-+                        // already-fetched results (a real category search stays
-+                        // available via the category tabs)
-+                        const expanded = expandedSection === group.template;
-+                        const shown = expanded ? group.items : group.items.slice(0, SECTION_CAPS[group.template]);
++                    {(() => {
++                      const groups = consolidateGroups(groupResults(allResults));
++                      // Section strips render BEFORE the untyped results - a
++                      // user searching for a package/file/... on an intent
++                      // page must see them immediately.  The strips are
++                      // compact fixed rows, and infinite-scroll appends flow
++                      // below them, so nothing ever becomes unreachable
++                      // (appended media still merges into the strips).
++                      const rest = groups.filter((group) => !SECTION_TEMPLATES.has(group.template));
++                      const sections = SECTION_ORDER.map((template) =>
++                        groups.find((group) => group.template === template),
++                      ).filter((group) => group !== undefined);
++                      const renderRest = (list: Array<(typeof groups)[number]>) =>
++                        list.map((group, groupIndex) => (
++                          <div key={`${groupIndex}-${group.items[0]?.index}`}>
++                            {group.items.map(({ result, index }) => (
++                              <div
++                                className={`animate-fade-up rounded-2xl ${
++                                  index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
++                                }`}
++                                data-hotkey-index={index}
++                                key={index}
++                                style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
++                              >
++                                <ResultCard
++                                  autoOpenMap={isMapPage}
++                                  eager={index < 4}
++                                  globals={globals}
++                                  result={result}
++                                />
++                              </div>
++                            ))}
++                          </div>
++                        ));
++                      const renderSection = (group: (typeof sections)[number], groupIndex: number) => {
++                        // category_labels only covers tab categories - fall
++                        // back to the theme catalog for the rest (packages)
++                        const label = globals.category_labels[group.template] ?? t(group.template);
++                        const results = group.items.map(({ result }) => result);
++                        const indexOffset = group.items[0]?.index ?? 0;
 +                        return (
 +                          <section key={`${group.template}-${groupIndex}`}>
-+                            <GroupHeader
-+                              category={group.template}
-+                              count={group.items.length}
-+                              expanded={expanded}
-+                              label={label}
-+                              onToggle={() => {
-+                                setExpandedSection(expanded ? null : group.template);
-+                              }}
-+                            />
++                            <GroupHeader category={group.template} count={group.items.length} label={label} />
 +                            <div className="mt-1">
 +                              {group.template === "images" ? (
-+                                <ImageGrid results={shown.map(({ result }) => result)} />
++                                <ImageStrip results={results} />
 +                              ) : group.template === "videos" ? (
-+                                <VideoGrid globals={globals} results={shown.map(({ result }) => result)} />
++                                <VideoGrid
++                                  globals={globals}
++                                  indexOffset={indexOffset}
++                                  results={results}
++                                  selected={hotkeysSelected}
++                                  variant="strip"
++                                />
++                              ) : group.template === "music" ? (
++                                <MusicGrid
++                                  globals={globals}
++                                  indexOffset={indexOffset}
++                                  results={results}
++                                  selected={hotkeysSelected}
++                                  variant="strip"
++                                />
++                              ) : group.template === "files" ? (
++                                <FilesGrid
++                                  globals={globals}
++                                  indexOffset={indexOffset}
++                                  results={results}
++                                  selected={hotkeysSelected}
++                                  variant="strip"
++                                />
++                              ) : group.template === "packages" ? (
++                                <PackageGrid
++                                  globals={globals}
++                                  indexOffset={indexOffset}
++                                  results={results}
++                                  selected={hotkeysSelected}
++                                  variant="strip"
++                                />
 +                              ) : (
-+                                <div className="space-y-1">
-+                                  {shown.map(({ result, index }) => (
++                                <Strip rows={1}>
++                                  {group.items.map(({ result, index }) => (
 +                                    <div
-+                                      className={`animate-fade-up rounded-2xl ${
++                                      className={`h-full rounded-2xl ${
 +                                        index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
 +                                      }`}
 +                                      data-hotkey-index={index}
 +                                      key={index}
-+                                      style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
 +                                    >
 +                                      <NewsCard globals={globals} result={result} />
 +                                    </div>
 +                                  ))}
-+                                </div>
++                                </Strip>
 +                              )}
 +                            </div>
 +                          </section>
 +                        );
-+                      }
-+                      if (expandedSection) {
-+                        // an expanded section takes over the page - hide the rest
-+                        return null;
-+                      }
++                      };
 +                      return (
-+                        <div key={groupIndex}>
-+                          {group.items.map(({ result, index }) => (
-+                            <div
-+                              className={`animate-fade-up rounded-2xl ${
-+                                index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
-+                              }`}
-+                              data-hotkey-index={index}
-+                              key={index}
-+                              style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
-+                            >
-+                              <ResultCard autoOpenMap={isMapPage} eager={index < 4} globals={globals} result={result} />
-+                            </div>
-+                          ))}
-+                        </div>
++                        <>
++                          {sections.map((group, i) => renderSection(group, i))}
++                          {renderRest(rest)}
++                        </>
 +                      );
-+                    })}
++                    })()}
 +                  </div>
 +                )}
 +
