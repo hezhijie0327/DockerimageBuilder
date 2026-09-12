@@ -5630,10 +5630,10 @@ index 0000000..057b17f
 +}
 diff --git a/client/zjsearch/src/components/results/MapView.tsx b/client/zjsearch/src/components/results/MapView.tsx
 new file mode 100644
-index 0000000..ea35750
+index 0000000..d865476
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/MapView.tsx
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,148 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -5677,6 +5677,8 @@ index 0000000..ea35750
 +      if (!container) {
 +        return;
 +      }
++      // controls (zoom, attribution) render unstyled garbage without it
++      await import("ol/ol.css");
 +      const { default: OlMap } = await import("ol/Map.js");
 +      const { default: View } = await import("ol/View.js");
 +      const { default: TileLayer } = await import("ol/layer/Tile.js");
@@ -6606,10 +6608,10 @@ index 0000000..a51c428
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..049edb6
+index 0000000..77c4ea8
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,1301 @@
+@@ -0,0 +1,1328 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
@@ -6977,7 +6979,7 @@ index 0000000..049edb6
 +  );
 +}
 +
-+export function VideoCard({ eager, result, globals, mediaOpen }: CardProps) {
++export function VideoCard({ eager, result, globals }: CardProps) {
 +  const t = useT();
 +  const [previewOpen, setPreviewOpen] = useState(false);
 +  const hasMedia = Boolean(result.iframe_src);
@@ -6992,9 +6994,9 @@ index 0000000..049edb6
 +          <div className="mt-1">
 +            <MetaLine result={result} />
 +          </div>
-+          {hasMedia && previewOpen ? (
++          {!result.thumbnail && hasMedia && previewOpen ? (
 +            <div className="mt-2 animate-fade-in">
-+              <MediaPreview src={result.iframe_src ?? ""} video={!mediaOpen} />
++              <MediaPreview src={result.iframe_src ?? ""} video />
 +            </div>
 +          ) : null}
 +          <p
@@ -7004,29 +7006,56 @@ index 0000000..049edb6
 +          />
 +        </div>
 +        {result.thumbnail ? (
-+          <div className="relative shrink-0">
-+            <ResultLink className="block" globals={globals} result={result}>
-+              <Thumb
-+                alt={result.title_text}
-+                className="h-24 w-40"
-+                eager={eager}
-+                lengthDisplay={formatLength(result.length_display, result.length_seconds)}
-+                src={result.thumbnail}
-+              />
-+            </ResultLink>
-+            {hasMedia ? (
-+              <button
-+                aria-label={previewOpen ? t("hide_video") : t("show_video")}
-+                className="absolute end-1 top-1 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
-+                onClick={() => {
-+                  setPreviewOpen((value) => !value);
-+                }}
-+                title={previewOpen ? t("hide_video") : t("show_video")}
-+                type="button"
-+              >
-+                {previewOpen ? <CloseIcon className="size-3.5" /> : <PlayIcon className="size-3.5" />}
-+              </button>
-+            ) : null}
++          // the player replaces the thumbnail in place - same behaviour as
++          // the video grid, never expanding below the text
++          <div className={`relative shrink-0 transition-all ${previewOpen && hasMedia ? "w-72" : "w-40"}`}>
++            <div className="relative aspect-video overflow-hidden rounded-xl bg-surface-2">
++              <ResultLink className="block size-full" globals={globals} result={result}>
++                <Thumb
++                  alt={result.title_text}
++                  className="size-full"
++                  eager={eager}
++                  lengthDisplay={formatLength(result.length_display, result.length_seconds)}
++                  src={result.thumbnail}
++                />
++              </ResultLink>
++              {hasMedia && previewOpen ? (
++                <>
++                  <iframe
++                    allowFullScreen
++                    className="absolute inset-0 size-full"
++                    referrerPolicy="origin"
++                    src={result.iframe_src ?? ""}
++                    title={result.title_text}
++                  />
++                  <button
++                    aria-label={t("hide_video")}
++                    className="absolute end-1 top-1 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++                    onClick={() => {
++                      setPreviewOpen(false);
++                    }}
++                    title={t("hide_video")}
++                    type="button"
++                  >
++                    <CloseIcon className="size-3.5" />
++                  </button>
++                </>
++              ) : hasMedia ? (
++                <button
++                  aria-label={t("play")}
++                  className="absolute inset-0 z-10 grid size-full place-items-center rounded-xl bg-black/0 text-white transition-colors hover:bg-black/30"
++                  onClick={() => {
++                    setPreviewOpen(true);
++                  }}
++                  title={t("play")}
++                  type="button"
++                >
++                  <span className="grid size-9 place-items-center rounded-full bg-black/70 shadow-pop">
++                    <PlayIcon className="size-4 translate-x-px" />
++                  </span>
++                </button>
++              ) : null}
++            </div>
 +          </div>
 +        ) : null}
 +      </div>
@@ -7960,10 +7989,10 @@ index 0000000..b6f8e06
 +}
 diff --git a/client/zjsearch/src/features/hotkeys.ts b/client/zjsearch/src/features/hotkeys.ts
 new file mode 100644
-index 0000000..5bc69f7
+index 0000000..c64e632
 --- /dev/null
 +++ b/client/zjsearch/src/features/hotkeys.ts
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,130 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -8006,6 +8035,9 @@ index 0000000..5bc69f7
 +      }
 +      const el = event.target as HTMLElement | null;
 +      const tag = el?.tagName ?? "";
++      const t = ref.current;
++      const vim = layout === "vim";
++      const key = event.key;
 +      if (el?.isContentEditable || TEXT_ENTRY.has(tag)) {
 +        // inside text fields only Escape means "leave the field"
 +        if (event.key === "Escape" && tag === "INPUT") {
@@ -8014,17 +8046,22 @@ index 0000000..5bc69f7
 +        return;
 +      }
 +      if (NATIVE_ACTIVATION.has(tag)) {
-+        // a focused link or button keeps its native keyboard behavior
++        // a focused link or button keeps Space/Enter for its own activation,
++        // but the arrow keys must keep navigating the results - otherwise the
++        // hotkeys die after clicking a collapsible block header
++        if (key === "ArrowDown" || key === "j") {
++          event.preventDefault();
++          t.move(1);
++        } else if (key === "ArrowUp" || key === "k") {
++          event.preventDefault();
++          t.move(-1);
++        }
 +        return;
 +      }
 +      // keys arriving through an IME composition are input, not commands
 +      if (event.isComposing || event.keyCode === 229) {
 +        return;
 +      }
-+
-+      const t = ref.current;
-+      const vim = layout === "vim";
-+      const key = event.key;
 +
 +      // the CJK punctuation mode of Chinese IMEs emits the full-width "？"
 +      if (key === "?" || key === "？") {
@@ -11209,7 +11246,7 @@ index 0000000..fa32cff
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..886da15
+index 0000000..048a6e9
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
 @@ -0,0 +1,756 @@
@@ -11871,7 +11908,7 @@ index 0000000..886da15
 +                                  }}
 +                                />
 +                                {!collapsed ? (
-+                                  <div className="mt-1">
++                                  <div className="mt-1 space-y-1">
 +                                    {key === "images" ? (
 +                                      <ImageGrid results={results} />
 +                                    ) : key === "videos" ? (
