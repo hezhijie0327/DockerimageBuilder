@@ -186,10 +186,10 @@ index 0000000..09c2c7f
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 0000000..21bf930
+index 0000000..0d64d40
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,38 @@
 +# zjsearch theme dev instance settings (tracked; carries LAN-specific values
 +# such as the outgoing proxy).
 +# Run with:
@@ -221,6 +221,13 @@ index 0000000..21bf930
 +  proxies:
 +    all://:
 +      - http://10.192.7.1:7890
++
++# movie engines for the !movies poster wall (both disabled upstream)
++engines:
++  - name: tmdb
++    disabled: false
++  - name: imdb
++    disabled: false
 diff --git a/client/zjsearch/make-patch.ps1 b/client/zjsearch/make-patch.ps1
 new file mode 100644
 index 0000000..4e6c1b5
@@ -3335,7 +3342,7 @@ index 0000000..0670f41
 +</svg>
 diff --git a/client/zjsearch/src/components/Dropdown.tsx b/client/zjsearch/src/components/Dropdown.tsx
 new file mode 100644
-index 0000000..b9da6c4
+index 0000000..a449321
 --- /dev/null
 +++ b/client/zjsearch/src/components/Dropdown.tsx
 @@ -0,0 +1,196 @@
@@ -3461,7 +3468,7 @@ index 0000000..b9da6c4
 +                open ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink"
 +              }`
 +            : variant === "bare"
-+              ? `flex items-center gap-1.5 rounded-lg ps-4 pe-3 py-2 text-[13px] transition-colors ${
++              ? `flex items-center gap-1.5 rounded-lg pe-3 py-2 text-[13px] transition-colors ${
 +                  open ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink"
 +                }`
 +              : `flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 text-sm transition-colors ${
@@ -3924,13 +3931,13 @@ index 0000000..6d6ffaf
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..df2f9b2
+index 0000000..7a2c3ce
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,206 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
-+import type { ReactNode } from "react";
++import { useLayoutEffect, useRef, type ReactNode } from "react";
 +import { useT } from "../lib/i18n.ts";
 +import { useSettings } from "../lib/settings.ts";
 +import type { GlobalData, SearchPageData } from "../lib/types.ts";
@@ -3958,6 +3965,19 @@ index 0000000..df2f9b2
 +export function CategoryTabs({ globals, selected, onSelectionChange, onSearch, wrap = false }: CategoryTabsProps) {
 +  const t = useT();
 +  const settings = useSettings();
++  const scrollerRef = useRef<HTMLDivElement>(null);
++
++  // Keep the active tab in view on narrow screens: landing on a category
++  // whose tab sits beyond the first viewport-width otherwise reads as
++  // "nothing selected".  Centering is a no-op while the row fits.
++  useLayoutEffect(() => {
++    if (wrap) {
++      return;
++    }
++    scrollerRef.current
++      ?.querySelector('button[aria-pressed="true"]')
++      ?.scrollIntoView({ block: "nearest", inline: "center" });
++  }, [wrap, selected]);
 +
 +  const toggle = (category: string) => {
 +    const next = selected.includes(category) ? selected.filter((item) => item !== category) : [...selected, category];
@@ -3975,13 +3995,14 @@ index 0000000..df2f9b2
 +  const tabs = globals.categories_as_tabs.length > 0 ? globals.categories_as_tabs : globals.categories;
 +
 +  return (
-+    <div className={`flex items-center gap-0.5 py-1 ${wrap ? "flex-wrap justify-center gap-y-0.5" : ""}`}>
++    <div className="flex items-center py-1">
 +      <div
-+        className={`flex min-w-0 items-center gap-0.5 ${
++        className={`min-w-0 ${
 +          wrap
-+            ? "flex-wrap justify-center gap-y-0.5"
-+            : "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
++            ? "flex flex-wrap items-center gap-x-1 gap-y-0.5 ps-2"
++            : "-ms-4 flex items-center gap-0.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 +        }`}
++        ref={scrollerRef}
 +      >
 +        {tabs.map((category) => {
 +          const isSelected = selected.includes(category);
@@ -4053,7 +4074,9 @@ index 0000000..df2f9b2
 +  const locales = [...globals.locales].sort((a, b) => a.name.localeCompare(b.name));
 +
 +  return (
-+    <div className="flex flex-wrap items-center gap-1">
++    // single line at every width - narrow viewports scroll the row, exactly
++    // like the category tab row above it
++    <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
 +      <SelectField
 +        icon={<LanguagesIcon className="size-3.5 shrink-0" />}
 +        label={t("search_language")}
@@ -4815,80 +4838,238 @@ index 0000000..856f2a2
 +}
 diff --git a/client/zjsearch/src/components/results/Answers.tsx b/client/zjsearch/src/components/results/Answers.tsx
 new file mode 100644
-index 0000000..42f3cb6
+index 0000000..a65037a
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Answers.tsx
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,373 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
++import { useState } from "react";
 +import { useT } from "../../lib/i18n.ts";
 +import { useSettings } from "../../lib/settings.ts";
 +import type { AnswerData, WeatherItem } from "../../lib/types.ts";
++import { LocationIcon } from "../icons.tsx";
 +
-+function WeatherGrid({ item }: { item: WeatherItem }) {
-+  const t = useT();
-+  const cells: Array<[string, string]> = [[t("temperature"), item.temperature]];
-+  if (item.feels_like) {
-+    cells.push([t("feels_like"), item.feels_like]);
++const MAX_SOURCES_SHOWN = 3;
++
++/** SVG temperature trend over the next hourly slots (accent area line with
++    temp / time labels every third slot), horizontally scrollable. */
++function WeatherTrend({ forecasts }: { forecasts: WeatherItem[] }) {
++  const slots = forecasts.slice(0, 24);
++  if (slots.length < 3) {
++    return null;
 +  }
-+  if (item.wind) {
-+    cells.push([t("wind"), item.wind_speed ? `${item.wind}: ${item.wind_speed}` : item.wind]);
++  const step = 38;
++  const top = 22;
++  const chartH = 46;
++  const height = top + chartH + 22;
++  const vals = slots.map((f) => f.temp_c);
++  const min = Math.min(...vals);
++  const max = Math.max(...vals);
++  const span = max - min || 1;
++  const points = slots.map((f, i) => ({
++    x: i * step + step / 2,
++    y: top + chartH * (1 - (f.temp_c - min) / span),
++  }));
++  const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
++  const endX = (points.length - 1) * step + step / 2;
++  const area = `${line} L${endX.toFixed(1)} ${top + chartH} L${(step / 2).toFixed(1)} ${top + chartH} Z`;
++  const labels: Array<{ x: number; y: number; temp: number; time: string }> = [];
++  points.forEach((p, i) => {
++    const slot = slots[i];
++    if (slot && i % 3 === 0) {
++      labels.push({ x: p.x, y: p.y, temp: slot.temp_c, time: slot.time ?? "" });
++    }
++  });
++  return (
++    <div className="mt-4 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
++      <svg className="block" height={height} role="img" width={slots.length * step}>
++        <path className="fill-accent/15" d={area} />
++        <path className="stroke-accent-strong" d={line} fill="none" strokeLinecap="round" strokeWidth={2} />
++        {labels.map((label) => (
++          <g key={label.x}>
++            <text className="fill-ink text-[10px] font-semibold" textAnchor="middle" x={label.x} y={label.y - 7}>
++              {Math.round(label.temp)}°
++            </text>
++            <text className="fill-ink-3 text-[10px]" textAnchor="middle" x={label.x} y={top + chartH + 14}>
++              {label.time}
++            </text>
++          </g>
++        ))}
++      </svg>
++    </div>
++  );
++}
++
++/** Daily strip grouped from the hourly slots: weekday, mid-day symbol and
++    the day's high/low temperature (Google weather style). */
++function WeatherDaily({ forecasts }: { forecasts: WeatherItem[] }) {
++  const days: Array<{
++    date: string;
++    weekday: string;
++    symbol: string;
++    hi: number;
++    lo: number;
++    bestHour: number;
++  }> = [];
++  const byDate = new Map<string, (typeof days)[number]>();
++  for (const f of forecasts) {
++    if (!f.date_iso) {
++      continue;
++    }
++    let day = byDate.get(f.date_iso);
++    if (!day) {
++      day = {
++        date: f.date_iso,
++        weekday: f.weekday ?? f.date_iso,
++        symbol: f.symbol,
++        hi: f.temp_c,
++        lo: f.temp_c,
++        bestHour: f.hour ?? 12,
++      };
++      byDate.set(f.date_iso, day);
++      days.push(day);
++      continue;
++    }
++    if (f.temp_c > day.hi) {
++      day.hi = f.temp_c;
++    }
++    if (f.temp_c < day.lo) {
++      day.lo = f.temp_c;
++    }
++    const hour = f.hour ?? 12;
++    if (f.symbol && Math.abs(hour - 13) < Math.abs(day.bestHour - 13)) {
++      day.bestHour = hour;
++      day.symbol = f.symbol;
++    }
 +  }
-+  if (item.pressure) {
-+    cells.push([t("pressure"), item.pressure]);
-+  }
-+  if (item.humidity) {
-+    cells.push([t("humidity"), item.humidity]);
++  if (days.length < 2) {
++    return null;
 +  }
 +  return (
-+    <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-4">
-+      {cells.map(([label, value]) => (
-+        <div key={label}>
-+          <span className="text-ink-3">{label}: </span>
-+          <span className="font-medium text-ink">{value}</span>
++    <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
++      {days.map((day, index) => (
++        <div
++          className={`w-20 shrink-0 rounded-2xl border px-2 py-2.5 text-center ${
++            index === 0 ? "border-accent/40 bg-accent-soft/40" : "border-line bg-surface"
++          }`}
++          key={day.date}
++        >
++          <p className="text-xs font-medium text-ink">{day.weekday}</p>
++          {day.symbol ? <img alt="" className="mx-auto mt-1.5 size-8" src={day.symbol} /> : null}
++          <p className="mt-1.5 whitespace-nowrap text-xs">
++            <span className="font-semibold text-ink">{Math.round(day.hi)}°</span>{" "}
++            <span className="text-ink-3">{Math.round(day.lo)}°</span>
++          </p>
 +        </div>
 +      ))}
 +    </div>
 +  );
 +}
 +
-+function WeatherAnswer({ answer }: { answer: Extract<AnswerData, { template: "answer/weather.html" }> }) {
++function WeatherAnswer({
++  answer,
++  sources,
++}: {
++  answer: Extract<AnswerData, { template: "answer/weather.html" }>;
++  sources: Array<{ service: string; url: string }>;
++}) {
++  const t = useT();
++  // same cap-and-expand contract as EnginesLine: 3 pills + "+N"
++  const [sourcesExpanded, setSourcesExpanded] = useState(false);
++  const shownSources = sourcesExpanded ? sources : sources.slice(0, MAX_SOURCES_SHOWN);
++  const hiddenSources = sources.length - MAX_SOURCES_SHOWN;
 +  const current = answer.current;
++  const heroC = Math.round(current.temp_c);
++  const heroF = Math.round(current.temp_f);
++  const meta: Array<[string, string]> = [];
++  if (current.feels_like) {
++    meta.push([t("feels_like"), current.feels_like]);
++  }
++  if (current.wind) {
++    meta.push([t("wind"), current.wind_speed ? `${current.wind} ${current.wind_speed}` : current.wind]);
++  }
++  if (current.humidity) {
++    meta.push([t("humidity"), current.humidity]);
++  }
++  if (current.pressure) {
++    meta.push([t("pressure"), current.pressure]);
++  }
 +  return (
 +    <div>
-+      <div className="flex items-start gap-3">
-+        {current.symbol ? (
-+          <img alt="" className="size-10" decoding="async" loading="lazy" src={current.symbol} />
-+        ) : null}
-+        <div className="min-w-0">
-+          <p className="text-sm font-medium text-ink" dir="auto">
-+            {current.summary}
-+          </p>
-+          <div className="mt-1.5">
-+            <WeatherGrid item={current} />
++      <p className="flex items-center gap-1.5 text-sm font-medium text-ink">
++        <LocationIcon className="size-4 shrink-0 text-ink-3" />
++        {current.location_name}
++      </p>
++      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-10 gap-y-3">
++        <div className="flex items-center gap-4">
++          {current.symbol ? <img alt="" className="size-16" src={current.symbol} /> : null}
++          <div>
++            <p className="flex items-start gap-2">
++              <span className="text-5xl font-semibold leading-none text-ink">
++                {heroC}
++                <span className="ms-0.5 align-top text-lg font-medium text-ink-3">°C</span>
++              </span>
++              <span className="mt-1 border-s border-line ps-2 text-sm text-ink-3">{heroF} °F</span>
++            </p>
++            <p className="mt-2 text-sm text-ink-2">{current.condition_display}</p>
 +          </div>
 +        </div>
++        <dl className="grid grid-cols-2 gap-x-10 gap-y-1 text-xs">
++          {meta.map(([label, value]) => (
++            <div key={label}>
++              <span className="text-ink-3">{label}: </span>
++              <span className="font-medium text-ink">{value}</span>
++            </div>
++          ))}
++        </dl>
 +      </div>
-+      {answer.forecasts.length > 0 ? (
-+        <details className="mt-2">
-+          <summary className="cursor-pointer text-xs text-ink-3 transition-colors hover:text-ink">
-+            {answer.forecasts.length > 0 ? "Forecast" : ""}
-+          </summary>
-+          <div className="mt-2 space-y-2 border-l border-line pl-3">
-+            {answer.forecasts.map((forecast, index) => (
-+              <div key={index}>
-+                <p className="text-xs text-ink-2" dir="auto">
-+                  <span className="font-medium">{forecast.datetime_display}</span> — {forecast.summary}
-+                </p>
-+                <div className="mt-1">
-+                  <WeatherGrid item={forecast} />
-+                </div>
-+              </div>
-+            ))}
-+          </div>
-+        </details>
++      <WeatherTrend forecasts={answer.forecasts} />
++      <WeatherDaily forecasts={answer.forecasts} />
++      {sources.length > 0 ? (
++        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
++          {shownSources.map((source) =>
++            source.url ? (
++              <a
++                className="inline-flex items-center rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 transition-colors hover:text-ink"
++                href={source.url}
++                key={source.service}
++                rel="noreferrer"
++                target="_blank"
++              >
++                {source.service}
++              </a>
++            ) : (
++              <span className="rounded-full bg-surface-2 px-2 py-0.5" key={source.service}>
++                {source.service}
++              </span>
++            ),
++          )}
++          {!sourcesExpanded && hiddenSources > 0 ? (
++            <button
++              className="rounded-full bg-surface-2 px-2 py-0.5 transition-colors hover:text-ink"
++              onClick={() => {
++                setSourcesExpanded(true);
++              }}
++              title={sources.map((source) => source.service).join(", ")}
++              type="button"
++            >
++              +{hiddenSources}
++            </button>
++          ) : null}
++          {sourcesExpanded && hiddenSources > 0 ? (
++            <button
++              className="transition-colors hover:text-ink"
++              onClick={() => {
++                setSourcesExpanded(false);
++              }}
++              type="button"
++            >
++              {t("show_less")}
++            </button>
++          ) : null}
++        </div>
 +      ) : null}
-+      {answer.service ? <p className="mt-2 text-xs text-ink-3">{answer.service}</p> : null}
 +    </div>
 +  );
 +}
@@ -4995,14 +5176,37 @@ index 0000000..42f3cb6
 +  if (answers.length === 0) {
 +    return null;
 +  }
++  // several weather engines may answer the same query with the same data at
++  // different coverage (duckduckgo ~10 days hourly, open-meteo ~2.7 days,
++  // wttr.in 3 days 3-hourly): render the longest coverage as one card and
++  // credit every answering engine as its source
++  const weatherAnswers = answers.filter(
++    (answer): answer is Extract<AnswerData, { template: "answer/weather.html" }> =>
++      answer.template === "answer/weather.html",
++  );
++  weatherAnswers.sort((a, b) => b.forecasts.length - a.forecasts.length);
++  const weatherSources = weatherAnswers.map((a) => ({ service: a.service, url: a.url }));
++  const longest = weatherAnswers[0];
++  const visible: AnswerData[] = [];
++  let weatherInserted = false;
++  for (const answer of answers) {
++    if (answer.template === "answer/weather.html") {
++      if (!weatherInserted && longest !== undefined) {
++        visible.push(longest);
++        weatherInserted = true;
++      }
++      continue;
++    }
++    visible.push(answer);
++  }
 +  return (
 +    <section aria-label={t("answers")} className="space-y-2">
-+      {answers.map((answer, index) => (
++      {visible.map((answer, index) => (
 +        <div className="rounded-2xl border border-accent/25 bg-accent-soft/50 px-4 py-3 animate-fade-up" key={index}>
 +          {answer.template === "answer/translations.html" ? (
 +            <TranslationsAnswer answer={answer} />
 +          ) : answer.template === "answer/weather.html" ? (
-+            <WeatherAnswer answer={answer} />
++            <WeatherAnswer answer={answer} sources={weatherSources} />
 +          ) : (
 +            <LegacyAnswer answer={answer} />
 +          )}
@@ -5013,21 +5217,31 @@ index 0000000..42f3cb6
 +}
 diff --git a/client/zjsearch/src/components/results/FilesGrid.tsx b/client/zjsearch/src/components/results/FilesGrid.tsx
 new file mode 100644
-index 0000000..8ae7a04
+index 0000000..54e9b0a
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/FilesGrid.tsx
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,158 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
-+/** Files-intent layout: square "file tiles" mirroring the media grids.
++/** Files-intent layout: landscape file tiles mirroring the media grids.
 +    Torrents and file downloads have no cover art, so the tile shows a
-+    type icon with the detected extension, the filesize takes the duration
-+    badge slot, and the magnet link is the card's inline primary action. */
++    type icon with the detected extension; the filesize takes the badge
++    slot and the magnet/torrent action sits in the tile center like the
++    media play buttons. */
 +
 +import { formatDate } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "../../lib/types.ts";
-+import { ArrowDownIcon, ArrowUpIcon, DownloadIcon, FileIcon, FilmIcon, MagnetIcon, MusicIcon } from "../icons.tsx";
++import {
++  ArrowDownIcon,
++  ArrowUpIcon,
++  CalendarIcon,
++  DownloadIcon,
++  FileIcon,
++  FilmIcon,
++  MagnetIcon,
++  MusicIcon,
++} from "../icons.tsx";
 +import { ResultLink, THEME_STATIC } from "./cards.tsx";
 +
 +function detectExtension(title: string): string | null {
@@ -5035,14 +5249,15 @@ index 0000000..8ae7a04
 +  return match?.[1]?.toUpperCase() ?? null;
 +}
 +
-+function TileIcon({ result }: { result: ResultItem }) {
++function TileIcon({ result, large = false }: { result: ResultItem; large?: boolean }) {
++  const size = large ? "size-10" : "size-5";
 +  if (result.mtype === "audio") {
-+    return <MusicIcon className="size-10" />;
++    return <MusicIcon className={size} />;
 +  }
 +  if (result.mtype === "video") {
-+    return <FilmIcon className="size-10" />;
++    return <FilmIcon className={size} />;
 +  }
-+  return <FileIcon className="size-10" />;
++  return <FileIcon className={size} />;
 +}
 +
 +export function FilesGrid({
@@ -5058,126 +5273,118 @@ index 0000000..8ae7a04
 +  indexOffset?: number;
 +}) {
 +  const t = useT();
-+  const cells = results.map((result, index) => {
-+    const extension = detectExtension(result.filename || result.title_text);
-+    const size = result.filesize || result.size || null;
-+    const date = result.published_date ? formatDate(result.published_date) : result.time || null;
-+    const hasHealth = result.seed !== undefined || result.leech !== undefined;
-+    const hotkeyIndex = indexOffset + index;
-+    const downloadHref =
-+      result.torrentfile ||
-+      (result.embedded && result.mtype !== "audio" && result.mtype !== "video" ? result.embedded : null);
-+    const hasActions = Boolean(result.magnetlink || downloadHref);
-+    return (
-+      <article
-+        className={`group rounded-2xl ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
-+        data-hotkey-index={hotkeyIndex}
-+        key={`${result.url}-${index}`}
-+      >
-+        <ResultLink
-+          className="relative block aspect-square overflow-hidden rounded-xl border border-line bg-gradient-to-br from-surface-2 to-surface"
-+          globals={globals}
-+          result={result}
-+        >
-+          <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-ink-3">
-+            <TileIcon result={result} />
-+            {extension ? (
-+              <span className="text-[11px] font-semibold uppercase tracking-widest">{extension}</span>
-+            ) : null}
-+          </span>
-+          {size ? (
-+            <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
-+              {size}
-+            </span>
-+          ) : null}
-+          {result.favicon ? (
-+            <img
-+              alt=""
-+              className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
-+              decoding="async"
-+              loading="lazy"
-+              onError={(event) => {
-+                event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
-+              }}
-+              src={result.favicon}
-+            />
-+          ) : null}
-+        </ResultLink>
-+        <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
-+          <ResultLink
-+            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
-+            globals={globals}
-+            result={result}
++  return (
++    <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 xl:grid-cols-4">
++      {results.map((result, index) => {
++        const extension = detectExtension(result.filename || result.title_text);
++        const size = result.filesize || result.size || null;
++        const date = result.published_date ? formatDate(result.published_date) : result.time || null;
++        const health = result.seed !== undefined || result.leech !== undefined;
++        const downloadHref =
++          result.torrentfile ||
++          (result.embedded && result.mtype !== "audio" && result.mtype !== "video" ? result.embedded : null);
++        // the tile's primary action: magnet when present, otherwise the
++        // torrent file / direct download
++        const primaryHref = result.magnetlink || downloadHref || null;
++        const primaryLabel = result.magnetlink
++          ? t("magnet_link")
++          : result.torrentfile
++            ? t("torrent_file")
++            : t("download");
++        const hotkeyIndex = indexOffset + index;
++        return (
++          <article
++            className={`group -m-2 rounded-2xl p-2 ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++            data-hotkey-index={hotkeyIndex}
++            key={`${result.url}-${index}`}
 +          >
-+            <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
-+          </ResultLink>
-+        </h3>
-+        <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-ink-3">
-+          {hasHealth ? (
-+            <span className="inline-flex items-center gap-2">
-+              {result.seed !== undefined ? (
-+                <span className="inline-flex items-center gap-0.5 font-medium text-ok">
-+                  <ArrowUpIcon className="size-3" />
-+                  {result.seed}
-+                </span>
-+              ) : null}
-+              {result.leech !== undefined ? (
-+                <span className="inline-flex items-center gap-0.5 font-medium text-danger">
-+                  <ArrowDownIcon className="size-3" />
-+                  {result.leech}
-+                </span>
-+              ) : null}
-+            </span>
-+          ) : (
-+            <span className="truncate" dir="auto">
-+              {result.engines[0]}
-+            </span>
-+          )}
-+          <span className="shrink-0">{date}</span>
-+        </div>
-+        {hasHealth || hasActions ? (
-+          <div className="mt-1.5 flex items-center justify-between gap-2">
-+            <span className="truncate text-xs text-ink-3">{hasHealth ? result.engines[0] : ""}</span>
-+            {hasActions ? (
-+              <span className="flex shrink-0 items-center gap-1.5">
-+                {result.magnetlink ? (
-+                  <a
-+                    aria-label={t("magnet_link")}
-+                    className="grid size-7 place-items-center rounded-full bg-accent-soft text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
-+                    href={result.magnetlink}
-+                    title={t("magnet_link")}
-+                  >
-+                    <MagnetIcon className="size-3.5" />
-+                  </a>
-+                ) : null}
-+                {downloadHref ? (
-+                  <a
-+                    aria-label={result.torrentfile ? t("torrent_file") : t("download")}
-+                    className="grid size-7 place-items-center rounded-full bg-surface-2 text-ink-2 transition-colors hover:text-ink"
-+                    download
-+                    href={downloadHref}
-+                    rel="noreferrer"
-+                    target="_blank"
-+                    title={result.torrentfile ? t("torrent_file") : t("download")}
-+                  >
-+                    <DownloadIcon className="size-3.5" />
-+                  </a>
++            <div className="relative aspect-video overflow-hidden rounded-xl border border-line bg-gradient-to-br from-surface-2 to-surface">
++              <span className="absolute left-3 top-3 flex items-center gap-1.5 text-ink-3">
++                <TileIcon result={result} />
++                {extension ? (
++                  <span className="text-[10px] font-semibold uppercase tracking-widest">{extension}</span>
 +                ) : null}
 +              </span>
-+            ) : null}
-+          </div>
-+        ) : null}
-+      </article>
-+    );
-+  });
-+  return <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 xl:grid-cols-4">{cells}</div>;
++              {size ? (
++                <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
++                  {size}
++                </span>
++              ) : null}
++              {result.favicon ? (
++                <img
++                  alt=""
++                  className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
++                  decoding="async"
++                  loading="lazy"
++                  onError={(event) => {
++                    event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
++                  }}
++                  src={result.favicon}
++                />
++              ) : null}
++              {primaryHref ? (
++                <a
++                  aria-label={primaryLabel}
++                  className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/70 text-white shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-ink"
++                  href={primaryHref}
++                  {...(result.magnetlink ? {} : { download: true })}
++                  title={primaryLabel}
++                >
++                  {result.magnetlink ? <MagnetIcon className="size-5" /> : <DownloadIcon className="size-5" />}
++                </a>
++              ) : null}
++            </div>
++            <h3 className="mt-2.5 line-clamp-2 min-h-[2.75rem] text-base font-medium leading-snug">
++              <ResultLink
++                className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++                globals={globals}
++                result={result}
++              >
++                <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++              </ResultLink>
++            </h3>
++            <div className="mt-1.5 flex min-h-5 items-center justify-between gap-2 text-xs text-ink-3">
++              {health ? (
++                <span className="inline-flex items-center gap-2">
++                  {result.seed !== undefined ? (
++                    <span className="inline-flex items-center gap-0.5 font-medium text-ok">
++                      <ArrowUpIcon className="size-3" />
++                      {result.seed}
++                    </span>
++                  ) : null}
++                  {result.leech !== undefined ? (
++                    <span className="inline-flex items-center gap-0.5 font-medium text-danger">
++                      <ArrowDownIcon className="size-3" />
++                      {result.leech}
++                    </span>
++                  ) : null}
++                </span>
++              ) : (
++                <span className="truncate" dir="auto">
++                  {result.engines[0]}
++                </span>
++              )}
++              <span className="flex shrink-0 items-center gap-1">
++                <CalendarIcon className="size-3" />
++                {date}
++              </span>
++            </div>
++            <div className="mt-1.5 flex min-h-5 items-center justify-between gap-2 text-xs text-ink-3">
++              <span className="truncate">{health ? result.engines[0] : ""}</span>
++              <span className="shrink-0" />
++            </div>
++          </article>
++        );
++      })}
++    </div>
++  );
 +}
 diff --git a/client/zjsearch/src/components/results/ImageGrid.tsx b/client/zjsearch/src/components/results/ImageGrid.tsx
 new file mode 100644
-index 0000000..057b17f
+index 0000000..69f4680
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/ImageGrid.tsx
-@@ -0,0 +1,450 @@
+@@ -0,0 +1,455 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -5188,6 +5395,7 @@ index 0000000..057b17f
 + */
 +
 +import { useCallback, useEffect, useRef, useState } from "react";
++import { createPortal } from "react-dom";
 +import { useT } from "../../lib/i18n.ts";
 +import { useSettings } from "../../lib/settings.ts";
 +import type { ResultItem } from "../../lib/types.ts";
@@ -5460,9 +5668,10 @@ index 0000000..057b17f
 +        </div>
 +      </div>
 +
-+      {/* bottom bar: title / actions / metadata */}
-+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-white/10 bg-[#1c1c1c]/95 px-5 py-3">
-+        <div className="min-w-0">
++      {/* bottom bar: title / actions / metadata - fixed sections so button
++          positions never shift with the title length */}
++      <div className="flex items-center gap-x-4 border-t border-white/10 bg-[#1c1c1c]/95 px-5 py-3">
++        <div className="min-w-0 flex-1">
 +          {result.url ? (
 +            <a
 +              className="block truncate text-sm font-medium text-zinc-100 hover:underline"
@@ -5484,7 +5693,7 @@ index 0000000..057b17f
 +          ) : null}
 +        </div>
 +
-+        <div className="flex flex-wrap items-center gap-2 text-xs">
++        <div className="flex shrink-0 items-center gap-2 text-xs">
 +          {result.img_src ? (
 +            <a
 +              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-600 px-3.5 py-1.5 text-zinc-200 transition-colors hover:border-zinc-400"
@@ -5507,7 +5716,7 @@ index 0000000..057b17f
 +          ) : null}
 +        </div>
 +
-+        <div className="hidden gap-x-6 text-xs lg:grid lg:grid-cols-none lg:grid-flow-col lg:gap-x-8">
++        <div className="hidden shrink-0 items-center gap-x-6 text-xs xl:flex">
 +          <Label label={t("resolution")} value={result.resolution} />
 +          <Label label={t("type")} value={result.img_format} />
 +          <Label label={t("source")} value={result.source} />
@@ -5613,18 +5822,21 @@ index 0000000..057b17f
 +          />
 +        );
 +      })}
-+      {openIndex !== null ? (
-+        <Lightbox
-+          index={openIndex}
-+          onClose={() => {
-+            setOpenIndex(null);
-+          }}
-+          onNavigate={(index) => {
-+            setOpenIndex(index);
-+          }}
-+          results={results}
-+        />
-+      ) : null}
++      {openIndex !== null
++        ? createPortal(
++            <Lightbox
++              index={openIndex}
++              onClose={() => {
++                setOpenIndex(null);
++              }}
++              onNavigate={(index) => {
++                setOpenIndex(index);
++              }}
++              results={results}
++            />,
++            document.body,
++          )
++        : null}
 +    </div>
 +  );
 +}
@@ -5784,10 +5996,10 @@ index 0000000..d865476
 +}
 diff --git a/client/zjsearch/src/components/results/MusicGrid.tsx b/client/zjsearch/src/components/results/MusicGrid.tsx
 new file mode 100644
-index 0000000..c0c044a
+index 0000000..c02469e
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/MusicGrid.tsx
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,272 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/** Music-intent layout: square album-art tiles mirroring the video grid.
@@ -5799,7 +6011,7 @@ index 0000000..c0c044a
 +import { formatDate, formatLength } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "../../lib/types.ts";
-+import { CloseIcon, MusicIcon, PauseIcon, PlayIcon } from "../icons.tsx";
++import { CalendarIcon, CloseIcon, MusicIcon, PauseIcon, PlayIcon } from "../icons.tsx";
 +import { ResultLink, THEME_STATIC } from "./cards.tsx";
 +
 +function formatClock(seconds: number): string {
@@ -5948,7 +6160,7 @@ index 0000000..c0c044a
 +    const playable = Boolean(audioSrc || embedSrc);
 +    return (
 +      <article
-+        className={`group rounded-2xl ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++        className={`group -m-2 rounded-2xl p-2 ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
 +        data-hotkey-index={hotkeyIndex}
 +        key={`${result.url}-${index}`}
 +      >
@@ -6033,7 +6245,7 @@ index 0000000..c0c044a
 +            </button>
 +          ) : null}
 +        </div>
-+        <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
++        <h3 className="mt-2.5 line-clamp-2 min-h-[2.75rem] text-base font-medium leading-snug">
 +          <ResultLink
 +            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +            globals={globals}
@@ -6046,7 +6258,14 @@ index 0000000..c0c044a
 +          <span className="truncate" dir="auto">
 +            {result.author || result.engines[0]}
 +          </span>
-+          <span className="shrink-0">{result.published_date ? formatDate(result.published_date) : null}</span>
++          <span className="flex shrink-0 items-center gap-1">
++            {result.published_date ? (
++              <>
++                <CalendarIcon className="size-3" />
++                {formatDate(result.published_date)}
++              </>
++            ) : null}
++          </span>
 +        </div>
 +      </article>
 +    );
@@ -6055,10 +6274,10 @@ index 0000000..c0c044a
 +}
 diff --git a/client/zjsearch/src/components/results/PackageGrid.tsx b/client/zjsearch/src/components/results/PackageGrid.tsx
 new file mode 100644
-index 0000000..6d27227
+index 0000000..e851c6c
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/PackageGrid.tsx
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,135 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/** Package results (crates.io, docker hub, pypi, ...): the file-tile
@@ -6068,7 +6287,7 @@ index 0000000..6d27227
 +import { formatDate } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "../../lib/types.ts";
-+import { CodeIcon, ExternalLinkIcon, PackageIcon } from "../icons.tsx";
++import { CalendarIcon, CodeIcon, ExternalLinkIcon, PackageIcon } from "../icons.tsx";
 +import { ResultLink, THEME_STATIC } from "./cards.tsx";
 +
 +function PackageCell({
@@ -6125,7 +6344,14 @@ index 0000000..6d27227
 +        <span className="truncate" dir="auto">
 +          {result.maintainer || result.author || result.engines[0]}
 +        </span>
-+        <span className="shrink-0">{result.published_date ? formatDate(result.published_date) : null}</span>
++        <span className="flex shrink-0 items-center gap-1">
++          {result.published_date ? (
++            <>
++              <CalendarIcon className="size-3" />
++              {formatDate(result.published_date)}
++            </>
++          ) : null}
++        </span>
 +      </div>
 +      {result.homepage || result.source_code_url ? (
 +        <div className="mt-1.5 flex items-center gap-1.5">
@@ -6608,10 +6834,10 @@ index 0000000..a51c428
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..77c4ea8
+index 0000000..ba8d797
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,1328 @@
+@@ -0,0 +1,1474 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
@@ -6705,7 +6931,7 @@ index 0000000..77c4ea8
 +
 +function Title({ result, globals }: { result: ResultItem; globals: GlobalData }) {
 +  return (
-+    <h3 className="text-base font-medium leading-snug">
++    <h3 className="line-clamp-1 text-base font-medium leading-snug">
 +      <ResultLink
 +        className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +        globals={globals}
@@ -6765,7 +6991,7 @@ index 0000000..77c4ea8
 +
 +const MAX_ENGINES_SHOWN = 3;
 +
-+function EnginesLine({ result }: { result: ResultItem }) {
++function EnginesLine({ result, leading }: { result: ResultItem; leading?: ReactNode }) {
 +  const t = useT();
 +  const [expanded, setExpanded] = useState(false);
 +  const engines = result.engines;
@@ -6773,6 +6999,7 @@ index 0000000..77c4ea8
 +  const hidden = engines.length - MAX_ENGINES_SHOWN;
 +  return (
 +    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
++      {leading}
 +      {shown.map((engine) => (
 +        <span className="rounded-full bg-surface-2 px-2 py-0.5" key={engine}>
 +          {engine}
@@ -6952,7 +7179,7 @@ index 0000000..77c4ea8
 +            </div>
 +          ) : null}
 +          <p
-+            className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{
 +              __html: result.content_html || t("no_description"),
 +            }}
@@ -7000,7 +7227,7 @@ index 0000000..77c4ea8
 +            </div>
 +          ) : null}
 +          <p
-+            className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{ __html: result.content_html || t("no_description") }}
 +            dir="auto"
 +          />
@@ -7075,11 +7302,13 @@ index 0000000..77c4ea8
 +      <div className="mt-1">
 +        <MetaLine result={result} />
 +      </div>
-+      <p
-+        className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-2"
-+        dangerouslySetInnerHTML={{ __html: result.content_html }}
-+        dir="auto"
-+      />
++      {result.content_html ? (
++        <p
++          className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-2"
++          dangerouslySetInnerHTML={{ __html: result.content_html }}
++          dir="auto"
++        />
++      ) : null}
 +      <EnginesLine result={result} />
 +    </ResultArticle>
 +  );
@@ -7148,7 +7377,7 @@ index 0000000..77c4ea8
 +          </div>
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm text-ink-2"
++              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -7190,7 +7419,7 @@ index 0000000..77c4ea8
 +          </div>
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-3 text-sm text-ink-2"
++              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -7315,7 +7544,11 @@ index 0000000..77c4ea8
 +        </p>
 +      ) : null}
 +      {result.content_html ? (
-+        <p className="mt-1.5 text-sm text-ink-2" dangerouslySetInnerHTML={{ __html: result.content_html }} dir="auto" />
++        <p
++          className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++          dangerouslySetInnerHTML={{ __html: result.content_html }}
++          dir="auto"
++        />
 +      ) : null}
 +      {result.code_html ? (
 +        <pre
@@ -7375,14 +7608,14 @@ index 0000000..77c4ea8
 +          </div>
 +          {result.abstract_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-3 text-sm text-ink-2"
++              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.abstract_html }}
 +              dir="auto"
 +            />
 +          ) : null}
 +          {result.content_html ? (
 +            <p
-+              className="mt-1 line-clamp-2 text-sm text-ink-2"
++              className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -7455,10 +7688,15 @@ index 0000000..77c4ea8
 +      authors += ` ${t("et_al")}`;
 +    }
 +  }
-+  const metaBits: Array<string | null> = [
++  const metaBits: Array<string | null | ReactNode> = [
++    result.published_date ? (
++      <span className="inline-flex items-center gap-1" key="date">
++        <CalendarIcon className="size-3" />
++        {formatDate(result.published_date)}
++      </span>
++    ) : null,
 +    authors || null,
 +    venueBits.length > 0 ? venueBits.join(", ") : null,
-+    result.published_date ? formatDate(result.published_date) : null,
 +  ];
 +  // every optional extra (PDF/HTML, DOI, citation note, subject tags) lives
 +  // in ONE footer row in a fixed order, so cards share the same skeleton no
@@ -7477,21 +7715,33 @@ index 0000000..77c4ea8
 +          </div>
 +          {metaBits.some(Boolean) ? (
 +            <p className="mt-1 truncate text-xs text-ink-3" dir="auto">
-+              {metaBits.filter(Boolean).join(" · ")}
++              {metaBits.filter(Boolean).map((bit, index) => (
++                <span key={index}>
++                  {index > 0 ? <span className="text-ink-3"> · </span> : null}
++                  {bit}
++                </span>
++              ))}
 +            </p>
 +          ) : null}
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
 +          ) : null}
 +          {hasFooter ? (
-+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
++            // single line by default so every card shares the same height;
++            // long comments/DOIs truncate instead of wrapping items onto
++            // extra rows.  Wrapping returns only when tags are expanded.
++            <div
++              className={`mt-2 flex min-h-6 min-w-0 items-center gap-x-3 text-xs ${
++                tagsExpanded ? "flex-wrap" : "overflow-hidden whitespace-nowrap"
++              }`}
++            >
 +              {result.pdf_url ? (
 +                <a
-+                  className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +                  href={result.pdf_url}
 +                  rel="noreferrer"
 +                  target="_blank"
@@ -7502,7 +7752,7 @@ index 0000000..77c4ea8
 +              ) : null}
 +              {result.html_url ? (
 +                <a
-+                  className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
++                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
 +                  href={result.html_url}
 +                  rel="noreferrer"
 +                  target="_blank"
@@ -7513,7 +7763,7 @@ index 0000000..77c4ea8
 +              ) : null}
 +              {result.doi ? (
 +                <a
-+                  className="min-w-0 truncate font-mono text-[11px] text-ink-3 hover:text-accent"
++                  className="max-w-36 shrink-0 truncate font-mono text-[11px] text-ink-3 hover:text-accent"
 +                  dir="ltr"
 +                  href={`https://${globals.doi_resolver}/${result.doi}`}
 +                  rel="noreferrer"
@@ -7528,13 +7778,13 @@ index 0000000..77c4ea8
 +                </span>
 +              ) : null}
 +              {tags.slice(0, tagsExpanded ? tags.length : maxTags).map((tag) => (
-+                <span className="max-w-40 truncate text-ink-3" key={tag} title={tag}>
++                <span className="max-w-40 shrink-0 truncate text-ink-3" key={tag} title={tag}>
 +                  #{tag}
 +                </span>
 +              ))}
 +              {tags.length > maxTags && !tagsExpanded ? (
 +                <button
-+                  className="text-ink-3 transition-colors hover:text-ink"
++                  className="shrink-0 text-ink-3 transition-colors hover:text-ink"
 +                  onClick={() => {
 +                    setTagsExpanded(true);
 +                  }}
@@ -7546,7 +7796,7 @@ index 0000000..77c4ea8
 +              ) : null}
 +              {tags.length > maxTags && tagsExpanded ? (
 +                <button
-+                  className="text-ink-3 transition-colors hover:text-ink"
++                  className="shrink-0 text-ink-3 transition-colors hover:text-ink"
 +                  onClick={() => {
 +                    setTagsExpanded(false);
 +                  }}
@@ -7569,107 +7819,118 @@ index 0000000..77c4ea8
 +  );
 +}
 +
++/** Dictionary entry card for the dictionaries/define categories: the headword
++    is the identity (no URL chrome), a phonetic chip is lifted out of the
++    Wiktionary blob ("IPA(key): /…/" is stable Wiktionary markup). */
++export function DictionaryCard({ result, globals }: CardProps) {
++  const ipa = /IPA\(key\):\s*\/([^/]+)\//.exec(result.content_html ?? "");
++  const content = ipa ? (result.content_html ?? "").replaceAll(ipa[0], "") : result.content_html;
++  return (
++    <ResultArticle priority={result.priority}>
++      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
++        <h3 className="text-lg font-semibold leading-snug">
++          <ResultLink
++            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++            globals={globals}
++            result={result}
++          >
++            <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++          </ResultLink>
++        </h3>
++        {ipa ? (
++          <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
++            /{ipa[1]}/
++          </code>
++        ) : null}
++      </div>
++      {content ? (
++        <p
++          className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-ink-2"
++          dangerouslySetInnerHTML={{ __html: content }}
++          dir="auto"
++        />
++      ) : null}
++      <EnginesLine result={result} />
++    </ResultArticle>
++  );
++}
++
 +export function PackageCard({ result, globals }: CardProps) {
 +  const t = useT();
 +  const [tagsExpanded, setTagsExpanded] = useState(false);
++  // same slot rhythm as DefaultCard: url / title / meta / content / engines;
++  // secondary links fold into the engines row so no card grows extra rows
++  const links: Array<{ icon: ReactNode; label: string; url: string }> = [];
++  if (result.homepage) {
++    links.push({ icon: <ExternalLinkIcon className="size-3" />, label: "Homepage", url: result.homepage });
++  }
++  if (result.source_code_url && result.source_code_url !== result.url) {
++    links.push({ icon: <CodeIcon className="size-3" />, label: "Source code", url: result.source_code_url });
++  }
++  for (const [name, url] of Object.entries(result.project_links ?? {})) {
++    if (url !== result.url) {
++      links.push({ icon: <ExternalLinkIcon className="size-3" />, label: name, url });
++    }
++  }
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <PrettyUrl globals={globals} result={result} />
-+      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
++      <div className="mt-1">
 +        <Title globals={globals} result={result} />
-+        {result.version ? (
-+          <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-ink-2">{result.version}</code>
-+        ) : null}
-+        {result.package_name && result.package_name !== result.title_text ? (
-+          <code className="text-xs text-ink-2">{result.package_name}</code>
-+        ) : null}
 +      </div>
++      {result.published_date || result.maintainer || result.popularity || result.license_name || result.version ? (
++        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-ink-3">
++          {result.published_date ? (
++            <span className="inline-flex items-center gap-1" key="date">
++              <CalendarIcon className="size-3" />
++              {formatDate(result.published_date)}
++            </span>
++          ) : null}
++          {result.maintainer ? (
++            <span className="inline-flex min-w-0 items-center gap-1" key="author">
++              {t("author")}:
++              <span className="truncate text-ink-2" dir="auto">
++                {result.maintainer}
++              </span>
++            </span>
++          ) : null}
++          {result.popularity ? (
++            <span className="inline-flex items-center gap-1" key="popularity">
++              <StarIcon className="size-3" />
++              <span className="text-ink-2">{result.popularity}</span>
++            </span>
++          ) : null}
++          {result.license_name ? (
++            <span className="inline-flex items-center gap-1" key="license">
++              {t("license")}:
++              <span className="text-ink-2">
++                {result.license_url ? (
++                  <a
++                    className="hover:text-accent hover:underline"
++                    href={result.license_url}
++                    rel="noreferrer"
++                    target="_blank"
++                  >
++                    {result.license_name}
++                  </a>
++                ) : (
++                  result.license_name
++                )}
++              </span>
++            </span>
++          ) : null}
++          {result.version ? <span key="version">v{result.version}</span> : null}
++        </div>
++      ) : null}
 +      {result.content_html ? (
 +        <p
-+          className="mt-1.5 line-clamp-3 text-sm text-ink-2"
++          className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +          dangerouslySetInnerHTML={{ __html: result.content_html }}
 +          dir="auto"
 +        />
 +      ) : null}
-+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
-+        {result.maintainer ? (
-+          <span className="inline-flex min-w-0 items-center gap-1">
-+            {t("author")}:
-+            <span className="truncate text-ink-2" dir="auto">
-+              {result.maintainer}
-+            </span>
-+          </span>
-+        ) : null}
-+        {result.published_date ? (
-+          <span className="inline-flex items-center gap-1">
-+            <CalendarIcon className="size-3.5" />
-+            {formatDate(result.published_date)}
-+          </span>
-+        ) : null}
-+        {result.popularity ? (
-+          <span className="inline-flex items-center gap-1">
-+            <StarIcon className="size-3.5" />
-+            <span className="text-ink-2">{result.popularity}</span>
-+          </span>
-+        ) : null}
-+        {result.license_name ? (
-+          <span className="inline-flex items-center gap-1">
-+            {t("license")}:
-+            <span className="text-ink-2">
-+              {result.license_url ? (
-+                <a
-+                  className="hover:text-accent hover:underline"
-+                  href={result.license_url}
-+                  rel="noreferrer"
-+                  target="_blank"
-+                >
-+                  {result.license_name}
-+                </a>
-+              ) : (
-+                result.license_name
-+              )}
-+            </span>
-+          </span>
-+        ) : null}
-+      </div>
-+      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-+        {result.homepage ? (
-+          <a
-+            className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
-+            href={result.homepage}
-+            rel="noreferrer"
-+            target="_blank"
-+          >
-+            <ExternalLinkIcon className="size-3.5" />
-+            Homepage
-+          </a>
-+        ) : null}
-+        {result.source_code_url ? (
-+          <a
-+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
-+            href={result.source_code_url}
-+            rel="noreferrer"
-+            target="_blank"
-+          >
-+            <CodeIcon className="size-3.5" />
-+            Source code
-+          </a>
-+        ) : null}
-+        {Object.entries(result.project_links ?? {}).map(([name, url]) => (
-+          <a
-+            className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
-+            href={url}
-+            key={url}
-+            rel="noreferrer"
-+            target="_blank"
-+          >
-+            <ExternalLinkIcon className="size-3.5" />
-+            {name}
-+          </a>
-+        ))}
-+      </div>
 +      {result.tags && result.tags.length > 0 ? (
-+        <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-ink-3">
++        <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-ink-3">
 +          {result.tags.slice(0, 4).map((tag) => (
 +            <span className="max-w-48 truncate" key={tag} title={tag}>
 +              #{tag}
@@ -7700,7 +7961,25 @@ index 0000000..77c4ea8
 +          ) : null}
 +        </div>
 +      ) : null}
-+      <EnginesLine result={result} />
++      <EnginesLine
++        leading={
++          links.length > 0
++            ? links.map((link) => (
++                <a
++                  className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 transition-colors hover:text-ink"
++                  href={link.url}
++                  key={link.url}
++                  rel="noreferrer"
++                  target="_blank"
++                >
++                  {link.icon}
++                  {link.label}
++                </a>
++              ))
++            : null
++        }
++        result={result}
++      />
 +    </ResultArticle>
 +  );
 +}
@@ -7723,7 +8002,11 @@ index 0000000..77c4ea8
 +        <MetaLine result={result} />
 +      </div>
 +      {result.content_html ? (
-+        <p className="mt-1.5 text-sm text-ink-2" dangerouslySetInnerHTML={{ __html: result.content_html }} dir="auto" />
++        <p
++          className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++          dangerouslySetInnerHTML={{ __html: result.content_html }}
++          dir="auto"
++        />
 +      ) : null}
 +      {addressLine ? (
 +        <p className="mt-2 text-sm text-ink-2">
@@ -7794,7 +8077,7 @@ index 0000000..77c4ea8
 +    const hotkeyIndex = indexOffset + index;
 +    return (
 +      <article
-+        className={`group rounded-2xl ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++        className={`group -m-2 rounded-2xl p-2 ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
 +        data-hotkey-index={hotkeyIndex}
 +        key={`${result.url}-${index}`}
 +      >
@@ -7875,7 +8158,7 @@ index 0000000..77c4ea8
 +            </button>
 +          ) : null}
 +        </div>
-+        <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
++        <h3 className="mt-2.5 line-clamp-2 min-h-[2.75rem] text-base font-medium leading-snug">
 +          <ResultLink
 +            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +            globals={globals}
@@ -7890,13 +8173,102 @@ index 0000000..77c4ea8
 +          </span>
 +          <span className="flex shrink-0 items-center gap-2">
 +            {result.views ? <span>{result.views}</span> : null}
-+            <span>{result.published_date ? formatDate(result.published_date) : null}</span>
++            <span className="flex items-center gap-1">
++              {result.published_date ? (
++                <>
++                  <CalendarIcon className="size-3" />
++                  {formatDate(result.published_date)}
++                </>
++              ) : null}
++            </span>
 +          </span>
 +        </div>
 +      </article>
 +    );
 +  });
 +  return <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{cells}</div>;
++}
++
++/** Poster wall for the movies category (`!movies`, tmdb / imdb): portrait
++    posters in a denser grid, mirroring the video grid's tile language. */
++export function PosterGrid({
++  results,
++  globals,
++  selected,
++  indexOffset = 0,
++}: {
++  results: ResultItem[];
++  globals: GlobalData;
++  selected?: number;
++  /** hotkey indices are page-global: offset by the grid's first result index */
++  indexOffset?: number;
++}) {
++  const cells = results.map((result, index) => {
++    const hotkeyIndex = indexOffset + index;
++    return (
++      <article
++        className={`group -m-2 rounded-2xl p-2 ${selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""}`}
++        data-hotkey-index={hotkeyIndex}
++        key={`${result.url}-${index}`}
++      >
++        <ResultLink
++          className="relative block aspect-[2/3] overflow-hidden rounded-xl bg-surface-2"
++          globals={globals}
++          result={result}
++        >
++          {result.thumbnail ? (
++            <img
++              alt={result.title_text}
++              className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
++              decoding="async"
++              loading="lazy"
++              onError={(event) => {
++                event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
++              }}
++              src={result.thumbnail}
++            />
++          ) : (
++            <span className="grid size-full place-items-center text-ink-3">
++              <PlayIcon className="size-8" />
++            </span>
++          )}
++          {result.favicon ? (
++            <img
++              alt=""
++              className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
++              decoding="async"
++              loading="lazy"
++              onError={(event) => {
++                event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
++              }}
++              src={result.favicon}
++            />
++          ) : null}
++        </ResultLink>
++        <h3 className="mt-2.5 line-clamp-2 min-h-[2.75rem] text-base font-medium leading-snug">
++          <ResultLink
++            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++            globals={globals}
++            result={result}
++          >
++            <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++          </ResultLink>
++        </h3>
++        {result.content_html ? (
++          <p
++            className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-2"
++            dangerouslySetInnerHTML={{ __html: result.content_html }}
++            dir="auto"
++          />
++        ) : null}
++      </article>
++    );
++  });
++  return (
++    <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
++      {cells}
++    </div>
++  );
 +}
 +
 +export function ResultCard(props: CardProps) {
@@ -9323,10 +9695,10 @@ index 0000000..09d24fc
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..247e8a5
+index 0000000..77c8de2
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,409 @@
+@@ -0,0 +1,421 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -9518,8 +9890,20 @@ index 0000000..247e8a5
 +export interface WeatherItem {
 +  summary: string;
 +  symbol: string;
-+  temperature: string;
++  location_name: string;
++  condition_display: string;
++  /** temperature in °C — trend chart and daily hi/lo */
++  temp_c: number;
++  /** temperature in °F — small secondary readout in the hero */
++  temp_f: number;
 +  datetime_display?: string;
++  /** localized HH:mm — hourly slots only */
++  time?: string;
++  /** localized weekday (EEE) — hourly slots only */
++  weekday?: string;
++  /** ISO date (YYYY-MM-DD) — hourly slots only, groups the daily strip */
++  date_iso?: string;
++  hour?: number;
 +  feels_like?: string;
 +  wind?: string;
 +  wind_speed?: string;
@@ -9783,7 +10167,7 @@ index 0000000..0fdb05d
 +void bootstrap();
 diff --git a/client/zjsearch/src/pages/IndexPage.tsx b/client/zjsearch/src/pages/IndexPage.tsx
 new file mode 100644
-index 0000000..8ab3e18
+index 0000000..ee31556
 --- /dev/null
 +++ b/client/zjsearch/src/pages/IndexPage.tsx
 @@ -0,0 +1,163 @@
@@ -9875,7 +10259,7 @@ index 0000000..8ab3e18
 +        </div>
 +        {/* single stable toggle: opens the tabs + filter rows, highlights
 +            while expanded, clicks again to collapse */}
-+        <div className="mt-1 flex w-full justify-end animate-fade-up [animation-delay:120ms]">
++        <div className="mt-3 flex w-full justify-end animate-fade-up [animation-delay:120ms]">
 +          <button
 +            aria-expanded={optionsOpen}
 +            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] transition-colors ${
@@ -9907,7 +10291,7 @@ index 0000000..8ab3e18
 +                wrap
 +              />
 +            </div>
-+            <div className="relative z-10 mt-2 flex w-full flex-wrap items-center gap-1.5 animate-fade-in">
++            <div className="relative z-10 mt-2 flex w-full flex-wrap items-center gap-1.5 ps-6 animate-fade-in">
 +              <SearchFilters
 +                globals={globals}
 +                onChange={(next) => {
@@ -9995,10 +10379,10 @@ index 0000000..d51a406
 +}
 diff --git a/client/zjsearch/src/pages/PreferencesPage.tsx b/client/zjsearch/src/pages/PreferencesPage.tsx
 new file mode 100644
-index 0000000..fa32cff
+index 0000000..a8d635d
 --- /dev/null
 +++ b/client/zjsearch/src/pages/PreferencesPage.tsx
-@@ -0,0 +1,1245 @@
+@@ -0,0 +1,1264 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -10032,6 +10416,41 @@ index 0000000..fa32cff
 +  TagIcon,
 +  TerminalIcon,
 +} from "../components/icons.tsx";
++
++/** Category selector styled like the results-page category tabs: icon +
++    label, selected = accent text with an amber underline. */
++function CategoryTab({
++  active,
++  category,
++  label,
++  onClick,
++}: {
++  active: boolean;
++  category: string;
++  label: string;
++  onClick: () => void;
++}) {
++  return (
++    <button
++      aria-pressed={active}
++      className={`relative flex items-center gap-1.5 px-4 py-2 text-[13px] transition-colors ${
++        active ? "font-medium text-accent" : "text-ink-2 hover:text-ink"
++      }`}
++      onClick={onClick}
++      type="button"
++    >
++      <CategoryIcon category={category} className="size-3.5 shrink-0" />
++      {label}
++      <span
++        aria-hidden="true"
++        className={`absolute inset-x-4 -bottom-0.5 h-0.5 rounded-full bg-accent-strong transition-opacity ${
++          active ? "opacity-100" : "opacity-0"
++        }`}
++      />
++    </button>
++  );
++}
++
 +import { Link, Shell } from "../components/Shell.tsx";
 +import { loadEngineDescriptions } from "../lib/engineDescriptions.ts";
 +import { useT } from "../lib/i18n.ts";
@@ -10609,30 +11028,20 @@ index 0000000..fa32cff
 +            <Card>
 +              {!locked.has("categories") ? (
 +                <SettingRow icon={<GridIcon className="size-4.5" />} stacked title={t("default_categories")}>
-+                  <div className="flex flex-wrap gap-1.5">
-+                    {globals.categories_as_tabs.map((category) => {
-+                      const active = categories.includes(category);
-+                      return (
-+                        <button
-+                          aria-pressed={active}
-+                          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors ${
-+                            active
-+                              ? "border-accent-strong bg-accent-soft font-medium text-accent"
-+                              : "border-line text-ink-2 hover:border-ink-3 hover:text-ink"
-+                          }`}
-+                          key={category}
-+                          onClick={() => {
-+                            setCategories((prev) =>
-+                              prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category],
-+                            );
-+                          }}
-+                          type="button"
-+                        >
-+                          <CategoryIcon category={category} className="size-3.5" />
-+                          {globals.category_labels[category] ?? category}
-+                        </button>
-+                      );
-+                    })}
++                  <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
++                    {globals.categories_as_tabs.map((category) => (
++                      <CategoryTab
++                        active={categories.includes(category)}
++                        category={category}
++                        key={category}
++                        label={globals.category_labels[category] ?? category}
++                        onClick={() => {
++                          setCategories((prev) =>
++                            prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category],
++                          );
++                        }}
++                      />
++                    ))}
 +                  </div>
 +                </SettingRow>
 +              ) : null}
@@ -11018,23 +11427,17 @@ index 0000000..fa32cff
 +                  </div>
 +                ) : null}
 +              </div>
-+              <div className="flex flex-wrap gap-1.5">
++              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
 +                {data.engine_tabs.map((tabInfo, index) => (
-+                  <button
-+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] transition-colors ${
-+                      index === engineTab
-+                        ? "border-accent-strong bg-accent-soft font-medium text-accent"
-+                        : "border-line text-ink-2 hover:border-ink-3 hover:text-ink"
-+                    }`}
++                  <CategoryTab
++                    active={index === engineTab}
++                    category={tabInfo.category}
 +                    key={tabInfo.category}
++                    label={tabInfo.label}
 +                    onClick={() => {
 +                      setEngineTab(index);
 +                    }}
-+                    type="button"
-+                  >
-+                    <CategoryIcon category={tabInfo.category} className="size-3.5" />
-+                    {tabInfo.label}
-+                  </button>
++                  />
 +                ))}
 +              </div>
 +              {currentEngineTab ? (
@@ -11246,10 +11649,10 @@ index 0000000..fa32cff
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..048a6e9
+index 0000000..5336dec
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,756 @@
+@@ -0,0 +1,806 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -11257,8 +11660,10 @@ index 0000000..048a6e9
 +import { ArrowUpIcon, CategoryIcon, ChevronDownIcon, GripVerticalIcon, InfoIcon } from "../components/icons.tsx";
 +import { Answers } from "../components/results/Answers.tsx";
 +import {
++  DictionaryCard,
 +  NewsCard,
 +  PaperCard,
++  PosterGrid,
 +  ProductGrid,
 +  ResultCard,
 +  ResultSkeleton,
@@ -11688,22 +12093,42 @@ index 0000000..048a6e9
 +  // selected category signals intent, `only_template` additionally catches
 +  // bang-limited searches where every result shares one template.
 +  const singleCategory = selectedCategories.length === 1 ? selectedCategories[0] : null;
++  // engine bangs (`!imdb bat`) run with the pseudo category "none"; every
++  // result still carries its real category, so a bang search whose results
++  // all agree on one category inherits that category's presentation
++  const firstResult = allResults[0];
++  const bangCategory =
++    singleCategory === "none" &&
++    firstResult !== undefined &&
++    allResults.every((result) => result.category === firstResult.category)
++      ? firstResult.category
++      : null;
 +  const isImagePage =
-+    (data.only_template === "images" || singleCategory === "images") &&
++    (data.only_template === "images" || singleCategory === "images" || bangCategory === "images") &&
 +    allResults.every((result) => result.template === "images" || result.thumbnail_src || result.img_src);
-+  const isVideoPage = data.only_template === "videos" || singleCategory === "videos";
-+  const isProductPage = (data.only_template === "products" || singleCategory === "products") && !isVideoPage;
-+  const isNewsPage = singleCategory === "news" && !isImagePage && !isVideoPage;
-+  const isMapPage = singleCategory === "map" && !isImagePage && !isVideoPage;
-+  const isMusicPage = singleCategory === "music" && !isImagePage && !isVideoPage;
++  const isVideoPage = data.only_template === "videos" || singleCategory === "videos" || bangCategory === "videos";
++  const isProductPage =
++    (data.only_template === "products" || singleCategory === "products" || bangCategory === "products") && !isVideoPage;
++  const isNewsPage = (singleCategory === "news" || bangCategory === "news") && !isImagePage && !isVideoPage;
++  const isMapPage = (singleCategory === "map" || bangCategory === "map") && !isImagePage && !isVideoPage;
++  const isMusicPage = (singleCategory === "music" || bangCategory === "music") && !isImagePage && !isVideoPage;
++  const isMoviesPage = (singleCategory === "movies" || bangCategory === "movies") && !isImagePage && !isVideoPage;
++  const isDictionaryPage =
++    singleCategory === "dictionaries" ||
++    singleCategory === "define" ||
++    bangCategory === "dictionaries" ||
++    bangCategory === "define";
 +  // science intent renders every result in the scholarly layout; a
 +  // paper-only bang search (`!pubmed ...`) gets the same treatment
 +  const isSciencePage =
-+    (singleCategory === "science" || data.only_template === "paper") && !isImagePage && !isVideoPage && !isMusicPage;
++    (singleCategory === "science" || bangCategory === "science" || data.only_template === "paper") &&
++    !isImagePage &&
++    !isVideoPage &&
++    !isMusicPage;
 +  // files intent (or a torrent-only bang search) gets the file-tile grid;
 +  // torrents keep the transfer card inside mixed searches
 +  const isFilesPage =
-+    (singleCategory === "files" || data.only_template === "torrent") &&
++    (singleCategory === "files" || bangCategory === "files" || data.only_template === "torrent") &&
 +    !isImagePage &&
 +    !isVideoPage &&
 +    !isMusicPage &&
@@ -11819,6 +12244,25 @@ index 0000000..048a6e9
 +                  <div className="mt-4">
 +                    <MusicGrid globals={globals} results={allResults} selected={hotkeysSelected} />
 +                  </div>
++                ) : isMoviesPage ? (
++                  <div className="mt-4">
++                    <PosterGrid globals={globals} results={allResults} selected={hotkeysSelected} />
++                  </div>
++                ) : isDictionaryPage ? (
++                  <div className="mt-2 space-y-1">
++                    {allResults.map((result, index) => (
++                      <div
++                        className={`${index < 12 ? "animate-fade-up" : ""} rounded-2xl ${
++                          index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
++                        }`}
++                        data-hotkey-index={index}
++                        key={index}
++                        style={index < 12 ? { animationDelay: `${Math.min(index * 30, 300)}ms` } : undefined}
++                      >
++                        <DictionaryCard globals={globals} result={result} />
++                      </div>
++                    ))}
++                  </div>
 +                ) : isSciencePage ? (
 +                  <div className="mt-2 space-y-1">
 +                    {allResults.map((result, index) => (
@@ -11860,8 +12304,10 @@ index 0000000..048a6e9
 +                ) : singleCategory !== null ? (
 +                  // category intent page: a pure relevance-ordered list in
 +                  // which every type keeps its own card - extracting a type
-+                  // into a strip would break the relevance order
-+                  <div className="mt-2">
++                  // into a strip would break the relevance order.
++                  // space-y keeps highlighted (selected / hovered) cards from
++                  // touching, matching the mixed-block and news lists.
++                  <div className="mt-2 space-y-1">
 +                    {allResults.map((result, index) => (
 +                      <div
 +                        className={`${index < 12 ? "animate-fade-up" : ""} rounded-2xl ${
@@ -11927,6 +12373,13 @@ index 0000000..048a6e9
 +                                      />
 +                                    ) : key === "files" ? (
 +                                      <FilesGrid
++                                        globals={globals}
++                                        indexOffset={indexOffset}
++                                        results={results}
++                                        selected={hotkeysSelected}
++                                      />
++                                    ) : key === "movies" ? (
++                                      <PosterGrid
 +                                        globals={globals}
 +                                        indexOffset={indexOffset}
 +                                        results={results}
@@ -12902,10 +13355,10 @@ index 0000000..fc19e95
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..8eeca8d
+index 0000000..2972476
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,548 @@
+@@ -0,0 +1,556 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -13135,9 +13588,17 @@ index 0000000..8eeca8d
 +{
 +  "summary": {{ (data.summary or '')|tojson }},
 +  "symbol": {{ (data.url or '')|tojson }},
-+  "temperature": {{ data.temperature.l10n(locale=data.location)|tojson }}
-+  {%- if data.datetime %}, "datetime_display": {{ data.datetime.l10n(locale=data.location, fmt='short')|tojson }}{% endif %}
-+  {%- if data.feels_like %}, "feels_like": {{ data.feels_like.l10n(locale=data.location)|tojson }}{% endif %}
++  "location_name": {{ data.location.name|tojson }},
++  "condition_display": {{ _(data.condition.capitalize())|tojson }},
++  "temp_c": {{ data.temperature.value("°C") }},
++  "temp_f": {{ data.temperature.value("°F") }}
++  {%- if data.datetime %},
++  "datetime_display": {{ data.datetime.l10n(locale=data.location, fmt='short')|tojson }},
++  "time": {{ data.datetime.l10n(locale=data.location, fmt='HH:mm')|tojson }},
++  "weekday": {{ data.datetime.l10n(locale=data.location, fmt='EEE')|tojson }},
++  "date_iso": {{ data.datetime.datetime.date().isoformat()|tojson }},
++  "hour": {{ data.datetime.datetime.hour }}{% endif %}
++  {%- if data.feels_like %}, "feels_like": {{ data.feels_like.l10n(locale=data.location, unit="°C")|tojson }}{% endif %}
 +  {%- if data.wind_from %}, "wind": {{ data.wind_from.l10n(locale=data.location)|tojson }}{% endif %}
 +  {%- if data.wind_speed %}, "wind_speed": {{ data.wind_speed.l10n(locale=data.location)|tojson }}{% endif %}
 +  {%- if data.pressure %}, "pressure": {{ data.pressure.l10n(locale=data.location)|tojson }}{% endif %}
