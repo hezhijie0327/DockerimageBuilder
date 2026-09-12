@@ -6606,10 +6606,10 @@ index 0000000..a51c428
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..efd56f8
+index 0000000..049edb6
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,1346 @@
+@@ -0,0 +1,1301 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type ReactNode, useState } from "react";
@@ -7741,49 +7741,6 @@ index 0000000..efd56f8
 +  );
 +}
 +
-+export function ImageListCard({ result, globals, onOpen }: CardProps & { onOpen: () => void }) {
-+  const thumbSrc = result.thumbnail_src || result.img_src || "";
-+  return (
-+    <ResultArticle priority={result.priority}>
-+      <div className="flex gap-4">
-+        <button
-+          aria-label={result.title_text}
-+          className="group/img relative size-24 shrink-0 overflow-hidden rounded-xl bg-surface-2"
-+          onClick={onOpen}
-+          type="button"
-+        >
-+          <img
-+            alt={result.title_text}
-+            className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
-+            decoding="async"
-+            loading="lazy"
-+            onError={(event) => {
-+              event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
-+            }}
-+            src={thumbSrc}
-+          />
-+          <span className="absolute inset-0 grid place-items-center bg-black/0 text-white opacity-0 transition-all group-hover/img:bg-black/30 group-hover/img:opacity-100">
-+            <FilmIcon className="size-5" />
-+          </span>
-+        </button>
-+        <div className="min-w-0 flex-1">
-+          <PrettyUrl globals={globals} result={result} />
-+          <div className="mt-1">
-+            <Title globals={globals} result={result} />
-+          </div>
-+          <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-ink-3">
-+            {result.resolution ? <span>{result.resolution}</span> : null}
-+            {result.img_format ? <span>{result.img_format}</span> : null}
-+            {result.filesize ? <span>{result.filesize}</span> : null}
-+            {result.source ? <span>{result.source}</span> : null}
-+          </div>
-+          <EnginesLine result={result} />
-+        </div>
-+      </div>
-+    </ResultArticle>
-+  );
-+}
-+
 +/** Kagi-style video tiles for video-only result pages.  Tiles with an
 +    embeddable source get a Spotify-style hover play button that expands the
 +    player in place.  Cells carry data-hotkey-index so the results hotkeys
@@ -7902,24 +7859,22 @@ index 0000000..efd56f8
 +          <span className="truncate" dir="auto">
 +            {result.author || result.engines[0]}
 +          </span>
-+          <span className="shrink-0">{result.published_date ? formatDate(result.published_date) : null}</span>
++          <span className="flex shrink-0 items-center gap-2">
++            {result.views ? <span>{result.views}</span> : null}
++            <span>{result.published_date ? formatDate(result.published_date) : null}</span>
++          </span>
 +        </div>
-+        {result.views ? <div className="mt-0.5 text-xs text-ink-3">{result.views}</div> : null}
 +      </article>
 +    );
 +  });
 +  return <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{cells}</div>;
 +}
 +
-+export function FallbackCard(props: CardProps) {
-+  return <DefaultCard {...props} />;
-+}
-+
-+export function ResultCard(props: CardProps & { onOpenImage?: () => void }) {
++export function ResultCard(props: CardProps) {
 +  const { result } = props;
 +  switch (result.template) {
 +    case "images":
-+      return props.onOpenImage ? <ImageListCard {...props} onOpen={props.onOpenImage} /> : <DefaultCard {...props} />;
++      return <DefaultCard {...props} />;
 +    case "videos":
 +      return <VideoCard {...props} />;
 +    case "news":
@@ -8226,10 +8181,10 @@ index 0000000..7e554fd
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..62a4128
+index 0000000..25b9dfd
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,560 @@
+@@ -0,0 +1,485 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -8245,19 +8200,13 @@ index 0000000..62a4128
 +
 +// source strings (English)
 +const EN: Record<string, string> = {
-+  about: "About",
 +  donate: "Donate",
 +  preferences: "Preferences",
 +  search_placeholder: "Search for...",
 +  clear: "clear",
 +  search: "search",
 +  powered_by: "Powered by",
-+  source_code: "Source code",
-+  issue_tracker: "Issue tracker",
 +  engine_stats: "Engine stats",
-+  public_instances: "Public instances",
-+  privacy_policy: "Privacy policy",
-+  contact_maintainer: "Contact instance maintainer",
 +  search_language: "Search language",
 +  default_language: "Default language",
 +  autodetect: "Auto-detect",
@@ -8286,7 +8235,6 @@ index 0000000..62a4128
 +  previous_page: "Previous page",
 +  next_page: "Next page",
 +  length: "Length",
-+  views: "Views",
 +  author: "Author",
 +  show_media: "show media",
 +  hide_media: "hide media",
@@ -8310,8 +8258,6 @@ index 0000000..62a4128
 +  date: "Date",
 +  type: "Type",
 +  resolution: "Resolution",
-+  image_formats: "Image formats",
-+  original_format: "original format",
 +  source: "Source",
 +  engines: "Engines",
 +  view_source: "View source",
@@ -8329,10 +8275,8 @@ index 0000000..62a4128
 +  no_more_results: "There are no more results. You can try to:",
 +  refresh_page: "Refresh the page.",
 +  try_other_query: "Search for another query or select another category (above).",
-+  try_other_query_plain: "Search for another query or select another category.",
 +  go_previous_page: "Go back to the previous page using the previous page button.",
 +  error_loading_next_page: "Error loading the next page",
-+  no_item_found: "No item found",
 +  no_cookies: "There is currently no data available. ",
 +  page_not_found: "Page not found",
 +  hotkeys_vim: "Vim-like",
@@ -8341,11 +8285,8 @@ index 0000000..62a4128
 +  privacy: "Privacy",
 +  special_queries: "Special Queries",
 +  cookies: "Cookies",
-+  save: "Save",
 +  reset_defaults: "Reset defaults",
-+  back: "Back",
 +  close: "Close",
-+  invalid_settings: "Invalid settings, please edit your preferences",
 +  allow: "Allow",
 +  keywords: "Keywords (first word in query)",
 +  name: "Name",
@@ -8357,7 +8298,6 @@ index 0000000..62a4128
 +  favicon_resolver: "Favicon Resolver",
 +  display_favicons: "Display favicons near search results",
 +  filter_content: "Filter content",
-+  doi: "Digital Object Identifier (DOI)",
 +  open_access_doi_resolver: "Open Access DOI resolver",
 +  select_doi_service: "Select service used by DOI rewrite",
 +  currently_used_engines: "Currently used search engines",
@@ -8368,10 +8308,6 @@ index 0000000..62a4128
 +  weight: "Weight",
 +  max_time: "Max time",
 +  reliability: "Reliability",
-+  view_error_logs: "View error logs and submit a bug report",
-+  no_https: "No HTTPS",
-+  bang_for_engine: "!bang for this engine",
-+  bang_for_categories: "!bang for its categories",
 +  engine_tokens: "Engine tokens",
 +  access_tokens: "Access tokens for private engines",
 +  interface_language: "Interface language",
@@ -8397,12 +8333,10 @@ index 0000000..62a4128
 +  change_url_formatting: "Change result URL formatting",
 +  default_categories: "Default categories",
 +  what_language: "What language do you prefer for search?",
-+  choose_autodetect: "Choose Auto-detect to let SearXNG detect the language of your query.",
 +  preview_banner: "This is a preview of the settings used by the 'Search URL' you used to get here.",
 +  press_save_to_copy: "Press save to copy these preferences to your browser.",
 +  view_browser_prefs: "Click here to view your browser preferences instead:",
 +  cookies_convenience: "These cookies serve your sole convenience; we don't use them to track you.",
-+  cookies_transparency: "With this list, you can assess the transparency of SearXNG.",
 +  cookie_name: "Cookie name",
 +  value: "Value",
 +  search_url_of_prefs: "Search URL of the currently saved preferences",
@@ -8411,9 +8345,6 @@ index 0000000..62a4128
 +  insert_prefs_hash: "Insert copied preferences hash (without URL) to restore",
 +  prefs_hash: "Preferences hash",
 +  median: "Median",
-+  p80: "P80",
-+  p95: "P95",
-+  total: "Total",
 +  http: "HTTP",
 +  processing: "Processing",
 +  scores: "Scores",
@@ -8425,14 +8356,11 @@ index 0000000..62a4128
 +  percentage: "Percentage",
 +  parameter: "Parameter",
 +  function: "Function",
-+  code: "Code",
 +  no_data_available: "There is currently no data available. ",
 +  auto: "auto",
 +  light: "light",
 +  dark: "dark",
 +  black: "black",
-+  updated: "Updated at",
-+  popularity: "Popularity",
 +  license: "License",
 +  other: "Other",
 +  packages: "Packages",
@@ -8440,22 +8368,17 @@ index 0000000..62a4128
 +  drag_reorder: "Drag to reorder",
 +
 +  homepage: "Project homepage",
-+  editor: "Editor",
-+  publisher: "Publisher",
 +  center_alignment: "Center Alignment",
 +  center_alignment_desc: "Display results in the center of the page (Oscar layout).",
 +  search_options: "Search options",
 +  meta_found: "Found",
 +  meta_results: "results",
-+  meta_in: "in",
-+  more_categories: "More categories",
 +  no_web_results: "No web results were found.",
 +  expand: "Show more",
 +  collapse: "Show less",
 +  hotkeys_hint: "Press ? anytime for keyboard shortcuts",
 +  hotkeys_desc:
 +    'Navigate search results with hotkeys (JavaScript required). Press "?" on the main or results page to get help.',
-+  hotkeys_default: "default",
 +  search_on_category_select_desc:
 +    "Perform a search immediately if a category is selected. Disable to select multiple categories",
 +  engine_tab_bang_hint:
@@ -8466,11 +8389,7 @@ index 0000000..62a4128
 +    "Note: specifying custom settings in the search URL can reduce privacy by leaking data to the clicked result sites.",
 +  url_restore_desc:
 +    "A URL containing your preferences. This URL can be used to restore your settings on a different device.",
-+  loading: "Loading...",
-+  on: "on",
-+  off: "off",
 +  saved: "Saved",
-+  forecast: "Forecast",
 +  help_shortcuts: "Keyboard shortcuts",
 +  help_operators: "Search operators",
 +  help_bangs: "Bangs & widgets",
@@ -8496,7 +8415,6 @@ index 0000000..62a4128
 +  widget_stats: "Statistics over the arguments",
 +  widget_calc: "Solve math expressions",
 +  widget_time: "Current time in a timezone",
-+  op_inclexc: "Force include / exclude a term",
 +  bang_all: "All DuckDuckGo bangs work here",
 +  bang_images: "Image search bang",
 +  bang_videos: "Video search bang",
@@ -8510,19 +8428,13 @@ index 0000000..62a4128
 +
 +// Simplified Chinese
 +const ZH_CN: Record<string, string> = {
-+  about: "关于",
 +  donate: "捐助",
 +  preferences: "偏好设置",
 +  search_placeholder: "搜索...",
 +  clear: "清空",
 +  search: "搜索",
 +  powered_by: "功能来自",
-+  source_code: "源代码",
-+  issue_tracker: "问题追踪",
 +  engine_stats: "引擎统计",
-+  public_instances: "公共实例",
-+  privacy_policy: "隐私政策",
-+  contact_maintainer: "联系实例维护者",
 +  search_language: "搜索语言",
 +  default_language: "默认语言",
 +  autodetect: "自动检测",
@@ -8551,7 +8463,6 @@ index 0000000..62a4128
 +  previous_page: "上一页",
 +  next_page: "下一页",
 +  length: "时长",
-+  views: "观看次数",
 +  author: "作者",
 +  show_media: "显示媒体",
 +  hide_media: "隐藏媒体",
@@ -8575,8 +8486,6 @@ index 0000000..62a4128
 +  date: "日期",
 +  type: "类型",
 +  resolution: "分辨率",
-+  image_formats: "图片格式",
-+  original_format: "原始格式",
 +  source: "来源",
 +  engines: "引擎",
 +  view_source: "查看源码",
@@ -8594,10 +8503,8 @@ index 0000000..62a4128
 +  no_more_results: "没有更多结果了,你可以尝试:",
 +  refresh_page: "刷新页面",
 +  try_other_query: "更换关键词或选择其他分类(见上方)。",
-+  try_other_query_plain: "更换关键词或选择其他分类。",
 +  go_previous_page: "使用“上一页”按钮返回上一页。",
 +  error_loading_next_page: "加载下一页时出错",
-+  no_item_found: "未找到条目",
 +  no_cookies: "当前没有可用数据。",
 +  page_not_found: "页面不存在",
 +  hotkeys_vim: "Vim 风格",
@@ -8606,11 +8513,8 @@ index 0000000..62a4128
 +  privacy: "隐私",
 +  special_queries: "特殊查询",
 +  cookies: "Cookie",
-+  save: "保存",
 +  reset_defaults: "恢复默认设置",
-+  back: "返回",
 +  close: "关闭",
-+  invalid_settings: "设置无效,请编辑你的偏好设置",
 +  allow: "允许",
 +  keywords: "关键词(查询中的第一个词)",
 +  name: "名称",
@@ -8622,7 +8526,6 @@ index 0000000..62a4128
 +  favicon_resolver: "网站图标解析服务",
 +  display_favicons: "在搜索结果旁显示网站图标",
 +  filter_content: "过滤内容",
-+  doi: "数字对象标识符(DOI)",
 +  open_access_doi_resolver: "开放获取 DOI 解析器",
 +  select_doi_service: "选择 DOI 重写使用的服务",
 +  currently_used_engines: "当前使用的搜索引擎",
@@ -8633,10 +8536,6 @@ index 0000000..62a4128
 +  weight: "权重",
 +  max_time: "最长时间",
 +  reliability: "可靠性",
-+  view_error_logs: "查看错误日志并提交问题报告",
-+  no_https: "无 HTTPS",
-+  bang_for_engine: "该引擎的 !bang",
-+  bang_for_categories: "该分类的 !bang",
 +  engine_tokens: "引擎令牌",
 +  access_tokens: "私有引擎的访问令牌",
 +  interface_language: "界面语言",
@@ -8662,12 +8561,10 @@ index 0000000..62a4128
 +  change_url_formatting: "更改结果 URL 的格式",
 +  default_categories: "默认分类",
 +  what_language: "你希望用什么语言进行搜索?",
-+  choose_autodetect: "选择自动检测可让 SearXNG 判断查询的语言。",
 +  preview_banner: "这是你来到本页所用的“搜索 URL”中携带的设置预览。",
 +  press_save_to_copy: "按下“保存”即可将这些偏好设置复制到你的浏览器。",
 +  view_browser_prefs: "点击此处查看浏览器中保存的偏好设置:",
 +  cookies_convenience: "这些 Cookie 只为方便你使用;我们不会用它们追踪你。",
-+  cookies_transparency: "通过这份列表,你可以检视 SearXNG 的透明度。",
 +  cookie_name: "Cookie 名称",
 +  value: "值",
 +  search_url_of_prefs: "当前已保存偏好设置的搜索 URL",
@@ -8676,9 +8573,6 @@ index 0000000..62a4128
 +  insert_prefs_hash: "粘贴已复制的偏好哈希(不含 URL)以恢复",
 +  prefs_hash: "偏好设置哈希",
 +  median: "中位数",
-+  p80: "P80",
-+  p95: "P95",
-+  total: "总计",
 +  http: "HTTP",
 +  processing: "处理",
 +  scores: "得分",
@@ -8690,14 +8584,11 @@ index 0000000..62a4128
 +  percentage: "百分比",
 +  parameter: "参数",
 +  function: "函数",
-+  code: "代码",
 +  no_data_available: "当前没有可用数据。",
 +  auto: "自动",
 +  light: "浅色",
 +  dark: "深色",
 +  black: "纯黑",
-+  updated: "更新于",
-+  popularity: "热度",
 +  license: "许可证",
 +  other: "其他",
 +  packages: "软件包",
@@ -8705,32 +8596,22 @@ index 0000000..62a4128
 +  drag_reorder: "拖拽排序",
 +
 +  homepage: "项目主页",
-+  editor: "编者",
-+  publisher: "出版方",
 +  center_alignment: "居中布局",
 +  center_alignment_desc: "在页面中央显示结果(仿 Oscar 布局)。",
 +  search_options: "搜索选项",
 +  meta_found: "找到",
 +  meta_results: "条相关结果",
-+  meta_in: "用时",
-+  more_categories: "更多分类",
 +  no_web_results: "未找到网页结果。",
 +  expand: "查看更多",
 +  collapse: "收起",
 +  hotkeys_hint: "随时按 ? 查看键盘快捷键",
 +  hotkeys_desc: "使用快捷键导航搜索结果(需要 JavaScript)。在主页或结果页按 ? 查看帮助。",
-+  hotkeys_default: "默认",
 +  search_on_category_select_desc: "选择分类后立即执行搜索。禁用后可同时选择多个分类",
-+  engine_tab_bang_hint: "此标签页未在界面中展示,但你可以通过 !bang 使用这些引擎。",
 +  settings_in_cookies: "这些设置保存在你的 Cookie 中,我们不会在服务器上存储你的相关数据。",
 +  cookies_list_desc: "这是 SearXNG 在你的电脑上存储的 Cookie 及其取值列表。",
 +  prefs_url_privacy_note: "注意:在搜索 URL 中携带自定义设置可能会向点击的结果站点泄露数据,降低隐私性。",
 +  url_restore_desc: "包含你偏好设置的 URL。在其他设备上打开它即可恢复这些设置。",
-+  loading: "加载中…",
-+  on: "开",
-+  off: "关",
 +  saved: "已保存",
-+  forecast: "天气预报",
 +  help_shortcuts: "键盘快捷键",
 +  help_operators: "搜索运算符",
 +  help_bangs: "Bang 与小工具",
@@ -8756,7 +8637,6 @@ index 0000000..62a4128
 +  widget_stats: "对参数做统计计算",
 +  widget_calc: "解析并求解数学表达式",
 +  widget_time: "显示指定时区的当前时间",
-+  op_inclexc: "强制包含 / 排除某个词",
 +  bang_all: "支持所有 DuckDuckGo bang",
 +  bang_images: "图片搜索 bang",
 +  bang_videos: "视频搜索 bang",
@@ -11329,10 +11209,10 @@ index 0000000..fa32cff
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..7d7d619
+index 0000000..886da15
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,774 @@
+@@ -0,0 +1,756 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -11457,25 +11337,7 @@ index 0000000..7d7d619
 +  );
 +}
 +
-+/** Mixed searches consolidate results into collapsible blocks keyed by the
-+    original search category; the packages category folds into it. */
-+const BLOCK_ORDER_KEY = "zjs-block-order";
-+
-+const BLOCK_DEFAULT_ORDER = [
-+  "general",
-+  "images",
-+  "videos",
-+  "news",
-+  "map",
-+  "music",
-+  "it",
-+  "science",
-+  "files",
-+  "social media",
-+  "packages",
-+  "other",
-+];
-+
++/** Packages fold into the it block; every other category stands alone. */
 +function blockKeyOf(result: ResultItem): string {
 +  const category = result.category || "general";
 +  return category === "packages" ? "it" : category;
@@ -11924,12 +11786,12 @@ index 0000000..7d7d619
 +                  <div className="mt-2 space-y-1">
 +                    {allResults.map((result, index) => (
 +                      <div
-+                        className={`animate-fade-up rounded-2xl ${
++                        className={`${index < 12 ? "animate-fade-up" : ""} rounded-2xl ${
 +                          index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
 +                        }`}
 +                        data-hotkey-index={index}
 +                        key={index}
-+                        style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
++                        style={index < 12 ? { animationDelay: `${Math.min(index * 30, 300)}ms` } : undefined}
 +                      >
 +                        <PaperCard globals={globals} result={result} />
 +                      </div>
@@ -11947,12 +11809,12 @@ index 0000000..7d7d619
 +                  <div className="mt-2 space-y-1">
 +                    {allResults.map((result, index) => (
 +                      <div
-+                        className={`animate-fade-up rounded-2xl ${
++                        className={`${index < 12 ? "animate-fade-up" : ""} rounded-2xl ${
 +                          index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
 +                        }`}
 +                        data-hotkey-index={index}
 +                        key={index}
-+                        style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
++                        style={index < 12 ? { animationDelay: `${Math.min(index * 30, 300)}ms` } : undefined}
 +                      >
 +                        <NewsCard globals={globals} result={result} />
 +                      </div>
@@ -11965,12 +11827,12 @@ index 0000000..7d7d619
 +                  <div className="mt-2">
 +                    {allResults.map((result, index) => (
 +                      <div
-+                        className={`animate-fade-up rounded-2xl ${
++                        className={`${index < 12 ? "animate-fade-up" : ""} rounded-2xl ${
 +                          index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
 +                        }`}
 +                        data-hotkey-index={index}
 +                        key={index}
-+                        style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
++                        style={index < 12 ? { animationDelay: `${Math.min(index * 30, 300)}ms` } : undefined}
 +                      >
 +                        <ResultCard autoOpenMap={isMapPage} eager={index < 4} globals={globals} result={result} />
 +                      </div>
@@ -11998,11 +11860,7 @@ index 0000000..7d7d619
 +                            const results = items.map(({ result }) => result);
 +                            const indexOffset = items[0]?.index ?? 0;
 +                            return (
-+                              <section
-+                                className="mt-6 first:mt-0"
-+                                data-block-key={key}
-+                                key={key}
-+                              >
++                              <section className="mt-6 first:mt-0" data-block-key={key} key={key}>
 +                                <GroupHeader
 +                                  category={key}
 +                                  collapsed={collapsed}
@@ -12048,12 +11906,16 @@ index 0000000..7d7d619
 +                                      <div>
 +                                        {items.map(({ result, index }) => (
 +                                          <div
-+                                            className={`animate-fade-up rounded-2xl ${
++                                            className={`rounded-2xl ${
 +                                              index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
-+                                            }`}
++                                            } ${index < 12 ? "animate-fade-up" : ""}`}
 +                                            data-hotkey-index={index}
 +                                            key={index}
-+                                            style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
++                                            style={
++                                              index < 12
++                                                ? { animationDelay: `${Math.min(index * 30, 300)}ms` }
++                                                : undefined
++                                            }
 +                                          >
 +                                            <ResultCard
 +                                              autoOpenMap={isMapPage}
