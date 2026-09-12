@@ -59,7 +59,6 @@ RUN \
     && pip install --no-cache -r requirements.txt \
     && pip install --no-cache \
         tzdata \
-        curl_cffi \
         searxng-bm25-reranker \
     && python3 -m compileall -q searx \
     && find searx/static \( -name '*.html' -o -name '*.css' -o -name '*.js' \
