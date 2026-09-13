@@ -459,10 +459,10 @@ index 0000000..0d64d40
 +    disabled: false
 diff --git a/client/zjsearch/make-patch.ps1 b/client/zjsearch/make-patch.ps1
 new file mode 100644
-index 0000000..4e6c1b5
+index 0000000..65ca591
 --- /dev/null
 +++ b/client/zjsearch/make-patch.ps1
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,61 @@
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine. PowerShell twin of
 +# make-patch.sh - keep the two in sync.
@@ -475,9 +475,13 @@ index 0000000..4e6c1b5
 +# Default base: master (falls back to origin/master; if neither exists,
 +# origin/master is fetched from origin first), so the patch carries the whole
 +# theme delta relative to master. The diff runs against the working tree, so
-+# uncommitted edits are included (untracked files are not). Only client/zjsearch
-+# and searx/templates/zjsearch are included; both are required - the map-page
-+# fix lives in the data templates, not the client.
++# uncommitted edits are included (untracked files are not). Included paths:
++# client/zjsearch, searx/templates/zjsearch and every searx/ python change
++# (searx/static is excluded) - the templates alone are not enough: the
++# special-query answers (stats/hash/self-info/time-zone/random) carry their
++# structured *data* payloads from the python side, and new templates running
++# against old python only produce jinja2 Undefined warnings plus raw-text
++# answers.
 +
 +param(
 +    [string]$Base = "",
@@ -508,7 +512,7 @@ index 0000000..4e6c1b5
 +
 +# byte-exact redirect through cmd: PowerShell's own ">" re-encodes git output
 +# (UTF-16 / BOM), which git apply would reject
-+cmd /c "git diff --text $Base -- client/zjsearch searx/templates/zjsearch > `"$Out`""
++cmd /c "git diff --text $Base -- client/zjsearch searx `"(exclude)searx/static`" > `"$Out`""
 +
 +$content = Get-Content $Out -Raw
 +$files = ([regex]::Matches($content, "(?m)^diff --git")).Count
@@ -522,10 +526,10 @@ index 0000000..4e6c1b5
 +}
 diff --git a/client/zjsearch/make-patch.sh b/client/zjsearch/make-patch.sh
 new file mode 100644
-index 0000000..a18463a
+index 0000000..8a6a7a0
 --- /dev/null
 +++ b/client/zjsearch/make-patch.sh
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,54 @@
 +#!/usr/bin/env bash
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine:
@@ -538,9 +542,13 @@ index 0000000..a18463a
 +# Default base: master (falls back to origin/master; if neither exists,
 +# origin/master is fetched from origin first), so the patch carries the whole
 +# theme delta relative to master. The diff runs against the working tree, so
-+# uncommitted edits are included (untracked files are not). Only client/zjsearch
-+# and searx/templates/zjsearch are included; both are required - the map-page
-+# fix lives in the data templates, not the client.
++# uncommitted edits are included (untracked files are not). Included paths:
++# client/zjsearch, searx/templates/zjsearch and every searx/ python change
++# (searx/static is excluded) - the templates alone are not enough: the
++# special-query answers (stats/hash/self-info/time-zone/random) carry their
++# structured *data* payloads from the python side, and new templates running
++# against old python only produce jinja2 Undefined warnings plus raw-text
++# answers.
 +
 +set -euo pipefail
 +
@@ -567,7 +575,7 @@ index 0000000..a18463a
 +
 +cd "$(dirname "$0")/../.."
 +
-+git diff --text "$base" -- client/zjsearch searx/templates/zjsearch > "$out"
++git diff --text "$base" -- client/zjsearch searx ':(exclude)searx/static' > "$out"
 +
 +files=$(grep -c '^diff --git' "$out" || true)
 +if [ "$files" = "0" ]; then
@@ -14496,6 +14504,138 @@ index 0000000..f8a87c8
 +
 +  plugins: [tailwindcss(), plgAssets(PATH)],
 +} satisfies import("vite").UserConfig;
+diff --git a/searx/answerers/random.py b/searx/answerers/random.py
+index 4f7ed51..c04b952 100644
+--- a/searx/answerers/random.py
++++ b/searx/answerers/random.py
+@@ -76,4 +76,14 @@ class SXNGAnswerer(Answerer):
+         if len(parts) != 2 or parts[1] not in self.random_types:
+             return []
+ 
+-        return [Answer(answer=self.random_types[parts[1]]())]
++        value = self.random_types[parts[1]]()
++        return [
++            Answer(
++                answer=value,
++                data={
++                    "kind": "value",
++                    "value": value,
++                    "swatch": "true" if parts[1] == "color" else "",
++                },
++            )
++        ]
+diff --git a/searx/answerers/statistics.py b/searx/answerers/statistics.py
+index 40a4c80..b17570a 100644
+--- a/searx/answerers/statistics.py
++++ b/searx/answerers/statistics.py
+@@ -59,7 +59,12 @@ class SXNGAnswerer(Answerer):
+                 res = func(args)
+                 res = babel.numbers.format_decimal(res, locale=ui_locale)
+                 f_str = ', '.join(babel.numbers.format_decimal(arg, locale=ui_locale) for arg in args)
+-                results.append(Answer(answer=f"[{ui_locale}] {k}({f_str}) = {res} "))
++                results.append(
++                    Answer(
++                        answer=f"[{ui_locale}] {k}({f_str}) = {res} ",
++                        data={"kind": "stats", "func": k, "args": f_str, "result": res},
++                    )
++                )
+                 break
+ 
+         return results
+diff --git a/searx/plugins/hash_plugin.py b/searx/plugins/hash_plugin.py
+index b733bcc..d8cb503 100644
+--- a/searx/plugins/hash_plugin.py
++++ b/searx/plugins/hash_plugin.py
+@@ -62,6 +62,11 @@ class SXNGPlugin(Plugin):
+         f.update(string.encode("utf-8").strip())
+         answer = function + " " + gettext("hash digest") + ": " + f.hexdigest()
+ 
+-        results.add(results.types.Answer(answer=answer))
++        results.add(
++            results.types.Answer(
++                answer=answer,
++                data={"kind": "hash", "algo": function, "digest": f.hexdigest()},
++            )
++        )
+ 
+         return results
+diff --git a/searx/plugins/self_info.py b/searx/plugins/self_info.py
+index 314cc85..c59c9d7 100644
+--- a/searx/plugins/self_info.py
++++ b/searx/plugins/self_info.py
+@@ -49,11 +49,21 @@ class SXNGPlugin(Plugin):
+             return results
+ 
+         if self.ip_regex.search(search.search_query.query) and request.remote_addr:
++            ip = str(ip_address(request.remote_addr).compressed)
+             results.add(
+-                results.types.Answer(answer=gettext("Your IP is: ") + ip_address(request.remote_addr).compressed)
++                results.types.Answer(
++                    answer=gettext("Your IP is: ") + ip,
++                    data={"kind": "self", "label": gettext("Your IP is: "), "value": ip},
++                )
+             )
+ 
+         if self.ua_regex.match(search.search_query.query):
+-            results.add(results.types.Answer(answer=gettext("Your user-agent is: ") + str(request.user_agent)))
++            user_agent = str(request.user_agent)
++            results.add(
++                results.types.Answer(
++                    answer=gettext("Your user-agent is: ") + user_agent,
++                    data={"kind": "self", "label": gettext("Your user-agent is: "), "value": user_agent},
++                )
++            )
+ 
+         return results
+diff --git a/searx/plugins/time_zone.py b/searx/plugins/time_zone.py
+index 9239a3f..46abb26 100644
+--- a/searx/plugins/time_zone.py
++++ b/searx/plugins/time_zone.py
+@@ -53,7 +53,12 @@ class SXNGPlugin(Plugin):
+ 
+         if not search_term:
+             date_time = DateTime(datetime.datetime.now())
+-            results.add(results.types.Answer(answer=date_time.l10n()))
++            results.add(
++                results.types.Answer(
++                    answer=date_time.l10n(),
++                    data={"kind": "time", "time": date_time.l10n()},
++                )
++            )
+             return results
+ 
+         geo = GeoLocation.by_query(search_term=search_term)
+@@ -62,7 +67,13 @@ class SXNGPlugin(Plugin):
+             tz_name = geo.timezone.replace('_', ' ')
+             results.add(
+                 results.types.Answer(
+-                    answer=(f"{tz_name}:" f" {date_time.l10n()} ({date_time.datetime.strftime('%Z')})")
++                    answer=(f"{tz_name}:" f" {date_time.l10n()} ({date_time.datetime.strftime('%Z')})"),
++                    data={
++                        "kind": "time",
++                        "zone": tz_name,
++                        "time": date_time.l10n(),
++                        "abbr": date_time.datetime.strftime("%Z"),
++                    },
+                 )
+             )
+ 
+diff --git a/searx/result_types/answer.py b/searx/result_types/answer.py
+index 1a24f12..423b2b0 100644
+--- a/searx/result_types/answer.py
++++ b/searx/result_types/answer.py
+@@ -85,6 +85,11 @@ class Answer(BaseAnswer, kw_only=True):
+     answer: str
+     """Text of the answer."""
+ 
++    data: dict[str, str] | None = None
++    """Optional structured payload for theme renderers, e.g. ``{"kind":
++    "hash", "algo": "sha512", "digest": "..."}``.  Themes without support for
++    these fields just render the *answer* text."""
++
+     def __hash__(self):
+         """The hash value of field *answer* is the hash value of the
+         :py:obj:`Answer` object.  :py:obj:`Answer <Result.__eq__>` objects are
 diff --git a/searx/templates/zjsearch/404.html b/searx/templates/zjsearch/404.html
 new file mode 100644
 index 0000000..f920be3
