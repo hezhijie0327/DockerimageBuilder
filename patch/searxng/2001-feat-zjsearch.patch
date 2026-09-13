@@ -3910,10 +3910,10 @@ index 0000000..0579149
 +}
 diff --git a/client/zjsearch/src/components/Dropdown.tsx b/client/zjsearch/src/components/Dropdown.tsx
 new file mode 100644
-index 0000000..9f9bba5
+index 0000000..b8ffe5e
 --- /dev/null
 +++ b/client/zjsearch/src/components/Dropdown.tsx
-@@ -0,0 +1,224 @@
+@@ -0,0 +1,257 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -3943,6 +3943,11 @@ index 0000000..9f9bba5
 +  menuClassName = "",
 +  icon,
 +  iconOnly = false,
++  triggerLabel,
++  triggerClassName,
++  multiple = false,
++  isSelected,
++  underline = false,
 +}: {
 +  value: string;
 +  options: DropdownOption[];
@@ -3952,6 +3957,16 @@ index 0000000..9f9bba5
 +  align?: "start" | "end";
 +  /** bare: light text trigger (search filters); boxed: bordered control (preferences) */
 +  variant?: "bare" | "boxed";
++  /** show this text on the trigger instead of the selected option label */
++  triggerLabel?: string;
++  /** extra classes for the trigger (active state styling etc.) */
++  triggerClassName?: string;
++  /** multi-select menu: picking toggles the option and keeps the menu open;
++      option checks come from `isSelected` instead of `value` */
++  multiple?: boolean;
++  /** bare trigger only: render the tab-style active underline */
++  underline?: boolean;
++  isSelected?: (value: string) => boolean;
 +  menuClassName?: string;
 +  /** optional icon shown before the label in the trigger */
 +  icon?: ReactNode;
@@ -3977,8 +3992,12 @@ index 0000000..9f9bba5
 +        setOpen(false);
 +      }
 +    };
-+    // a fixed-position menu cannot follow its trigger — close on scroll/resize
-+    const onMove = () => {
++    // a fixed-position menu cannot follow its trigger — close on scroll/resize,
++    // but let the menu itself scroll (touch users browsing long menus)
++    const onMove = (event: Event) => {
++      if (menuRef.current?.contains(event.target as Node)) {
++        return;
++      }
 +      setOpen(false);
 +    };
 +    window.addEventListener("pointerdown", onPointerDown);
@@ -3994,14 +4013,21 @@ index 0000000..9f9bba5
 +  const openMenu = () => {
 +    setActive(options.findIndex((option) => option.value === value));
 +    // the menu renders in a portal (fixed positioning) so overflow-x-auto
-+    // ancestors — the tab and filter rows — cannot clip it
++    // ancestors — the tab and filter rows — cannot clip it.  The position
++    // is clamped so the menu never overflows the viewport (triggers near
++    // the right edge would otherwise push it off-screen).
 +    const rect = triggerRef.current?.getBoundingClientRect();
 +    if (rect) {
++      const margin = 8;
++      const minWidth = Math.max(rect.width, 176);
++      const maxLeft = window.innerWidth - minWidth - margin;
++      const left = Math.max(margin, Math.min(rect.left, maxLeft));
 +      setMenuStyle({
 +        position: "fixed",
 +        top: rect.bottom + 6,
-+        ...(align === "end" ? { right: window.innerWidth - rect.right } : { left: rect.left }),
-+        minWidth: Math.max(rect.width, 176),
++        ...(align === "end" ? { right: Math.max(margin, window.innerWidth - rect.right) } : { left }),
++        minWidth,
++        maxWidth: window.innerWidth - margin * 2,
 +      });
 +    }
 +    setOpen(true);
@@ -4012,7 +4038,9 @@ index 0000000..9f9bba5
 +    if (option) {
 +      onChange(option.value);
 +    }
-+    setOpen(false);
++    if (!multiple) {
++      setOpen(false);
++    }
 +  };
 +
 +  const onKeyDown = (event: KeyboardEvent) => {
@@ -4060,12 +4088,14 @@ index 0000000..9f9bba5
 +                open ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink"
 +              }`
 +            : variant === "bare"
-+              ? `flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] transition-colors ${
-+                  open ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink"
++              ? `relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] transition-colors ${
++                  open
++                    ? "bg-surface-2 text-ink"
++                    : (triggerClassName ?? "text-ink-2 hover:bg-surface-2/70 hover:text-ink")
 +                }`
 +              : `flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 text-sm transition-colors ${
 +                  open ? "border-ink-3" : "border-line hover:border-ink-3"
-+                } bg-surface text-ink`
++                } bg-surface text-ink ${triggerClassName ?? ""}`
 +        }
 +        onClick={() => {
 +          if (open) {
@@ -4080,7 +4110,10 @@ index 0000000..9f9bba5
 +        type="button"
 +      >
 +        {icon}
-+        {iconOnly ? null : <span className="truncate">{current?.label ?? value}</span>}
++        {iconOnly ? null : <span className="truncate">{triggerLabel ?? current?.label ?? value}</span>}
++        {underline && !iconOnly ? (
++          <span aria-hidden="true" className="absolute inset-x-4 -bottom-0.5 h-0.5 rounded-full bg-accent-strong" />
++        ) : null}
 +        {iconOnly ? null : (
 +          <svg
 +            aria-hidden="true"
@@ -4105,7 +4138,7 @@ index 0000000..9f9bba5
 +              style={menuStyle}
 +            >
 +              {options.map((option, index) => {
-+                const selected = option.value === value;
++                const selected = multiple ? (isSelected?.(option.value) ?? false) : option.value === value;
 +                return (
 +                  <li aria-selected={selected} key={option.value} role="option">
 +                    <button
@@ -4541,13 +4574,13 @@ index 0000000..08646b6
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..63e63e2
+index 0000000..03e7f9b
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,252 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Clock, Languages, Shield } from "lucide-react";
++import { Clock, Ellipsis, Languages, Shield } from "lucide-react";
 +import { type ReactNode, useLayoutEffect, useRef } from "react";
 +import { useT } from "../lib/i18n.ts";
 +import { useSettings } from "../lib/settings.ts";
@@ -4574,6 +4607,9 @@ index 0000000..63e63e2
 + * Every category is laid out flat - narrow viewports scroll the row.
 + */
 +export function CategoryTabs({ globals, selected, onSelectionChange, onSearch, wrap = false }: CategoryTabsProps) {
++  /** Categories that stay visible in the tab row; the rest fold into the
++    "more" menu (including any future category). */
++  const DEFAULT_VISIBLE_CATEGORIES = ["general", "images", "videos", "news", "map", "music"];
 +  const t = useT();
 +  const settings = useSettings();
 +  const scrollerRef = useRef<HTMLDivElement>(null);
@@ -4605,18 +4641,42 @@ index 0000000..63e63e2
 +  };
 +
 +  const tabs = globals.categories_as_tabs.length > 0 ? globals.categories_as_tabs : globals.categories;
++  // high-frequency categories stay visible; everything else (and any future
++  // category) folds into the "more" menu.  When a folded category is the
++  // active selection the trigger itself shows its name, Google-style.
++  const visibleTabs = tabs.filter((category) => DEFAULT_VISIBLE_CATEGORIES.includes(category));
++  const overflowTabs = tabs.filter((category) => !DEFAULT_VISIBLE_CATEGORIES.includes(category));
++  const foldedSelected = overflowTabs.filter((category) => selected.includes(category));
++  const label = (category: string) => globals.category_labels[category] ?? category;
++  // trigger mirrors the folded selection: "更多" -> "科学" -> "科学 +1" (the
++  // same +N language as the engine pills), accent while anything is selected
++  const firstFolded = foldedSelected[0];
++  const moreLabel =
++    firstFolded === undefined
++      ? t("more")
++      : foldedSelected.length === 1
++        ? label(firstFolded)
++        : `${label(firstFolded)} +${foldedSelected.length - 1}`;
++
++  const overflowPick = (value: string) => {
++    if (settings.search_on_category_select) {
++      onSearch([value]);
++      return;
++    }
++    toggle(value);
++  };
 +
 +  return (
 +    <div className="flex items-center py-1">
 +      <div
-+        className={`min-w-0 ${
++        className={`min-w-0 flex flex-wrap items-center gap-x-1 gap-y-0.5 ${
 +          wrap
-+            ? "flex flex-wrap items-center gap-x-1 gap-y-0.5 ps-2"
-+            : "-ms-4 flex items-center gap-0.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
++            ? "ps-2"
++            : "-ms-4 sm:flex-nowrap sm:gap-y-0 sm:overflow-x-auto sm:pb-0.5 sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden sm:[&>*]:shrink-0"
 +        }`}
 +        ref={scrollerRef}
 +      >
-+        {tabs.map((category) => {
++        {visibleTabs.map((category) => {
 +          const isSelected = selected.includes(category);
 +          return (
 +            <button
@@ -4632,7 +4692,7 @@ index 0000000..63e63e2
 +              type="button"
 +            >
 +              <CategoryIcon category={category} className="size-3.5 shrink-0" />
-+              <span>{globals.category_labels[category] ?? category}</span>
++              <span>{label(category)}</span>
 +              <span
 +                aria-hidden="true"
 +                className={`absolute inset-x-4 -bottom-0.5 h-0.5 rounded-full transition-opacity ${
@@ -4642,6 +4702,31 @@ index 0000000..63e63e2
 +            </button>
 +          );
 +        })}
++        {overflowTabs.length > 0 ? (
++          <Dropdown
++            align="start"
++            ariaLabel={t("more")}
++            icon={
++              firstFolded ? (
++                <CategoryIcon category={firstFolded} className="size-3.5 shrink-0" />
++              ) : (
++                <Ellipsis className="size-3.5 shrink-0" />
++              )
++            }
++            isSelected={(category) => selected.includes(category)}
++            multiple={!settings.search_on_category_select}
++            onChange={overflowPick}
++            options={overflowTabs.map((category) => ({
++              value: category,
++              label: label(category),
++              icon: <CategoryIcon category={category} className="size-3.5 shrink-0" />,
++            }))}
++            triggerClassName={foldedSelected.length > 0 ? "font-medium text-accent" : "text-ink-2 hover:text-ink"}
++            triggerLabel={moreLabel}
++            underline={foldedSelected.length > 0}
++            value={foldedSelected[0] ?? ""}
++          />
++        ) : null}
 +      </div>
 +    </div>
 +  );
@@ -7076,13 +7161,13 @@ index 0000000..adc56a7
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 0000000..3ea77f4
+index 0000000..472ac5c
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
-@@ -0,0 +1,433 @@
+@@ -0,0 +1,434 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
++import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Search, Timer } from "lucide-react";
 +import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 +import { useT } from "../../lib/i18n.ts";
 +import { newTabLinkProps } from "../../lib/link.ts";
@@ -7400,6 +7485,7 @@ index 0000000..3ea77f4
 +            }}
 +            type="button"
 +          >
++            <Timer className="size-3 shrink-0" />
 +            {roundedTime !== null ? `${t("took")} ${roundedTime} ${t("seconds")}` : t("engines_messages")}
 +            <ChevronDown className={`size-3 transition-transform ${openPanel === "engines" ? "rotate-180" : ""}`} />
 +          </button>
@@ -7588,7 +7674,7 @@ index 0000000..e9f9975
 +}
 diff --git a/client/zjsearch/src/components/results/cardParts.tsx b/client/zjsearch/src/components/results/cardParts.tsx
 new file mode 100644
-index 0000000..16193ea
+index 0000000..c30b4ff
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cardParts.tsx
 @@ -0,0 +1,319 @@
@@ -7715,7 +7801,7 @@ index 0000000..16193ea
 +    return null;
 +  }
 +  return (
-+    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-ink-3">
++    <div className="flex items-center gap-x-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
 +      {bits}
 +      {result.metadata ? (
 +        <span className="rounded bg-accent-soft px-1.5 py-0.5 text-accent" dir="auto">
@@ -7913,7 +7999,7 @@ index 0000000..16193ea
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..7f383ed
+index 0000000..1dc1adb
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
 @@ -0,0 +1,936 @@
@@ -7929,11 +8015,14 @@ index 0000000..7f383ed
 +  ExternalLink,
 +  FileText,
 +  Film,
++  Fingerprint,
 +  Globe,
 +  Magnet,
 +  Music,
 +  Package,
 +  Play,
++  Quote,
++  Scale,
 +  Star,
 +  Tag,
 +  Truck,
@@ -8129,7 +8218,7 @@ index 0000000..7f383ed
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
 +          </div>
-+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
++          <div className="mt-1.5 flex items-center gap-x-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
 +            {result.seed !== undefined ? (
 +              <span className="inline-flex items-center gap-1">
 +                <ArrowUp className="size-3.5 text-ok" />
@@ -8200,7 +8289,7 @@ index 0000000..7f383ed
 +          <div className="mt-1">
 +            <MetaLine result={result} />
 +          </div>
-+          <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
++          <div className="mt-2 flex items-baseline gap-x-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
 +            {result.price ? (
 +              <span className="inline-flex items-center gap-1 text-lg font-semibold text-ink">
 +                <Tag className="size-4 shrink-0 text-ink-3" />
@@ -8349,7 +8438,7 @@ index 0000000..7f383ed
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
 +          </div>
-+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-3">
++          <div className="mt-1.5 flex items-center gap-x-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
 +            {stats
 +              .filter(([, value]) => Boolean(value))
 +              .map(([label, value]) => (
@@ -8424,6 +8513,10 @@ index 0000000..7f383ed
 +export function PaperCard({ result, globals }: CardProps) {
 +  const t = useT();
 +  const venueBits: string[] = [];
++  // the resolver preference is a full URL ("https://oadoi.org/") - normalize
++  // it instead of prepending a scheme (which produced https://https//...)
++  const doiBase = globals.doi_resolver.replace(/\/+$/, "");
++  const doiHref = doiBase.startsWith("http") ? `${doiBase}/${result.doi}` : `https://${doiBase}/${result.doi}`;
 +  if (result.journal) {
 +    venueBits.push(result.journal);
 +  }
@@ -8462,6 +8555,12 @@ index 0000000..7f383ed
 +        {venueBits.join(", ")}
 +      </span>
 +    ) : null,
++    result.comments ? (
++      <span className="inline-flex items-center gap-1" key="citations">
++        <Quote className="size-3 shrink-0" />
++        {result.comments}
++      </span>
++    ) : null,
 +  ];
 +  // every optional extra (PDF/HTML, DOI, citation note, subject tags) lives
 +  // in ONE footer row in a fixed order, so cards share the same skeleton no
@@ -8479,7 +8578,13 @@ index 0000000..7f383ed
 +            <Title globals={globals} result={result} />
 +          </div>
 +          {metaBits.some(Boolean) ? (
-+            <p className="mt-1 truncate text-xs text-ink-3" dir="auto">
++            // single line that swipes horizontally when it overflows (same
++            // interaction as the filter rows) - touch users can reach the
++            // truncated tail, no hover needed
++            <p
++              className="mt-1 flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3"
++              dir="auto"
++            >
 +              {metaBits.filter(Boolean).map((bit, index) => (
 +                <span key={index}>
 +                  {index > 0 ? <span className="text-ink-3"> · </span> : null}
@@ -8496,79 +8601,69 @@ index 0000000..7f383ed
 +            />
 +          ) : null}
 +          {hasFooter ? (
-+            // single line by default so every card shares the same height;
-+            // long comments/DOIs truncate instead of wrapping items onto
-+            // extra rows.  Wrapping returns only when tags are expanded.
-+            <div
-+              className={`mt-2 flex min-h-6 min-w-0 items-center gap-x-3 text-xs ${
-+                tagsExpanded ? "flex-wrap" : "overflow-hidden whitespace-nowrap"
-+              }`}
-+            >
-+              {result.pdf_url ? (
-+                <a
-+                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
-+                  href={result.pdf_url}
-+                  rel="noreferrer"
-+                  target="_blank"
-+                >
-+                  <FileText className="size-3" />
-+                  PDF
-+                </a>
++            // two stacked rows: actions + DOI, then topic tags as pills
++            // with a +N fold - nothing truncates against its neighbours
++            <div className="mt-2 space-y-1.5 text-xs">
++              {result.pdf_url || result.html_url || result.doi ? (
++                <div className="flex min-w-0 flex-wrap items-center gap-1">
++                  {result.pdf_url ? (
++                    <a
++                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                      href={result.pdf_url}
++                      rel="noreferrer"
++                      target="_blank"
++                    >
++                      <FileText className="size-3" />
++                      PDF
++                    </a>
++                  ) : null}
++                  {result.html_url ? (
++                    <a
++                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 hover:text-ink"
++                      href={result.html_url}
++                      rel="noreferrer"
++                      target="_blank"
++                    >
++                      <ExternalLink className="size-3" />
++                      HTML
++                    </a>
++                  ) : null}
++                  {result.doi ? (
++                    <a
++                      className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[11px] leading-4 text-ink-2 hover:text-ink"
++                      dir="ltr"
++                      href={doiHref}
++                      rel="noreferrer"
++                      target="_blank"
++                      title={`DOI ${result.doi}`}
++                    >
++                      <Fingerprint className="size-3 shrink-0" />
++                      {result.doi}
++                    </a>
++                  ) : null}
++                </div>
 +              ) : null}
-+              {result.html_url ? (
-+                <a
-+                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 hover:text-ink"
-+                  href={result.html_url}
-+                  rel="noreferrer"
-+                  target="_blank"
-+                >
-+                  <ExternalLink className="size-3" />
-+                  HTML
-+                </a>
-+              ) : null}
-+              {result.doi ? (
-+                <a
-+                  className="max-w-36 shrink-0 truncate font-mono text-[11px] text-ink-3 hover:text-accent"
-+                  dir="ltr"
-+                  href={`https://${globals.doi_resolver}/${result.doi}`}
-+                  rel="noreferrer"
-+                  target="_blank"
-+                >
-+                  DOI {result.doi}
-+                </a>
-+              ) : null}
-+              {result.comments ? (
-+                <span className="min-w-0 truncate text-ink-3 italic" dir="auto" title={result.comments}>
-+                  {result.comments}
-+                </span>
-+              ) : null}
-+              {tags.slice(0, tagsExpanded ? tags.length : maxTags).map((tag) => (
-+                <span className="max-w-40 shrink-0 truncate text-ink-3" key={tag} title={tag}>
-+                  #{tag}
-+                </span>
-+              ))}
-+              {tags.length > maxTags && !tagsExpanded ? (
-+                <button
-+                  className="shrink-0 text-ink-3 transition-colors hover:text-ink"
-+                  onClick={() => {
-+                    setTagsExpanded(true);
-+                  }}
-+                  title={tags.join(", ")}
-+                  type="button"
-+                >
-+                  +{tags.length - maxTags}
-+                </button>
-+              ) : null}
-+              {tags.length > maxTags && tagsExpanded ? (
-+                <button
-+                  className="shrink-0 text-ink-3 transition-colors hover:text-ink"
-+                  onClick={() => {
-+                    setTagsExpanded(false);
-+                  }}
-+                  type="button"
-+                >
-+                  {t("show_less")}
-+                </button>
++              {tags.length > 0 ? (
++                <div className="flex flex-wrap items-center gap-1">
++                  {tags.slice(0, tagsExpanded ? tags.length : maxTags).map((tag) => (
++                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3" key={tag} title={tag}>
++                      #{tag}
++                    </span>
++                  ))}
++                  {tags.length > maxTags ? (
++                    <button
++                      aria-expanded={tagsExpanded}
++                      className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3 transition-colors hover:text-ink"
++                      onClick={() => {
++                        setTagsExpanded((value) => !value);
++                      }}
++                      title={tags.join(", ")}
++                      type="button"
++                    >
++                      {tagsExpanded ? t("show_less") : `+${tags.length - maxTags}`}
++                    </button>
++                  ) : null}
++                </div>
 +              ) : null}
 +            </div>
 +          ) : null}
@@ -8644,7 +8739,7 @@ index 0000000..7f383ed
 +        <Title globals={globals} result={result} />
 +      </div>
 +      {result.published_date || result.maintainer || result.popularity || result.license_name || result.version ? (
-+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-ink-3">
++        <div className="mt-1 flex items-center gap-x-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
 +          {result.published_date ? (
 +            <span className="inline-flex items-center gap-1" key="date">
 +              <Calendar className="size-3" />
@@ -8668,6 +8763,7 @@ index 0000000..7f383ed
 +          ) : null}
 +          {result.license_name ? (
 +            <span className="inline-flex items-center gap-1" key="license">
++              <Scale className="size-3 shrink-0" />
 +              {t("license")}:
 +              <span className="text-ink-2">
 +                {result.license_url ? (
@@ -8696,33 +8792,23 @@ index 0000000..7f383ed
 +        />
 +      ) : null}
 +      {result.tags && result.tags.length > 0 ? (
-+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-ink-3">
-+          {result.tags.slice(0, 4).map((tag) => (
-+            <span className="max-w-48 truncate" key={tag} title={tag}>
++        <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
++          {result.tags.slice(0, tagsExpanded ? result.tags.length : 4).map((tag) => (
++            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3" key={tag} title={tag}>
 +              #{tag}
 +            </span>
 +          ))}
-+          {result.tags.length > 4 && !tagsExpanded ? (
++          {result.tags.length > 4 ? (
 +            <button
-+              className="transition-colors hover:text-ink"
++              aria-expanded={tagsExpanded}
++              className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3 transition-colors hover:text-ink"
 +              onClick={() => {
-+                setTagsExpanded(true);
++                setTagsExpanded((value) => !value);
 +              }}
 +              title={result.tags.join(", ")}
 +              type="button"
 +            >
-+              +{result.tags.length - 4}
-+            </button>
-+          ) : null}
-+          {result.tags.length > 4 && tagsExpanded ? (
-+            <button
-+              className="transition-colors hover:text-ink"
-+              onClick={() => {
-+                setTagsExpanded(false);
-+              }}
-+              type="button"
-+            >
-+              {t("show_less")}
++              {tagsExpanded ? t("show_less") : `+${result.tags.length - 4}`}
 +            </button>
 +          ) : null}
 +        </div>
@@ -8781,7 +8867,7 @@ index 0000000..7f383ed
 +        </p>
 +      ) : null}
 +      {result.data && result.data.length > 0 ? (
-+        <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-3">
++        <dl className="mt-2 flex items-center gap-x-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
 +          {result.data.map((item) => (
 +            <div className="flex gap-1" key={item.label}>
 +              <dt>{item.label}:</dt>
@@ -8855,13 +8941,13 @@ index 0000000..7f383ed
 +// whole card subtree
 diff --git a/client/zjsearch/src/components/results/grids.tsx b/client/zjsearch/src/components/results/grids.tsx
 new file mode 100644
-index 0000000..dbf2edf
+index 0000000..7bb5d47
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/grids.tsx
 @@ -0,0 +1,344 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Calendar, Eye, Globe, Image, Package, Play, Tag, Truck, User, X } from "lucide-react";
++import { Calendar, Clapperboard, Eye, Globe, Image, Package, Play, Tag, Truck, User, X } from "lucide-react";
 +import { useState } from "react";
 +import { THEME_STATIC } from "../../lib/constants.ts";
 +import { formatDate, formatLength } from "../../lib/format.ts";
@@ -9103,7 +9189,7 @@ index 0000000..dbf2edf
 +            />
 +          ) : (
 +            <span className="grid size-full place-items-center text-ink-3">
-+              <Play className="size-8" />
++              <Clapperboard className="size-8" />
 +            </span>
 +          )}
 +          {result.favicon ? <TileFavicon src={result.favicon} /> : null}
@@ -9489,10 +9575,10 @@ index 0000000..39dfd33
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..0dc76e0
+index 0000000..9b68dcf
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,481 @@
+@@ -0,0 +1,483 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -9514,6 +9600,7 @@ index 0000000..0dc76e0
 +  clear: "clear",
 +  search: "search",
 +  search_suggestions: "Search suggestions",
++  more: "More",
 +  pagination: "Pagination",
 +  show_engine_info: "Show engine details",
 +  powered_by: "Powered by",
@@ -9739,6 +9826,7 @@ index 0000000..0dc76e0
 +  clear: "清空",
 +  search: "搜索",
 +  search_suggestions: "搜索建议",
++  more: "更多",
 +  pagination: "分页",
 +  show_engine_info: "查看引擎详情",
 +  powered_by: "功能来自",
@@ -12316,12 +12404,13 @@ index 0000000..c693a1e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..a48f8e4
+index 0000000..b3460d8
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,594 @@
+@@ -0,0 +1,596 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
++import { List } from "lucide-react";
 +import { useEffect, useMemo, useRef, useState } from "react";
 +import { BackToTop } from "../components/BackToTop.tsx";
 +import { HelpModal } from "../components/HelpModal.tsx";
@@ -12650,7 +12739,8 @@ index 0000000..a48f8e4
 +                  <DebugPanels
 +                    data={data}
 +                    leading={
-+                      <span>
++                      <span className="inline-flex items-center gap-1">
++                        <List className="size-3 shrink-0" />
 +                        {t("meta_found")} {allResults.length} {t("meta_results")}
 +                      </span>
 +                    }
