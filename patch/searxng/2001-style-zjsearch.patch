@@ -7034,10 +7034,10 @@ index 0000000..adc56a7
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 0000000..57c90e0
+index 0000000..3ea77f4
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
-@@ -0,0 +1,410 @@
+@@ -0,0 +1,433 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
@@ -7046,6 +7046,7 @@ index 0000000..57c90e0
 +import { newTabLinkProps } from "../../lib/link.ts";
 +import { scrollBehavior } from "../../lib/motion.ts";
 +import { useOverlay } from "../../lib/overlay.tsx";
++import { buildSearchUrl } from "../../lib/router.tsx";
 +import type { GlobalData, InfoboxData, SearchPageData } from "../../lib/types.ts";
 +import { CopyButton } from "../CopyButton.tsx";
 +
@@ -7107,7 +7108,7 @@ index 0000000..57c90e0
 +        {infobox.img_src ? (
 +          <img
 +            alt={infobox.title}
-+            className="aspect-square w-32 shrink-0 rounded-lg object-cover sm:w-36"
++            className="aspect-square w-32 shrink-0 rounded-lg border border-line bg-surface-2 object-contain p-1 sm:w-36"
 +            decoding="async"
 +            loading="lazy"
 +            src={infobox.img_src}
@@ -7131,15 +7132,17 @@ index 0000000..57c90e0
 +      >
 +        <div className="relative flow-root" ref={contentRef}>
 +          {infobox.attributes && infobox.attributes.length > 0 ? (
-+            <dl className="space-y-1 text-xs">
-+              {infobox.attributes.map((attribute, index) => (
-+                <div className="flex gap-2" key={index}>
-+                  <dt className="shrink-0 text-ink-3">{attribute.label}:</dt>
-+                  <dd className="min-w-0 text-ink-2">
-+                    {attribute.image_src ? (
++            <dl className="space-y-2.5 text-xs">
++              {infobox.attributes.map((attribute, index) =>
++                attribute.image_src ? (
++                  // image attributes read as captioned figures - a table row
++                  // with an inline image squeezes charts and misaligns labels
++                  <div key={index}>
++                    <dt className="text-ink-3">{attribute.label}</dt>
++                    <dd className="mt-1.5">
 +                      <img
-+                        alt={attribute.image_alt}
-+                        className="inline-block max-h-24 rounded-lg align-middle"
++                        alt={attribute.image_alt || attribute.label}
++                        className="mx-auto max-h-56 max-w-full rounded-lg border border-line bg-surface-2 object-contain"
 +                        decoding="async"
 +                        loading="lazy"
 +                        onError={(event) => {
@@ -7147,12 +7150,22 @@ index 0000000..57c90e0
 +                        }}
 +                        src={attribute.image_src}
 +                      />
-+                    ) : (
++                      {attribute.value ? (
++                        <span className="mt-1 block leading-relaxed text-ink-2" dir="auto">
++                          {attribute.value}
++                        </span>
++                      ) : null}
++                    </dd>
++                  </div>
++                ) : (
++                  <div className="flex gap-2" key={index}>
++                    <dt className="shrink-0 text-ink-3">{attribute.label}:</dt>
++                    <dd className="min-w-0 text-ink-2">
 +                      <span dir="auto">{attribute.value}</span>
-+                    )}
-+                  </dd>
-+                </div>
-+              ))}
++                    </dd>
++                  </div>
++                ),
++              )}
 +            </dl>
 +          ) : null}
 +
@@ -7420,7 +7433,17 @@ index 0000000..57c90e0
 +  const t = useT();
 +  const globals = data.globals;
 +  const hasInfobox = data.infoboxes.length > 0;
-+  const searchUrl = window.location.href;
++  // POST mode keeps the query out of the address bar, so the sidebar offers
++  // the shareable URL reconstructed from the current search (upstream parity)
++  const searchUrl = buildSearchUrl({
++    q: data.q,
++    categories: data.selected_categories.length > 0 ? data.selected_categories : undefined,
++    pageno: data.pageno,
++    language: data.current_language,
++    time_range: data.time_range || undefined,
++    timeout_limit: data.timeout_limit || undefined,
++    safesearch: globals.safesearch,
++  });
 +
 +  return (
 +    <aside className="flex flex-col gap-3">
@@ -10174,10 +10197,10 @@ index 0000000..577ddec
 +}
 diff --git a/client/zjsearch/src/lib/router.tsx b/client/zjsearch/src/lib/router.tsx
 new file mode 100644
-index 0000000..d5148cc
+index 0000000..cc4830c
 --- /dev/null
 +++ b/client/zjsearch/src/lib/router.tsx
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,293 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -10201,33 +10224,47 @@ index 0000000..d5148cc
 +  engine_data?: Record<string, Record<string, string>>;
 +}
 +
-+export function buildSearchUrl(params: SearchParams): string {
-+  const query = new URLSearchParams();
-+  query.set("q", params.q);
++/** One entry per search parameter, shared by the URL builder and the POST
++    form body so both transports stay in sync. */
++export function searchParamEntries(params: SearchParams): Array<[string, string]> {
++  const entries: Array<[string, string]> = [["q", params.q]];
 +  if (params.language) {
-+    query.set("language", params.language);
++    entries.push(["language", params.language]);
 +  }
 +  if (params.time_range) {
-+    query.set("time_range", params.time_range);
++    entries.push(["time_range", params.time_range]);
 +  }
 +  if (params.safesearch !== undefined) {
-+    query.set("safesearch", String(params.safesearch));
++    entries.push(["safesearch", String(params.safesearch)]);
 +  }
 +  if (params.timeout_limit) {
-+    query.set("timeout_limit", params.timeout_limit);
++    entries.push(["timeout_limit", params.timeout_limit]);
 +  }
 +  if (params.pageno !== undefined && params.pageno > 1) {
-+    query.set("pageno", String(params.pageno));
++    entries.push(["pageno", String(params.pageno)]);
 +  }
 +  if (params.categories && params.categories.length > 0) {
-+    query.set("categories", params.categories.join(","));
++    entries.push(["categories", params.categories.join(",")]);
 +  }
 +  for (const [engine, kv] of Object.entries(params.engine_data ?? {})) {
 +    for (const [key, value] of Object.entries(kv)) {
-+      query.set(`engine_data-${engine}-${key}`, value);
++      entries.push([`engine_data-${engine}-${key}`, value]);
 +    }
 +  }
-+  return `/search?${query.toString()}`;
++  return entries;
++}
++
++export function buildSearchUrl(params: SearchParams): string {
++  return `/search?${new URLSearchParams(searchParamEntries(params)).toString()}`;
++}
++
++/** The same parameters as a multipart form body (POST-mode searches). */
++export function toSearchFormData(params: SearchParams): FormData {
++  const body = new FormData();
++  for (const [key, value] of searchParamEntries(params)) {
++    body.append(key, value);
++  }
++  return body;
 +}
 +
 +export function parseSearchUrl(url: URL): SearchParams {
@@ -10311,6 +10348,10 @@ index 0000000..d5148cc
 +  const [href, setHref] = useState(() => window.location.href);
 +  const abortRef = useRef<AbortController | null>(null);
 +  const seqRef = useRef(0);
++  // effective search method from the latest page payload (preference may
++  // change at any time through the auto-saving preferences panel)
++  const methodRef = useRef<"GET" | "POST">("GET");
++  methodRef.current = data?.globals.method ?? methodRef.current;
 +
 +  const load = useCallback(
 +    async (url: string, options: NavigateOptions = {}, historyMode: "push" | "replace" | "none" = "push") => {
@@ -10369,6 +10410,15 @@ index 0000000..d5148cc
 +
 +  const navigate = useCallback(
 +    (url: string, options?: NavigateOptions) => {
++      // POST mode: native pages only — the SPA must never pushState here,
++      // a later popstate could not restore a search page from a query-less
++      // URL; the browser's own history (and bfcache) takes over instead
++      if (methodRef.current === "POST") {
++        if (url !== window.location.href) {
++          window.location.assign(url);
++        }
++        return;
++      }
 +      if (url === window.location.href && !options?.body) {
 +        return;
 +      }
@@ -10379,6 +10429,25 @@ index 0000000..d5148cc
 +
 +  const search = useCallback(
 +    (params: SearchParams, options?: NavigateOptions) => {
++      // POST mode mirrors the upstream form flow: the query travels in the
++      // request body so it never lands in the URL, the history or access
++      // logs — a real form submission, exactly like the simple theme
++      if (methodRef.current === "POST") {
++        const form = document.createElement("form");
++        form.method = "POST";
++        form.action = "/search";
++        form.hidden = true;
++        for (const [key, value] of searchParamEntries(params)) {
++          const input = document.createElement("input");
++          input.type = "hidden";
++          input.name = key;
++          input.value = value;
++          form.append(input);
++        }
++        document.body.appendChild(form);
++        form.submit();
++        return;
++      }
 +      navigate(buildSearchUrl(params), options);
 +    },
 +    [navigate],
@@ -12148,10 +12217,10 @@ index 0000000..c693a1e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..6214c77
+index 0000000..e0b4c7a
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,605 @@
+@@ -0,0 +1,610 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -12179,7 +12248,7 @@ index 0000000..6214c77
 +import { useT } from "../lib/i18n.ts";
 +import { scrollBehavior } from "../lib/motion.ts";
 +import { extractPageData } from "../lib/pageData.ts";
-+import { buildSearchUrl, parseSearchUrl, useRouter } from "../lib/router.tsx";
++import { buildSearchUrl, parseSearchUrl, toSearchFormData, useRouter } from "../lib/router.tsx";
 +import { useHasPlugin, useSettings } from "../lib/settings.ts";
 +import type { ResultItem, SearchPageData } from "../lib/types.ts";
 +
@@ -12304,8 +12373,13 @@ index 0000000..6214c77
 +      return;
 +    }
 +    setAppendState("loading");
-+    const nextUrl = buildSearchUrl(buildParams({ pageno: data.pageno + 1 }));
-+    void fetch(nextUrl, { headers: { Accept: "text/html" } })
++    const nextParams = buildParams({ pageno: data.pageno + 1 });
++    // POST mode: page the query through the request body, not the URL
++    const request =
++      globals.method === "POST"
++        ? fetch("/search", { method: "POST", body: toSearchFormData(nextParams), headers: { Accept: "text/html" } })
++        : fetch(buildSearchUrl(nextParams), { headers: { Accept: "text/html" } });
++    void request
 +      .then(async (resp) => {
 +        if (!resp.ok) {
 +          throw new Error(`HTTP ${resp.status}`);
