@@ -3841,12 +3841,13 @@ index 0000000..db6b706
 +}
 diff --git a/client/zjsearch/src/components/CopyButton.tsx b/client/zjsearch/src/components/CopyButton.tsx
 new file mode 100644
-index 0000000..0579149
+index 0000000..43acbcd
 --- /dev/null
 +++ b/client/zjsearch/src/components/CopyButton.tsx
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,50 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
++import type { ReactNode } from "react";
 +import { useState } from "react";
 +import { useT } from "../lib/i18n.ts";
 +
@@ -3855,10 +3856,12 @@ index 0000000..0579149
 +export function CopyButton({
 +  value,
 +  label,
++  icon,
 +  className = "shrink-0 rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs text-ink-2 transition-colors hover:text-ink",
 +}: {
 +  value: string;
 +  label?: string;
++  icon?: ReactNode;
 +  className?: string;
 +}) {
 +  const t = useT();
@@ -3881,7 +3884,14 @@ index 0000000..0579149
 +      }}
 +      type="button"
 +    >
-+      {copied ? t("copied") : (label ?? t("copy"))}
++      {copied ? (
++        t("copied")
++      ) : (
++        <>
++          {icon}
++          {label ?? t("copy")}
++        </>
++      )}
 +    </button>
 +  );
 +}
@@ -5016,13 +5026,13 @@ index 0000000..4d22a7b
 +}
 diff --git a/client/zjsearch/src/components/results/Answers.tsx b/client/zjsearch/src/components/results/Answers.tsx
 new file mode 100644
-index 0000000..82a96c4
+index 0000000..6275f0c
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Answers.tsx
-@@ -0,0 +1,670 @@
+@@ -0,0 +1,675 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { MapPin } from "lucide-react";
++import { ArrowRight, MapPin } from "lucide-react";
 +import { useState } from "react";
 +import type { CalculationAnswer } from "../../features/calculator.ts";
 +import { tryEvaluateExpression } from "../../features/calculator.ts";
@@ -5401,8 +5411,13 @@ index 0000000..82a96c4
 +      <div>
 +        <div className="flex flex-wrap items-center gap-2">
 +          {langPair ? (
-+            <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
-+              {langPair.from} → {langPair.to}
++            <span
++              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2"
++              dir="ltr"
++            >
++              {langPair.from}
++              <ArrowRight className="size-3 shrink-0" />
++              {langPair.to}
 +            </span>
 +          ) : null}
 +          {cleanQuery && cleanQuery !== first.text ? (
@@ -5692,13 +5707,13 @@ index 0000000..82a96c4
 +}
 diff --git a/client/zjsearch/src/components/results/EmptyStates.tsx b/client/zjsearch/src/components/results/EmptyStates.tsx
 new file mode 100644
-index 0000000..82e608f
+index 0000000..e70b355
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/EmptyStates.tsx
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,74 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Info } from "lucide-react";
++import { Info, RefreshCw, Search } from "lucide-react";
 +import { useT } from "../../lib/i18n.ts";
 +import type { SearchPageData } from "../../lib/types.ts";
 +
@@ -5726,7 +5741,12 @@ index 0000000..82e608f
 +        {firstPage ? (
 +          <>
 +            <li>
-+              <button className="text-accent hover:underline" onClick={() => window.location.reload()} type="button">
++              <button
++                className="inline-flex items-center gap-1 text-accent hover:underline"
++                onClick={() => window.location.reload()}
++                type="button"
++              >
++                <RefreshCw className="size-3.5" />
 +                {t("refresh_page")}
 +              </button>
 +            </li>
@@ -5758,6 +5778,7 @@ index 0000000..82e608f
 +          }}
 +          type="button"
 +        >
++          <Search className="size-3 shrink-0" />
 +          {correction.title}
 +        </button>
 +      ))}
@@ -6517,10 +6538,10 @@ index 0000000..f9e1256
 +}
 diff --git a/client/zjsearch/src/components/results/MapView.tsx b/client/zjsearch/src/components/results/MapView.tsx
 new file mode 100644
-index 0000000..eb3eb74
+index 0000000..01c0423
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/MapView.tsx
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,231 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -6528,13 +6549,14 @@ index 0000000..eb3eb74
 + * the user asks for the map (mirrors the upstream MapView client plugin).
 + */
 +
-+import { MapPin } from "lucide-react";
++import { Crosshair, MapPin } from "lucide-react";
 +import type Feature from "ol/Feature.js";
 +import type BaseLayer from "ol/layer/Base.js";
 +import type { default as OlMap } from "ol/Map.js";
 +import type VectorSource from "ol/source/Vector.js";
 +import { useEffect, useRef, useState } from "react";
 +import { useT } from "../../lib/i18n.ts";
++import { CopyButton } from "../CopyButton.tsx";
 +
 +interface MapResultProps {
 +  longitude?: string;
@@ -6550,13 +6572,14 @@ index 0000000..eb3eb74
 +  const [open, setOpen] = useState(autoOpen);
 +  const t = useT();
 +  const containerRef = useRef<HTMLDivElement>(null);
++  // recenter-to-location, wired by the map effect
++  const restoreRef = useRef<(() => void) | null>(null);
 +  const hasMap = Boolean(longitude && latitude) || Boolean(boundingbox?.length) || Boolean(geojson);
 +
 +  useEffect(() => {
 +    if (!open || !containerRef.current) {
 +      return;
 +    }
-+    let disposed = false;
 +    let instance: OlMap | null = null;
 +
 +    void (async () => {
@@ -6571,9 +6594,6 @@ index 0000000..eb3eb74
 +      const { default: TileLayer } = await import("ol/layer/Tile.js");
 +      const { default: OSM } = await import("ol/source/OSM.js");
 +      const { fromLonLat } = await import("ol/proj.js");
-+      if (disposed) {
-+        return;
-+      }
 +
 +      const layers: BaseLayer[] = [new TileLayer({ source: new OSM() })];
 +      let center = fromLonLat([0, 0]);
@@ -6604,20 +6624,81 @@ index 0000000..eb3eb74
 +        );
 +      }
 +
++      // resolve the point location once - view, marker and restore share it
++      let pointLonLat: number[] | null = null;
 +      if (longitude && latitude) {
 +        const lon = Number(longitude);
 +        const lat = Number(latitude);
 +        if (Number.isFinite(lon) && Number.isFinite(lat)) {
-+          center = fromLonLat([lon, lat]);
++          pointLonLat = fromLonLat([lon, lat]);
++          center = pointLonLat;
 +        }
++      }
++
++      // point results get a location marker (accent dot, theme-styled)
++      if (pointLonLat) {
++        const [
++          { default: Feature },
++          { default: Point },
++          { default: Style },
++          { default: Fill },
++          { default: Stroke },
++          { default: CircleStyle },
++          { default: VectorLayer },
++          { default: VectorSource },
++        ] = await Promise.all([
++          import("ol/Feature.js"),
++          import("ol/geom/Point.js"),
++          import("ol/style/Style.js"),
++          import("ol/style/Fill.js"),
++          import("ol/style/Stroke.js"),
++          import("ol/style/Circle.js"),
++          import("ol/layer/Vector.js"),
++          import("ol/source/Vector.js"),
++        ]);
++        const marker = new Feature({ geometry: new Point(pointLonLat) });
++        marker.setStyle(
++          new Style({
++            image: new CircleStyle({
++              radius: 7,
++              fill: new Fill({ color: "#fec843" }),
++              stroke: new Stroke({ color: "#201d17", width: 2 }),
++            }),
++          }),
++        );
++        layers.push(new VectorLayer({ source: new VectorSource({ features: [marker] }) }));
 +      }
 +
 +      const map = new OlMap({
 +        target: container,
 +        layers,
-+        view: new View({ center, zoom: 12, maxZoom: 16 }),
++        view: new View({ center, zoom: 16, maxZoom: 16 }),
 +      });
 +      instance = map;
++
++      // metric scale bar, bottom-left
++      const { default: ScaleLine } = await import("ol/control/ScaleLine.js");
++      map.addControl(new ScaleLine({ units: "metric" }));
++
++      // restore-to-location for the recenter button (animated unless the
++      // user prefers reduced motion)
++      restoreRef.current = () => {
++        const view = map.getView();
++        const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400;
++        if (pointLonLat) {
++          view.animate({ center: pointLonLat, zoom: 16, duration });
++        } else if (Array.isArray(boundingbox) && boundingbox.length === 4) {
++          const [minLon, minLat, maxLon, maxLat] = boundingbox as [number, number, number, number];
++          const min = fromLonLat([minLon, minLat]);
++          const max = fromLonLat([maxLon, maxLat]);
++          view.fit([min[0] ?? 0, min[1] ?? 0, max[0] ?? 0, max[1] ?? 0], {
++            size: map.getSize(),
++            padding: [24, 24, 24, 24],
++            maxZoom: 16,
++            duration,
++          });
++        }
++      };
 +
 +      const fitExtent = (extent: number[]) => {
 +        if (extent.length === 4 && extent.every((value) => Number.isFinite(value))) {
@@ -6639,7 +6720,6 @@ index 0000000..eb3eb74
 +    })();
 +
 +    return () => {
-+      disposed = true;
 +      instance?.setTarget(undefined);
 +    };
 +  }, [open, longitude, latitude, boundingbox, geojson]);
@@ -6662,10 +6742,33 @@ index 0000000..eb3eb74
 +        {open ? t("hide_map") : label}
 +      </button>
 +      {open ? (
-+        <div
-+          className="mt-2 h-72 w-full overflow-hidden rounded-xl border border-line animate-fade-in"
-+          ref={containerRef}
-+        />
++        <div className="relative mt-2">
++          <div
++            className="zjs-map h-72 w-full overflow-hidden rounded-xl border border-line animate-fade-in"
++            ref={containerRef}
++          />
++          {longitude && latitude ? (
++            <CopyButton
++              className="absolute end-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 font-mono text-[11px] text-white transition-colors hover:bg-black/80"
++              icon={<MapPin className="size-3 shrink-0" />}
++              label={`${Number(latitude).toFixed(4)}, ${Number(longitude).toFixed(4)}`}
++              value={`${latitude}, ${longitude}`}
++            />
++          ) : null}
++          {longitude && latitude ? (
++            <button
++              aria-label={t("recenter")}
++              className="absolute left-[0.75rem] top-[4.4rem] z-10 flex size-7 items-center justify-center rounded-lg bg-black/70 text-white transition-colors hover:bg-black/85"
++              onClick={() => {
++                restoreRef.current?.();
++              }}
++              title={t("recenter")}
++              type="button"
++            >
++              <Crosshair className="size-4" />
++            </button>
++          ) : null}
++        </div>
 +      ) : null}
 +    </div>
 +  );
@@ -8038,10 +8141,10 @@ index 0000000..d266ad3
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..1dc1adb
+index 0000000..f58903c
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,936 @@
+@@ -0,0 +1,937 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -8057,6 +8160,7 @@ index 0000000..1dc1adb
 +  Fingerprint,
 +  Globe,
 +  Magnet,
++  MapPin,
 +  Music,
 +  Package,
 +  Play,
@@ -8900,9 +9004,9 @@ index 0000000..1dc1adb
 +        />
 +      ) : null}
 +      {addressLine ? (
-+        <p className="mt-2 text-sm text-ink-2">
-+          <span className="text-ink-3">{t("address")}: </span>
-+          {addressLine}
++        <p className="mt-2 flex items-start gap-1 text-sm text-ink-2">
++          <MapPin className="mt-0.5 size-3.5 shrink-0 text-ink-3" />
++          <span dir="auto">{addressLine}</span>
 +        </p>
 +      ) : null}
 +      {result.data && result.data.length > 0 ? (
@@ -9578,10 +9682,10 @@ index 0000000..39dfd33
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..9b68dcf
+index 0000000..00e4b3c
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,483 @@
+@@ -0,0 +1,485 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -9604,6 +9708,7 @@ index 0000000..9b68dcf
 +  search: "search",
 +  search_suggestions: "Search suggestions",
 +  more: "More",
++  recenter: "Recenter to location",
 +  pagination: "Pagination",
 +  show_engine_info: "Show engine details",
 +  powered_by: "Powered by",
@@ -9830,6 +9935,7 @@ index 0000000..9b68dcf
 +  search: "搜索",
 +  search_suggestions: "搜索建议",
 +  more: "更多",
++  recenter: "回到定位点",
 +  pagination: "分页",
 +  show_engine_info: "查看引擎详情",
 +  powered_by: "功能来自",
@@ -13009,13 +13115,13 @@ index 0000000..b3460d8
 +}
 diff --git a/client/zjsearch/src/pages/StatsPage.tsx b/client/zjsearch/src/pages/StatsPage.tsx
 new file mode 100644
-index 0000000..9f5c0c0
+index 0000000..bfe6cc6
 --- /dev/null
 +++ b/client/zjsearch/src/pages/StatsPage.tsx
-@@ -0,0 +1,286 @@
+@@ -0,0 +1,290 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ChevronLeft } from "lucide-react";
++import { ArrowDown, ArrowUp, ChevronLeft } from "lucide-react";
 +import { useMemo, useState } from "react";
 +import { Link, Shell } from "../components/Shell.tsx";
 +import { useT } from "../lib/i18n.ts";
@@ -13160,7 +13266,11 @@ index 0000000..9f5c0c0
 +      type="button"
 +    >
 +      {label}
-+      {sortKey === key ? <span aria-hidden="true">{sortAsc ? "↑" : "↓"}</span> : null}
++      {sortKey === key ? (
++        <span aria-hidden="true" className="inline-flex">
++          {sortAsc ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
++        </span>
++      ) : null}
 +    </button>
 +  );
 +
@@ -13322,13 +13432,13 @@ index 0000000..19e02ec
 +export const StatsPage = lazy(() => import("./StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
 diff --git a/client/zjsearch/src/pages/preferences/EnginesTab.tsx b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
 new file mode 100644
-index 0000000..c0ef397
+index 0000000..ccdae9b
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,138 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { AlertTriangle } from "lucide-react";
++import { AlertTriangle, Check, Minus } from "lucide-react";
 +import type { ReactNode } from "react";
 +import { loadEngineDescriptions } from "../../lib/engineDescriptions.ts";
 +import { useT } from "../../lib/i18n.ts";
@@ -13413,10 +13523,18 @@ index 0000000..c0ef397
 +                    <code className="rounded bg-surface-2 px-1">!{engine.shortcut}</code>
 +                  </td>
 +                  <td className="px-4 py-3">
-+                    {engine.supports_safesearch ? "✓" : <span className="text-ink-3">–</span>}
++                    {engine.supports_safesearch ? (
++                      <Check className="size-3.5 text-ok" />
++                    ) : (
++                      <Minus className="size-3.5 text-ink-3" />
++                    )}
 +                  </td>
 +                  <td className="px-4 py-3">
-+                    {engine.supports_time_range ? "✓" : <span className="text-ink-3">–</span>}
++                    {engine.supports_time_range ? (
++                      <Check className="size-3.5 text-ok" />
++                    ) : (
++                      <Minus className="size-3.5 text-ink-3" />
++                    )}
 +                  </td>
 +                  <td className="px-4 py-3">{engine.weight}</td>
 +                  {showMetrics ? (
@@ -13713,10 +13831,10 @@ index 0000000..6b131f4
 +}
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..42e2cf6
+index 0000000..57e6b9a
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,372 @@
+@@ -0,0 +1,423 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -13916,6 +14034,15 @@ index 0000000..42e2cf6
 +    font: inherit;
 +    color: inherit;
 +  }
++
++  /* Tailwind v4 preflight no longer gives buttons the pointer cursor */
++  button {
++    cursor: pointer;
++  }
++
++  button:disabled {
++    cursor: default;
++  }
 +}
 +
 +@layer components {
@@ -14088,6 +14215,48 @@ index 0000000..42e2cf6
 +.zjs-hero-lock {
 +  overflow: hidden;
 +  overscroll-behavior: none;
++}
++
++/* OpenLayers map chrome: zoom control themed to the dark map buttons */
++.zjs-map .ol-zoom {
++  top: 0.625rem;
++  left: 0.625rem;
++}
++.zjs-map .ol-zoom button {
++  width: 1.75rem;
++  height: 1.75rem;
++  font-size: 1.125rem;
++  font-weight: 600;
++  line-height: 1;
++  color: #fff;
++  background-color: rgb(0 0 0 / 0.7);
++  border: none;
++  border-radius: 0;
++  cursor: pointer;
++}
++.zjs-map .ol-zoom button:hover,
++.zjs-map .ol-zoom button:focus,
++.zjs-map .ol-zoom button:active {
++  background-color: rgb(0 0 0 / 0.85);
++  color: #fff;
++}
++.zjs-map .ol-zoom .ol-zoom-in {
++  border-radius: 0.5rem 0.5rem 0 0;
++}
++.zjs-map .ol-zoom .ol-zoom-out {
++  border-radius: 0 0 0.5rem 0.5rem;
++  border-top: 1px solid rgb(255 255 255 / 0.25);
++}
++
++.zjs-map .ol-scale-line {
++  background: rgb(0 0 0 / 0.7);
++  border-radius: 0.5rem;
++  padding: 2px 6px;
++}
++.zjs-map .ol-scale-line-inner {
++  margin: 1px 0;
++  color: #fff;
++  border-color: #fff;
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
