@@ -7849,10 +7849,10 @@ index 0000000..a773913
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..76e00f6
+index 0000000..bddc758
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,937 @@
+@@ -0,0 +1,905 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -8029,39 +8029,9 @@ index 0000000..76e00f6
 +  );
 +}
 +
-+/** News-intent layout: same link style as every card, compact snippet, 16:9 thumb. */
-+/** News layout: editorial list with the photo on the left (as opposed to the
-+    web-result thumb on the right) and the recency date leading the meta row. */
-+export function NewsCard({ result, globals }: CardProps) {
-+  return (
-+    <ResultArticle priority={result.priority}>
-+      <div className="flex gap-4">
-+        {result.thumbnail ? (
-+          <ResultLink className="shrink-0" globals={globals} result={result}>
-+            <Thumb alt={result.title_text} className="aspect-video w-40" src={result.thumbnail} />
-+          </ResultLink>
-+        ) : null}
-+        <div className="min-w-0 flex-1">
-+          <PrettyUrl globals={globals} result={result} />
-+          <div className="mt-1">
-+            <Title globals={globals} result={result} />
-+          </div>
-+          <div className="mt-1">
-+            <MetaLine result={result} />
-+          </div>
-+          {result.content_html ? (
-+            <p
-+              className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-2"
-+              dangerouslySetInnerHTML={{ __html: result.content_html }}
-+              dir="auto"
-+            />
-+          ) : null}
-+        </div>
-+      </div>
-+      <EnginesLine result={result} />
-+    </ResultArticle>
-+  );
-+}
++/** News results share the DefaultCard anatomy (thumbnail on the right, same
++    slot rhythm) so with-image and without-image news stay structurally
++    identical to every other result. */
 +
 +/** File-share layout: the magnet link doubles as the card's primary action
 +    tile, health stats read as a colored seeder/leecher strip - the
@@ -8765,8 +8735,6 @@ index 0000000..76e00f6
 +      return <DefaultCard {...props} />;
 +    case "videos":
 +      return <VideoCard {...props} />;
-+    case "news":
-+      return <NewsCard globals={props.globals} result={props.result} />;
 +    case "torrent":
 +      return <TorrentCard {...props} />;
 +    case "map":
@@ -12217,10 +12185,10 @@ index 0000000..c693a1e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..e0b4c7a
+index 0000000..a48f8e4
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,610 @@
+@@ -0,0 +1,594 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -12229,7 +12197,7 @@ index 0000000..e0b4c7a
 +import { Answers, CalculatorAnswer } from "../components/results/Answers.tsx";
 +import { collectBlocks } from "../components/results/blocks.ts";
 +import { ResultSkeleton } from "../components/results/cardParts.tsx";
-+import { DictionaryCard, NewsCard, PaperCard, ResultCard } from "../components/results/cards.tsx";
++import { DictionaryCard, PaperCard, ResultCard } from "../components/results/cards.tsx";
 +import { Corrections, NoResults } from "../components/results/EmptyStates.tsx";
 +import { FilesGrid } from "../components/results/FilesGrid.tsx";
 +import { GroupHeader } from "../components/results/GroupHeader.tsx";
@@ -12467,7 +12435,6 @@ index 0000000..e0b4c7a
 +  const isVideoPage = data.only_template === "videos" || singleCategory === "videos" || bangCategory === "videos";
 +  const isProductPage =
 +    (data.only_template === "products" || singleCategory === "products" || bangCategory === "products") && !isVideoPage;
-+  const isNewsPage = (singleCategory === "news" || bangCategory === "news") && !isImagePage && !isVideoPage;
 +  const isMapPage = (singleCategory === "map" || bangCategory === "map") && !isImagePage && !isVideoPage;
 +  const isMusicPage = (singleCategory === "music" || bangCategory === "music") && !isImagePage && !isVideoPage;
 +  const isMoviesPage = (singleCategory === "movies" || bangCategory === "movies") && !isImagePage && !isVideoPage;
@@ -12660,27 +12627,12 @@ index 0000000..e0b4c7a
 +                  <div className="mt-4">
 +                    <ProductGrid globals={globals} results={allResults} />
 +                  </div>
-+                ) : isNewsPage ? (
-+                  <div className="mt-2 space-y-1">
-+                    {allResults.map((result, index) => (
-+                      <div
-+                        className={`${index < 12 ? "animate-fade-up" : ""} rounded-2xl ${
-+                          index === hotkeysSelected ? "bg-surface ring-1 ring-accent-strong" : ""
-+                        }`}
-+                        data-hotkey-index={index}
-+                        key={index}
-+                        style={index < 12 ? { animationDelay: `${Math.min(index * 30, 300)}ms` } : undefined}
-+                      >
-+                        <NewsCard globals={globals} result={result} />
-+                      </div>
-+                    ))}
-+                  </div>
 +                ) : singleCategory !== null ? (
 +                  // category intent page: a pure relevance-ordered list in
 +                  // which every type keeps its own card - extracting a type
 +                  // into a strip would break the relevance order.
 +                  // space-y keeps highlighted (selected / hovered) cards from
-+                  // touching, matching the mixed-block and news lists.
++                  // touching, matching the mixed-block lists.
 +                  <div className="mt-2 space-y-1">
 +                    {allResults.map((result, index) => (
 +                      <div
