@@ -5630,7 +5630,7 @@ index 0000000..82a96c4
 +}
 diff --git a/client/zjsearch/src/components/results/EmptyStates.tsx b/client/zjsearch/src/components/results/EmptyStates.tsx
 new file mode 100644
-index 0000000..c185067
+index 0000000..82e608f
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/EmptyStates.tsx
 @@ -0,0 +1,68 @@
@@ -5688,7 +5688,7 @@ index 0000000..c185067
 +      <span className="text-ink-3">{t("try_searching_for")}</span>
 +      {data.corrections.map((correction) => (
 +        <button
-+          className="rounded-full bg-accent-soft px-3 py-1 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++          className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +          dir="auto"
 +          key={correction.q}
 +          onClick={() => {
@@ -5884,10 +5884,10 @@ index 0000000..4b3362e
 +}
 diff --git a/client/zjsearch/src/components/results/ImageGrid.tsx b/client/zjsearch/src/components/results/ImageGrid.tsx
 new file mode 100644
-index 0000000..aec57b9
+index 0000000..c9055c9
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/ImageGrid.tsx
-@@ -0,0 +1,476 @@
+@@ -0,0 +1,496 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5897,10 +5897,11 @@ index 0000000..aec57b9
 + * back-button dismissal, progressive thumbnail → full image loading).
 + */
 +
-+import { ChevronLeft, ChevronRight, Download, ExternalLink, X } from "lucide-react";
++import { Award, ChevronLeft, ChevronRight, Download, ExternalLink, Server, X } from "lucide-react";
 +import { useCallback, useEffect, useRef, useState } from "react";
 +import { createPortal } from "react-dom";
 +import { THEME_STATIC } from "../../lib/constants.ts";
++import { formatScore } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import { newTabLinkProps } from "../../lib/link.ts";
 +import { useSettings } from "../../lib/settings.ts";
@@ -6196,12 +6197,31 @@ index 0000000..aec57b9
 +          ) : null}
 +          {result.engines.length > 0 ? (
 +            <div className="mt-2.5 flex flex-wrap items-center gap-1" title={result.engines.join(", ")}>
-+              {(enginesExpanded ? result.engines : result.engines.slice(0, 3)).map((engine) => (
-+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300" key={engine}>
-+                  {engine}
++              {typeof result.score === "number" ? (
++                <span
++                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300 tabular-nums"
++                  title={t("scores")}
++                >
++                  <Award className="size-3 shrink-0" />
++                  {formatScore(result.score)}
 +                </span>
-+              ))}
-+              {result.engines.length > 3 ? (
++              ) : null}
++              <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300">
++                <Server className="size-3 shrink-0" />
++                {result.engines[0]}
++              </span>
++              {enginesExpanded
++                ? result.engines.slice(1).map((engine) => (
++                    <span
++                      className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300"
++                      key={engine}
++                    >
++                      <Server className="size-3 shrink-0" />
++                      {engine}
++                    </span>
++                  ))
++                : null}
++              {result.engines.length > 1 ? (
 +                <button
 +                  aria-expanded={enginesExpanded}
 +                  className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300 transition-colors hover:text-white"
@@ -6210,7 +6230,7 @@ index 0000000..aec57b9
 +                  }}
 +                  type="button"
 +                >
-+                  {enginesExpanded ? t("show_less") : `+${result.engines.length - 3}`}
++                  {enginesExpanded ? t("show_less") : `+${result.engines.length - 1}`}
 +                </button>
 +              ) : null}
 +            </div>
@@ -6571,10 +6591,10 @@ index 0000000..eb3eb74
 +}
 diff --git a/client/zjsearch/src/components/results/MusicGrid.tsx b/client/zjsearch/src/components/results/MusicGrid.tsx
 new file mode 100644
-index 0000000..d0e3e03
+index 0000000..d26d77f
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/MusicGrid.tsx
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,263 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Music-intent layout: square album-art tiles mirroring the video grid.
@@ -6582,7 +6602,7 @@ index 0000000..d0e3e03
 +    streams get a custom mini player (blur + play/pause + seek), embeddable
 +    sources play inside the tile like videos do. */
 +
-+import { Calendar, Music as MusicIcon, Pause, Play, X } from "lucide-react";
++import { Calendar, Music as MusicIcon, Pause, Play, User, X } from "lucide-react";
 +import { useEffect, useRef, useState } from "react";
 +import { THEME_STATIC } from "../../lib/constants.ts";
 +import { formatDate, formatLength } from "../../lib/format.ts";
@@ -6817,7 +6837,8 @@ index 0000000..d0e3e03
 +          </ResultLink>
 +        </h3>
 +        <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
-+          <span className="truncate" dir="auto">
++          <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
++            <User className="size-3 shrink-0" />
 +            {result.author}
 +          </span>
 +          <span className="flex shrink-0 items-center gap-1">
@@ -6839,17 +6860,17 @@ index 0000000..d0e3e03
 +}
 diff --git a/client/zjsearch/src/components/results/PackageGrid.tsx b/client/zjsearch/src/components/results/PackageGrid.tsx
 new file mode 100644
-index 0000000..8e282a0
+index 0000000..0bd2ea7
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/PackageGrid.tsx
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,124 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Package results (crates.io, docker hub, pypi, ...): the file-tile
 +    language of FilesGrid applied to software packages - icon tile with the
 +    version badge, author/updated meta row, homepage/source actions. */
 +
-+import { Calendar, Code, ExternalLink, Package as PackageIcon } from "lucide-react";
++import { Calendar, Code, ExternalLink, Package as PackageIcon, User } from "lucide-react";
 +import { formatDate } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "../../lib/types.ts";
@@ -6896,7 +6917,8 @@ index 0000000..8e282a0
 +        </ResultLink>
 +      </h3>
 +      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-ink-3">
-+        <span className="truncate" dir="auto">
++        <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
++          <User className="size-3 shrink-0" />
 +          {result.maintainer || result.author}
 +        </span>
 +        <span className="flex shrink-0 items-center gap-1">
@@ -7493,17 +7515,16 @@ index 0000000..3ea77f4
 +}
 diff --git a/client/zjsearch/src/components/results/Tile.tsx b/client/zjsearch/src/components/results/Tile.tsx
 new file mode 100644
-index 0000000..6d239fb
+index 0000000..1a0d6b6
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Tile.tsx
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,38 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import type { ReactNode } from "react";
-+import { useState } from "react";
 +import { THEME_STATIC } from "../../lib/constants.ts";
-+import { useT } from "../../lib/i18n.ts";
 +import type { ResultItem } from "../../lib/types.ts";
++import { EnginesLine } from "./cardParts.tsx";
 +
 +/** Corner badge on a media tile — duration, filesize (dark pill, bottom-right). */
 +export function TileBadge({ children }: { children: ReactNode }) {
@@ -7531,45 +7552,10 @@ index 0000000..6d239fb
 +  );
 +}
 +
-+/** Compact engine attribution for tile views: the first engine as a pill, the
-+    rest folded into a "+N" toggle that expands inline — dense grids stay on
-+    one short line until the user asks for more.  Hovering the first pill
-+    always reveals the full list. */
++/** Compact engine attribution for tile views: the unified EnginesLine
++    ([score] [first engine] [+N]). */
 +export function TileEngines({ result }: { result: ResultItem }) {
-+  const t = useT();
-+  const [expanded, setExpanded] = useState(false);
-+  const engines = result.engines;
-+  if (engines.length === 0) {
-+    return null;
-+  }
-+  const hidden = engines.length - 1;
-+  const pill = "rounded-full bg-surface-2 px-2 py-0.5 text-ink-3";
-+  return (
-+    <div className="flex flex-wrap items-center gap-1 text-xs">
-+      <span className={`${pill} max-w-full truncate`} title={engines.join(", ")}>
-+        {engines[0]}
-+      </span>
-+      {expanded
-+        ? engines.slice(1).map((engine) => (
-+            <span className={pill} key={engine}>
-+              {engine}
-+            </span>
-+          ))
-+        : null}
-+      {hidden > 0 ? (
-+        <button
-+          aria-expanded={expanded}
-+          className={`${pill} transition-colors hover:text-ink`}
-+          onClick={() => {
-+            setExpanded((value) => !value);
-+          }}
-+          type="button"
-+        >
-+          {expanded ? t("show_less") : `+${hidden}`}
-+        </button>
-+      ) : null}
-+    </div>
-+  );
++  return <EnginesLine result={result} />;
 +}
 diff --git a/client/zjsearch/src/components/results/blocks.ts b/client/zjsearch/src/components/results/blocks.ts
 new file mode 100644
@@ -7602,16 +7588,16 @@ index 0000000..e9f9975
 +}
 diff --git a/client/zjsearch/src/components/results/cardParts.tsx b/client/zjsearch/src/components/results/cardParts.tsx
 new file mode 100644
-index 0000000..a773913
+index 0000000..16193ea
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cardParts.tsx
-@@ -0,0 +1,305 @@
+@@ -0,0 +1,319 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Calendar, Clock, Music, Play } from "lucide-react";
++import { Award, Calendar, Clock, Eye, Music, Play, Server, User } from "lucide-react";
 +import { type ReactNode, useState } from "react";
 +import { THEME_STATIC } from "../../lib/constants.ts";
-+import { formatDate, formatLength } from "../../lib/format.ts";
++import { formatDate, formatLength, formatScore } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import { newTabLinkProps } from "../../lib/link.ts";
 +import type { GlobalData, ResultItem } from "../../lib/types.ts";
@@ -7702,13 +7688,19 @@ index 0000000..a773913
 +  }
 +  if (result.author) {
 +    bits.push(
-+      <span className="truncate" key="author">
++      <span className="inline-flex min-w-0 items-center gap-1 truncate" key="author">
++        <User className="size-3 shrink-0" />
 +        {result.author}
 +      </span>,
 +    );
 +  }
 +  if (result.views) {
-+    bits.push(<span key="views">{result.views}</span>);
++    bits.push(
++      <span className="inline-flex items-center gap-1" key="views">
++        <Eye className="size-3 shrink-0" />
++        {result.views}
++      </span>,
++    );
 +  }
 +  const length = formatLength(result.length_display, result.length_seconds);
 +  if (length) {
@@ -7735,43 +7727,51 @@ index 0000000..a773913
 +  );
 +}
 +
-+const MAX_ENGINES_SHOWN = 3;
-+
++/** Unified engine attribution for EVERY view: [score] [first engine] [+N],
++    expanding inline on demand.  The score leads as a tabular pill; the
++    first pill's title always carries the full engine list. */
 +export function EnginesLine({ result, leading }: { result: ResultItem; leading?: ReactNode }) {
 +  const t = useT();
 +  const [expanded, setExpanded] = useState(false);
 +  const engines = result.engines;
-+  const shown = expanded ? engines : engines.slice(0, MAX_ENGINES_SHOWN);
-+  const hidden = engines.length - MAX_ENGINES_SHOWN;
++  if (engines.length === 0 && !leading) {
++    return null;
++  }
++  const hidden = engines.length - 1;
++  const pill = "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5";
 +  return (
 +    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
-+      {leading}
-+      {shown.map((engine) => (
-+        <span className="rounded-full bg-surface-2 px-2 py-0.5" key={engine}>
-+          {engine}
++      {typeof result.score === "number" ? (
++        <span className={`${pill} tabular-nums`} title={t("scores")}>
++          <Award className="size-3 shrink-0" />
++          {formatScore(result.score)}
 +        </span>
-+      ))}
-+      {!expanded && hidden > 0 ? (
-+        <button
-+          className="rounded-full bg-surface-2 px-2 py-0.5 transition-colors hover:text-ink"
-+          onClick={() => {
-+            setExpanded(true);
-+          }}
-+          title={engines.join(", ")}
-+          type="button"
-+        >
-+          +{hidden}
-+        </button>
 +      ) : null}
-+      {expanded && hidden > 0 ? (
++      {leading}
++      {engines.length > 0 ? (
++        <span className={`${pill} max-w-full truncate`} title={engines.join(", ")}>
++          <Server className="size-3 shrink-0" />
++          {engines[0]}
++        </span>
++      ) : null}
++      {expanded
++        ? engines.slice(1).map((engine) => (
++            <span className={pill} key={engine}>
++              <Server className="size-3 shrink-0" />
++              {engine}
++            </span>
++          ))
++        : null}
++      {hidden > 0 ? (
 +        <button
-+          className="transition-colors hover:text-ink"
++          aria-expanded={expanded}
++          className={`${pill} transition-colors hover:text-ink`}
 +          onClick={() => {
-+            setExpanded(false);
++            setExpanded((value) => !value);
 +          }}
 +          type="button"
 +        >
-+          {t("show_less")}
++          {expanded ? t("show_less") : `+${hidden}`}
 +        </button>
 +      ) : null}
 +    </div>
@@ -7913,26 +7913,31 @@ index 0000000..a773913
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..bddc758
+index 0000000..7f383ed
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,905 @@
+@@ -0,0 +1,936 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
 +  ArrowDown,
 +  ArrowUp,
++  BookOpen,
 +  Calendar,
 +  Code,
 +  Download,
 +  ExternalLink,
 +  FileText,
 +  Film,
++  Globe,
 +  Magnet,
 +  Music,
 +  Package,
 +  Play,
 +  Star,
++  Tag,
++  Truck,
++  User,
 +  X,
 +} from "lucide-react";
 +import { memo, type ReactNode, useState } from "react";
@@ -8168,10 +8173,10 @@ index 0000000..bddc758
 +          {result.torrentfile ? (
 +            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
 +              <a
-+                className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 transition-colors hover:text-ink"
++                className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 transition-colors hover:text-ink"
 +                href={result.torrentfile}
 +              >
-+                <Download className="size-3.5" />
++                <Download className="size-3" />
 +                {t("torrent_file")}
 +              </a>
 +            </div>
@@ -8196,9 +8201,24 @@ index 0000000..bddc758
 +            <MetaLine result={result} />
 +          </div>
 +          <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-+            {result.price ? <span className="text-lg font-semibold text-ink">{result.price}</span> : null}
-+            {result.shipping ? <span className="text-xs text-ink-3">{result.shipping}</span> : null}
-+            {result.source_country ? <span className="text-xs text-ink-3">{result.source_country}</span> : null}
++            {result.price ? (
++              <span className="inline-flex items-center gap-1 text-lg font-semibold text-ink">
++                <Tag className="size-4 shrink-0 text-ink-3" />
++                {result.price}
++              </span>
++            ) : null}
++            {result.shipping ? (
++              <span className="inline-flex items-center gap-1 text-xs text-ink-3">
++                <Truck className="size-3 shrink-0" />
++                {result.shipping}
++              </span>
++            ) : null}
++            {result.source_country ? (
++              <span className="inline-flex items-center gap-1 text-xs text-ink-3">
++                <Globe className="size-3 shrink-0" />
++                {result.source_country}
++              </span>
++            ) : null}
 +          </div>
 +          {result.content_html ? (
 +            <p
@@ -8379,13 +8399,13 @@ index 0000000..bddc758
 +              )
 +            ) : (
 +              <a
-+                className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                className="mt-2 inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +                download
 +                href={result.embedded}
 +                rel="noreferrer"
 +                target="_blank"
 +              >
-+                <Download className="size-3.5" />
++                <Download className="size-3" />
 +                {t("download")}
 +              </a>
 +            )
@@ -8430,8 +8450,18 @@ index 0000000..bddc758
 +        {formatDate(result.published_date)}
 +      </span>
 +    ) : null,
-+    authors || null,
-+    venueBits.length > 0 ? venueBits.join(", ") : null,
++    authors ? (
++      <span className="inline-flex items-center gap-1" key="authors">
++        <User className="size-3 shrink-0" />
++        {authors}
++      </span>
++    ) : null,
++    venueBits.length > 0 ? (
++      <span className="inline-flex items-center gap-1" key="venue">
++        <BookOpen className="size-3 shrink-0" />
++        {venueBits.join(", ")}
++      </span>
++    ) : null,
 +  ];
 +  // every optional extra (PDF/HTML, DOI, citation note, subject tags) lives
 +  // in ONE footer row in a fixed order, so cards share the same skeleton no
@@ -8476,23 +8506,23 @@ index 0000000..bddc758
 +            >
 +              {result.pdf_url ? (
 +                <a
-+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +                  href={result.pdf_url}
 +                  rel="noreferrer"
 +                  target="_blank"
 +                >
-+                  <FileText className="size-3.5" />
++                  <FileText className="size-3" />
 +                  PDF
 +                </a>
 +              ) : null}
 +              {result.html_url ? (
 +                <a
-+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
++                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 hover:text-ink"
 +                  href={result.html_url}
 +                  rel="noreferrer"
 +                  target="_blank"
 +                >
-+                  <ExternalLink className="size-3.5" />
++                  <ExternalLink className="size-3" />
 +                  HTML
 +                </a>
 +              ) : null}
@@ -8623,6 +8653,7 @@ index 0000000..bddc758
 +          ) : null}
 +          {result.maintainer ? (
 +            <span className="inline-flex min-w-0 items-center gap-1" key="author">
++              <User className="size-3 shrink-0" />
 +              {t("author")}:
 +              <span className="truncate text-ink-2" dir="auto">
 +                {result.maintainer}
@@ -8771,13 +8802,13 @@ index 0000000..bddc758
 +        <div className="mt-2 flex flex-wrap gap-2 text-xs">
 +          {result.map_links.map((link) => (
 +            <a
-+              className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-ink-2 hover:text-ink"
++              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 hover:text-ink"
 +              href={link.url}
 +              key={link.url}
 +              rel="noreferrer"
 +              target="_blank"
 +            >
-+              <ExternalLink className="size-3.5" />
++              <ExternalLink className="size-3" />
 +              {link.label}
 +            </a>
 +          ))}
@@ -8824,13 +8855,13 @@ index 0000000..bddc758
 +// whole card subtree
 diff --git a/client/zjsearch/src/components/results/grids.tsx b/client/zjsearch/src/components/results/grids.tsx
 new file mode 100644
-index 0000000..104012a
+index 0000000..dbf2edf
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/grids.tsx
-@@ -0,0 +1,323 @@
+@@ -0,0 +1,344 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Calendar, Image, Package, Play, X } from "lucide-react";
++import { Calendar, Eye, Globe, Image, Package, Play, Tag, Truck, User, X } from "lucide-react";
 +import { useState } from "react";
 +import { THEME_STATIC } from "../../lib/constants.ts";
 +import { formatDate, formatLength } from "../../lib/format.ts";
@@ -8877,10 +8908,25 @@ index 0000000..104012a
 +              <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
 +            </ResultLink>
 +          </h3>
-+          {result.price ? <p className="mt-1 text-sm font-semibold text-ink">{result.price}</p> : null}
++          {result.price ? (
++            <p className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-ink">
++              <Tag className="size-3.5 shrink-0 text-ink-3" />
++              {result.price}
++            </p>
++          ) : null}
 +          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-ink-3">
-+            {result.shipping ? <span>{result.shipping}</span> : null}
-+            {result.source_country ? <span>{result.source_country}</span> : null}
++            {result.shipping ? (
++              <span className="inline-flex items-center gap-1">
++                <Truck className="size-3" />
++                {result.shipping}
++              </span>
++            ) : null}
++            {result.source_country ? (
++              <span className="inline-flex items-center gap-1">
++                <Globe className="size-3" />
++                {result.source_country}
++              </span>
++            ) : null}
 +          </div>
 +          <div className="mt-auto pt-1.5">
 +            <TileEngines result={result} />
@@ -8987,11 +9033,17 @@ index 0000000..104012a
 +          </ResultLink>
 +        </h3>
 +        <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
-+          <span className="truncate" dir="auto">
++          <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
++            <User className="size-3 shrink-0" />
 +            {result.author}
 +          </span>
 +          <span className="flex shrink-0 items-center gap-2">
-+            {result.views ? <span>{result.views}</span> : null}
++            {result.views ? (
++              <span className="inline-flex items-center gap-1">
++                <Eye className="size-3 shrink-0" />
++                {result.views}
++              </span>
++            ) : null}
 +            <span className="flex items-center gap-1">
 +              {result.published_date ? (
 +                <>
@@ -9379,10 +9431,10 @@ index 0000000..2d0900f
 +}
 diff --git a/client/zjsearch/src/lib/format.ts b/client/zjsearch/src/lib/format.ts
 new file mode 100644
-index 0000000..ba514d8
+index 0000000..39dfd33
 --- /dev/null
 +++ b/client/zjsearch/src/lib/format.ts
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,52 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Client side formatting helpers (dates, durations, response times). */
@@ -9429,6 +9481,11 @@ index 0000000..ba514d8
 +  const mm = hours > 0 || minutes > 0 ? String(minutes).padStart(2, "0") : "0";
 +  const ss = String(seconds).padStart(2, "0");
 +  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
++}
++
++/** Result relevance score, one decimal (e.g. "3.5"). */
++export function formatScore(score: number): string {
++  return (Math.round(score * 10) / 10).toFixed(1);
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
@@ -14186,10 +14243,10 @@ index 0000000..7403554
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..148dfac
+index 0000000..4aedd14
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,560 @@
+@@ -0,0 +1,561 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -14279,6 +14336,7 @@ index 0000000..148dfac
 +    {%- endif %}
 +  {%- endif %}
 +  {%- if result.views %}"views": {{ result.views|tojson }},{% endif %}
++  {%- if result.score is number %}"score": {{ result.score }},{% endif %}
 +  {%- if result.author %}"author": {{ result.author|striptags|tojson }},{% endif %}
 +  {%- if result.metadata %}"metadata": {{ result.metadata|tojson }},{% endif %}
 +  {%- if result.img_src %}"img_src": {{ (image_proxify(result.img_src) or '')|tojson }},{% endif %}
