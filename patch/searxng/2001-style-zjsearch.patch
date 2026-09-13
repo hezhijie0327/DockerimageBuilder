@@ -3737,15 +3737,16 @@ index 0000000..0670f41
 +</svg>
 diff --git a/client/zjsearch/src/components/BackToTop.tsx b/client/zjsearch/src/components/BackToTop.tsx
 new file mode 100644
-index 0000000..391af44
+index 0000000..e61cdf7
 --- /dev/null
 +++ b/client/zjsearch/src/components/BackToTop.tsx
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,35 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ArrowUp } from "lucide-react";
 +import { useEffect, useState } from "react";
 +import { useT } from "../lib/i18n.ts";
++import { scrollBehavior } from "../lib/motion.ts";
 +
 +export function BackToTop() {
 +  const t = useT();
@@ -3767,7 +3768,7 @@ index 0000000..391af44
 +      aria-label={t("back_to_top")}
 +      className="fixed bottom-6 right-6 z-40 grid size-11 place-items-center rounded-full border border-line bg-surface text-ink-2 shadow-pop transition-colors hover:text-accent animate-fade-in"
 +      onClick={() => {
-+        window.scrollTo({ top: 0, behavior: "smooth" });
++        window.scrollTo({ top: 0, behavior: scrollBehavior() });
 +      }}
 +      type="button"
 +    >
@@ -3909,7 +3910,7 @@ index 0000000..0579149
 +}
 diff --git a/client/zjsearch/src/components/Dropdown.tsx b/client/zjsearch/src/components/Dropdown.tsx
 new file mode 100644
-index 0000000..24e54cb
+index 0000000..9f9bba5
 --- /dev/null
 +++ b/client/zjsearch/src/components/Dropdown.tsx
 @@ -0,0 +1,224 @@
@@ -4125,7 +4126,7 @@ index 0000000..24e54cb
 +                          {option.label}
 +                        </span>
 +                      </span>
-+                      {selected ? <Check className="size-4 shrink-0 text-accent-strong" /> : null}
++                      {selected ? <Check className="size-4 shrink-0 text-accent" /> : null}
 +                    </button>
 +                  </li>
 +                );
@@ -4285,14 +4286,14 @@ index 0000000..a98df4d
 +}
 diff --git a/client/zjsearch/src/components/SearchBox.tsx b/client/zjsearch/src/components/SearchBox.tsx
 new file mode 100644
-index 0000000..3d1837c
+index 0000000..08646b6
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchBox.tsx
-@@ -0,0 +1,240 @@
+@@ -0,0 +1,249 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { LoaderCircle, Search, X } from "lucide-react";
-+import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
++import { type FormEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 +import { useT } from "../lib/i18n.ts";
 +import { useRouter } from "../lib/router.tsx";
 +import { useSettings } from "../lib/settings.ts";
@@ -4334,6 +4335,7 @@ index 0000000..3d1837c
 +  const t = useT();
 +  const { loading } = useRouter();
 +  const settings = useSettings();
++  const listboxId = useId();
 +  const [innerQuery, setInnerQuery] = useState(initialQuery);
 +  const query = controlledQuery ?? innerQuery;
 +  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -4453,6 +4455,11 @@ index 0000000..3d1837c
 +        role="search"
 +      >
 +        <input
++          aria-activedescendant={active >= 0 && suggestions[active] ? `${listboxId}-${active}` : undefined}
++          aria-autocomplete="list"
++          aria-controls={showDropdown ? listboxId : undefined}
++          aria-expanded={showDropdown}
++          aria-label={t("search")}
 +          autoCapitalize="none"
 +          autoComplete="off"
 +          className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-ink-3 ${
@@ -4468,6 +4475,7 @@ index 0000000..3d1837c
 +          onKeyDown={onKeyDown}
 +          placeholder={t("search_placeholder")}
 +          ref={inputRef}
++          role="combobox"
 +          spellCheck={false}
 +          type="text"
 +          value={query}
@@ -4497,11 +4505,13 @@ index 0000000..3d1837c
 +
 +      {showDropdown ? (
 +        <ul
++          aria-label={t("search_suggestions")}
 +          className="absolute inset-x-0 top-full z-30 mt-2 max-h-80 overflow-auto rounded-2xl border border-line bg-surface py-1.5 shadow-pop animate-fade-in"
++          id={listboxId}
 +          role="listbox"
 +        >
 +          {suggestions.map((suggestion, index) => (
-+            <li aria-selected={index === active} key={suggestion.text} role="option">
++            <li aria-selected={index === active} id={`${listboxId}-${index}`} key={suggestion.text} role="option">
 +              <button
 +                className={`flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm ${
 +                  index === active ? "bg-surface-2" : ""
@@ -4737,14 +4747,15 @@ index 0000000..63e63e2
 +}
 diff --git a/client/zjsearch/src/components/Shell.tsx b/client/zjsearch/src/components/Shell.tsx
 new file mode 100644
-index 0000000..8917c15
+index 0000000..4d22a7b
 --- /dev/null
 +++ b/client/zjsearch/src/components/Shell.tsx
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,201 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChartColumn, Heart, SlidersHorizontal } from "lucide-react";
 +import type { MouseEvent, ReactNode } from "react";
++import { useEffect } from "react";
 +import { useT } from "../lib/i18n.ts";
 +import { newTabLinkProps } from "../lib/link.ts";
 +import { useOverlay } from "../lib/overlay.tsx";
@@ -4796,8 +4807,9 @@ index 0000000..8917c15
 +  if (!active) {
 +    return null;
 +  }
++  // purely decorative: the search box spinner already announces loading
 +  return (
-+    <div aria-hidden="true" className="fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden" role="progressbar">
++    <div aria-hidden="true" className="fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden">
 +      <div className="h-full w-full origin-left bg-accent-strong animate-progress" />
 +    </div>
 +  );
@@ -4896,6 +4908,19 @@ index 0000000..8917c15
 +  embedded?: boolean;
 +}) {
 +  const { loading } = useRouter();
++  const hero = variant === "hero";
++  // hero shell owns scrolling: the document itself never scrolls (no iOS
++  // rubber-band pushing the layout around); overflow lives in the shell's
++  // inner container
++  useEffect(() => {
++    if (!hero) {
++      return;
++    }
++    document.documentElement.classList.add("zjs-hero-lock");
++    return () => {
++      document.documentElement.classList.remove("zjs-hero-lock");
++    };
++  }, [hero]);
 +  if (embedded) {
 +    return (
 +      <div className="relative">
@@ -4904,18 +4929,32 @@ index 0000000..8917c15
 +      </div>
 +    );
 +  }
++  if (hero) {
++    return (
++      <div className="flex h-dvh flex-col overflow-hidden">
++        <ProgressBar active={loading} />
++        <TopNav globals={globals} hideBrand />
++        {/* app-shell scroll area: hidden scrollbar, contained overscroll; the
++            footer rides inside so it scrolls away with overflowing content */}
++        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
++          <div className="flex flex-1 flex-col justify-start pt-[20vh] sm:pt-[30vh]">{children}</div>
++          <Footer />
++        </div>
++      </div>
++    );
++  }
 +  return (
-+    <div className={`flex min-h-dvh flex-col ${variant === "hero" ? "" : ""}`}>
++    <div className="flex min-h-dvh flex-col">
 +      <ProgressBar active={loading} />
-+      {hideTopNav ? null : <TopNav globals={globals} hideBrand={variant === "hero"} />}
-+      <div className={`flex flex-1 flex-col ${variant === "hero" ? "justify-start pt-[30vh]" : ""}`}>{children}</div>
++      {hideTopNav ? null : <TopNav globals={globals} hideBrand={false} />}
++      <div className="flex flex-1 flex-col">{children}</div>
 +      <Footer />
 +    </div>
 +  );
 +}
 diff --git a/client/zjsearch/src/components/results/Answers.tsx b/client/zjsearch/src/components/results/Answers.tsx
 new file mode 100644
-index 0000000..dfc1145
+index 0000000..82a96c4
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Answers.tsx
 @@ -0,0 +1,670 @@
@@ -5468,7 +5507,7 @@ index 0000000..dfc1145
 +    return (
 +      <div>
 +        <p className="truncate text-xs text-ink-3" dir="ltr">
-+          <span className="font-mono font-medium text-accent-strong">{data.func}</span>({data.args})
++          <span className="font-mono font-medium text-accent">{data.func}</span>({data.args})
 +        </p>
 +        <div className="mt-1 flex items-center justify-between gap-3">
 +          <p className="text-2xl font-semibold text-ink" dir="ltr">
@@ -5806,57 +5845,32 @@ index 0000000..0bcbcca
 +}
 diff --git a/client/zjsearch/src/components/results/GroupHeader.tsx b/client/zjsearch/src/components/results/GroupHeader.tsx
 new file mode 100644
-index 0000000..c3ac2d6
+index 0000000..4b3362e
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/GroupHeader.tsx
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,36 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ChevronDown, GripVertical } from "lucide-react";
-+import type { PointerEvent as ReactPointerEvent } from "react";
-+import { useT } from "../../lib/i18n.ts";
++import { ChevronDown } from "lucide-react";
 +import { CategoryIcon } from "../CategoryIcon.tsx";
 +
 +/** Collapsible block header: category icon + translated label + result
 +    count; the whole header toggles the block. */
-+interface GripHandlers {
-+  onPointerDown: (event: ReactPointerEvent<HTMLSpanElement>) => void;
-+  onPointerUp: (event: ReactPointerEvent<HTMLSpanElement>) => void;
-+  onKeyDown: (event: React.KeyboardEvent<HTMLSpanElement>) => void;
-+}
-+
 +export function GroupHeader({
 +  category,
 +  label,
 +  count,
 +  collapsed,
 +  onToggle,
-+  grip,
 +}: {
 +  category: string;
 +  label: string;
 +  count: number;
 +  collapsed: boolean;
 +  onToggle: () => void;
-+  grip?: GripHandlers;
 +}) {
-+  const t = useT();
 +  return (
 +    <h2 className="group flex items-center gap-1 pb-1 pt-2">
-+      {grip ? (
-+        <span
-+          aria-label={t("drag_reorder")}
-+          className="-ms-1 cursor-grab touch-none rounded p-1 text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink active:cursor-grabbing"
-+          onKeyDown={grip.onKeyDown}
-+          onPointerDown={grip.onPointerDown}
-+          onPointerUp={grip.onPointerUp}
-+          role="button"
-+          tabIndex={0}
-+          title={t("drag_reorder")}
-+        >
-+          <GripVertical className="size-4" />
-+        </span>
-+      ) : null}
 +      <button
 +        aria-expanded={!collapsed}
 +        className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm font-semibold text-ink"
@@ -6383,10 +6397,10 @@ index 0000000..f9e1256
 +}
 diff --git a/client/zjsearch/src/components/results/MapView.tsx b/client/zjsearch/src/components/results/MapView.tsx
 new file mode 100644
-index 0000000..eb61737
+index 0000000..eb3eb74
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/MapView.tsx
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,149 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -6517,6 +6531,7 @@ index 0000000..eb61737
 +  return (
 +    <div className="mt-2">
 +      <button
++        aria-expanded={open}
 +        className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 transition-colors hover:text-ink"
 +        onClick={() => {
 +          setOpen((prev) => !prev);
@@ -6933,7 +6948,7 @@ index 0000000..0dfa884
 +}
 diff --git a/client/zjsearch/src/components/results/Pagination.tsx b/client/zjsearch/src/components/results/Pagination.tsx
 new file mode 100644
-index 0000000..03b666f
+index 0000000..adc56a7
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Pagination.tsx
 @@ -0,0 +1,80 @@
@@ -6970,7 +6985,7 @@ index 0000000..03b666f
 +  }
 +
 +  return (
-+    <nav aria-label="pagination" className="mt-6 flex flex-wrap items-center justify-center gap-1.5 pb-4">
++    <nav aria-label={t("pagination")} className="mt-6 flex flex-wrap items-center justify-center gap-1.5 pb-4">
 +      {hasPrev ? (
 +        <button
 +          className="flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-sm text-ink-2 transition-colors hover:border-accent hover:text-accent"
@@ -7019,16 +7034,17 @@ index 0000000..03b666f
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 0000000..7d3db9e
+index 0000000..7786128
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
-@@ -0,0 +1,365 @@
+@@ -0,0 +1,378 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
-+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
++import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 +import { useT } from "../../lib/i18n.ts";
 +import { newTabLinkProps } from "../../lib/link.ts";
++import { scrollBehavior } from "../../lib/motion.ts";
 +import { useOverlay } from "../../lib/overlay.tsx";
 +import type { GlobalData, InfoboxData, SearchPageData } from "../../lib/types.ts";
 +import { CopyButton } from "../CopyButton.tsx";
@@ -7057,6 +7073,7 @@ index 0000000..7d3db9e
 +}) {
 +  const t = useT();
 +  const [expanded, setExpanded] = useState(false);
++  const contentId = useId();
 +  return (
 +    <div className="rounded-2xl border border-line bg-surface p-3">
 +      <div className={infobox.img_src ? "flex items-start gap-4" : ""}>
@@ -7074,91 +7091,103 @@ index 0000000..7d3db9e
 +        </h3>
 +      </div>
 +
-+      {/* overflow-hidden stays on in both states: without it the inner mt-3
-+          collapses through the wrapper when expanded and the visible content
-+          jumps up 12px on toggle */}
-+      <div className={`relative mt-3 overflow-hidden ${expanded ? "" : "max-h-72"}`}>
-+        {infobox.attributes && infobox.attributes.length > 0 ? (
-+          <dl className="space-y-1 text-xs">
-+            {infobox.attributes.map((attribute, index) => (
-+              <div className="flex gap-2" key={index}>
-+                <dt className="shrink-0 text-ink-3">{attribute.label}:</dt>
-+                <dd className="min-w-0 text-ink-2">
-+                  {attribute.image_src ? (
-+                    <img
-+                      alt={attribute.image_alt}
-+                      className="inline-block max-h-24 rounded-lg align-middle"
-+                      decoding="async"
-+                      loading="lazy"
-+                      onError={(event) => {
-+                        event.currentTarget.style.display = "none";
-+                      }}
-+                      src={attribute.image_src}
-+                    />
-+                  ) : (
-+                    <span dir="auto">{attribute.value}</span>
-+                  )}
-+                </dd>
-+              </div>
-+            ))}
-+          </dl>
-+        ) : null}
-+
-+        {infobox.content_html ? (
-+          <div
-+            className="mt-3 text-[13px] leading-relaxed text-ink-2 [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/40 [&_a]:underline-offset-2"
-+            dangerouslySetInnerHTML={{ __html: infobox.content_html }}
-+            dir="auto"
-+          />
-+        ) : null}
-+
-+        {infobox.urls && infobox.urls.length > 0 ? (
-+          <ul className="mt-3 space-y-1 text-xs">
-+            {infobox.urls.map((url) => (
-+              <li className="truncate" key={url.url}>
-+                <a
-+                  className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
-+                  {...newTabLinkProps(globals.results_on_new_tab)}
-+                  href={url.url}
-+                >
-+                  <span className="truncate">{url.title}</span>
-+                  <ExternalLink className="size-3 shrink-0" />
-+                </a>
-+              </li>
-+            ))}
-+          </ul>
-+        ) : null}
-+
-+        {infobox.related_topics && infobox.related_topics.length > 0 ? (
-+          <div className="mt-4 space-y-2">
-+            {infobox.related_topics.map((topic) => (
-+              <div key={topic.name}>
-+                <h4 className="text-xs font-medium text-ink" dir="auto">
-+                  {topic.name}
-+                </h4>
-+                <div className="mt-1 flex flex-wrap gap-1.5">
-+                  {topic.suggestions.map((suggestion) => (
-+                    <button
-+                      className="rounded-full bg-surface-2 px-2.5 py-1 text-xs text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
-+                      key={suggestion}
-+                      onClick={() => {
-+                        onSearch(suggestion);
-+                      }}
-+                      type="button"
-+                    >
-+                      {suggestion}
-+                    </button>
-+                  ))}
++      {/* animated disclosure: grid-template-rows 0fr→1fr is the only pure-CSS
++          way to transition to the content's natural height; overflow-hidden
++          stays on in both states (without it the inner mt-3 collapses through
++          the wrapper when expanded and the visible content jumps up 12px) */}
++      <div
++        className={`relative mt-3 grid transition-[grid-template-rows] duration-300 ease-out ${
++          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
++        }`}
++        id={contentId}
++      >
++        <div className="relative min-h-0 overflow-hidden" inert={!expanded}>
++          {infobox.attributes && infobox.attributes.length > 0 ? (
++            <dl className="space-y-1 text-xs">
++              {infobox.attributes.map((attribute, index) => (
++                <div className="flex gap-2" key={index}>
++                  <dt className="shrink-0 text-ink-3">{attribute.label}:</dt>
++                  <dd className="min-w-0 text-ink-2">
++                    {attribute.image_src ? (
++                      <img
++                        alt={attribute.image_alt}
++                        className="inline-block max-h-24 rounded-lg align-middle"
++                        decoding="async"
++                        loading="lazy"
++                        onError={(event) => {
++                          event.currentTarget.style.display = "none";
++                        }}
++                        src={attribute.image_src}
++                      />
++                    ) : (
++                      <span dir="auto">{attribute.value}</span>
++                    )}
++                  </dd>
 +                </div>
-+              </div>
-+            ))}
-+          </div>
-+        ) : null}
-+        {expanded ? null : (
-+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent" />
-+        )}
++              ))}
++            </dl>
++          ) : null}
++
++          {infobox.content_html ? (
++            <div
++              className="mt-3 text-[13px] leading-relaxed text-ink-2 [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/40 [&_a]:underline-offset-2"
++              dangerouslySetInnerHTML={{ __html: infobox.content_html }}
++              dir="auto"
++            />
++          ) : null}
++
++          {infobox.urls && infobox.urls.length > 0 ? (
++            <ul className="mt-3 space-y-1 text-xs">
++              {infobox.urls.map((url) => (
++                <li className="truncate" key={url.url}>
++                  <a
++                    className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
++                    {...newTabLinkProps(globals.results_on_new_tab)}
++                    href={url.url}
++                  >
++                    <span className="truncate">{url.title}</span>
++                    <ExternalLink className="size-3 shrink-0" />
++                  </a>
++                </li>
++              ))}
++            </ul>
++          ) : null}
++
++          {infobox.related_topics && infobox.related_topics.length > 0 ? (
++            <div className="mt-4 space-y-2">
++              {infobox.related_topics.map((topic) => (
++                <div key={topic.name}>
++                  <h4 className="text-xs font-medium text-ink" dir="auto">
++                    {topic.name}
++                  </h4>
++                  <div className="mt-1 flex flex-wrap gap-1.5">
++                    {topic.suggestions.map((suggestion) => (
++                      <button
++                        className="rounded-full bg-surface-2 px-2.5 py-1 text-xs text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
++                        key={suggestion}
++                        onClick={() => {
++                          onSearch(suggestion);
++                        }}
++                        type="button"
++                      >
++                        {suggestion}
++                      </button>
++                    ))}
++                  </div>
++                </div>
++              ))}
++            </div>
++          ) : null}
++          <div
++            className={`pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-300 ${
++              expanded ? "opacity-0" : "opacity-100"
++            }`}
++          />
++        </div>
 +      </div>
 +      <button
++        aria-controls={contentId}
++        aria-expanded={expanded}
 +        className="mt-2 flex w-full items-center justify-center gap-1 border-t border-line pt-2.5 text-xs text-ink-3 transition-colors hover:text-ink"
 +        onClick={() => {
 +          setExpanded((value) => !value);
@@ -7207,8 +7236,7 @@ index 0000000..7d3db9e
 +    if (!strip) {
 +      return;
 +    }
-+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-+    strip.scrollBy({ left: direction * strip.clientWidth * 0.8, behavior: reduced ? "auto" : "smooth" });
++    strip.scrollBy({ left: direction * strip.clientWidth * 0.8, behavior: scrollBehavior() });
 +  };
 +
 +  // buttons are persistent so flipping state never shifts the chips
@@ -7455,10 +7483,10 @@ index 0000000..e9f9975
 +}
 diff --git a/client/zjsearch/src/components/results/cardParts.tsx b/client/zjsearch/src/components/results/cardParts.tsx
 new file mode 100644
-index 0000000..e653713
+index 0000000..a773913
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cardParts.tsx
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,305 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Calendar, Clock, Music, Play } from "lucide-react";
@@ -7693,6 +7721,7 @@ index 0000000..e653713
 +  return (
 +    <div>
 +      <button
++        aria-expanded={open}
 +        className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 transition-colors hover:text-ink"
 +        onClick={() => {
 +          setOpen((prev) => !prev);
@@ -7765,12 +7794,10 @@ index 0000000..e653713
 +}
 diff --git a/client/zjsearch/src/components/results/cards.tsx b/client/zjsearch/src/components/results/cards.tsx
 new file mode 100644
-index 0000000..097e434
+index 0000000..76e00f6
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cards.tsx
-@@ -0,0 +1,939 @@
-+// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
-+
+@@ -0,0 +1,937 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -9308,10 +9335,10 @@ index 0000000..ba514d8
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..5b4e0a6
+index 0000000..0dc76e0
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,475 @@
+@@ -0,0 +1,481 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -9332,6 +9359,9 @@ index 0000000..5b4e0a6
 +  search_placeholder: "Search for...",
 +  clear: "clear",
 +  search: "search",
++  search_suggestions: "Search suggestions",
++  pagination: "Pagination",
++  show_engine_info: "Show engine details",
 +  powered_by: "Powered by",
 +  engine_stats: "Engine stats",
 +  search_language: "Search language",
@@ -9554,6 +9584,9 @@ index 0000000..5b4e0a6
 +  search_placeholder: "搜索...",
 +  clear: "清空",
 +  search: "搜索",
++  search_suggestions: "搜索建议",
++  pagination: "分页",
++  show_engine_info: "查看引擎详情",
 +  powered_by: "功能来自",
 +  engine_stats: "引擎统计",
 +  search_language: "搜索语言",
@@ -9800,6 +9833,23 @@ index 0000000..f83e89d
 +    urls, answers' sources — everywhere an external link is rendered). */
 +export function newTabLinkProps(onNewTab: boolean | undefined): { target?: string; rel: string } {
 +  return onNewTab ? { target: "_blank", rel: "noopener noreferrer" } : { rel: "noreferrer" };
++}
+diff --git a/client/zjsearch/src/lib/motion.ts b/client/zjsearch/src/lib/motion.ts
+new file mode 100644
+index 0000000..af18832
+--- /dev/null
++++ b/client/zjsearch/src/lib/motion.ts
+@@ -0,0 +1,11 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/**
++ * Motion preferences for JS-driven behaviour.  The global stylesheet guard
++ * (`prefers-reduced-motion` → transition/animation/scroll-behavior) cannot
++ * reach JS-initiated smooth scrolling — every `scrollTo`/`scrollIntoView`/
++ * `scrollBy` call must pass this as its `behavior`.
++ */
++export function scrollBehavior(): ScrollBehavior {
++  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 +}
 diff --git a/client/zjsearch/src/lib/overlay.tsx b/client/zjsearch/src/lib/overlay.tsx
 new file mode 100644
@@ -11147,10 +11197,10 @@ index 0000000..231c4f1
 +}
 diff --git a/client/zjsearch/src/pages/PreferencesPage.tsx b/client/zjsearch/src/pages/PreferencesPage.tsx
 new file mode 100644
-index 0000000..1207bbd
+index 0000000..c693a1e
 --- /dev/null
 +++ b/client/zjsearch/src/pages/PreferencesPage.tsx
-@@ -0,0 +1,909 @@
+@@ -0,0 +1,913 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -11411,15 +11461,17 @@ index 0000000..1207bbd
 +          </div>
 +        ) : null}
 +
-+        <div className="mb-6 flex flex-wrap gap-1.5 rounded-2xl border border-line bg-surface p-2">
++        <div className="mb-6 flex flex-wrap gap-1.5 rounded-2xl border border-line bg-surface p-2" role="tablist">
 +          {tabs.map((item) => (
 +            <button
++              aria-controls={`prefs-panel-${item.id}`}
 +              aria-selected={tab === item.id}
 +              className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-[13px] transition-colors ${
 +                tab === item.id
 +                  ? "bg-accent-strong font-medium text-accent-contrast"
 +                  : "text-ink-2 hover:bg-surface-2 hover:text-ink"
 +              }`}
++              id={`prefs-tab-${item.id}`}
 +              key={item.id}
 +              onClick={() => {
 +                setTab(item.id);
@@ -11433,7 +11485,7 @@ index 0000000..1207bbd
 +          ))}
 +        </div>
 +
-+        <div key={tab}>
++        <div aria-labelledby={`prefs-tab-${tab}`} id={`prefs-panel-${tab}`} key={tab} role="tabpanel">
 +          {tab === "general" ? (
 +            <Card>
 +              {!locked.has("categories") ? (
@@ -11536,6 +11588,7 @@ index 0000000..1207bbd
 +                title={t("engine_tokens")}
 +              >
 +                <input
++                  aria-label={t("engine_tokens")}
 +                  autoComplete="off"
 +                  className="h-9 w-full rounded-xl border border-line bg-surface px-3 text-sm transition-colors hover:border-ink-3 sm:w-60"
 +                  onChange={(event) => {
@@ -12000,6 +12053,7 @@ index 0000000..1207bbd
 +                </div>
 +                <SettingRow icon={<RefreshCw className="size-4.5" />} stacked title={t("insert_prefs_hash")}>
 +                  <input
++                    aria-label={t("insert_prefs_hash")}
 +                    className="h-9 w-full rounded-xl border border-line bg-surface px-3 text-sm transition-colors hover:border-ink-3"
 +                    onChange={(event) => {
 +                      setPastedHash(event.target.value);
@@ -12062,10 +12116,10 @@ index 0000000..1207bbd
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..c255bd5
+index 0000000..6214c77
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,604 @@
+@@ -0,0 +1,605 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -12091,6 +12145,7 @@ index 0000000..c255bd5
 +import { tryEvaluateExpression } from "../features/calculator.ts";
 +import { useHotkeys } from "../features/hotkeys.ts";
 +import { useT } from "../lib/i18n.ts";
++import { scrollBehavior } from "../lib/motion.ts";
 +import { extractPageData } from "../lib/pageData.ts";
 +import { buildSearchUrl, parseSearchUrl, useRouter } from "../lib/router.tsx";
 +import { useHasPlugin, useSettings } from "../lib/settings.ts";
@@ -12255,7 +12310,7 @@ index 0000000..c255bd5
 +      if (!next) {
 +        return;
 +      }
-+      next.scrollIntoView({ block: "center", behavior: "smooth" });
++      next.scrollIntoView({ block: "center", behavior: scrollBehavior() });
 +      setHotkeysSelected(Number(next.dataset.hotkeyIndex));
 +    },
 +    open: (newTab: boolean) => {
@@ -12672,10 +12727,10 @@ index 0000000..c255bd5
 +}
 diff --git a/client/zjsearch/src/pages/StatsPage.tsx b/client/zjsearch/src/pages/StatsPage.tsx
 new file mode 100644
-index 0000000..fbdd6ab
+index 0000000..9f5c0c0
 --- /dev/null
 +++ b/client/zjsearch/src/pages/StatsPage.tsx
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,286 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronLeft } from "lucide-react";
@@ -12869,11 +12924,36 @@ index 0000000..fbdd6ab
 +            <table className="w-full min-w-[680px] text-left text-sm">
 +              <thead className="bg-surface-2 text-xs text-ink-3">
 +                <tr>
-+                  <th className="px-4 py-2.5 font-medium">{sortButton("name", t("engine_name"))}</th>
-+                  <th className="px-4 py-2.5 font-medium">{sortButton("score", t("scores"))}</th>
-+                  <th className="px-4 py-2.5 font-medium">{sortButton("result_count", t("result_count"))}</th>
-+                  <th className="px-4 py-2.5 font-medium">{sortButton("time", t("response_time"))}</th>
-+                  <th className="px-4 py-2.5 font-medium">{sortButton("reliability", t("reliability"))}</th>
++                  <th
++                    aria-sort={sortKey === "name" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    className="px-4 py-2.5 font-medium"
++                  >
++                    {sortButton("name", t("engine_name"))}
++                  </th>
++                  <th
++                    aria-sort={sortKey === "score" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    className="px-4 py-2.5 font-medium"
++                  >
++                    {sortButton("score", t("scores"))}
++                  </th>
++                  <th
++                    aria-sort={sortKey === "result_count" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    className="px-4 py-2.5 font-medium"
++                  >
++                    {sortButton("result_count", t("result_count"))}
++                  </th>
++                  <th
++                    aria-sort={sortKey === "time" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    className="px-4 py-2.5 font-medium"
++                  >
++                    {sortButton("time", t("response_time"))}
++                  </th>
++                  <th
++                    aria-sort={sortKey === "reliability" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    className="px-4 py-2.5 font-medium"
++                  >
++                    {sortButton("reliability", t("reliability"))}
++                  </th>
 +                </tr>
 +              </thead>
 +              <tbody>
@@ -12960,10 +13040,10 @@ index 0000000..19e02ec
 +export const StatsPage = lazy(() => import("./StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
 diff --git a/client/zjsearch/src/pages/preferences/EnginesTab.tsx b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
 new file mode 100644
-index 0000000..773fa59
+index 0000000..c0ef397
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,130 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle } from "lucide-react";
@@ -13023,15 +13103,17 @@ index 0000000..773fa59
 +                  <td className="px-3 py-3">
 +                    <Switch
 +                      checked={enabled[key] ?? false}
-+                      label={`Allow ${engine.name}`}
++                      label={`${t("allow")} ${engine.name}`}
 +                      onChange={(value) => {
 +                        toggleEngine(key, value);
 +                      }}
 +                    />
 +                  </td>
 +                  <td className="max-w-52 px-4 py-3">
++                    {/* hover OR keyboard focus reveals the tooltip */}
 +                    <div className="group/engine relative">
 +                      <button
++                        aria-label={`${t("show_engine_info")}: ${engine.name}`}
 +                        className="flex items-center gap-1 truncate font-medium text-ink"
 +                        onMouseEnter={() => void loadEngineDescriptions()}
 +                        type="button"
@@ -13094,10 +13176,10 @@ index 0000000..773fa59
 +// --------------------------------------------------------------------- page
 diff --git a/client/zjsearch/src/pages/preferences/parts.tsx b/client/zjsearch/src/pages/preferences/parts.tsx
 new file mode 100644
-index 0000000..6487346
+index 0000000..6b131f4
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/parts.tsx
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,249 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, ExternalLink, Sparkle } from "lucide-react";
@@ -13231,7 +13313,8 @@ index 0000000..6487346
 +    >
 +      <span
 +        className={`size-5 rounded-full shadow transition-transform ${
-+          checked ? "translate-x-5 bg-accent-contrast" : "translate-x-0 bg-ink-3"
++          // translate-x is physical: RTL tracks must move the knob the other way
++          checked ? "translate-x-5 rtl:-translate-x-5 bg-accent-contrast" : "translate-x-0 bg-ink-3"
 +        }`}
 +      />
 +    </button>
@@ -13302,7 +13385,7 @@ index 0000000..6487346
 +  }, [engine.name]);
 +
 +  return (
-+    <div className="pointer-events-none absolute start-0 top-full z-30 mt-1 hidden w-80 rounded-xl border border-line bg-surface p-3 text-xs shadow-pop group-hover/engine:block">
++    <div className="pointer-events-none absolute start-0 top-full z-30 mt-1 hidden w-80 rounded-xl border border-line bg-surface p-3 text-xs shadow-pop group-hover/engine:block group-focus-within/engine:block">
 +      {desc ? (
 +        <p className="text-ink-2">
 +          {desc.text} <i className="text-ink-3">(Source: {desc.source})</i>
@@ -13348,10 +13431,10 @@ index 0000000..6487346
 +}
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..532d6ca
+index 0000000..42e2cf6
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,362 @@
+@@ -0,0 +1,372 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -13368,7 +13451,9 @@ index 0000000..532d6ca
 +  --line: #e6e2d7;
 +  --ink: #201d17;
 +  --ink-2: #6b675c;
-+  --ink-3: #9a958a;
++  /* muted tier: must keep 4.5:1 against every surface it sits on (worst case
++     surface-2 #f1efe8) */
++  --ink-3: #716c61;
 +  --accent: #a67c00;
 +  --accent-hover: #8c6800;
 +  --accent-strong: #f5c84c;
@@ -13377,8 +13462,8 @@ index 0000000..532d6ca
 +  --accent-contrast: #241d0e;
 +  --highlight-bg: #fde68a;
 +  --danger: #dc2626;
-+  --warning: #d97706;
-+  --ok: #16a34a;
++  --warning: #b45309;
++  --ok: #15803d;
 +  --shadow-card: 0 1px 2px rgb(32 29 23 / 0.05), 0 4px 16px rgb(32 29 23 / 0.05);
 +  --shadow-pop: 0 4px 6px rgb(32 29 23 / 0.07), 0 12px 32px rgb(32 29 23 / 0.16);
 +  color-scheme: light;
@@ -13391,7 +13476,7 @@ index 0000000..532d6ca
 +  --line: #38342f;
 +  --ink: #eceae4;
 +  --ink-2: #a8a399;
-+  --ink-3: #7b766c;
++  --ink-3: #9b958a;
 +  --accent: #fec843;
 +  --accent-hover: #ffd76b;
 +  --accent-strong: #fec843;
@@ -13415,7 +13500,7 @@ index 0000000..532d6ca
 +  --line: #242426;
 +  --ink: #ececec;
 +  --ink-2: #9a9a9a;
-+  --ink-3: #6c6c6c;
++  --ink-3: #828282;
 +  --accent-soft: #292413;
 +  --highlight-bg: #3d3617;
 +  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.6), 0 4px 16px rgb(0 0 0 / 0.5);
@@ -13713,6 +13798,14 @@ index 0000000..532d6ca
 +
 +html.centered {
 +  --results-max: 72rem;
++}
++
++/* hero shell (home page) owns its scrolling: the document never scrolls or
++   rubber-bands (iOS Safari would otherwise push the whole layout around);
++   all overflow lives in the shell's inner scroll container */
++.zjs-hero-lock {
++  overflow: hidden;
++  overscroll-behavior: none;
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
