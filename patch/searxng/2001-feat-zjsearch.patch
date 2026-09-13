@@ -3696,18 +3696,6 @@ index 0000000..e637ab1
 +    </SettingsContext.Provider>
 +  );
 +}
-diff --git a/client/zjsearch/src/brand/empty_favicon.svg b/client/zjsearch/src/brand/empty_favicon.svg
-new file mode 100644
-index 0000000..76396d2
---- /dev/null
-+++ b/client/zjsearch/src/brand/empty_favicon.svg
-@@ -0,0 +1,6 @@
-+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="#9d9fa6" stroke-width="2.5" stroke-linecap="round">
-+  <circle cx="24" cy="24" r="17" fill="#eceef2" stroke="none"/>
-+  <circle cx="24" cy="24" r="17"/>
-+  <path d="M7 24 H41"/>
-+  <path d="M24 7 C30 13 30 35 24 41 C18 35 18 13 24 7 Z"/>
-+</svg>
 diff --git a/client/zjsearch/src/brand/favicon.svg b/client/zjsearch/src/brand/favicon.svg
 new file mode 100644
 index 0000000..d3eea46
@@ -3723,17 +3711,6 @@ index 0000000..d3eea46
 +  </defs>
 +  <circle cx="43" cy="43" r="25" fill="none" stroke="url(#lens)" stroke-width="13"/>
 +  <path d="M62.5 62.5 L83 83" stroke="url(#lens)" stroke-width="14" stroke-linecap="round"/>
-+</svg>
-diff --git a/client/zjsearch/src/brand/img_load_error.svg b/client/zjsearch/src/brand/img_load_error.svg
-new file mode 100644
-index 0000000..0670f41
---- /dev/null
-+++ b/client/zjsearch/src/brand/img_load_error.svg
-@@ -0,0 +1,5 @@
-+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="#9d9fa6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-+  <rect x="4" y="4" width="40" height="40" rx="8" fill="#eceef2" stroke="none"/>
-+  <circle cx="17" cy="17" r="4"/>
-+  <path d="M8 36 L20 24 L28 32 L34 26 L40 32"/>
 +</svg>
 diff --git a/client/zjsearch/src/components/BackToTop.tsx b/client/zjsearch/src/components/BackToTop.tsx
 new file mode 100644
@@ -5969,10 +5946,10 @@ index 0000000..4b3362e
 +}
 diff --git a/client/zjsearch/src/components/results/ImageGrid.tsx b/client/zjsearch/src/components/results/ImageGrid.tsx
 new file mode 100644
-index 0000000..c9055c9
+index 0000000..7d27941
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/ImageGrid.tsx
-@@ -0,0 +1,496 @@
+@@ -0,0 +1,515 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5982,10 +5959,9 @@ index 0000000..c9055c9
 + * back-button dismissal, progressive thumbnail → full image loading).
 + */
 +
-+import { Award, ChevronLeft, ChevronRight, Download, ExternalLink, Server, X } from "lucide-react";
++import { Award, ChevronLeft, ChevronRight, Download, ExternalLink, ImageOff, Server, X } from "lucide-react";
 +import { useCallback, useEffect, useRef, useState } from "react";
 +import { createPortal } from "react-dom";
-+import { THEME_STATIC } from "../../lib/constants.ts";
 +import { formatScore } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import { newTabLinkProps } from "../../lib/link.ts";
@@ -6017,13 +5993,21 @@ index 0000000..c9055c9
 +      image.onerror = null;
 +    };
 +  }, [thumbnail, full]);
++  const [failed, setFailed] = useState(!src);
++  if (failed) {
++    return (
++      <div className="flex h-[60vh] w-full items-center justify-center text-zinc-500">
++        <ImageOff className="size-10" />
++      </div>
++    );
++  }
 +  return (
 +    <img
 +      alt={alt}
 +      className="max-h-[76vh] max-w-full rounded-md object-contain select-none"
 +      draggable={false}
-+      onError={(event) => {
-+        event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
++      onError={() => {
++        setFailed(true);
 +      }}
 +      src={src}
 +    />
@@ -6380,25 +6364,37 @@ index 0000000..c9055c9
 +}) {
 +  const [loaded, setLoaded] = useState(false);
 +  const result = results[index];
-+  // a hung image request must not pulse forever - fall back to the
-+  // error placeholder after a grace period
-+  const [timedOut, setTimedOut] = useState(false);
++  // missing or unloadable thumbnails collapse to a quiet placeholder tile
++  // (a hung request gets the same treatment after a grace period)
++  const [failed, setFailed] = useState(!thumbSrc);
 +  useEffect(() => {
-+    if (loaded) {
++    if (loaded || failed) {
 +      return;
 +    }
 +    const timer = window.setTimeout(() => {
-+      setTimedOut(true);
-+      setLoaded(true);
++      setFailed(true);
 +    }, 12000);
 +    return () => {
 +      window.clearTimeout(timer);
 +    };
-+  }, [loaded]);
++  }, [loaded, failed]);
 +  if (!result) {
 +    return null;
 +  }
-+  const src = timedOut ? `${THEME_STATIC}/img/img_load_error.svg` : thumbSrc;
++  if (failed) {
++    return (
++      <button
++        aria-label={result.title_text}
++        className="flex h-44 w-full items-center justify-center rounded-lg bg-surface-2 text-ink-3"
++        onClick={() => {
++          onOpen(index);
++        }}
++        type="button"
++      >
++        <ImageOff className="size-8" />
++      </button>
++    );
++  }
 +  return (
 +    <button
 +      className={`group relative block w-full break-inside-avoid overflow-hidden rounded-lg bg-surface-2 transition-opacity ${
@@ -6416,14 +6412,14 @@ index 0000000..c9055c9
 +        }`}
 +        decoding="async"
 +        loading="lazy"
-+        onError={(event) => {
-+          event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
++        onError={() => {
++          setFailed(true);
 +          setLoaded(true);
 +        }}
 +        onLoad={() => {
 +          setLoaded(true);
 +        }}
-+        src={src}
++        src={thumbSrc}
 +      />
 +      <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
 +      <span className="pointer-events-none absolute inset-x-2 bottom-2 line-clamp-2 text-[11px] font-medium leading-4 text-white opacity-0 transition-opacity group-hover:opacity-100">
@@ -6676,10 +6672,10 @@ index 0000000..eb3eb74
 +}
 diff --git a/client/zjsearch/src/components/results/MusicGrid.tsx b/client/zjsearch/src/components/results/MusicGrid.tsx
 new file mode 100644
-index 0000000..d26d77f
+index 0000000..019dd18
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/MusicGrid.tsx
-@@ -0,0 +1,263 @@
+@@ -0,0 +1,255 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Music-intent layout: square album-art tiles mirroring the video grid.
@@ -6689,12 +6685,11 @@ index 0000000..d26d77f
 +
 +import { Calendar, Music as MusicIcon, Pause, Play, User, X } from "lucide-react";
 +import { useEffect, useRef, useState } from "react";
-+import { THEME_STATIC } from "../../lib/constants.ts";
 +import { formatDate, formatLength } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "../../lib/types.ts";
 +import { ResultLink } from "./cardParts.tsx";
-+import { TileBadge, TileEngines, TileFavicon } from "./Tile.tsx";
++import { TileBadge, TileEngines, TileFavicon, TileThumb } from "./Tile.tsx";
 +
 +function formatClock(seconds: number): string {
 +  if (!Number.isFinite(seconds) || seconds < 0) {
@@ -6852,22 +6847,15 @@ index 0000000..d26d77f
 +            globals={globals}
 +            result={result}
 +          >
-+            {result.thumbnail ? (
-+              <img
-+                alt={result.title_text}
-+                className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-+                decoding="async"
-+                loading="lazy"
-+                onError={(event) => {
-+                  event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
-+                }}
-+                src={result.thumbnail}
-+              />
-+            ) : (
-+              <span className="grid size-full place-items-center bg-gradient-to-br from-surface-2 to-surface text-ink-3">
-+                <MusicIcon className="size-10" />
-+              </span>
-+            )}
++            <TileThumb
++              alt={result.title_text}
++              placeholder={
++                <span className="grid size-full place-items-center bg-gradient-to-br from-surface-2 to-surface text-ink-3">
++                  <MusicIcon className="size-10" />
++                </span>
++              }
++              src={result.thumbnail}
++            />
 +            {length ? <TileBadge>{length}</TileBadge> : null}
 +            {result.favicon ? <TileFavicon src={result.favicon} /> : null}
 +          </ResultLink>
@@ -7601,14 +7589,15 @@ index 0000000..472ac5c
 +}
 diff --git a/client/zjsearch/src/components/results/Tile.tsx b/client/zjsearch/src/components/results/Tile.tsx
 new file mode 100644
-index 0000000..1a0d6b6
+index 0000000..9d37999
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Tile.tsx
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,84 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
++import { Globe } from "lucide-react";
 +import type { ReactNode } from "react";
-+import { THEME_STATIC } from "../../lib/constants.ts";
++import { useEffect, useState } from "react";
 +import type { ResultItem } from "../../lib/types.ts";
 +import { EnginesLine } from "./cardParts.tsx";
 +
@@ -7624,15 +7613,21 @@ index 0000000..1a0d6b6
 +/** Source favicon pinned to the bottom-left of a media tile; falls back to the
 +    placeholder icon when the engine favicon is missing or blocked by the proxy. */
 +export function TileFavicon({ src }: { src: string }) {
++  const [failed, setFailed] = useState(!src);
++  if (failed) {
++    return (
++      <span className="absolute bottom-2 left-2 flex size-6 items-center justify-center rounded-full bg-white ring-1 ring-white/25">
++        <Globe className="size-3.5 text-ink-2" />
++      </span>
++    );
++  }
 +  return (
 +    <img
 +      alt=""
-+      className="absolute bottom-2 left-2 size-6 rounded-full bg-white ring-1 ring-white/25"
++      className="absolute bottom-2 left-2 size-6 rounded-full bg-white object-contain ring-1 ring-white/25"
 +      decoding="async"
 +      loading="lazy"
-+      onError={(event) => {
-+        event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
-+      }}
++      onError={() => setFailed(true)}
 +      src={src}
 +    />
 +  );
@@ -7642,6 +7637,45 @@ index 0000000..1a0d6b6
 +    ([score] [first engine] [+N]). */
 +export function TileEngines({ result }: { result: ResultItem }) {
 +  return <EnginesLine result={result} />;
++}
++
++/** Tile thumbnail with graceful failure: a missing/broken/hung thumbnail
++    (12s grace) renders the caller's placeholder glyph instead of an error
++    image. */
++export function TileThumb({
++  src,
++  alt,
++  placeholder,
++  imgClassName = "size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]",
++}: {
++  src?: string;
++  alt: string;
++  placeholder: ReactNode;
++  imgClassName?: string;
++}) {
++  const [failed, setFailed] = useState(!src);
++  const [loaded, setLoaded] = useState(false);
++  useEffect(() => {
++    if (loaded || failed) {
++      return;
++    }
++    const timer = window.setTimeout(() => setFailed(true), 12000);
++    return () => window.clearTimeout(timer);
++  }, [failed, loaded]);
++  if (failed) {
++    return <>{placeholder}</>;
++  }
++  return (
++    <img
++      alt={alt}
++      className={imgClassName}
++      decoding="async"
++      loading="lazy"
++      onError={() => setFailed(true)}
++      onLoad={() => setLoaded(true)}
++      src={src ?? ""}
++    />
++  );
 +}
 diff --git a/client/zjsearch/src/components/results/blocks.ts b/client/zjsearch/src/components/results/blocks.ts
 new file mode 100644
@@ -7674,15 +7708,14 @@ index 0000000..e9f9975
 +}
 diff --git a/client/zjsearch/src/components/results/cardParts.tsx b/client/zjsearch/src/components/results/cardParts.tsx
 new file mode 100644
-index 0000000..c30b4ff
+index 0000000..d266ad3
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/cardParts.tsx
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,324 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Award, Calendar, Clock, Eye, Music, Play, Server, User } from "lucide-react";
++import { Award, Calendar, Clock, Eye, Globe, ImageOff, Music, Play, Server, User } from "lucide-react";
 +import { type ReactNode, useState } from "react";
-+import { THEME_STATIC } from "../../lib/constants.ts";
 +import { formatDate, formatLength, formatScore } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import { newTabLinkProps } from "../../lib/link.ts";
@@ -7712,8 +7745,9 @@ index 0000000..c30b4ff
 +}
 +
 +export function Favicon({ result }: { result: ResultItem }) {
-+  if (!result.favicon) {
-+    return null;
++  const [failed, setFailed] = useState(!result.favicon);
++  if (failed || !result.favicon) {
++    return <Globe className="size-4 shrink-0 text-ink-3" />;
 +  }
 +  return (
 +    <img
@@ -7721,9 +7755,7 @@ index 0000000..c30b4ff
 +      className="size-4 shrink-0 rounded-sm object-contain"
 +      decoding="async"
 +      loading="lazy"
-+      onError={(event) => {
-+        event.currentTarget.src = `${THEME_STATIC}/img/empty_favicon.svg`;
-+      }}
++      onError={() => setFailed(true)}
 +      src={result.favicon}
 +    />
 +  );
@@ -7877,16 +7909,23 @@ index 0000000..c30b4ff
 +  lengthDisplay?: string | null;
 +  eager?: boolean;
 +}) {
++  const [failed, setFailed] = useState(!src);
++  if (failed) {
++    return (
++      <span className={`flex items-center justify-center rounded-xl bg-surface-2 text-ink-3 ${className ?? ""}`}>
++        <ImageOff className="size-4" />
++      </span>
++    );
++  }
 +  return (
 +    <div className={`relative shrink-0 overflow-hidden rounded-xl bg-surface-2 ${className ?? ""}`}>
 +      <img
 +        alt={alt}
 +        className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
 +        decoding="async"
-+        fetchPriority={eager ? "high" : undefined}
 +        loading={eager ? "eager" : "lazy"}
-+        onError={(event) => {
-+          event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
++        onError={() => {
++          setFailed(true);
 +        }}
 +        src={src}
 +      />
@@ -8941,20 +8980,19 @@ index 0000000..1dc1adb
 +// whole card subtree
 diff --git a/client/zjsearch/src/components/results/grids.tsx b/client/zjsearch/src/components/results/grids.tsx
 new file mode 100644
-index 0000000..7bb5d47
+index 0000000..d791c3e
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/grids.tsx
-@@ -0,0 +1,344 @@
+@@ -0,0 +1,308 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Calendar, Clapperboard, Eye, Globe, Image, Package, Play, Tag, Truck, User, X } from "lucide-react";
 +import { useState } from "react";
-+import { THEME_STATIC } from "../../lib/constants.ts";
 +import { formatDate, formatLength } from "../../lib/format.ts";
 +import { useT } from "../../lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "../../lib/types.ts";
 +import { ResultLink } from "./cardParts.tsx";
-+import { TileBadge, TileEngines, TileFavicon } from "./Tile.tsx";
++import { TileBadge, TileEngines, TileFavicon, TileThumb } from "./Tile.tsx";
 +
 +// ------------------------------------------------------------- grid layouts
 +
@@ -8968,22 +9006,15 @@ index 0000000..7bb5d47
 +            globals={globals}
 +            result={result}
 +          >
-+            {result.thumbnail ? (
-+              <img
-+                alt={result.title_text}
-+                className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-+                decoding="async"
-+                loading="lazy"
-+                onError={(event) => {
-+                  event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
-+                }}
-+                src={result.thumbnail}
-+              />
-+            ) : (
-+              <span className="grid size-full place-items-center text-ink-3">
-+                <Package className="size-8" />
-+              </span>
-+            )}
++            <TileThumb
++              alt={result.title_text}
++              placeholder={
++                <span className="grid size-full place-items-center text-ink-3">
++                  <Package className="size-8" />
++                </span>
++              }
++              src={result.thumbnail}
++            />
 +          </ResultLink>
 +          <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
 +            <ResultLink
@@ -9053,22 +9084,7 @@ index 0000000..7bb5d47
 +            globals={globals}
 +            result={result}
 +          >
-+            {result.thumbnail ? (
-+              <img
-+                alt={result.title_text}
-+                className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-+                decoding="async"
-+                loading="lazy"
-+                onError={(event) => {
-+                  event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
-+                }}
-+                src={result.thumbnail}
-+              />
-+            ) : (
-+              <span className="grid size-full place-items-center text-ink-3">
-+                <Play className="size-8" />
-+              </span>
-+            )}
++            <TileThumb alt={result.title_text} placeholder={null} src={result.thumbnail} />
 +            {length ? <TileBadge>{length}</TileBadge> : null}
 +            {result.favicon ? <TileFavicon src={result.favicon} /> : null}
 +          </ResultLink>
@@ -9176,22 +9192,15 @@ index 0000000..7bb5d47
 +          globals={globals}
 +          result={result}
 +        >
-+          {result.thumbnail ? (
-+            <img
-+              alt={result.title_text}
-+              className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-+              decoding="async"
-+              loading="lazy"
-+              onError={(event) => {
-+                event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
-+              }}
-+              src={result.thumbnail}
-+            />
-+          ) : (
-+            <span className="grid size-full place-items-center text-ink-3">
-+              <Clapperboard className="size-8" />
-+            </span>
-+          )}
++          <TileThumb
++            alt={result.title_text}
++            placeholder={
++              <span className="grid size-full place-items-center text-ink-3">
++                <Clapperboard className="size-8" />
++              </span>
++            }
++            src={result.thumbnail}
++          />
 +          {result.favicon ? <TileFavicon src={result.favicon} /> : null}
 +        </ResultLink>
 +        <h3 className="mt-2.5 line-clamp-2 min-h-[2.75rem] text-base font-medium leading-snug">
@@ -9247,22 +9256,16 @@ index 0000000..7bb5d47
 +      >
 +        <div className="flex items-center gap-3">
 +          <ResultLink className="relative block shrink-0" globals={globals} result={result}>
-+            {result.thumbnail ? (
-+              <img
-+                alt={result.title_text}
-+                className="size-14 rounded-xl border border-line bg-surface-2 object-cover"
-+                decoding="async"
-+                loading="lazy"
-+                onError={(event) => {
-+                  event.currentTarget.src = `${THEME_STATIC}/img/img_load_error.svg`;
-+                }}
-+                src={result.thumbnail}
-+              />
-+            ) : (
-+              <span className="grid size-14 place-items-center rounded-xl border border-line bg-surface-2 text-ink-3">
-+                <Image className="size-6" />
-+              </span>
-+            )}
++            <TileThumb
++              alt={result.title_text}
++              imgClassName="size-14 rounded-xl border border-line object-cover"
++              placeholder={
++                <span className="grid size-14 place-items-center rounded-xl border border-line bg-surface-2 text-ink-3">
++                  <Image className="size-6" />
++                </span>
++              }
++              src={result.thumbnail}
++            />
 +          </ResultLink>
 +          <h3 className="line-clamp-2 min-h-[2.5rem] text-base font-medium leading-snug">
 +            <ResultLink
@@ -14088,7 +14091,7 @@ index 0000000..42e2cf6
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
-index 0000000..14d2dcf
+index 0000000..32052ea
 --- /dev/null
 +++ b/client/zjsearch/tools/assets.ts
 @@ -0,0 +1,41 @@
@@ -14115,7 +14118,7 @@ index 0000000..14d2dcf
 +      // serve the license so the footer link resolves
 +      await fs.copyFile(path.resolve("LICENSE.txt"), path.join(PATH.dist, "LICENSE.txt"));
 +
-+      const copies = ["favicon.svg", "img_load_error.svg", "empty_favicon.svg"] as const;
++      const copies = ["favicon.svg"] as const;
 +      for (const file of copies) {
 +        await fs.copyFile(path.resolve(PATH.brand, file), path.join(imgDir, file));
 +      }
