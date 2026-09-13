@@ -3841,10 +3841,10 @@ index 0000000..db6b706
 +}
 diff --git a/client/zjsearch/src/components/CopyButton.tsx b/client/zjsearch/src/components/CopyButton.tsx
 new file mode 100644
-index 0000000..43acbcd
+index 0000000..8c516b1
 --- /dev/null
 +++ b/client/zjsearch/src/components/CopyButton.tsx
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,104 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import type { ReactNode } from "react";
@@ -3893,6 +3893,60 @@ index 0000000..43acbcd
 +        </>
 +      )}
 +    </button>
++  );
++}
++
++/** Click-to-copy wrapper: the content itself is the copy trigger - click
++    copies `value` and a transient chip confirms.  Hover shows the copy hint
++    so the affordance is discoverable without costing layout space. */
++export function ClickToCopy({
++  value,
++  className = "",
++  children,
++}: {
++  value: string;
++  className?: string;
++  children: ReactNode;
++}) {
++  const t = useT();
++  const [copied, setCopied] = useState(false);
++  const copy = () => {
++    void navigator.clipboard
++      .writeText(value)
++      .then(() => {
++        setCopied(true);
++        window.setTimeout(() => setCopied(false), 1500);
++      })
++      .catch(() => {
++        /* clipboard unavailable */
++      });
++  };
++  return (
++    <div
++      aria-label={t("copy")}
++      className={`group/copy relative cursor-pointer ${className ?? ""}`}
++      onClick={() => {
++        copy();
++      }}
++      onKeyDown={(event) => {
++        if (event.key === "Enter" || event.key === " ") {
++          event.preventDefault();
++          copy();
++        }
++      }}
++      role="button"
++      tabIndex={0}
++    >
++      {children}
++      <span
++        aria-hidden="true"
++        className={`absolute end-1.5 top-1.5 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] text-accent transition-opacity ${
++          copied ? "opacity-100" : "opacity-0 group-hover/copy:opacity-100"
++        }`}
++      >
++        {copied ? t("copied") : t("copy")}
++      </span>
++    </div>
 +  );
 +}
 diff --git a/client/zjsearch/src/components/Dropdown.tsx b/client/zjsearch/src/components/Dropdown.tsx
@@ -5026,10 +5080,10 @@ index 0000000..4d22a7b
 +}
 diff --git a/client/zjsearch/src/components/results/Answers.tsx b/client/zjsearch/src/components/results/Answers.tsx
 new file mode 100644
-index 0000000..6275f0c
+index 0000000..a0582cf
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Answers.tsx
-@@ -0,0 +1,675 @@
+@@ -0,0 +1,676 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ArrowRight, MapPin } from "lucide-react";
@@ -5040,7 +5094,7 @@ index 0000000..6275f0c
 +import { newTabLinkProps } from "../../lib/link.ts";
 +import { useSettings } from "../../lib/settings.ts";
 +import type { AnswerData, WeatherItem } from "../../lib/types.ts";
-+import { CopyButton } from "../CopyButton.tsx";
++import { ClickToCopy } from "../CopyButton.tsx";
 +
 +const MAX_SOURCES_SHOWN = 3;
 +
@@ -5546,9 +5600,6 @@ index 0000000..6275f0c
 +  );
 +}
 +
-+const COPY_BUTTON_CLASS =
-+  "shrink-0 rounded-lg border border-line px-2 py-1 text-xs text-ink-3 transition-colors hover:text-ink";
-+
 +/** Special-query answers (random, statistics, hash, self-info, time zone)
 +    carry a structured *data* payload emitted by their plugins; the layouts
 +    below render strictly from those fields — no parsing of the localized
@@ -5572,11 +5623,12 @@ index 0000000..6275f0c
 +          <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
 +            {data.algo}
 +          </span>
-+          <CopyButton className={COPY_BUTTON_CLASS} value={data.digest} />
 +        </div>
-+        <p className="mt-2 break-all font-mono text-sm text-ink" dir="ltr">
-+          {data.digest}
-+        </p>
++        <ClickToCopy className="mt-2" value={data.digest}>
++          <p className="break-all font-mono text-sm text-ink-2" dir="ltr">
++            {data.digest}
++          </p>
++        </ClickToCopy>
 +      </div>
 +    );
 +  }
@@ -5587,10 +5639,11 @@ index 0000000..6275f0c
 +          <span className="font-mono font-medium text-accent">{data.func}</span>({data.args})
 +        </p>
 +        <div className="mt-1 flex items-center justify-between gap-3">
-+          <p className="text-2xl font-semibold text-ink" dir="ltr">
-+            {data.result}
-+          </p>
-+          <CopyButton className={COPY_BUTTON_CLASS} value={data.result} />
++          <ClickToCopy className="mt-1" value={data.result}>
++            <p className="text-2xl font-semibold text-ink" dir="ltr">
++              {data.result}
++            </p>
++          </ClickToCopy>
 +        </div>
 +      </div>
 +    );
@@ -5621,13 +5674,14 @@ index 0000000..6275f0c
 +      <div>
 +        <p className="text-xs text-ink-3">{data.label}</p>
 +        <div className="mt-1 flex items-center justify-between gap-3">
-+          <p
-+            className={`min-w-0 text-ink ${data.value.includes(" ") ? "break-all font-mono text-sm" : "font-mono text-lg"}`}
-+            dir="ltr"
-+          >
-+            {data.value}
-+          </p>
-+          <CopyButton className={COPY_BUTTON_CLASS} value={data.value} />
++          <ClickToCopy className="mt-1" value={data.value}>
++            <p
++              className={`min-w-0 text-ink ${data.value.includes(" ") ? "break-all font-mono text-sm" : "font-mono text-lg"}`}
++              dir="ltr"
++            >
++              {data.value}
++            </p>
++          </ClickToCopy>
 +        </div>
 +      </div>
 +    );
@@ -5638,10 +5692,11 @@ index 0000000..6275f0c
 +        {data.swatch === "true" ? (
 +          <span className="size-10 shrink-0 rounded-xl border border-line" style={{ backgroundColor: data.value }} />
 +        ) : null}
-+        <p className="min-w-0 flex-1 break-all font-mono text-sm text-ink" dir="ltr">
-+          {data.value}
-+        </p>
-+        <CopyButton className={COPY_BUTTON_CLASS} value={data.value} />
++        <ClickToCopy className="min-w-0 flex-1" value={data.value}>
++          <p className="break-all font-mono text-sm text-ink" dir="ltr">
++            {data.value}
++          </p>
++        </ClickToCopy>
 +      </div>
 +    );
 +  }
@@ -7252,10 +7307,10 @@ index 0000000..adc56a7
 +}
 diff --git a/client/zjsearch/src/components/results/Sidebar.tsx b/client/zjsearch/src/components/results/Sidebar.tsx
 new file mode 100644
-index 0000000..472ac5c
+index 0000000..c443ad4
 --- /dev/null
 +++ b/client/zjsearch/src/components/results/Sidebar.tsx
-@@ -0,0 +1,434 @@
+@@ -0,0 +1,433 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Search, Timer } from "lucide-react";
@@ -7266,7 +7321,7 @@ index 0000000..472ac5c
 +import { useOverlay } from "../../lib/overlay.tsx";
 +import { buildSearchUrl } from "../../lib/router.tsx";
 +import type { GlobalData, InfoboxData, SearchPageData } from "../../lib/types.ts";
-+import { CopyButton } from "../CopyButton.tsx";
++import { ClickToCopy } from "../CopyButton.tsx";
 +
 +function Box({ title, children }: { title: string; children: ReactNode }) {
 +  return (
@@ -7676,15 +7731,14 @@ index 0000000..472ac5c
 +
 +      {globals.method === "POST" ? (
 +        <Box title={t("search_url")}>
-+          <div className="flex items-start gap-2">
++          <ClickToCopy value={searchUrl}>
 +            <pre
-+              className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-surface-2 p-2 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-ink-2"
++              className="min-w-0 overflow-x-auto rounded-lg bg-surface-2 p-2 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-ink-2"
 +              dir="ltr"
 +            >
 +              {searchUrl}
 +            </pre>
-+            <CopyButton value={searchUrl} />
-+          </div>
++          </ClickToCopy>
 +        </Box>
 +      ) : null}
 +    </aside>
@@ -11594,10 +11648,10 @@ index 0000000..231c4f1
 +}
 diff --git a/client/zjsearch/src/pages/PreferencesPage.tsx b/client/zjsearch/src/pages/PreferencesPage.tsx
 new file mode 100644
-index 0000000..c693a1e
+index 0000000..e9a36a8
 --- /dev/null
 +++ b/client/zjsearch/src/pages/PreferencesPage.tsx
-@@ -0,0 +1,913 @@
+@@ -0,0 +1,919 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -11627,6 +11681,7 @@ index 0000000..c693a1e
 +  X,
 +} from "lucide-react";
 +import { useEffect, useMemo, useRef, useState } from "react";
++import { ClickToCopy } from "../components/CopyButton.tsx";
 +import { Link, Shell } from "../components/Shell.tsx";
 +import { useT } from "../lib/i18n.ts";
 +import { useOverlay } from "../lib/overlay.tsx";
@@ -12400,29 +12455,43 @@ index 0000000..c693a1e
 +
 +              <Card>
 +                <div className="px-4 py-4 sm:px-5">
-+                  <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
-+                    <LinkIcon className="size-4 text-accent" />
-+                    {t("search_url_of_prefs")}
-+                  </h4>
-+                  <pre
-+                    className="mt-2 min-w-0 overflow-x-auto rounded-xl bg-surface-2 p-2.5 font-mono text-xs break-all whitespace-pre-wrap text-ink-2"
-+                    dir="ltr"
++                  <div className="flex items-center justify-between gap-2">
++                    <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
++                      <LinkIcon className="size-4 text-accent" />
++                      {t("search_url_of_prefs")}
++                    </h4>
++                  </div>
++                  <ClickToCopy
++                    className="mt-2"
++                    value={`${shareOrigin}/?preferences=${data.preferences_url_params}&q=%s`}
 +                  >
-+                    {shareOrigin}/?preferences={data.preferences_url_params}&amp;q=%s
-+                  </pre>
++                    <pre
++                      className="max-h-28 min-w-0 overflow-y-auto rounded-xl bg-surface-2 p-2.5 font-mono text-xs break-all whitespace-pre-wrap text-ink-2"
++                      dir="ltr"
++                    >
++                      {shareOrigin}/?preferences={data.preferences_url_params}&amp;q=%s
++                    </pre>
++                  </ClickToCopy>
 +                  <p className="mt-1.5 text-xs text-ink-3">{t("prefs_url_privacy_note")}</p>
 +                </div>
 +                <div className="px-4 py-4 sm:px-5">
-+                  <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
-+                    <ExternalLink className="size-4 text-accent" />
-+                    {t("url_to_restore")}
-+                  </h4>
-+                  <pre
-+                    className="mt-2 min-w-0 overflow-x-auto rounded-xl bg-surface-2 p-2.5 font-mono text-xs break-all whitespace-pre-wrap text-ink-2"
-+                    dir="ltr"
++                  <div className="flex items-center justify-between gap-2">
++                    <h4 className="flex items-center gap-2 text-sm font-semibold text-ink">
++                      <ExternalLink className="size-4 text-accent" />
++                      {t("url_to_restore")}
++                    </h4>
++                  </div>
++                  <ClickToCopy
++                    className="mt-2"
++                    value={`${shareOrigin}/preferences?preferences=${data.preferences_url_params}`}
 +                  >
-+                    {shareOrigin}/preferences?preferences={data.preferences_url_params}
-+                  </pre>
++                    <pre
++                      className="max-h-28 min-w-0 overflow-y-auto rounded-xl bg-surface-2 p-2.5 font-mono text-xs break-all whitespace-pre-wrap text-ink-2"
++                      dir="ltr"
++                    >
++                      {shareOrigin}/preferences?preferences={data.preferences_url_params}
++                    </pre>
++                  </ClickToCopy>
 +                  <p className="mt-1.5 text-xs text-ink-3">{t("url_restore_desc")}</p>
 +                </div>
 +                <div className="px-4 py-4 sm:px-5">
@@ -12430,23 +12499,14 @@ index 0000000..c693a1e
 +                    <Key className="size-4 text-accent" />
 +                    {t("copy_prefs_hash")}
 +                  </h4>
-+                  <div className="mt-2 flex items-start gap-2">
++                  <ClickToCopy value={data.preferences_url_params}>
 +                    <pre
-+                      className="min-w-0 flex-1 overflow-x-auto rounded-xl bg-surface-2 p-2.5 font-mono text-xs break-all whitespace-pre-wrap text-ink-2"
++                      className="max-h-28 min-w-0 overflow-y-auto rounded-xl bg-surface-2 p-2.5 font-mono text-xs break-all whitespace-pre-wrap text-ink-2"
 +                      dir="ltr"
 +                    >
 +                      {data.preferences_url_params}
 +                    </pre>
-+                    <button
-+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-2 text-xs text-ink-2 transition-colors hover:text-ink"
-+                      onClick={() => {
-+                        void navigator.clipboard.writeText(data.preferences_url_params).catch(() => {});
-+                      }}
-+                      type="button"
-+                    >
-+                      {t("copy")}
-+                    </button>
-+                  </div>
++                  </ClickToCopy>
 +                </div>
 +                <SettingRow icon={<RefreshCw className="size-4.5" />} stacked title={t("insert_prefs_hash")}>
 +                  <input
