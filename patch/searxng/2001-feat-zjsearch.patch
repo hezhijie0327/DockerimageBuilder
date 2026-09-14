@@ -3974,23 +3974,31 @@ index 0000000..db6b706
 +}
 diff --git a/client/zjsearch/src/components/CopyButton.tsx b/client/zjsearch/src/components/CopyButton.tsx
 new file mode 100644
-index 0000000..aef4649
+index 0000000..016aa07
 --- /dev/null
 +++ b/client/zjsearch/src/components/CopyButton.tsx
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,89 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
++import { Check } from "lucide-react";
 +import type { ReactNode } from "react";
-+import { useState } from "react";
++import { useCopyFeedback } from "@/lib/clipboard.ts";
 +import { useT } from "@/lib/i18n.ts";
 +
-+/** Copy-to-clipboard button with a transient "copied" confirmation.
-+    Pass `className` to restyle (defaults to the muted surface chip). */
++const ACTION_PILL =
++  "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors";
++const ACTION_IDLE = "border-line text-ink-2 hover:border-accent hover:text-accent";
++const ACTION_COPIED = "border-ok/40 text-ok";
++
++/** Copy-to-clipboard button in the unified share-card language: a bordered
++    pill that flips to a green check + 「已复制」 while the confirmation is
++    up.  Pass `className` to restyle (e.g. the map's floating dark chip) —
++    the copied feedback still applies. */
 +export function CopyButton({
 +  value,
 +  label,
 +  icon,
-+  className = "shrink-0 rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs text-ink-2 transition-colors hover:text-ink",
++  className,
 +}: {
 +  value: string;
 +  label?: string;
@@ -3998,40 +4006,26 @@ index 0000000..aef4649
 +  className?: string;
 +}) {
 +  const t = useT();
-+  const [copied, setCopied] = useState(false);
++  const { copy, isCopied } = useCopyFeedback();
++  const copied = isCopied(value);
 +  return (
 +    <button
-+      className={className}
++      className={className ?? `${ACTION_PILL} ${copied ? ACTION_COPIED : ACTION_IDLE}`}
 +      onClick={() => {
-+        void navigator.clipboard
-+          .writeText(value)
-+          .then(() => {
-+            setCopied(true);
-+            window.setTimeout(() => {
-+              setCopied(false);
-+            }, 1500);
-+          })
-+          .catch(() => {
-+            /* clipboard unavailable */
-+          });
++        copy(value);
 +      }}
 +      type="button"
 +    >
-+      {copied ? (
-+        t("copied")
-+      ) : (
-+        <>
-+          {icon}
-+          {label ?? t("copy")}
-+        </>
-+      )}
++      {copied ? <Check className="size-3 shrink-0" /> : icon}
++      {copied ? t("copied") : (label ?? t("copy"))}
 +    </button>
 +  );
 +}
 +
 +/** Click-to-copy wrapper: the content itself is the copy trigger - click
 +    copies `value` and a transient chip confirms.  Hover shows the copy hint
-+    so the affordance is discoverable without costing layout space. */
++    (accent) so the affordance is discoverable without costing layout space;
++    a completed copy turns the chip green. */
 +export function ClickToCopy({
 +  value,
 +  className = "",
@@ -4042,29 +4036,19 @@ index 0000000..aef4649
 +  children: ReactNode;
 +}) {
 +  const t = useT();
-+  const [copied, setCopied] = useState(false);
-+  const copy = () => {
-+    void navigator.clipboard
-+      .writeText(value)
-+      .then(() => {
-+        setCopied(true);
-+        window.setTimeout(() => setCopied(false), 1500);
-+      })
-+      .catch(() => {
-+        /* clipboard unavailable */
-+      });
-+  };
++  const { copy, isCopied } = useCopyFeedback();
++  const copied = isCopied(value);
 +  return (
 +    <div
 +      aria-label={t("copy")}
 +      className={`group/copy relative cursor-pointer ${className ?? ""}`}
 +      onClick={() => {
-+        copy();
++        copy(value);
 +      }}
 +      onKeyDown={(event) => {
 +        if (event.key === "Enter" || event.key === " ") {
 +          event.preventDefault();
-+          copy();
++          copy(value);
 +        }
 +      }}
 +      role="button"
@@ -4073,10 +4057,11 @@ index 0000000..aef4649
 +      {children}
 +      <span
 +        aria-hidden="true"
-+        className={`absolute end-1.5 top-1.5 rounded-full bg-accent-soft px-2 py-0.5 text-[11px] text-accent transition-opacity ${
-+          copied ? "opacity-100" : "opacity-0 group-hover/copy:opacity-100"
++        className={`absolute end-1.5 top-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition-colors ${
++          copied ? "bg-ok/10 text-ok opacity-100" : "bg-accent-soft text-accent opacity-0 group-hover/copy:opacity-100"
 +        }`}
 +      >
++        {copied ? <Check className="size-3 shrink-0" /> : null}
 +        {copied ? t("copied") : t("copy")}
 +      </span>
 +    </div>
@@ -5914,10 +5899,10 @@ index 0000000..5485f69
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 0000000..c8dada2
+index 0000000..6ecec07
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,231 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5941,6 +5926,7 @@ index 0000000..c8dada2
 +} from "lucide-react";
 +import { useState } from "react";
 +import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
++import { useCopyFeedback } from "@/lib/clipboard.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { shareableSearchUrl } from "@/lib/searchParams.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
@@ -5986,29 +5972,13 @@ index 0000000..c8dada2
 +  const [openPanel, setOpenPanel] = useState<null | "engines" | "results">(() =>
 +    hasEnginesPanel && data.results.length === 0 ? "engines" : null,
 +  );
-+  const [copied, setCopied] = useState(false);
++  const { copy, isCopied } = useCopyFeedback();
++  const copied = isCopied(searchUrl ?? "");
 +  const toggle = (panel: "engines" | "results") => {
 +    setOpenPanel((current) => (current === panel ? null : panel));
 +  };
 +  const roundedTime = data.max_response_time ? Math.round(data.max_response_time * 10) / 10 : null;
 +  const maxTime = data.max_response_time ?? 0;
-+
-+  const copyUrl = () => {
-+    if (!searchUrl) {
-+      return;
-+    }
-+    void navigator.clipboard
-+      .writeText(searchUrl)
-+      .then(() => {
-+        setCopied(true);
-+        window.setTimeout(() => {
-+          setCopied(false);
-+        }, 1500);
-+      })
-+      .catch(() => {
-+        /* clipboard unavailable */
-+      });
-+  };
 +
 +  return (
 +    <div>
@@ -6063,7 +6033,11 @@ index 0000000..c8dada2
 +              className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
 +                copied ? "border-ok/40 text-ok" : "border-line text-ink-2 hover:border-accent hover:text-accent"
 +              }`}
-+              onClick={copyUrl}
++              onClick={() => {
++                if (searchUrl) {
++                  copy(searchUrl);
++                }
++              }}
 +              type="button"
 +            >
 +              {copied ? t("copied") : t("copy_link")}
@@ -10983,6 +10957,50 @@ index 0000000..5e9ea54
 +
 +/** In mixed searches the packages results are presented inside the it block. */
 +export const PACKAGES_BLOCK_CATEGORY = "it";
+diff --git a/client/zjsearch/src/lib/clipboard.ts b/client/zjsearch/src/lib/clipboard.ts
+new file mode 100644
+index 0000000..a60e604
+--- /dev/null
++++ b/client/zjsearch/src/lib/clipboard.ts
+@@ -0,0 +1,38 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { useCallback, useEffect, useRef, useState } from "react";
++
++/** Shared click-to-copy feedback: writes `value` to the clipboard and holds
++    a transient "copied" confirmation (1.5 s, matching the share card) that
++    callers render through `isCopied(value)`. */
++export function useCopyFeedback(timeoutMs = 1500) {
++  const [copiedValue, setCopiedValue] = useState<string | null>(null);
++  const timer = useRef<number | null>(null);
++  useEffect(
++    () => () => {
++      if (timer.current !== null) {
++        window.clearTimeout(timer.current);
++      }
++    },
++    [],
++  );
++  const copy = useCallback(
++    (value: string) => {
++      void navigator.clipboard
++        .writeText(value)
++        .then(() => {
++          setCopiedValue(value);
++          if (timer.current !== null) {
++            window.clearTimeout(timer.current);
++          }
++          timer.current = window.setTimeout(() => setCopiedValue(null), timeoutMs);
++        })
++        .catch(() => {
++          /* clipboard unavailable */
++        });
++    },
++    [timeoutMs],
++  );
++  const isCopied = useCallback((value: string) => copiedValue === value, [copiedValue]);
++  return { copy, isCopied };
++}
 diff --git a/client/zjsearch/src/lib/cookies.ts b/client/zjsearch/src/lib/cookies.ts
 new file mode 100644
 index 0000000..6be713c
