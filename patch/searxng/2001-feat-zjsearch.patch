@@ -229,10 +229,10 @@ index 0000000..2d3b19b
 +Licensor: Zhijie He
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 0000000..a962f4b
+index 0000000..c801708
 --- /dev/null
 +++ b/client/zjsearch/README.rst
-@@ -0,0 +1,181 @@
+@@ -0,0 +1,252 @@
 +=====
 +zjsearch
 +=====
@@ -284,6 +284,75 @@ index 0000000..a962f4b
 +  (warm Kagi-inspired palette, light/dark/auto via the ``simple_style``
 +  cookie), Biome for lint/format.
 +
++Design system
++=============
++
++The visual language is tokenized and audited; keep new UI on these rails
++instead of inventing sizes/colours:
++
++- **Type scale** — one size per role: 12px ``text-xs`` meta/chips/mono
++  chrome, 13px ``text-[13px]`` interactive controls (tabs, dropdowns,
++  pills, suggestions) and dialog copy, 14px ``text-sm`` body text and
++  settings rows, 16px ``text-base`` result titles + search inputs,
++  20px infobox title, 24px page headings. Weights: ``font-extrabold``
++  brand only, ``font-semibold`` headings, ``font-medium``
++  emphasis/selected, body regular. Card margin rhythm: ``mt-1`` title &
++  meta, ``mt-1.5`` snippet & tags, ``mt-2`` engines row. Answer values
++  are tiered (4xl calculator/stats heroes, xl time/translation heroes,
++  ``text-sm`` ``font-mono`` copyable values) — pick the tier, don't
++  invent a size.
++- **Colour tokens** — only the ``--*`` custom properties from
++  ``styles/global.css`` (``bg``/``surface``/``surface-2``/``line``/
++  ``ink``/``ink-2``/``ink-3``/``accent``*``/``danger``/``warning``/
++  ``ok``). Every ink token keeps ≥4.5:1 against every surface in all
++  three palettes (light / ``.dark`` / ``.black`` OLED). Rules that keep
++  the palettes in sync: ``accent`` is the light-mode *text* accent
++  (``#8c6800``, AA on white/surface-2/accent-soft); ``accent-strong`` is
++  a fill/border accent only — text on an ``accent-strong`` fill is always
++  ``accent-contrast`` (including hover states over dark media chips);
++  fixed-dark media chrome (lightbox, tile badges, scrims, map graphics)
++  is intentionally theme-independent and says so in a comment at its
++  definition site.
++- **Grid density via container queries** — the results column is an
++  ``@container``; every grid keys its column count off the *column*
++  width (``@[24rem]``/``@[40rem]``/``@[46rem]``/``@[54rem]``/``@5xl``
++  steps), so widescreen mode (90rem cap) grows a column, centered mode
++  (72rem) drops one, and the sidebar/empty-rail changes re-flow grids
++  automatically. New grids must use container variants, not ``sm:``/
++  ``xl:`` viewport breakpoints.
++- **Icons** — lucide-react, imported per usage site with
++  ``aria-hidden``; 18px (``size-4.5``) in 36px round buttons, 14px
++  (``size-3.5``) leading icons in tabs/pills, 12px (``size-3``) inside
++  meta rows and chips, 20px (``size-5``) in large round buttons. Same
++  concept = same icon everywhere (Search submits, X dismisses, Check
++  confirms copy, ExternalLink leaves the site, ChevronDown discloses).
++- **Motion** — entrance/exit animations use the ``animate-*`` theme
++  tokens only; every JS-initiated scroll passes ``scrollBehavior()``
++  (``lib/motion.ts``, also exports ``reducedMotion()``); the stylesheet
++  guards ``prefers-reduced-motion`` for CSS.
++- **Accessibility** — global ``:focus-visible`` outline (never remove it
++  without an equivalent ring); icon-only buttons always carry an
++  ``aria-label``; modal dialogs (drawer, lightbox, help modal) mount
++  through ``useDialogFocus`` (``lib/dialogFocus.ts``) with a
++  ``data-dialog-close`` control — focus moves in on open, is trapped
++  inside via Tab and restored on close; listbox options carry
++  ``role="option"`` on the interactive element itself, never a parent
++  ``li``; touch targets keep WCAG 2.5.8's 24px minimum (28px+ in
++  practice).
++- **Shared class fragments** — recurring Tailwind strings live in
++  ``lib/styles.ts`` (``SCROLLBAR_NONE``, ``SWIPE_ROW``, ``META_ROW``,
++  ``CHIP``, ``ICON_BTN``); import them instead of re-typing the
++  mega-strings. All HTTP calls go through ``lib/http.ts``
++  (``fetchText``/``fetchJson``, uniform ``HTTP <status>`` errors).
++- **Floating feedback** — one-shot confirmations that own no render loop
++  (hotkey yank, the preferences auto-save) call ``flashToast()`` from
++  ``lib/toast.ts``: a stacked, auto-dismissing pill fixed at the bottom of
++  the viewport with configurable ``tone`` (``ok`` for every copy/save
++  confirmation, ``accent`` neutral, ``danger`` failure) — never render such
++  feedback in flow, it would shift the page. Every copy action confirms
++  through the green toast; no component keeps its own inline "copied"
++  state.
++
 +Layout of this workspace
 +========================
 +
@@ -300,7 +369,9 @@ index 0000000..a962f4b
 +       ├── lib/             # app-wide foundations (no UI): types (server
 +       │                    # contract), pageData, searchParams, router,
 +       │                    # i18n/, categories, cookies, settings, theme,
-+       │                    # format, link, motion, engineDescriptions
++       │                    # format, link, motion, http, dialogFocus,
++       │                    # clipboard, engineDescriptions, styles (shared
++       │                    # class fragments)
 +       ├── components/      # shared UI used across pages: Shell, Link,
 +       │                    # SearchBox, SearchControls, Dropdown, …
 +       ├── features/        # one dir per cohesive feature domain:
@@ -3703,7 +3774,7 @@ index 0000000..1ab9e71
 +}
 diff --git a/client/zjsearch/src/app.tsx b/client/zjsearch/src/app.tsx
 new file mode 100644
-index 0000000..ab44b93
+index 0000000..8e65c3b
 --- /dev/null
 +++ b/client/zjsearch/src/app.tsx
 @@ -0,0 +1,110 @@
@@ -3771,7 +3842,7 @@ index 0000000..ab44b93
 +        <Shell globals={globals}>
 +          <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center gap-4 px-4 pb-24 text-center animate-fade-up">
 +            <BrandMark className="size-14 rounded-[22%]" />
-+            <h1 className="text-5xl font-bold tracking-tight text-ink">404</h1>
++            <h1 className="text-5xl font-semibold tracking-tight text-ink">404</h1>
 +            <p className="text-sm text-ink-2">{t("page_not_found")}</p>
 +          </main>
 +        </Shell>
@@ -3974,27 +4045,24 @@ index 0000000..db6b706
 +}
 diff --git a/client/zjsearch/src/components/CopyButton.tsx b/client/zjsearch/src/components/CopyButton.tsx
 new file mode 100644
-index 0000000..d6e99e4
+index 0000000..c49497f
 --- /dev/null
 +++ b/client/zjsearch/src/components/CopyButton.tsx
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,80 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Check } from "lucide-react";
 +import type { ReactNode } from "react";
-+import { useCopyFeedback } from "@/lib/clipboard.ts";
++import { writeClipboard } from "@/lib/clipboard.ts";
 +import { useT } from "@/lib/i18n.ts";
++import { flashToast } from "@/lib/toast.ts";
 +
 +const ACTION_PILL =
-+  "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors";
++  "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors";
 +const ACTION_IDLE = "border-line text-ink-2 hover:border-accent hover:text-accent";
-+const ACTION_COPIED = "border-ok/40 text-ok";
 +
-+/** Copy-to-clipboard button in the unified share-card language: a bordered
-+    pill that flips to a green check + 「已复制」 while the confirmation is
-+    up.  `className` is merged on top (for positioning / surface tweaks like
-+    the map's floating chip) — the pill shape and copied feedback always
-+    apply. */
++/** Copy-to-clipboard action pill (share card, map coordinates).  The
++    confirmation comes from the shared green flashToast — one copy feedback
++    language app-wide; the pill itself keeps no copied state. */
 +export function CopyButton({
 +  value,
 +  label,
@@ -4007,26 +4075,24 @@ index 0000000..d6e99e4
 +  className?: string;
 +}) {
 +  const t = useT();
-+  const { copy, isCopied } = useCopyFeedback();
-+  const copied = isCopied(value);
++  const copy = () => {
++    void writeClipboard(value).then((ok) => {
++      if (ok) {
++        flashToast(t("copied"), { tone: "ok" });
++      }
++    });
++  };
 +  return (
-+    <button
-+      className={`${ACTION_PILL} ${copied ? ACTION_COPIED : ACTION_IDLE} ${className ?? ""}`}
-+      onClick={() => {
-+        copy(value);
-+      }}
-+      type="button"
-+    >
-+      {copied ? <Check className="size-3 shrink-0" /> : icon}
-+      {copied ? t("copied") : (label ?? t("copy"))}
++    <button className={`${ACTION_PILL} ${ACTION_IDLE} ${className ?? ""}`} onClick={copy} type="button">
++      {icon}
++      {label ?? t("copy")}
 +    </button>
 +  );
 +}
 +
-+/** Click-to-copy wrapper: the content itself is the copy trigger - click
-+    copies `value` and a transient chip confirms.  Hover shows the copy hint
-+    (accent) so the affordance is discoverable without costing layout space;
-+    a completed copy turns the chip green. */
++/** Click-to-copy wrapper: the content itself is the copy trigger — click
++    (or Enter/Space) copies and the green flashToast confirms.  Hover shows
++    the copy hint as a cursor + tooltip so the affordance costs no layout. */
 +export function ClickToCopy({
 +  value,
 +  className = "",
@@ -4037,43 +4103,38 @@ index 0000000..d6e99e4
 +  children: ReactNode;
 +}) {
 +  const t = useT();
-+  const { copy, isCopied } = useCopyFeedback();
-+  const copied = isCopied(value);
++  const copy = () => {
++    void writeClipboard(value).then((ok) => {
++      if (ok) {
++        flashToast(t("copied"), { tone: "ok" });
++      }
++    });
++  };
 +  return (
 +    <div
 +      aria-label={t("copy")}
-+      className={`group/copy relative cursor-pointer ${className ?? ""}`}
-+      onClick={() => {
-+        copy(value);
-+      }}
++      className={`cursor-pointer ${className}`}
++      onClick={copy}
 +      onKeyDown={(event) => {
 +        if (event.key === "Enter" || event.key === " ") {
 +          event.preventDefault();
-+          copy(value);
++          copy();
 +        }
 +      }}
 +      role="button"
 +      tabIndex={0}
++      title={t("copy")}
 +    >
 +      {children}
-+      <span
-+        aria-hidden="true"
-+        className={`absolute end-1.5 top-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition-colors ${
-+          copied ? "bg-ok/10 text-ok opacity-100" : "bg-accent-soft text-accent opacity-0 group-hover/copy:opacity-100"
-+        }`}
-+      >
-+        {copied ? <Check className="size-3 shrink-0" /> : null}
-+        {copied ? t("copied") : t("copy")}
-+      </span>
 +    </div>
 +  );
 +}
 diff --git a/client/zjsearch/src/components/Dropdown.tsx b/client/zjsearch/src/components/Dropdown.tsx
 new file mode 100644
-index 0000000..b8ffe5e
+index 0000000..f92f27c
 --- /dev/null
 +++ b/client/zjsearch/src/components/Dropdown.tsx
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,255 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -4082,7 +4143,7 @@ index 0000000..b8ffe5e
 + * dismissal.
 + */
 +
-+import { Check } from "lucide-react";
++import { Check, ChevronDown } from "lucide-react";
 +import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 +import { createPortal } from "react-dom";
 +
@@ -4244,7 +4305,7 @@ index 0000000..b8ffe5e
 +        aria-label={ariaLabel}
 +        className={
 +          iconOnly
-+            ? `flex size-8 items-center justify-center rounded-full transition-colors ${
++            ? `flex size-9 items-center justify-center rounded-full transition-colors ${
 +                open ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink"
 +              }`
 +            : variant === "bare"
@@ -4253,7 +4314,7 @@ index 0000000..b8ffe5e
 +                    ? "bg-surface-2 text-ink"
 +                    : (triggerClassName ?? "text-ink-2 hover:bg-surface-2/70 hover:text-ink")
 +                }`
-+              : `flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 text-sm transition-colors ${
++              : `flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 text-[13px] transition-colors ${
 +                  open ? "border-ink-3" : "border-line hover:border-ink-3"
 +                } bg-surface text-ink ${triggerClassName ?? ""}`
 +        }
@@ -4275,16 +4336,10 @@ index 0000000..b8ffe5e
 +          <span aria-hidden="true" className="absolute inset-x-4 -bottom-0.5 h-0.5 rounded-full bg-accent-strong" />
 +        ) : null}
 +        {iconOnly ? null : (
-+          <svg
++          <ChevronDown
 +            aria-hidden="true"
 +            className={`size-3 shrink-0 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
-+            fill="none"
-+            stroke="currentColor"
-+            strokeWidth="2"
-+            viewBox="0 0 24 24"
-+          >
-+            <polyline points="6 9 12 15 18 9" strokeLinecap="round" strokeLinejoin="round" />
-+          </svg>
++          />
 +        )}
 +      </button>
 +
@@ -4300,9 +4355,12 @@ index 0000000..b8ffe5e
 +              {options.map((option, index) => {
 +                const selected = multiple ? (isSelected?.(option.value) ?? false) : option.value === value;
 +                return (
-+                  <li aria-selected={selected} key={option.value} role="option">
++                  <li key={option.value}>
++                    {/* the option role sits on the button itself: role=option
++                        must not nest interactive descendants */}
 +                    <button
-+                      className={`flex w-full items-center justify-between gap-4 px-4 py-2 text-left text-sm ${
++                      aria-selected={selected}
++                      className={`flex w-full items-center justify-between gap-4 px-4 py-2 text-left text-[13px] ${
 +                        index === active ? "bg-surface-2" : ""
 +                      }`}
 +                      onClick={() => {
@@ -4311,6 +4369,7 @@ index 0000000..b8ffe5e
 +                      onMouseEnter={() => {
 +                        setActive(index);
 +                      }}
++                      role="option"
 +                      type="button"
 +                    >
 +                      <span className="flex min-w-0 items-center gap-2">
@@ -4333,17 +4392,19 @@ index 0000000..b8ffe5e
 +}
 diff --git a/client/zjsearch/src/components/HelpModal.tsx b/client/zjsearch/src/components/HelpModal.tsx
 new file mode 100644
-index 0000000..853a8d6
+index 0000000..2cc8b31
 --- /dev/null
 +++ b/client/zjsearch/src/components/HelpModal.tsx
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,141 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Keyboard shortcuts help dialog (opened with "?"). */
 +
 +import { X } from "lucide-react";
 +import { useEffect } from "react";
++import { useDialogFocus } from "@/lib/dialogFocus.ts";
 +import { type Translate, useT } from "@/lib/i18n.ts";
++import { ICON_BTN } from "@/lib/styles.ts";
 +
 +interface HelpColumn {
 +  title: string;
@@ -4416,6 +4477,7 @@ index 0000000..853a8d6
 +
 +export function HelpModal({ layout, onClose }: { layout: "default" | "vim"; onClose: () => void }) {
 +  const t = useT();
++  const dialogRef = useDialogFocus<HTMLDivElement>();
 +
 +  useEffect(() => {
 +    const onKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -4437,7 +4499,7 @@ index 0000000..853a8d6
 +  ];
 +
 +  return (
-+    <div aria-modal="true" className="fixed inset-0 z-50 animate-fade-in" role="dialog">
++    <div aria-modal="true" className="fixed inset-0 z-50 animate-fade-in" ref={dialogRef} role="dialog" tabIndex={-1}>
 +      <button
 +        aria-label={t("close")}
 +        className="absolute inset-0 cursor-default bg-black/60"
@@ -4445,16 +4507,11 @@ index 0000000..853a8d6
 +        type="button"
 +      />
 +      <div className="pointer-events-none absolute inset-0 grid place-items-center p-4">
-+        <div className="pointer-events-auto max-h-[86dvh] w-full max-w-7xl overflow-auto rounded-2xl border border-line bg-surface p-6 shadow-pop animate-fade-up">
++        <div className="pointer-events-auto max-h-[86dvh] w-full max-w-5xl overflow-auto rounded-2xl border border-line bg-surface p-6 shadow-pop animate-fade-up lg:max-w-6xl">
 +          <div className="mb-4 flex items-center justify-between">
 +            <h2 className="text-lg font-semibold text-ink">{t("hotkeys")}</h2>
-+            <button
-+              aria-label={t("close")}
-+              className="grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
-+              onClick={onClose}
-+              type="button"
-+            >
-+              <X className="size-[18px]" />
++            <button aria-label={t("close")} className={ICON_BTN} data-dialog-close="" onClick={onClose} type="button">
++              <X className="size-4.5" />
 +            </button>
 +          </div>
 +          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
@@ -4463,7 +4520,10 @@ index 0000000..853a8d6
 +                <h3 className="mb-2 border-b border-line pb-2 text-base font-semibold text-ink">{column.title}</h3>
 +                <dl className="space-y-2">
 +                  {column.rows.map(([keys, description]) => (
-+                    <div className="grid grid-cols-[7.5rem_1fr] items-baseline gap-3" key={keys}>
++                    <div
++                      className="grid grid-cols-[6rem_1fr] items-baseline gap-3 sm:grid-cols-[7.5rem_1fr]"
++                      key={keys}
++                    >
 +                      <dt className="text-right font-mono text-xs font-semibold text-accent">{keys}</dt>
 +                      <dd className="text-[13px] leading-relaxed text-ink-2">{description}</dd>
 +                    </div>
@@ -4479,10 +4539,10 @@ index 0000000..853a8d6
 +}
 diff --git a/client/zjsearch/src/components/SearchBox.tsx b/client/zjsearch/src/components/SearchBox.tsx
 new file mode 100644
-index 0000000..b1374e6
+index 0000000..64b1318
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchBox.tsx
-@@ -0,0 +1,249 @@
+@@ -0,0 +1,252 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { LoaderCircle, Search, X } from "lucide-react";
@@ -4641,8 +4701,8 @@ index 0000000..b1374e6
 +      <form
 +        className={`flex w-full items-center gap-1 rounded-full border border-line bg-surface transition-shadow ${
 +          variant === "hero"
-+            ? "h-14 ps-6 pe-2.5 shadow-card focus-within:shadow-pop focus-within:border-ink-3/40"
-+            : "h-12 ps-5 pe-2 focus-within:shadow-card"
++            ? "h-14 ps-6 pe-2.5 shadow-card focus-within:border-ink-3/40 focus-within:shadow-pop"
++            : "h-12 ps-5 pe-2 shadow-card focus-within:border-ink-3/40"
 +        }`}
 +        onSubmit={onSubmit}
 +        role="search"
@@ -4655,9 +4715,7 @@ index 0000000..b1374e6
 +          aria-label={t("search")}
 +          autoCapitalize="none"
 +          autoComplete="off"
-+          className={`min-w-0 flex-1 bg-transparent outline-none placeholder:text-ink-3 ${
-+            variant === "hero" ? "text-lg" : "text-base"
-+          }`}
++          className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-ink-3"
 +          dir="auto"
 +          name="q"
 +          onChange={(event) => {
@@ -4683,7 +4741,7 @@ index 0000000..b1374e6
 +            }}
 +            type="button"
 +          >
-+            <X className="size-[18px] text-ink-2" />
++            <X className="size-4.5 text-ink-2" />
 +          </button>
 +        ) : null}
 +        <button
@@ -4692,7 +4750,7 @@ index 0000000..b1374e6
 +          disabled={loading}
 +          type="submit"
 +        >
-+          {loading ? <LoaderCircle className="size-4 animate-spin-slow" /> : <Search className="size-[18px]" />}
++          {loading ? <LoaderCircle className="size-4 animate-spin-slow" /> : <Search className="size-4.5" />}
 +        </button>
 +      </form>
 +
@@ -4704,11 +4762,15 @@ index 0000000..b1374e6
 +          role="listbox"
 +        >
 +          {suggestions.map((suggestion, index) => (
-+            <li aria-selected={index === active} id={`${listboxId}-${index}`} key={suggestion.text} role="option">
++            <li key={suggestion.text}>
++              {/* option role on the button: role=option must not nest
++                  interactive descendants (activedescendant targets this id) */}
 +              <button
-+                className={`flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm ${
++                aria-selected={index === active}
++                className={`flex w-full items-center gap-2.5 px-4 py-2 text-left text-[13px] ${
 +                  index === active ? "bg-surface-2" : ""
 +                } hover:bg-surface-2/70`}
++                id={`${listboxId}-${index}`}
 +                onMouseDown={(event) => {
 +                  // prevent blur before submit
 +                  event.preventDefault();
@@ -4718,6 +4780,7 @@ index 0000000..b1374e6
 +                onMouseEnter={() => {
 +                  setActive(index);
 +                }}
++                role="option"
 +                type="button"
 +              >
 +                <Search className="size-3.5 shrink-0 text-ink-3" />
@@ -4734,10 +4797,10 @@ index 0000000..b1374e6
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..b04d3da
+index 0000000..f0fab2f
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,254 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Clock, Ellipsis, Languages, Shield } from "lucide-react";
@@ -4746,6 +4809,7 @@ index 0000000..b04d3da
 +import type { DropdownOption } from "@/components/Dropdown.tsx";
 +import { Dropdown } from "@/components/Dropdown.tsx";
 +import { useT } from "@/lib/i18n.ts";
++import { scrollBehavior } from "@/lib/motion.ts";
 +import { useSettings } from "@/lib/settings.ts";
 +import { SCROLLBAR_NONE } from "@/lib/styles.ts";
 +import type { GlobalData } from "@/lib/types.ts";
@@ -4782,7 +4846,7 @@ index 0000000..b04d3da
 +    }
 +    scrollerRef.current
 +      ?.querySelector('button[aria-pressed="true"]')
-+      ?.scrollIntoView({ block: "nearest", inline: "center" });
++      ?.scrollIntoView({ block: "nearest", inline: "center", behavior: scrollBehavior() });
 +  }, [wrap, selected]);
 +
 +  const toggle = (category: string) => {
@@ -4993,10 +5057,10 @@ index 0000000..b04d3da
 +}
 diff --git a/client/zjsearch/src/components/Shell.tsx b/client/zjsearch/src/components/Shell.tsx
 new file mode 100644
-index 0000000..6314811
+index 0000000..c9e1b3f
 --- /dev/null
 +++ b/client/zjsearch/src/components/Shell.tsx
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,226 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChartColumn, Heart, Info, SlidersHorizontal } from "lucide-react";
@@ -5004,8 +5068,9 @@ index 0000000..6314811
 +import { useEffect } from "react";
 +import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
 +import { useT } from "@/lib/i18n.ts";
-+import { newTabLinkProps } from "@/lib/link.ts";
++import { isModifiedClick, newTabLinkProps } from "@/lib/link.ts";
 +import { useRouter } from "@/lib/router.tsx";
++import { ICON_BTN } from "@/lib/styles.ts";
 +import type { GlobalData } from "@/lib/types.ts";
 +
 +/** Anchor that performs SPA navigation for internal URLs. */
@@ -5028,7 +5093,7 @@ index 0000000..6314811
 +  const internal = href.startsWith("/") && !external;
 +
 +  const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
-+    if (!internal || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
++    if (!internal || isModifiedClick(event)) {
 +      return;
 +    }
 +    event.preventDefault();
@@ -5061,9 +5126,6 @@ index 0000000..6314811
 +  );
 +}
 +
-+const iconBtn =
-+  "grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink";
-+
 +/** Right-side icon group: About / Stats / Preferences open as slide-in
 +    panels (URL unchanged); theme style lives in the preferences panel. */
 +export function HeaderActions({ globals }: { globals: GlobalData }) {
@@ -5074,50 +5136,50 @@ index 0000000..6314811
 +      {globals.donation_url ? (
 +        <a
 +          aria-label={t("donate")}
-+          className={iconBtn}
++          className={ICON_BTN}
 +          href={globals.donation_url}
 +          rel="noreferrer"
 +          title={t("donate")}
 +        >
-+          <Heart className="size-[18px]" />
++          <Heart className="size-4.5" />
 +        </a>
 +      ) : null}
 +      {globals.about_url ? (
 +        <button
 +          aria-label={t("about")}
-+          className={iconBtn}
++          className={ICON_BTN}
 +          onClick={() => {
 +            openOverlay(globals.about_url, t("about"));
 +          }}
 +          title={t("about")}
 +          type="button"
 +        >
-+          <Info className="size-[18px]" />
++          <Info className="size-4.5" />
 +        </button>
 +      ) : null}
 +      {globals.enable_metrics ? (
 +        <button
 +          aria-label={t("engine_stats")}
-+          className={iconBtn}
++          className={ICON_BTN}
 +          onClick={() => {
 +            openOverlay("/stats", t("engine_stats"));
 +          }}
 +          title={t("engine_stats")}
 +          type="button"
 +        >
-+          <ChartColumn className="size-[18px]" />
++          <ChartColumn className="size-4.5" />
 +        </button>
 +      ) : null}
 +      <button
 +        aria-label={t("preferences")}
-+        className={iconBtn}
++        className={ICON_BTN}
 +        onClick={() => {
 +          openOverlay("/preferences", t("preferences"));
 +        }}
 +        title={t("preferences")}
 +        type="button"
 +      >
-+        <SlidersHorizontal className="size-[18px]" />
++        <SlidersHorizontal className="size-4.5" />
 +      </button>
 +    </div>
 +  );
@@ -5133,7 +5195,7 @@ index 0000000..6314811
 +        <Link ariaLabel={globals.instance_name} className="shrink-0 select-none" href="/" title={globals.instance_name}>
 +          <span className="text-xl font-extrabold tracking-tight text-ink">
 +            {globals.instance_name}
-+            <span className="text-accent-strong">.</span>
++            <span className="text-accent">.</span>
 +          </span>
 +        </Link>
 +      )}
@@ -5317,10 +5379,10 @@ index 0000000..64727ab
 +}
 diff --git a/client/zjsearch/src/features/hotkeys.ts b/client/zjsearch/src/features/hotkeys.ts
 new file mode 100644
-index 0000000..ad2928a
+index 0000000..26c2ef0
 --- /dev/null
 +++ b/client/zjsearch/src/features/hotkeys.ts
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,132 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5338,12 +5400,17 @@ index 0000000..ad2928a
 +  move: (delta: number) => void;
 +  /** open the selected result (same tab or new tab) */
 +  open: (newTab: boolean) => void;
-+  /** copy the url of the selected result */
-+  yank: () => string | null;
++  /** copy the url of the selected result (write + feedback owned by the page) */
++  yank: () => void;
 +  /** paginate */
 +  page: (delta: number) => void;
 +  /** focus the search input */
 +  focusSearch: () => void;
++}
++
++/** Focus the page's search box (hotkey `i` / `/` on every page that has one). */
++export function focusSearchInput(): void {
++  (document.querySelector('input[name="q"]') as HTMLInputElement | null)?.focus();
 +}
 +
 +const TEXT_ENTRY = new Set(["INPUT", "TEXTAREA", "SELECT"]);
@@ -5434,10 +5501,7 @@ index 0000000..ad2928a
 +      }
 +      if (key === "y") {
 +        event.preventDefault();
-+        const url = t.yank();
-+        if (url) {
-+          void navigator.clipboard.writeText(url).catch(() => {});
-+        }
++        t.yank();
 +        return;
 +      }
 +      if (key === "i" || key === "/" || key === "／") {
@@ -5453,10 +5517,10 @@ index 0000000..ad2928a
 +}
 diff --git a/client/zjsearch/src/features/overlay/OverlayProvider.tsx b/client/zjsearch/src/features/overlay/OverlayProvider.tsx
 new file mode 100644
-index 0000000..258246d
+index 0000000..ad8be66
 --- /dev/null
 +++ b/client/zjsearch/src/features/overlay/OverlayProvider.tsx
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,238 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5470,8 +5534,12 @@ index 0000000..258246d
 +
 +import { X } from "lucide-react";
 +import { createContext, type ReactNode, Suspense, useCallback, useContext, useEffect, useState } from "react";
++import { useDialogFocus } from "@/lib/dialogFocus.ts";
++import { fetchText } from "@/lib/http.ts";
 +import { useT } from "@/lib/i18n.ts";
++import { isModifiedClick } from "@/lib/link.ts";
 +import { extractPageData } from "@/lib/pageData.ts";
++import { ICON_BTN } from "@/lib/styles.ts";
 +import type { AnyPageData } from "@/lib/types.ts";
 +
 +/** Panels the app can render inside the drawer. Returning null means "this
@@ -5513,6 +5581,7 @@ index 0000000..258246d
 +export function OverlayProvider({ panels, children }: { panels: OverlayPanels; children: ReactNode }) {
 +  const t = useT();
 +  const [state, setState] = useState<OverlayState | null>(null);
++  const dialogRef = useDialogFocus<HTMLDivElement>();
 +
 +  const closeOverlay = useCallback(() => {
 +    setState(null);
@@ -5546,12 +5615,11 @@ index 0000000..258246d
 +    }
 +    const controller = new AbortController();
 +    const isDocument = state.mode === "document";
-+    void fetch(state.url, { headers: { Accept: isDocument ? "text/plain" : "text/html" }, signal: controller.signal })
-+      .then(async (resp) => {
-+        if (!resp.ok) {
-+          throw new Error(`HTTP ${resp.status}`);
-+        }
-+        const body = await resp.text();
++    void fetchText(state.url, {
++      headers: { Accept: isDocument ? "text/plain" : "text/html" },
++      signal: controller.signal,
++    })
++      .then(async (body) => {
 +        if (isDocument) {
 +          setState((prev) => (prev && prev.url === state.url ? { ...prev, text: body, loading: false } : prev));
 +          return;
@@ -5595,23 +5663,37 @@ index 0000000..258246d
 +    <OverlayContext.Provider value={{ openOverlay, openDocument, closeOverlay }}>
 +      {children}
 +      {state ? (
-+        <div aria-label={state.title} aria-modal="true" className="fixed inset-0 z-50" role="dialog">
++        <div
++          aria-label={state.title}
++          aria-modal="true"
++          className="fixed inset-0 z-50"
++          ref={dialogRef}
++          role="dialog"
++          tabIndex={-1}
++        >
 +          <button
 +            aria-label={t("close")}
 +            className="absolute inset-0 cursor-default bg-black/60 animate-fade-in"
 +            onClick={closeOverlay}
 +            type="button"
 +          />
-+          <div className="absolute inset-y-0 end-0 flex w-full max-w-3xl flex-col bg-bg shadow-pop animate-slide-in-right">
++          {/* data-zjs-overlay-panel: flashToast hosts floating feedback here
++              so pills center in the drawer instead of the viewport (the
++              entrance animation's residual transform contains `fixed`) */}
++          <div
++            className="absolute inset-y-0 end-0 flex w-full max-w-3xl flex-col bg-bg shadow-pop animate-slide-in-right"
++            data-zjs-overlay-panel=""
++          >
 +            <div className="flex items-center justify-between border-b border-line px-5 py-3">
-+              <span className="text-sm font-semibold text-ink">{state.title}</span>
++              <h2 className="text-lg font-semibold text-ink">{state.title}</h2>
 +              <button
 +                aria-label={t("close")}
-+                className="grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
++                className={ICON_BTN}
++                data-dialog-close=""
 +                onClick={closeOverlay}
 +                type="button"
 +              >
-+                <X className="size-[18px]" />
++                <X className="size-4.5" />
 +              </button>
 +            </div>
 +            <div
@@ -5626,10 +5708,7 @@ index 0000000..258246d
 +                  anchor.hasAttribute("download") ||
 +                  // /static/ holds files (LICENSE.txt...), not SPA pages
 +                  href.startsWith("/static/") ||
-+                  event.metaKey ||
-+                  event.ctrlKey ||
-+                  event.shiftKey ||
-+                  event.altKey
++                  isModifiedClick(event)
 +                ) {
 +                  return;
 +                }
@@ -5644,7 +5723,7 @@ index 0000000..258246d
 +                <p className="p-6 text-sm text-danger">{state.error}</p>
 +              ) : state.mode === "document" ? (
 +                <article className="px-5 pb-8">
-+                  <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-ink-2">
++                  <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-ink-2">
 +                    {state.text}
 +                  </pre>
 +                </article>
@@ -5682,10 +5761,10 @@ index 0000000..258246d
 +}
 diff --git a/client/zjsearch/src/features/results/AppsGrid.tsx b/client/zjsearch/src/features/results/AppsGrid.tsx
 new file mode 100644
-index 0000000..158d7bf
+index 0000000..2fc35ba
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/AppsGrid.tsx
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,72 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** App-store tiles for the apps category (google play, fdroid, apk mirror):
@@ -5752,11 +5831,15 @@ index 0000000..158d7bf
 +      </article>
 +    );
 +  });
-+  return <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">{cells}</div>;
++  return (
++    <div className="grid grid-cols-1 gap-x-4 gap-y-6 @sm:grid-cols-2 @[46rem]:grid-cols-3 @5xl:grid-cols-4">
++      {cells}
++    </div>
++  );
 +}
 diff --git a/client/zjsearch/src/features/results/CardList.tsx b/client/zjsearch/src/features/results/CardList.tsx
 new file mode 100644
-index 0000000..d1d288c
+index 0000000..1fed8f7
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/CardList.tsx
 @@ -0,0 +1,57 @@
@@ -5769,7 +5852,7 @@ index 0000000..d1d288c
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
 +/** One entry per rendered row, carrying its page-global hotkey index. */
-+export interface CardListEntry {
++interface CardListEntry {
 +  result: ResultItem;
 +  index: number;
 +}
@@ -5944,10 +6027,10 @@ index 0000000..5485f69
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 0000000..93736f5
+index 0000000..7da5c0e
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,234 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5958,7 +6041,7 @@ index 0000000..93736f5
 + */
 +
 +import {
-+  Check,
++  AlertTriangle,
 +  ChevronDown,
 +  FileCode2,
 +  FileJson,
@@ -5971,8 +6054,9 @@ index 0000000..93736f5
 +} from "lucide-react";
 +import { useState } from "react";
 +import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
-+import { useCopyFeedback } from "@/lib/clipboard.ts";
++import { writeClipboard } from "@/lib/clipboard.ts";
 +import { useT } from "@/lib/i18n.ts";
++import { flashToast } from "@/lib/toast.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
 +/** per-format icons for the download strip; unknown configured formats fall
@@ -5995,7 +6079,7 @@ index 0000000..93736f5
 +
 +const metaToggle = "inline-flex items-center gap-1 transition-colors hover:text-ink";
 +const stripChip =
-+  "inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 transition-colors hover:text-ink";
++  "inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:text-ink";
 +
 +export function DebugPanels({
 +  data,
@@ -6016,8 +6100,6 @@ index 0000000..93736f5
 +  const [openPanel, setOpenPanel] = useState<null | "engines" | "results">(() =>
 +    hasEnginesPanel && data.results.length === 0 ? "engines" : null,
 +  );
-+  const { copy, isCopied } = useCopyFeedback();
-+  const copied = isCopied(searchUrl ?? "");
 +  const toggle = (panel: "engines" | "results") => {
 +    setOpenPanel((current) => (current === panel ? null : panel));
 +  };
@@ -6037,7 +6119,7 @@ index 0000000..93736f5
 +        >
 +          <List className="size-3 shrink-0" />
 +          {t("meta_found")} {resultCount} {t("meta_results")}
-+          <ChevronDown className={`size-3 transition-transform ${openPanel === "results" ? "rotate-180" : ""}`} />
++          <ChevronDown className={`size-3.5 transition-transform ${openPanel === "results" ? "rotate-180" : ""}`} />
 +        </button>
 +        {hasEnginesPanel ? (
 +          <button
@@ -6050,7 +6132,7 @@ index 0000000..93736f5
 +          >
 +            <Timer className="size-3 shrink-0" />
 +            {roundedTime !== null ? `${t("took")} ${roundedTime} ${t("seconds")}` : t("engines_messages")}
-+            <ChevronDown className={`size-3 transition-transform ${openPanel === "engines" ? "rotate-180" : ""}`} />
++            <ChevronDown className={`size-3.5 transition-transform ${openPanel === "engines" ? "rotate-180" : ""}`} />
 +          </button>
 +        ) : null}
 +      </div>
@@ -6058,38 +6140,37 @@ index 0000000..93736f5
 +      {openPanel === "results" ? (
 +        <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-3">
 +          <div className="flex items-center gap-3">
-+            <span
-+              className={`grid size-9 shrink-0 place-items-center rounded-full transition-colors ${
-+                copied ? "bg-ok/10 text-ok" : "bg-accent-soft text-accent"
-+              }`}
-+            >
-+              {copied ? <Check className="size-[18px]" /> : <Link2 className="size-[18px]" />}
++            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
++              <Link2 className="size-4.5" />
 +            </span>
 +            <div className="min-w-0 flex-1">
-+              <p className="text-[13px] font-medium text-ink">{copied ? t("copied") : t("copy_search_url")}</p>
++              <p className="text-[13px] font-medium text-ink">{t("copy_search_url")}</p>
 +              {searchUrl ? (
-+                <p className="mt-0.5 truncate font-mono text-[11px] text-ink-3" dir="ltr" title={searchUrl}>
++                <p className="mt-0.5 truncate font-mono text-xs text-ink-3" dir="ltr" title={searchUrl}>
 +                  {searchUrl}
 +                </p>
 +              ) : null}
 +            </div>
++            {/* confirmation comes from the shared green flashToast */}
 +            <button
-+              className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
-+                copied ? "border-ok/40 text-ok" : "border-line text-ink-2 hover:border-accent hover:text-accent"
-+              }`}
++              className="shrink-0 rounded-full border border-line px-3.5 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:border-accent hover:text-accent"
 +              onClick={() => {
 +                if (searchUrl) {
-+                  copy(searchUrl);
++                  void writeClipboard(searchUrl).then((ok) => {
++                    if (ok) {
++                      flashToast(t("copied"), { tone: "ok" });
++                    }
++                  });
 +                }
 +              }}
 +              type="button"
 +            >
-+              {copied ? t("copied") : t("copy_link")}
++              {t("copy_link")}
 +            </button>
 +          </div>
 +          {searchUrl && data.globals.search_formats.length > 0 ? (
 +            <div className="mt-3 border-t border-line pt-3">
-+              <p className="text-[11px] font-medium text-ink-3">{t("export_formats")}</p>
++              <p className="text-xs font-medium text-ink-3">{t("export_formats")}</p>
 +              <div className="mt-2 flex flex-wrap gap-1.5">
 +                {[...data.globals.search_formats]
 +                  .sort((a, b) => formatOrder(a) - formatOrder(b))
@@ -6116,13 +6197,14 @@ index 0000000..93736f5
 +
 +      {openPanel === "engines" ? (
 +        <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-3">
-+          {/* one table for every engine: timings get seconds + bar, unresponsive
-+              engines get their error label + an empty track on the same grid */}
-+          <table className="w-full text-xs">
++          {/* one fixed-layout table for every engine: timings get seconds +
++              bar, unresponsive engines their error label + an empty track on
++              the same grid; table-fixed makes the w-24 truncation real */}
++          <table className="w-full table-fixed text-xs">
 +            <tbody>
 +              {data.unresponsive_engines.map(([name, errorMessage]) => (
 +                <tr key={name}>
-+                  <td className="w-24 py-0.5 pr-2 truncate">
++                  <td className="w-24 truncate py-0.5 pr-2">
 +                    <button
 +                      className="text-left font-medium text-ink-2 hover:text-accent"
 +                      onClick={() => {
@@ -6137,8 +6219,13 @@ index 0000000..93736f5
 +                    <div className="flex items-center gap-2">
 +                      {/* right-aligned into the seconds column: the error's
 +                          right edge lines up with the digits / bar start */}
-+                      <span className="w-24 shrink-0 truncate text-right text-danger" dir="auto" title={errorMessage}>
-+                        {errorMessage}
++                      <span
++                        className="inline-flex w-24 shrink-0 items-center justify-end gap-1 truncate text-danger"
++                        dir="auto"
++                        title={errorMessage}
++                      >
++                        <AlertTriangle aria-hidden="true" className="size-3 shrink-0" />
++                        <span className="truncate">{errorMessage}</span>
 +                      </span>
 +                      <span className="h-1.5 flex-1 rounded-full bg-surface-2" />
 +                    </div>
@@ -6147,7 +6234,7 @@ index 0000000..93736f5
 +              ))}
 +              {data.timings.map((timing) => (
 +                <tr key={timing.name}>
-+                  <td className="w-24 py-0.5 pr-2 truncate">
++                  <td className="w-24 truncate py-0.5 pr-2">
 +                    <button
 +                      className="text-left text-ink-2 hover:text-accent"
 +                      onClick={() => {
@@ -6180,7 +6267,7 @@ index 0000000..93736f5
 +}
 diff --git a/client/zjsearch/src/features/results/EmptyStates.tsx b/client/zjsearch/src/features/results/EmptyStates.tsx
 new file mode 100644
-index 0000000..29a2575
+index 0000000..aba780d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/EmptyStates.tsx
 @@ -0,0 +1,74 @@
@@ -6243,7 +6330,7 @@ index 0000000..29a2575
 +      <span className="text-ink-3">{t("try_searching_for")}</span>
 +      {data.corrections.map((correction) => (
 +        <button
-+          className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++          className="rounded-full bg-accent-soft px-3 py-1.5 font-medium text-[13px] text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +          dir="auto"
 +          key={correction.q}
 +          onClick={() => {
@@ -6251,7 +6338,7 @@ index 0000000..29a2575
 +          }}
 +          type="button"
 +        >
-+          <Search className="size-3 shrink-0" />
++          <Search className="size-3.5 shrink-0" />
 +          {correction.title}
 +        </button>
 +      ))}
@@ -6260,10 +6347,10 @@ index 0000000..29a2575
 +}
 diff --git a/client/zjsearch/src/features/results/FilesGrid.tsx b/client/zjsearch/src/features/results/FilesGrid.tsx
 new file mode 100644
-index 0000000..5aa4287
+index 0000000..b2d9e3c
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/FilesGrid.tsx
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,136 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Files-intent layout: landscape file tiles mirroring the media grids.
@@ -6309,7 +6396,7 @@ index 0000000..5aa4287
 +}) {
 +  const t = useT();
 +  return (
-+    <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 xl:grid-cols-4">
++    <div className="grid grid-cols-2 gap-x-4 gap-y-8 @sm:grid-cols-3 @[46rem]:grid-cols-4 @5xl:grid-cols-5">
 +      {results.map((result, index) => {
 +        const extension = detectExtension(result.filename || result.title_text);
 +        const size = result.filesize || result.size || null;
@@ -6337,7 +6424,7 @@ index 0000000..5aa4287
 +              <span className="absolute left-3 top-3 flex items-center gap-1.5 text-ink-3">
 +                <TileIcon result={result} />
 +                {extension ? (
-+                  <span className="text-[10px] font-semibold uppercase tracking-widest">{extension}</span>
++                  <span className="text-[11px] font-medium uppercase tracking-widest">{extension}</span>
 +                ) : null}
 +              </span>
 +              {size ? <TileBadge>{size}</TileBadge> : null}
@@ -6345,7 +6432,7 @@ index 0000000..5aa4287
 +              {primaryHref ? (
 +                <a
 +                  aria-label={primaryLabel}
-+                  className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/70 text-white shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-ink"
++                  className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/70 text-white shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-accent-contrast"
 +                  href={primaryHref}
 +                  {...(result.magnetlink ? {} : { download: true })}
 +                  title={primaryLabel}
@@ -6383,8 +6470,12 @@ index 0000000..5aa4287
 +                <span />
 +              )}
 +              <span className="flex shrink-0 items-center gap-1">
-+                <Calendar className="size-3" />
-+                {date}
++                {date ? (
++                  <>
++                    <Calendar className="size-3" />
++                    {date}
++                  </>
++                ) : null}
 +              </span>
 +            </div>
 +            <div className="mt-auto pt-1.5">
@@ -6398,7 +6489,7 @@ index 0000000..5aa4287
 +}
 diff --git a/client/zjsearch/src/features/results/GroupHeader.tsx b/client/zjsearch/src/features/results/GroupHeader.tsx
 new file mode 100644
-index 0000000..9ec6934
+index 0000000..7dfa04d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/GroupHeader.tsx
 @@ -0,0 +1,36 @@
@@ -6426,7 +6517,7 @@ index 0000000..9ec6934
 +    <h2 className="group flex items-center gap-1 pb-1 pt-2">
 +      <button
 +        aria-expanded={!collapsed}
-+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm font-semibold text-ink"
++        className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left text-base font-semibold text-ink"
 +        onClick={onToggle}
 +        type="button"
 +      >
@@ -6490,10 +6581,10 @@ index 0000000..acdeae8
 +}
 diff --git a/client/zjsearch/src/features/results/Infobox.tsx b/client/zjsearch/src/features/results/Infobox.tsx
 new file mode 100644
-index 0000000..716687f
+index 0000000..26adab4
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Infobox.tsx
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,193 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronDown, ExternalLink } from "lucide-react";
@@ -6547,7 +6638,7 @@ index 0000000..716687f
 +        {infobox.img_src ? (
 +          <img
 +            alt={infobox.title}
-+            className="aspect-square w-32 shrink-0 rounded-lg border border-line bg-surface-2 object-contain p-1 sm:w-36"
++            className="aspect-square w-32 shrink-0 rounded-lg border border-line bg-surface-2 object-contain p-1 sm:w-36 2xl:w-40"
 +            decoding="async"
 +            loading="lazy"
 +            src={infobox.img_src}
@@ -6598,7 +6689,10 @@ index 0000000..716687f
 +                  </div>
 +                ) : (
 +                  <div className="flex gap-2" key={index}>
-+                    <dt className="shrink-0 text-ink-3">{attribute.label}:</dt>
++                    {/* dt capped: a long label must not squeeze the value out */}
++                    <dt className="max-w-[40%] shrink-0 truncate text-ink-3" title={attribute.label}>
++                      {attribute.label}:
++                    </dt>
 +                    <dd className="min-w-0 text-ink-2">
 +                      <span dir="auto">{attribute.value}</span>
 +                    </dd>
@@ -6610,7 +6704,7 @@ index 0000000..716687f
 +
 +          {infobox.content_html ? (
 +            <div
-+              className="mt-3 text-[13px] leading-relaxed text-ink-2 [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/40 [&_a]:underline-offset-2"
++              className="mt-3 text-sm leading-relaxed text-ink-2 [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/40 [&_a]:underline-offset-2"
 +              dangerouslySetInnerHTML={{ __html: infobox.content_html }}
 +              dir="auto"
 +            />
@@ -6619,13 +6713,13 @@ index 0000000..716687f
 +          {infobox.urls && infobox.urls.length > 0 ? (
 +            <ul className="mt-3 space-y-1 text-xs">
 +              {infobox.urls.map((url) => (
-+                <li className="truncate" key={url.url}>
++                <li className="min-w-0" key={url.url}>
 +                  <a
-+                    className="inline-flex items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
++                    className="flex min-w-0 max-w-full items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
 +                    {...newTabLinkProps(globals.results_on_new_tab)}
 +                    href={url.url}
 +                  >
-+                    <span className="truncate">{url.title}</span>
++                    <span className="min-w-0 truncate">{url.title}</span>
 +                    <ExternalLink className="size-3 shrink-0" />
 +                  </a>
 +                </li>
@@ -6637,13 +6731,13 @@ index 0000000..716687f
 +            <div className="mt-4 space-y-2">
 +              {infobox.related_topics.map((topic) => (
 +                <div key={topic.name}>
-+                  <h4 className="text-xs font-medium text-ink" dir="auto">
++                  <h4 className="text-xs font-semibold text-ink" dir="auto">
 +                    {topic.name}
 +                  </h4>
 +                  <div className="mt-1 flex flex-wrap gap-1.5">
 +                    {topic.suggestions.map((suggestion) => (
 +                      <button
-+                        className="rounded-full bg-surface-2 px-2.5 py-1 text-xs text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
++                        className="rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
 +                        key={suggestion}
 +                        onClick={() => {
 +                          onSearch(suggestion);
@@ -6671,7 +6765,7 @@ index 0000000..716687f
 +        <button
 +          aria-controls={contentId}
 +          aria-expanded={expanded}
-+          className="mt-2 flex w-full items-center justify-center gap-1 border-t border-line pt-2.5 text-xs text-ink-3 transition-colors hover:text-ink"
++          className="mt-2 flex w-full items-center justify-center gap-1 border-t border-line pt-2.5 text-[13px] text-ink-3 transition-colors hover:text-ink"
 +          onClick={() => {
 +            setExpanded((value) => !value);
 +          }}
@@ -6686,10 +6780,10 @@ index 0000000..716687f
 +}
 diff --git a/client/zjsearch/src/features/results/MapView.tsx b/client/zjsearch/src/features/results/MapView.tsx
 new file mode 100644
-index 0000000..4f75674
+index 0000000..11f2402
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/MapView.tsx
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,236 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -6705,6 +6799,7 @@ index 0000000..4f75674
 +import { useEffect, useRef, useState } from "react";
 +import { CopyButton } from "@/components/CopyButton.tsx";
 +import { useT } from "@/lib/i18n.ts";
++import { reducedMotion } from "@/lib/motion.ts";
 +
 +interface MapResultProps {
 +  longitude?: string;
@@ -6765,6 +6860,8 @@ index 0000000..4f75674
 +          new VectorLayer({
 +            source: vectorSource,
 +            style: new Style({
++              // route/area colors are map graphics locked to the tile palette
++              // (readable on every OSM style), not theme surfaces
 +              stroke: new StrokeStyle({ color: "#5457d6", width: 2 }),
 +              fill: new FillStyle({ color: "rgba(84, 87, 214, 0.15)" }),
 +            }),
@@ -6809,6 +6906,8 @@ index 0000000..4f75674
 +          new Style({
 +            image: new CircleStyle({
 +              radius: 7,
++              // accent-strong (marker) over ink (rim): matches the theme's
++              // accent dot language; rims stay dark on any tile
 +              fill: new Fill({ color: "#fec843" }),
 +              stroke: new Stroke({ color: "#201d17", width: 2 }),
 +            }),
@@ -6832,7 +6931,7 @@ index 0000000..4f75674
 +      // user prefers reduced motion)
 +      restoreRef.current = () => {
 +        const view = map.getView();
-+        const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400;
++        const duration = reducedMotion() ? 0 : 400;
 +        if (pointLonLat) {
 +          view.animate({ center: pointLonLat, zoom: 16, duration });
 +        } else if (Array.isArray(boundingbox) && boundingbox.length === 4) {
@@ -6880,7 +6979,7 @@ index 0000000..4f75674
 +    <div className="mt-2">
 +      <button
 +        aria-expanded={open}
-+        className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 transition-colors hover:text-ink"
++        className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:text-ink"
 +        onClick={() => {
 +          setOpen((prev) => !prev);
 +        }}
@@ -6906,14 +7005,14 @@ index 0000000..4f75674
 +          {longitude && latitude ? (
 +            <button
 +              aria-label={t("recenter")}
-+              className="absolute left-[12px] top-[79px] z-10 flex size-[30px] items-center justify-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:border-accent hover:bg-surface-2 hover:text-accent"
++              className="absolute left-[12px] top-[79px] z-10 flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:border-accent hover:bg-surface-2 hover:text-accent"
 +              onClick={() => {
 +                restoreRef.current?.();
 +              }}
 +              title={t("recenter")}
 +              type="button"
 +            >
-+              <Crosshair className="size-[18px]" />
++              <Crosshair aria-hidden="true" className="size-4.5" />
 +            </button>
 +          ) : null}
 +        </div>
@@ -6923,10 +7022,10 @@ index 0000000..4f75674
 +}
 diff --git a/client/zjsearch/src/features/results/MusicGrid.tsx b/client/zjsearch/src/features/results/MusicGrid.tsx
 new file mode 100644
-index 0000000..763210e
+index 0000000..867d295
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/MusicGrid.tsx
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,265 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Music-intent layout: square album-art tiles mirroring the video grid.
@@ -7002,7 +7101,7 @@ index 0000000..763210e
 +      />
 +      <button
 +        aria-label={t("close")}
-+        className="absolute end-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++        className="absolute end-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +        onClick={onClose}
 +        title={t("close")}
 +        type="button"
@@ -7012,12 +7111,14 @@ index 0000000..763210e
 +      <div className="flex flex-1 items-center justify-center">
 +        <button
 +          aria-label={playing ? t("pause") : t("play")}
++          // always-white disc: the player backdrop is fixed-dark in every
++          // palette, so a themed surface token would vanish in dark mode
 +          className="grid size-14 place-items-center rounded-full bg-white text-black shadow-pop transition-transform hover:scale-105"
 +          onClick={toggle}
 +          title={playing ? t("pause") : t("play")}
 +          type="button"
 +        >
-+          {playing ? <Pause className="size-6" /> : <Play className="size-6 translate-x-0.5" />}
++          {playing ? <Pause className="size-6" /> : <Play className="size-6 translate-x-px" />}
 +        </button>
 +      </div>
 +      <div className="flex items-center gap-2 px-3 pb-3 text-[11px] font-medium tabular-nums">
@@ -7053,7 +7154,7 @@ index 0000000..763210e
 +      <iframe allowFullScreen className="size-full" referrerPolicy="origin" src={src} title={title} />
 +      <button
 +        aria-label={t("close")}
-+        className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++        className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +        onClick={onClose}
 +        title={t("close")}
 +        type="button"
@@ -7139,7 +7240,7 @@ index 0000000..763210e
 +          {playable && !isPlaying ? (
 +            <button
 +              aria-label={t("play")}
-+              className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white opacity-85 shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-ink group-hover:opacity-100"
++              className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white opacity-85 shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-accent-contrast group-hover:opacity-100"
 +              onClick={() => {
 +                setMode(audioSrc ? "audio" : "embed");
 +                setPlaying(index);
@@ -7161,10 +7262,14 @@ index 0000000..763210e
 +          </ResultLink>
 +        </h3>
 +        <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
-+          <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
-+            <User className="size-3 shrink-0" />
-+            {result.author}
-+          </span>
++          {result.author ? (
++            <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
++              <User className="size-3 shrink-0" />
++              {result.author}
++            </span>
++          ) : (
++            <span />
++          )}
 +          <span className="flex shrink-0 items-center gap-1">
 +            {result.published_date ? (
 +              <>
@@ -7180,14 +7285,18 @@ index 0000000..763210e
 +      </article>
 +    );
 +  });
-+  return <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 xl:grid-cols-4">{cells}</div>;
++  return (
++    <div className="grid grid-cols-2 gap-x-4 gap-y-8 @sm:grid-cols-3 @[46rem]:grid-cols-4 @5xl:grid-cols-5">
++      {cells}
++    </div>
++  );
 +}
 diff --git a/client/zjsearch/src/features/results/PackageGrid.tsx b/client/zjsearch/src/features/results/PackageGrid.tsx
 new file mode 100644
-index 0000000..f063ce0
+index 0000000..cc6746f
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/PackageGrid.tsx
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,132 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Package results (crates.io, docker hub, pypi, ...): the file-tile
@@ -7226,12 +7335,12 @@ index 0000000..f063ce0
 +        <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-ink-3">
 +          <PackageIcon className="size-10" />
 +          {result.version ? (
-+            <span className="font-mono text-[11px] font-semibold tracking-wide">{result.version}</span>
++            <span className="font-mono text-[11px] font-medium tracking-wide">{result.version}</span>
 +          ) : null}
 +        </span>
 +        {result.favicon ? <TileFavicon src={result.favicon} /> : null}
 +      </ResultLink>
-+      <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
++      <h3 className="mt-2.5 line-clamp-2 min-h-[2.75rem] text-base font-medium leading-snug">
 +        <ResultLink
 +          className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +          globals={globals}
@@ -7241,10 +7350,14 @@ index 0000000..f063ce0
 +        </ResultLink>
 +      </h3>
 +      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-ink-3">
-+        <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
-+          <User className="size-3 shrink-0" />
-+          {result.maintainer || result.author}
-+        </span>
++        {result.maintainer || result.author ? (
++          <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
++            <User className="size-3 shrink-0" />
++            {result.maintainer || result.author}
++          </span>
++        ) : (
++          <span />
++        )}
 +        <span className="flex shrink-0 items-center gap-1">
 +          {result.published_date ? (
 +            <>
@@ -7310,14 +7423,18 @@ index 0000000..f063ce0
 +      selected={selected}
 +    />
 +  ));
-+  return <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 xl:grid-cols-4">{cells}</div>;
++  return (
++    <div className="grid grid-cols-2 gap-x-4 gap-y-8 @sm:grid-cols-3 @[46rem]:grid-cols-4 @5xl:grid-cols-5">
++      {cells}
++    </div>
++  );
 +}
 diff --git a/client/zjsearch/src/features/results/Pagination.tsx b/client/zjsearch/src/features/results/Pagination.tsx
 new file mode 100644
-index 0000000..5598f6f
+index 0000000..c056705
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Pagination.tsx
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,82 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -7354,7 +7471,8 @@ index 0000000..5598f6f
 +    <nav aria-label={t("pagination")} className="mt-6 flex flex-wrap items-center justify-center gap-1.5 pb-4">
 +      {hasPrev ? (
 +        <button
-+          className="flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-sm text-ink-2 transition-colors hover:border-accent hover:text-accent"
++          aria-label={t("previous_page")}
++          className="flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-[13px] text-ink-2 transition-colors hover:border-accent hover:text-accent"
 +          onClick={() => {
 +            onPage(pageno - 1);
 +          }}
@@ -7367,7 +7485,7 @@ index 0000000..5598f6f
 +      {pages.map((page) => (
 +        <button
 +          aria-current={page === pageno ? "page" : undefined}
-+          className={`grid size-9 place-items-center rounded-full text-sm transition-colors ${
++          className={`grid size-9 place-items-center rounded-full text-[13px] transition-colors ${
 +            page === pageno
 +              ? "bg-accent-strong font-medium text-accent-contrast"
 +              : "border border-line bg-surface text-ink-2 hover:border-accent hover:text-accent"
@@ -7385,7 +7503,8 @@ index 0000000..5598f6f
 +      ))}
 +      {hasNext ? (
 +        <button
-+          className="flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-sm text-ink-2 transition-colors hover:border-accent hover:text-accent"
++          aria-label={t("next_page")}
++          className="flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-[13px] text-ink-2 transition-colors hover:border-accent hover:text-accent"
 +          onClick={() => {
 +            onPage(pageno + 1);
 +          }}
@@ -7400,7 +7519,7 @@ index 0000000..5598f6f
 +}
 diff --git a/client/zjsearch/src/features/results/PosterGrid.tsx b/client/zjsearch/src/features/results/PosterGrid.tsx
 new file mode 100644
-index 0000000..5fcbbec
+index 0000000..ce77b6b
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/PosterGrid.tsx
 @@ -0,0 +1,74 @@
@@ -7461,7 +7580,7 @@ index 0000000..5fcbbec
 +        </h3>
 +        {result.content_html ? (
 +          <p
-+            className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{ __html: result.content_html }}
 +            dir="auto"
 +          />
@@ -7473,14 +7592,14 @@ index 0000000..5fcbbec
 +    );
 +  });
 +  return (
-+    <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
++    <div className="grid grid-cols-2 gap-x-4 gap-y-8 @sm:grid-cols-3 @[40rem]:grid-cols-4 @[46rem]:grid-cols-5 @5xl:grid-cols-6">
 +      {cells}
 +    </div>
 +  );
 +}
 diff --git a/client/zjsearch/src/features/results/ProductGrid.tsx b/client/zjsearch/src/features/results/ProductGrid.tsx
 new file mode 100644
-index 0000000..40b9365
+index 0000000..a9d036f
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/ProductGrid.tsx
 @@ -0,0 +1,65 @@
@@ -7494,7 +7613,7 @@ index 0000000..40b9365
 +
 +export function ProductGrid({ results, globals }: { results: ResultItem[]; globals: GlobalData }) {
 +  return (
-+    <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
++    <div className="grid grid-cols-2 gap-x-4 gap-y-8 @sm:grid-cols-3 @[40rem]:grid-cols-4 @[46rem]:grid-cols-5">
 +      {results.map((result, index) => (
 +        <article className="group flex flex-col" key={`${result.url}-${index}`}>
 +          <ResultLink
@@ -7512,7 +7631,7 @@ index 0000000..40b9365
 +              src={result.thumbnail}
 +            />
 +          </ResultLink>
-+          <h3 className="mt-2.5 line-clamp-2 text-base font-medium leading-snug">
++          <h3 className="mt-2.5 line-clamp-2 min-h-[2.75rem] text-base font-medium leading-snug">
 +            <ResultLink
 +              className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +              globals={globals}
@@ -7522,12 +7641,12 @@ index 0000000..40b9365
 +            </ResultLink>
 +          </h3>
 +          {result.price ? (
-+            <p className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-ink">
-+              <Tag className="size-3.5 shrink-0 text-ink-3" />
++            <p className="mt-1 inline-flex items-center gap-1 text-lg font-semibold text-ink">
++              <Tag className="size-4 shrink-0 text-ink-3" />
 +              {result.price}
 +            </p>
 +          ) : null}
-+          <div className={`mt-0.5 text-xs text-ink-3 ${SWIPE_ROW} gap-x-2`}>
++          <div className={`mt-1.5 text-xs text-ink-3 ${SWIPE_ROW} gap-x-2`}>
 +            {result.shipping ? (
 +              <span className="inline-flex items-center gap-1">
 +                <Truck className="size-3" />
@@ -7725,10 +7844,10 @@ index 0000000..4dd3c7a
 +}
 diff --git a/client/zjsearch/src/features/results/Sidebar.tsx b/client/zjsearch/src/features/results/Sidebar.tsx
 new file mode 100644
-index 0000000..1bf16bd
+index 0000000..c720a94
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Sidebar.tsx
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,65 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -7737,6 +7856,7 @@ index 0000000..1bf16bd
 + * never reaches the address bar there.
 + */
 +
++import { ChevronDown } from "lucide-react";
 +import type { ReactNode } from "react";
 +import { ClickToCopy } from "@/components/CopyButton.tsx";
 +import { Infobox } from "@/features/results/Infobox.tsx";
@@ -7747,9 +7867,12 @@ index 0000000..1bf16bd
 +function Box({ title, children }: { title: string; children: ReactNode }) {
 +  return (
 +    <section className="overflow-hidden rounded-2xl border border-line bg-surface">
-+      <details>
-+        <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold tracking-wide text-ink-3 uppercase transition-colors hover:text-ink">
++      {/* same ChevronDown disclosure language as every other collapsible in
++          the app — the browser-default triangle is suppressed */}
++      <details className="group">
++        <summary className="flex cursor-pointer select-none list-none items-center justify-between gap-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-ink-3 transition-colors hover:text-ink [&::-webkit-details-marker]:hidden">
 +          {title}
++          <ChevronDown aria-hidden="true" className="size-3.5 shrink-0 transition-transform group-open:rotate-180" />
 +        </summary>
 +        <div className="px-4 pb-3">{children}</div>
 +      </details>
@@ -7792,16 +7915,17 @@ index 0000000..1bf16bd
 +}
 diff --git a/client/zjsearch/src/features/results/SuggestionsBox.tsx b/client/zjsearch/src/features/results/SuggestionsBox.tsx
 new file mode 100644
-index 0000000..9517e81
+index 0000000..fb0721c
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/SuggestionsBox.tsx
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,98 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 +import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 +import { useT } from "@/lib/i18n.ts";
 +import { scrollBehavior } from "@/lib/motion.ts";
++import { SCROLLBAR_NONE } from "@/lib/styles.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
 +export function SuggestionsBox({ data, onSearch }: { data: SearchPageData; onSearch: (q: string) => void }) {
@@ -7842,9 +7966,10 @@ index 0000000..9517e81
 +    strip.scrollBy({ left: direction * strip.clientWidth * 0.8, behavior: scrollBehavior() });
 +  };
 +
-+  // buttons are persistent so flipping state never shifts the chips
++  // buttons are persistent so flipping state never shifts the chips; a
++  // larger touch target on mobile (36px) collapsing to 28px with a pointer
 +  const arrowClass =
-+    "flex size-7 shrink-0 items-center justify-center rounded-full text-ink-3 transition hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-30";
++    "flex size-9 shrink-0 items-center justify-center rounded-full text-ink-3 transition hover:bg-surface-2 hover:text-ink disabled:pointer-events-none disabled:opacity-30 sm:size-7";
 +  return (
 +    <div className="flex items-center gap-1">
 +      <button
@@ -7859,7 +7984,7 @@ index 0000000..9517e81
 +        <ChevronLeft className="size-3.5" />
 +      </button>
 +      <div
-+        className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
++        className={`flex min-w-0 flex-1 gap-1.5 overflow-x-auto ${SCROLLBAR_NONE}`}
 +        onScroll={measure}
 +        ref={stripRef}
 +      >
@@ -7985,10 +8110,10 @@ index 0000000..f6d2c08
 +}
 diff --git a/client/zjsearch/src/features/results/VideoGrid.tsx b/client/zjsearch/src/features/results/VideoGrid.tsx
 new file mode 100644
-index 0000000..4a9b455
+index 0000000..3ed6190
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/VideoGrid.tsx
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,130 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Calendar, Eye, Play, User, X } from "lucide-react";
@@ -8047,7 +8172,7 @@ index 0000000..4a9b455
 +          {result.iframe_src && isPlaying ? (
 +            <button
 +              aria-label={t("hide_video")}
-+              className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++              className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +              onClick={() => {
 +                setPlaying(null);
 +              }}
@@ -8059,7 +8184,7 @@ index 0000000..4a9b455
 +          ) : result.iframe_src ? (
 +            <button
 +              aria-label={t("play")}
-+              className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white opacity-85 shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-ink group-hover:opacity-100"
++              className="absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/60 text-white opacity-85 shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-accent-contrast group-hover:opacity-100"
 +              onClick={() => {
 +                setPlaying(index);
 +              }}
@@ -8080,10 +8205,14 @@ index 0000000..4a9b455
 +          </ResultLink>
 +        </h3>
 +        <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
-+          <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
-+            <User className="size-3 shrink-0" />
-+            {result.author}
-+          </span>
++          {result.author ? (
++            <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
++              <User className="size-3 shrink-0" />
++              {result.author}
++            </span>
++          ) : (
++            <span />
++          )}
 +          <span className="flex shrink-0 items-center gap-2">
 +            {result.views ? (
 +              <span className="inline-flex items-center gap-1">
@@ -8107,7 +8236,13 @@ index 0000000..4a9b455
 +      </article>
 +    );
 +  });
-+  return <div className="grid grid-cols-1 gap-x-4 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{cells}</div>;
++  // density keys off the column width (container queries from the results
++  // wrapper): widescreen grows to 4 columns, centered mode drops to 2-3
++  return (
++    <div className="grid grid-cols-1 gap-x-4 gap-y-8 @sm:grid-cols-2 @[46rem]:grid-cols-3 @[54rem]:grid-cols-4">
++      {cells}
++    </div>
++  );
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Answers.tsx b/client/zjsearch/src/features/results/answers/Answers.tsx
 new file mode 100644
@@ -8169,7 +8304,7 @@ index 0000000..0881a4e
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Calculator.tsx b/client/zjsearch/src/features/results/answers/Calculator.tsx
 new file mode 100644
-index 0000000..808032d
+index 0000000..e8964c2
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Calculator.tsx
 @@ -0,0 +1,82 @@
@@ -8235,7 +8370,7 @@ index 0000000..808032d
 +              key.kind === "eq"
 +                ? "row-span-2 bg-accent-strong text-base text-accent-contrast hover:opacity-90"
 +                : key.kind === "op"
-+                  ? "bg-surface-2 text-accent-strong hover:bg-line/40"
++                  ? "bg-surface-2 text-accent hover:bg-line/40"
 +                  : "bg-surface-2 text-ink hover:bg-line/40"
 +            } ${key.span ?? ""}`}
 +            key={key.label}
@@ -8257,10 +8392,10 @@ index 0000000..808032d
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Legacy.tsx b/client/zjsearch/src/features/results/answers/Legacy.tsx
 new file mode 100644
-index 0000000..4d29000
+index 0000000..73b7b54
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Legacy.tsx
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,119 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ClickToCopy } from "@/components/CopyButton.tsx";
@@ -8308,7 +8443,7 @@ index 0000000..4d29000
 +        </p>
 +        <div className="mt-1 flex items-center justify-between gap-3">
 +          <ClickToCopy className="mt-1" value={data.result}>
-+            <p className="text-2xl font-semibold text-ink" dir="ltr">
++            <p className="break-all text-2xl font-semibold text-ink" dir="ltr">
 +              {data.result}
 +            </p>
 +          </ClickToCopy>
@@ -8343,10 +8478,7 @@ index 0000000..4d29000
 +        <p className="text-xs text-ink-3">{data.label}</p>
 +        <div className="mt-1 flex items-center justify-between gap-3">
 +          <ClickToCopy className="mt-1" value={data.value}>
-+            <p
-+              className={`min-w-0 text-ink ${data.value.includes(" ") ? "break-all font-mono text-sm" : "font-mono text-lg"}`}
-+              dir="ltr"
-+            >
++            <p className="min-w-0 break-all font-mono text-sm text-ink" dir="ltr">
 +              {data.value}
 +            </p>
 +          </ClickToCopy>
@@ -8385,7 +8517,7 @@ index 0000000..4d29000
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Translations.tsx b/client/zjsearch/src/features/results/answers/Translations.tsx
 new file mode 100644
-index 0000000..babc0f2
+index 0000000..89a328d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Translations.tsx
 @@ -0,0 +1,205 @@
@@ -8495,7 +8627,7 @@ index 0000000..babc0f2
 +            ))}
 +          </div>
 +        ) : null}
-+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
++        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
 +          <span className="rounded-full bg-surface-2 px-2 py-0.5">{answer.engine}</span>
 +        </div>
 +      </div>
@@ -8596,10 +8728,10 @@ index 0000000..babc0f2
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Weather.tsx b/client/zjsearch/src/features/results/answers/Weather.tsx
 new file mode 100644
-index 0000000..8550223
+index 0000000..459faa6
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Weather.tsx
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,234 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronLeft, MapPin } from "lucide-react";
@@ -8786,7 +8918,7 @@ index 0000000..8550223
 +      <WeatherTrend forecasts={answer.forecasts} />
 +      <WeatherDaily forecasts={answer.forecasts} />
 +      {sources.length > 0 ? (
-+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
++        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
 +          {shownSources.map((source) =>
 +            source.url ? (
 +              <a
@@ -8806,6 +8938,7 @@ index 0000000..8550223
 +          )}
 +          {!sourcesExpanded && hiddenSources > 0 ? (
 +            <button
++              aria-label={t("more")}
 +              className="rounded-full bg-surface-2 px-2 py-0.5 transition-colors hover:text-ink"
 +              onClick={() => {
 +                setSourcesExpanded(true);
@@ -8863,12 +8996,35 @@ index 0000000..22a2c98
 +  });
 +  return blocks;
 +}
+diff --git a/client/zjsearch/src/features/results/cacheUrl.tsx b/client/zjsearch/src/features/results/cacheUrl.tsx
+new file mode 100644
+index 0000000..ff6c039
+--- /dev/null
++++ b/client/zjsearch/src/features/results/cacheUrl.tsx
+@@ -0,0 +1,17 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { createContext, type ReactNode, useContext } from "react";
++
++/** Instance-wide cache-link prefix (search.cache_url) — provided once around
++    the results area; EnginesLine turns it into a per-result "cached" pill,
++    mirroring upstream simple's result_sub_footer. */
++const CacheUrlContext = createContext<string | undefined>(undefined);
++
++export function CacheUrlProvider({ cacheUrl, children }: { cacheUrl?: string; children: ReactNode }) {
++  return <CacheUrlContext.Provider value={cacheUrl}>{children}</CacheUrlContext.Provider>;
++}
++
++/** Renderers outside EnginesLine (image lightbox) read the prefix directly. */
++export function useCacheUrl(): string | undefined {
++  return useContext(CacheUrlContext);
++}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 0000000..6bb60aa
+index 0000000..8ec4fbf
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
-@@ -0,0 +1,383 @@
+@@ -0,0 +1,373 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -8885,11 +9041,12 @@ index 0000000..6bb60aa
 +  Server,
 +  User,
 +} from "lucide-react";
-+import { createContext, type ReactNode, useContext, useState } from "react";
++import { type ReactNode, useState } from "react";
++import { useCacheUrl } from "@/features/results/cacheUrl.tsx";
 +import { formatDate, formatLength, formatScore } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { newTabLinkProps } from "@/lib/link.ts";
-+import { SWIPE_ROW } from "@/lib/styles.ts";
++import { CHIP, META_ROW, SWIPE_ROW } from "@/lib/styles.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
 +// ------------------------------------------------------------- shared parts
@@ -8977,7 +9134,7 @@ index 0000000..6bb60aa
 +  }
 +  if (result.author) {
 +    bits.push(
-+      <span className="inline-flex min-w-0 items-center gap-1 truncate" key="author">
++      <span className="inline-flex items-center gap-1" key="author">
 +        <User className="size-3 shrink-0" />
 +        {result.author}
 +      </span>,
@@ -9004,7 +9161,7 @@ index 0000000..6bb60aa
 +    return null;
 +  }
 +  return (
-+    <div className="flex items-center gap-x-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
++    <div className={`${META_ROW} gap-x-3 text-xs text-ink-3`}>
 +      {bits}
 +      {result.metadata ? (
 +        <span className="rounded bg-accent-soft px-1.5 py-0.5 text-accent" dir="auto">
@@ -9019,20 +9176,6 @@ index 0000000..6bb60aa
 +/** Unified engine attribution for EVERY view: [score] [first engine] [+N],
 +    expanding inline on demand.  The score leads as a tabular pill; the
 +    first pill's title always carries the full engine list. */
-+/** Instance-wide cache-link prefix (search.cache_url) — provided once around
-+    the results area; EnginesLine turns it into a per-result "cached" pill,
-+    mirroring upstream simple's result_sub_footer. */
-+const CacheUrlContext = createContext<string | undefined>(undefined);
-+
-+export function CacheUrlProvider({ cacheUrl, children }: { cacheUrl?: string; children: ReactNode }) {
-+  return <CacheUrlContext.Provider value={cacheUrl}>{children}</CacheUrlContext.Provider>;
-+}
-+
-+/** Renderers outside EnginesLine (image lightbox) read the prefix directly. */
-+export function useCacheUrl(): string | undefined {
-+  return useContext(CacheUrlContext);
-+}
-+
 +export function EnginesLine({
 +  result,
 +  leading,
@@ -9044,14 +9187,13 @@ index 0000000..6bb60aa
 +  compact?: boolean;
 +}) {
 +  const t = useT();
-+  const cacheUrl = useContext(CacheUrlContext);
++  const cacheUrl = useCacheUrl();
 +  const [expanded, setExpanded] = useState(false);
 +  const engines = result.engines;
 +  if (engines.length === 0 && !leading) {
 +    return null;
 +  }
 +  const hidden = engines.length - 1;
-+  const pill = "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5";
 +  return (
 +    <div
 +      className={`mt-2 flex min-w-0 items-center gap-x-2 text-xs text-ink-3 ${
@@ -9059,21 +9201,21 @@ index 0000000..6bb60aa
 +      }`}
 +    >
 +      {typeof result.score === "number" ? (
-+        <span className={`${pill} tabular-nums`} title={t("scores")}>
++        <span className={`${CHIP} tabular-nums`} title={t("scores")}>
 +          <Award className="size-3 shrink-0" />
 +          {formatScore(result.score)}
 +        </span>
 +      ) : null}
 +      {leading}
 +      {engines.length > 0 ? (
-+        <span className={`${pill} max-w-full truncate`} title={engines.join(", ")}>
++        <span className={`${CHIP} max-w-full truncate`} title={engines.join(", ")}>
 +          <Server className="size-3 shrink-0" />
 +          {engines[0]}
 +        </span>
 +      ) : null}
 +      {expanded
 +        ? engines.slice(1).map((engine) => (
-+            <span className={pill} key={engine}>
++            <span className={CHIP} key={engine}>
 +              <Server className="size-3 shrink-0" />
 +              {engine}
 +            </span>
@@ -9082,7 +9224,7 @@ index 0000000..6bb60aa
 +      {hidden > 0 ? (
 +        <button
 +          aria-expanded={expanded}
-+          className={`${pill} transition-colors hover:text-ink`}
++          className={`${CHIP} transition-colors hover:text-ink`}
 +          onClick={() => {
 +            setExpanded((value) => !value);
 +          }}
@@ -9100,7 +9242,7 @@ index 0000000..6bb60aa
 +      ) : null}
 +      {cacheUrl ? (
 +        <a
-+          className={`${pill} transition-colors hover:text-ink`}
++          className={`${CHIP} transition-colors hover:text-ink`}
 +          href={cacheUrl + result.url}
 +          {...newTabLinkProps(true)}
 +        >
@@ -9182,7 +9324,7 @@ index 0000000..6bb60aa
 +    <div>
 +      <button
 +        aria-expanded={open}
-+        className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 transition-colors hover:text-ink"
++        className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:text-ink"
 +        onClick={() => {
 +          setOpen((prev) => !prev);
 +        }}
@@ -9198,7 +9340,9 @@ index 0000000..6bb60aa
 +
 +export function EmbedFrame({ src }: { src: string }) {
 +  return (
-+    <div className="aspect-video w-full max-w-3xl overflow-hidden rounded-xl border border-line bg-black">
++    // the embed grows with the results column (container queries on the
++    // results wrapper) instead of capping at the list-text width
++    <div className="aspect-video w-full max-w-3xl overflow-hidden rounded-xl border border-line bg-black @4xl:max-w-4xl @5xl:max-w-5xl">
 +      <iframe allowFullScreen className="size-full" referrerPolicy="origin" src={src} title="embedded content" />
 +    </div>
 +  );
@@ -9212,7 +9356,7 @@ index 0000000..6bb60aa
 +    return <EmbedFrame src={src} />;
 +  }
 +  return (
-+    <div className="flex max-w-3xl items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
++    <div className="flex max-w-3xl items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 @4xl:max-w-4xl @5xl:max-w-5xl">
 +      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
 +        <Music className="size-4" />
 +      </span>
@@ -9249,15 +9393,17 @@ index 0000000..6bb60aa
 +      <div className="zjs-skeleton mt-3 h-3 w-full" />
 +      <div className="zjs-skeleton mt-2 h-3 w-5/6" />
 +      <div className="zjs-skeleton mt-4 h-3 w-24" />
++      {/* engines-row slot so the skeleton matches the loaded card height */}
++      <div className="zjs-skeleton mt-2 h-3.5 w-28 rounded-full" />
 +    </div>
 +  );
 +}
 diff --git a/client/zjsearch/src/features/results/cards/CodeCard.tsx b/client/zjsearch/src/features/results/cards/CodeCard.tsx
 new file mode 100644
-index 0000000..48432c4
+index 0000000..bc485e8
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/CodeCard.tsx
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,47 @@
 +import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
 +import { useT } from "@/lib/i18n.ts";
 +
@@ -9270,14 +9416,19 @@ index 0000000..48432c4
 +        <Title globals={globals} result={result} />
 +        {result.filename ? (
 +          <span className="text-xs text-ink-3">
-+            {t("filename")}: <code className="font-mono">{result.filename}</code>
++            {t("filename")}: <code className="break-all font-mono">{result.filename}</code>
 +          </span>
 +        ) : null}
 +      </div>
 +      {result.repository ? (
 +        <p className="mt-1 text-xs text-ink-3">
 +          {t("repository")}:{" "}
-+          <a className="text-accent hover:underline" href={result.repository} rel="noreferrer" target="_blank">
++          <a
++            className="break-all text-accent hover:underline"
++            href={result.repository}
++            rel="noreferrer"
++            target="_blank"
++          >
 +            {result.repository}
 +          </a>
 +        </p>
@@ -9302,7 +9453,7 @@ index 0000000..48432c4
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DefaultCard.tsx b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 new file mode 100644
-index 0000000..a585d01
+index 0000000..2ce5b32
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 @@ -0,0 +1,73 @@
@@ -9353,7 +9504,7 @@ index 0000000..a585d01
 +            </div>
 +          ) : null}
 +          <p
-+            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{
 +              __html: result.content_html || t("no_description"),
 +            }}
@@ -9367,7 +9518,7 @@ index 0000000..a585d01
 +          <ResultLink className="shrink-0 self-start" globals={globals} result={result}>
 +            <Thumb
 +              alt={result.title_text}
-+              className="h-24 w-40"
++              className="h-24 w-28 sm:w-40"
 +              eager={eager}
 +              lengthDisplay={formatLength(result.length_display, result.length_seconds)}
 +              src={result.thumbnail}
@@ -9381,7 +9532,7 @@ index 0000000..a585d01
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DictionaryCard.tsx b/client/zjsearch/src/features/results/cards/DictionaryCard.tsx
 new file mode 100644
-index 0000000..79d0b84
+index 0000000..e550394
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DictionaryCard.tsx
 @@ -0,0 +1,40 @@
@@ -9399,7 +9550,7 @@ index 0000000..79d0b84
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-+        <h3 className="text-lg font-semibold leading-snug">
++        <h3 className="line-clamp-2 min-w-0 text-base font-medium leading-snug">
 +          <ResultLink
 +            className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +            globals={globals}
@@ -9427,10 +9578,10 @@ index 0000000..79d0b84
 +}
 diff --git a/client/zjsearch/src/features/results/cards/FileCard.tsx b/client/zjsearch/src/features/results/cards/FileCard.tsx
 new file mode 100644
-index 0000000..7655bb3
+index 0000000..5f6a1c6
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/FileCard.tsx
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,114 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Download, FileText, Film, Music } from "lucide-react";
@@ -9443,6 +9594,7 @@ index 0000000..7655bb3
 +  Title,
 +} from "@/features/results/cardParts.tsx";
 +import { useT } from "@/lib/i18n.ts";
++import { META_ROW } from "@/lib/styles.ts";
 +
 +/** General file-download layout, sharing the transfer-card language of the
 +    torrent card: type icon tile, compact stat strip, primary action. */
@@ -9477,13 +9629,13 @@ index 0000000..7655bb3
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
 +          </div>
-+          <div className="mt-1.5 flex items-center gap-x-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
++          <div className={`${META_ROW} mt-1 gap-x-4 text-xs text-ink-3`}>
 +            {stats
 +              .filter(([, value]) => Boolean(value))
 +              .map(([label, value]) => (
-+                <span className="inline-flex min-w-0 items-center gap-1" key={label}>
++                <span className="inline-flex items-center gap-1" key={label}>
 +                  {label}:
-+                  <span className="truncate text-ink-2" dir="auto">
++                  <span className="text-ink-2" dir="auto">
 +                    {value}
 +                  </span>
 +                </span>
@@ -9491,14 +9643,14 @@ index 0000000..7655bb3
 +          </div>
 +          {result.abstract_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.abstract_html }}
 +              dir="auto"
 +            />
 +          ) : null}
 +          {result.content_html ? (
 +            <p
-+              className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -9527,7 +9679,7 @@ index 0000000..7655bb3
 +              )
 +            ) : (
 +              <a
-+                className="mt-2 inline-flex items-center gap-1 rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                className="mt-2 inline-flex items-center gap-1 rounded-full bg-accent-soft px-3 py-1.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +                download
 +                href={result.embedded}
 +                rel="noreferrer"
@@ -9546,10 +9698,10 @@ index 0000000..7655bb3
 +}
 diff --git a/client/zjsearch/src/features/results/cards/KeyValueCard.tsx b/client/zjsearch/src/features/results/cards/KeyValueCard.tsx
 new file mode 100644
-index 0000000..238b7d0
+index 0000000..03e2805
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/KeyValueCard.tsx
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,43 @@
 +import { type CardProps, EnginesLine, ResultArticle } from "@/features/results/cardParts.tsx";
 +
 +/** Key/value table card (keyvalue.html): a captioned two-column table for
@@ -9559,7 +9711,9 @@ index 0000000..238b7d0
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="overflow-hidden rounded-xl border border-line">
-+        <table className="w-full text-sm">
++        {/* table-fixed keeps long unbreakable cells from widening (and the
++            overflow-hidden wrapper from silently clipping) the table */}
++        <table className="w-full table-fixed text-sm">
 +          {result.caption ? (
 +            <caption className="bg-surface-2 px-4 py-2 text-left font-medium">{result.caption}</caption>
 +          ) : null}
@@ -9578,10 +9732,10 @@ index 0000000..238b7d0
 +          <tbody>
 +            {Object.entries(result.kvmap ?? {}).map(([key, value], index) => (
 +              <tr className={index % 2 === 0 ? "bg-surface" : "bg-bg/60"} key={key}>
-+                <th className="px-4 py-1.5 text-left font-medium text-ink-2" scope="row">
++                <th className="break-all px-4 py-1.5 text-left align-top font-medium text-ink-2" scope="row">
 +                  {key}
 +                </th>
-+                <td className="px-4 py-1.5 text-ink">{String(value)}</td>
++                <td className="break-all px-4 py-1.5 align-top text-ink">{String(value)}</td>
 +              </tr>
 +            ))}
 +          </tbody>
@@ -9593,10 +9747,10 @@ index 0000000..238b7d0
 +}
 diff --git a/client/zjsearch/src/features/results/cards/MapCard.tsx b/client/zjsearch/src/features/results/cards/MapCard.tsx
 new file mode 100644
-index 0000000..d1a29c2
+index 0000000..e9c3ec2
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/MapCard.tsx
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,83 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ExternalLink, MapPin } from "lucide-react";
@@ -9610,6 +9764,7 @@ index 0000000..d1a29c2
 +} from "@/features/results/cardParts.tsx";
 +import { MapResult } from "@/features/results/MapView.tsx";
 +import { useT } from "@/lib/i18n.ts";
++import { META_ROW } from "@/lib/styles.ts";
 +
 +export function MapCard({ result, globals, autoOpenMap }: CardProps) {
 +  const t = useT();
@@ -9630,7 +9785,7 @@ index 0000000..d1a29c2
 +      </div>
 +      {result.content_html ? (
 +        <p
-+          className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++          className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +          dangerouslySetInnerHTML={{ __html: result.content_html }}
 +          dir="auto"
 +        />
@@ -9642,7 +9797,7 @@ index 0000000..d1a29c2
 +        </p>
 +      ) : null}
 +      {result.data && result.data.length > 0 ? (
-+        <dl className="mt-2 flex items-center gap-x-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
++        <dl className={`${META_ROW} mt-1 gap-x-4 text-xs text-ink-3`}>
 +          {result.data.map((item) => (
 +            <div className="flex gap-1" key={item.label}>
 +              <dt>{item.label}:</dt>
@@ -9681,10 +9836,10 @@ index 0000000..d1a29c2
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PackageCard.tsx b/client/zjsearch/src/features/results/cards/PackageCard.tsx
 new file mode 100644
-index 0000000..7769b9a
+index 0000000..4294e50
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PackageCard.tsx
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,136 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Calendar, ChevronLeft, Code, ExternalLink, Scale, Star, User } from "lucide-react";
@@ -9692,6 +9847,7 @@ index 0000000..7769b9a
 +import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
++import { CHIP, META_ROW } from "@/lib/styles.ts";
 +
 +export function PackageCard({ result, globals }: CardProps) {
 +  const t = useT();
@@ -9717,7 +9873,7 @@ index 0000000..7769b9a
 +        <Title globals={globals} result={result} />
 +      </div>
 +      {result.published_date || result.maintainer || result.popularity || result.license_name || result.version ? (
-+        <div className="mt-1 flex items-center gap-x-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
++        <div className={`${META_ROW} mt-1 gap-x-3 text-xs text-ink-3`}>
 +          {result.published_date ? (
 +            <span className="inline-flex items-center gap-1" key="date">
 +              <Calendar className="size-3" />
@@ -9725,10 +9881,10 @@ index 0000000..7769b9a
 +            </span>
 +          ) : null}
 +          {result.maintainer ? (
-+            <span className="inline-flex min-w-0 items-center gap-1" key="author">
++            <span className="inline-flex items-center gap-1" key="author">
 +              <User className="size-3 shrink-0" />
 +              {t("author")}:
-+              <span className="truncate text-ink-2" dir="auto">
++              <span className="text-ink-2" dir="auto">
 +                {result.maintainer}
 +              </span>
 +            </span>
@@ -9764,7 +9920,7 @@ index 0000000..7769b9a
 +      ) : null}
 +      {result.content_html ? (
 +        <p
-+          className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++          className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +          dangerouslySetInnerHTML={{ __html: result.content_html }}
 +          dir="auto"
 +        />
@@ -9772,14 +9928,14 @@ index 0000000..7769b9a
 +      {result.tags && result.tags.length > 0 ? (
 +        <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
 +          {result.tags.slice(0, tagsExpanded ? result.tags.length : 4).map((tag) => (
-+            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3" key={tag} title={tag}>
++            <span className={CHIP} key={tag} title={tag}>
 +              #{tag}
 +            </span>
 +          ))}
 +          {result.tags.length > 4 ? (
 +            <button
 +              aria-expanded={tagsExpanded}
-+              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-3 transition-colors hover:text-ink"
++              className={`${CHIP} transition-colors hover:text-ink`}
 +              onClick={() => {
 +                setTagsExpanded((value) => !value);
 +              }}
@@ -9803,7 +9959,7 @@ index 0000000..7769b9a
 +          links.length > 0
 +            ? links.map((link) => (
 +                <a
-+                  className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 transition-colors hover:text-ink"
++                  className={`${CHIP} text-ink-2 transition-colors hover:text-ink`}
 +                  href={link.url}
 +                  key={link.url}
 +                  rel="noreferrer"
@@ -9822,10 +9978,10 @@ index 0000000..7769b9a
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PaperCard.tsx b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 new file mode 100644
-index 0000000..f6a8f1f
+index 0000000..288db6e
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PaperCard.tsx
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,194 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { BookOpen, Calendar, ChevronLeft, ExternalLink, FileText, Fingerprint, Quote, User } from "lucide-react";
@@ -9841,6 +9997,7 @@ index 0000000..f6a8f1f
 +} from "@/features/results/cardParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
++import { META_ROW } from "@/lib/styles.ts";
 +
 +/** Scholarly layout (science intent, arxiv/pubmed/...): authors · venue ·
 +    date meta line, clamped abstract, PDF/HTML actions and a compact DOI
@@ -9918,10 +10075,7 @@ index 0000000..f6a8f1f
 +            // single line that swipes horizontally when it overflows (same
 +            // interaction as the filter rows) - touch users can reach the
 +            // truncated tail, no hover needed
-+            <p
-+              className="mt-1 flex items-center gap-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3"
-+              dir="auto"
-+            >
++            <p className={`${META_ROW} mt-1 gap-1 text-xs text-ink-3`} dir="auto">
 +              {metaBits.filter(Boolean).map((bit, index) => (
 +                <span key={index}>
 +                  {index > 0 ? <span className="text-ink-3"> · </span> : null}
@@ -9932,7 +10086,7 @@ index 0000000..f6a8f1f
 +          ) : null}
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -9967,7 +10121,7 @@ index 0000000..f6a8f1f
 +                  ) : null}
 +                  {result.doi ? (
 +                    <a
-+                      className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[11px] leading-4 text-ink-2 hover:text-ink"
++                      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2 hover:text-ink"
 +                      dir="ltr"
 +                      href={doiHref}
 +                      rel="noreferrer"
@@ -9975,7 +10129,7 @@ index 0000000..f6a8f1f
 +                      title={`DOI ${result.doi}`}
 +                    >
 +                      <Fingerprint className="size-3 shrink-0" />
-+                      {result.doi}
++                      <span className="truncate">{result.doi}</span>
 +                    </a>
 +                  ) : null}
 +                </div>
@@ -10024,10 +10178,10 @@ index 0000000..f6a8f1f
 +}
 diff --git a/client/zjsearch/src/features/results/cards/ProductCard.tsx b/client/zjsearch/src/features/results/cards/ProductCard.tsx
 new file mode 100644
-index 0000000..6b8c4ae
+index 0000000..3fa6dcc
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/ProductCard.tsx
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,65 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Globe, Tag, Truck } from "lucide-react";
@@ -10041,6 +10195,7 @@ index 0000000..6b8c4ae
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
++import { META_ROW } from "@/lib/styles.ts";
 +
 +export function ProductCard({ result, globals }: CardProps) {
 +  return (
@@ -10054,7 +10209,7 @@ index 0000000..6b8c4ae
 +          <div className="mt-1">
 +            <MetaLine result={result} />
 +          </div>
-+          <div className="mt-2 flex items-baseline gap-x-3 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
++          <div className={`${META_ROW} mt-1 gap-x-3`}>
 +            {result.price ? (
 +              <span className="inline-flex items-center gap-1 text-lg font-semibold text-ink">
 +                <Tag className="size-4 shrink-0 text-ink-3" />
@@ -10076,7 +10231,7 @@ index 0000000..6b8c4ae
 +          </div>
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -10149,16 +10304,17 @@ index 0000000..4dc88b3
 +// whole card subtree
 diff --git a/client/zjsearch/src/features/results/cards/TorrentCard.tsx b/client/zjsearch/src/features/results/cards/TorrentCard.tsx
 new file mode 100644
-index 0000000..3fa22ea
+index 0000000..6c85097
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/TorrentCard.tsx
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,91 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ArrowDown, ArrowUp, Calendar, Download, FileText, Magnet, Package } from "lucide-react";
 +import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
++import { CHIP, META_ROW } from "@/lib/styles.ts";
 +
 +/** File-share layout: the magnet link doubles as the card's primary action
 +    tile, health stats read as a colored seeder/leecher strip - the
@@ -10188,53 +10344,50 @@ index 0000000..3fa22ea
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
 +          </div>
-+          <div className="mt-1.5 flex items-center gap-x-4 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 text-xs text-ink-3">
++          <div className={`${META_ROW} mt-1 gap-x-4 text-xs text-ink-3`}>
 +            {result.seed !== undefined ? (
 +              <span className="inline-flex items-center gap-1">
-+                <ArrowUp className="size-3.5 text-ok" />
++                <ArrowUp className="size-3 text-ok" />
 +                <span className="font-semibold text-ok">{result.seed}</span>
 +                {t("seeder")}
 +              </span>
 +            ) : null}
 +            {result.leech !== undefined ? (
 +              <span className="inline-flex items-center gap-1">
-+                <ArrowDown className="size-3.5 text-danger" />
++                <ArrowDown className="size-3 text-danger" />
 +                <span className="font-semibold text-danger">{result.leech}</span>
 +                {t("leecher")}
 +              </span>
 +            ) : null}
 +            {result.filesize ? (
 +              <span className="inline-flex items-center gap-1">
-+                <FileText className="size-3.5" />
++                <FileText className="size-3" />
 +                {result.filesize}
 +              </span>
 +            ) : null}
 +            {result.files ? (
 +              <span className="inline-flex items-center gap-1">
-+                <Package className="size-3.5" />
++                <Package className="size-3" />
 +                {result.files} {t("files")}
 +              </span>
 +            ) : null}
 +            {result.published_date ? (
 +              <span className="inline-flex items-center gap-1">
-+                <Calendar className="size-3.5" />
++                <Calendar className="size-3" />
 +                {formatDate(result.published_date)}
 +              </span>
 +            ) : null}
 +          </div>
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
 +          ) : null}
 +          {result.torrentfile ? (
 +            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-+              <a
-+                className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 transition-colors hover:text-ink"
-+                href={result.torrentfile}
-+              >
++              <a className={`${CHIP} text-ink-2 transition-colors hover:text-ink`} href={result.torrentfile}>
 +                <Download className="size-3" />
 +                {t("torrent_file")}
 +              </a>
@@ -10248,10 +10401,10 @@ index 0000000..3fa22ea
 +}
 diff --git a/client/zjsearch/src/features/results/cards/VideoCard.tsx b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 new file mode 100644
-index 0000000..17d9505
+index 0000000..3cddfa8
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/VideoCard.tsx
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,103 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Play, X } from "lucide-react";
@@ -10291,15 +10444,16 @@ index 0000000..17d9505
 +            </div>
 +          ) : null}
 +          <p
-+            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{ __html: result.content_html || t("no_description") }}
 +            dir="auto"
 +          />
 +        </div>
 +        {result.thumbnail ? (
 +          // the player replaces the thumbnail in place - same behaviour as
-+          // the video grid, never expanding below the text
-+          <div className={`relative shrink-0 transition-all ${previewOpen && hasMedia ? "w-72" : "w-40"}`}>
++          // the video grid, never expanding below the text; on phones the
++          // wide size would eat the whole text column, so it stays w-40
++          <div className={`relative shrink-0 transition-all ${previewOpen && hasMedia ? "sm:w-72" : "w-40"}`}>
 +            <div className="relative aspect-video overflow-hidden rounded-xl bg-surface-2">
 +              <ResultLink className="block size-full" globals={globals} result={result}>
 +                <Thumb
@@ -10321,7 +10475,7 @@ index 0000000..17d9505
 +                  />
 +                  <button
 +                    aria-label={t("hide_video")}
-+                    className="absolute end-1 top-1 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-ink"
++                    className="absolute end-1 top-1 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +                    onClick={() => {
 +                      setPreviewOpen(false);
 +                    }}
@@ -10356,10 +10510,10 @@ index 0000000..17d9505
 +}
 diff --git a/client/zjsearch/src/features/results/image/ImageGrid.tsx b/client/zjsearch/src/features/results/image/ImageGrid.tsx
 new file mode 100644
-index 0000000..16ff46c
+index 0000000..e7148c5
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/ImageGrid.tsx
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,126 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Image results: borderless masonry grid; the lightbox opens through a portal. */
@@ -10453,7 +10607,9 @@ index 0000000..16ff46c
 +  const [openIndex, setOpenIndex] = useState<number | null>(null);
 +
 +  return (
-+    <div className="columns-2 gap-2 sm:columns-3 lg:columns-4 xl:columns-5 [&>*]:mb-2">
++    // masonry density keys off the column width (container queries), like
++    // every other grid: 3 base steps + a 5th/6th column on wide containers
++    <div className="columns-2 gap-2 @[27rem]:columns-3 @[40rem]:columns-4 @[48rem]:columns-5 @5xl:columns-6 [&>*]:mb-2">
 +      {results.map((result, index) => {
 +        const thumbSrc = result.thumbnail_src || result.img_src || "";
 +        return (
@@ -10486,10 +10642,10 @@ index 0000000..16ff46c
 +}
 diff --git a/client/zjsearch/src/features/results/image/Lightbox.tsx b/client/zjsearch/src/features/results/image/Lightbox.tsx
 new file mode 100644
-index 0000000..92d2b7c
+index 0000000..68c5dd7
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/Lightbox.tsx
-@@ -0,0 +1,417 @@
+@@ -0,0 +1,426 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -10500,12 +10656,17 @@ index 0000000..92d2b7c
 +
 +import { Archive, Award, ChevronLeft, ChevronRight, Download, ExternalLink, ImageOff, Server, X } from "lucide-react";
 +import { useCallback, useEffect, useRef, useState } from "react";
-+import { useCacheUrl } from "@/features/results/cardParts.tsx";
++import { useCacheUrl } from "@/features/results/cacheUrl.tsx";
++import { useDialogFocus } from "@/lib/dialogFocus.ts";
 +import { formatScore } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { newTabLinkProps } from "@/lib/link.ts";
 +import { useSettings } from "@/lib/settings.ts";
 +import type { ResultItem } from "@/lib/types.ts";
++
++/** The viewer is a fixed DARK media overlay in every palette (like photo
++    viewers everywhere): tiles-over-image chrome uses its own zinc scale at
++    AA contrast instead of the theme tokens. */
 +
 +const IMAGE_VIEWER_HASH = "#image-viewer";
 +
@@ -10535,7 +10696,7 @@ index 0000000..92d2b7c
 +  const [failed, setFailed] = useState(!src);
 +  if (failed) {
 +    return (
-+      <div className="flex h-[60vh] w-full items-center justify-center text-zinc-500">
++      <div className="flex h-[60vh] w-full items-center justify-center text-zinc-400">
 +        <ImageOff className="size-10" />
 +      </div>
 +    );
@@ -10575,6 +10736,7 @@ index 0000000..92d2b7c
 +  const [dragging, setDragging] = useState(false);
 +  const dragStart = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
 +  const [enginesExpanded, setEnginesExpanded] = useState(false);
++  const dialogRef = useDialogFocus<HTMLDivElement>();
 +
 +  const resetZoom = useCallback(() => {
 +    setZoom(1);
@@ -10697,23 +10859,26 @@ index 0000000..92d2b7c
 +      onTouchStart={(event) => {
 +        touchStartX.current = event.changedTouches[0]?.clientX ?? null;
 +      }}
++      ref={dialogRef}
 +      role="dialog"
++      tabIndex={-1}
 +    >
 +      {/* top bar */}
 +      <div className="flex items-center justify-between p-3">
-+        <span className="text-xs text-zinc-500" dir="ltr">
++        <span className="text-xs text-zinc-400" dir="ltr">
 +          {index + 1} / {results.length}
 +          {zoom !== 1 ? <span className="ms-2 opacity-80">{Math.round(zoom * 100)}%</span> : null}
 +        </span>
 +        <button
 +          aria-label={t("close")}
 +          className="grid size-9 place-items-center rounded-full text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
++          data-dialog-close=""
 +          onClick={() => {
 +            close(true);
 +          }}
 +          type="button"
 +        >
-+          <X className="size-5" />
++          <X className="size-4.5" />
 +        </button>
 +      </div>
 +
@@ -10800,7 +10965,7 @@ index 0000000..92d2b7c
 +            </p>
 +          )}
 +          {hostname ? (
-+            <p className="truncate text-xs text-zinc-500" dir="ltr">
++            <p className="truncate text-xs text-zinc-400" dir="ltr">
 +              {hostname}
 +            </p>
 +          ) : null}
@@ -10808,21 +10973,21 @@ index 0000000..92d2b7c
 +            <div className="mt-2.5 flex flex-wrap items-center gap-1" title={result.engines.join(", ")}>
 +              {typeof result.score === "number" ? (
 +                <span
-+                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300 tabular-nums"
++                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-zinc-300 tabular-nums"
 +                  title={t("scores")}
 +                >
 +                  <Award className="size-3 shrink-0" />
 +                  {formatScore(result.score)}
 +                </span>
 +              ) : null}
-+              <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300">
++              <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-zinc-300">
 +                <Server className="size-3 shrink-0" />
 +                {result.engines[0]}
 +              </span>
 +              {enginesExpanded
 +                ? result.engines.slice(1).map((engine) => (
 +                    <span
-+                      className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300"
++                      className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-zinc-300"
 +                      key={engine}
 +                    >
 +                      <Server className="size-3 shrink-0" />
@@ -10833,7 +10998,7 @@ index 0000000..92d2b7c
 +              {result.engines.length > 1 ? (
 +                <button
 +                  aria-expanded={enginesExpanded}
-+                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300 transition-colors hover:text-white"
++                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-zinc-300 transition-colors hover:text-white"
 +                  onClick={() => {
 +                    setEnginesExpanded((value) => !value);
 +                  }}
@@ -10851,7 +11016,7 @@ index 0000000..92d2b7c
 +              ) : null}
 +              {cacheUrl ? (
 +                <a
-+                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300 transition-colors hover:text-white"
++                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-zinc-300 transition-colors hover:text-white"
 +                  href={cacheUrl + result.url}
 +                  {...newTabLinkProps(true)}
 +                >
@@ -10863,10 +11028,10 @@ index 0000000..92d2b7c
 +          ) : null}
 +        </div>
 +
-+        <div className="flex shrink-0 items-center gap-2 text-xs">
++        <div className="flex shrink-0 items-center gap-2 text-[13px]">
 +          {result.img_src ? (
 +            <a
-+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-600 px-3.5 py-1.5 text-zinc-200 transition-colors hover:border-zinc-400"
++              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-600 px-3.5 py-1.5 font-medium text-zinc-200 transition-colors hover:border-zinc-400"
 +              href={result.img_src}
 +              {...linkProps}
 +            >
@@ -10902,14 +11067,14 @@ index 0000000..92d2b7c
 +  }
 +  return (
 +    <p className="whitespace-nowrap leading-5">
-+      <span className="text-zinc-500">{label} </span>
++      <span className="text-zinc-400">{label} </span>
 +      <span className="text-zinc-200">{value}</span>
 +    </p>
 +  );
 +}
 diff --git a/client/zjsearch/src/features/results/layout.ts b/client/zjsearch/src/features/results/layout.ts
 new file mode 100644
-index 0000000..248793e
+index 0000000..508bc76
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/layout.ts
 @@ -0,0 +1,110 @@
@@ -10925,7 +11090,7 @@ index 0000000..248793e
 +import { NO_CATEGORY } from "@/lib/categories.ts";
 +import type { ResultItem, SearchPageData } from "@/lib/types.ts";
 +
-+export type ResultsLayoutKind =
++type ResultsLayoutKind =
 +  | "images"
 +  | "videos"
 +  | "music"
@@ -11045,47 +11210,20 @@ index 0000000..5e9ea54
 +export const PACKAGES_BLOCK_CATEGORY = "it";
 diff --git a/client/zjsearch/src/lib/clipboard.ts b/client/zjsearch/src/lib/clipboard.ts
 new file mode 100644
-index 0000000..a60e604
+index 0000000..ceb7138
 --- /dev/null
 +++ b/client/zjsearch/src/lib/clipboard.ts
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,11 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { useCallback, useEffect, useRef, useState } from "react";
-+
-+/** Shared click-to-copy feedback: writes `value` to the clipboard and holds
-+    a transient "copied" confirmation (1.5 s, matching the share card) that
-+    callers render through `isCopied(value)`. */
-+export function useCopyFeedback(timeoutMs = 1500) {
-+  const [copiedValue, setCopiedValue] = useState<string | null>(null);
-+  const timer = useRef<number | null>(null);
-+  useEffect(
-+    () => () => {
-+      if (timer.current !== null) {
-+        window.clearTimeout(timer.current);
-+      }
-+    },
-+    [],
-+  );
-+  const copy = useCallback(
-+    (value: string) => {
-+      void navigator.clipboard
-+        .writeText(value)
-+        .then(() => {
-+          setCopiedValue(value);
-+          if (timer.current !== null) {
-+            window.clearTimeout(timer.current);
-+          }
-+          timer.current = window.setTimeout(() => setCopiedValue(null), timeoutMs);
-+        })
-+        .catch(() => {
-+          /* clipboard unavailable */
-+        });
-+    },
-+    [timeoutMs],
-+  );
-+  const isCopied = useCallback((value: string) => copiedValue === value, [copiedValue]);
-+  return { copy, isCopied };
++/** Raw clipboard write shared by every copy path (buttons, wrappers,
++    hotkeys).  Copy confirmation is rendered by `flashToast` in
++    `lib/toast.ts` — one green 「已复制」 pill app-wide. */
++export function writeClipboard(value: string): Promise<boolean> {
++  return navigator.clipboard
++    .writeText(value)
++    .then(() => true)
++    .catch(() => false);
 +}
 diff --git a/client/zjsearch/src/lib/cookies.ts b/client/zjsearch/src/lib/cookies.ts
 new file mode 100644
@@ -11100,6 +11238,64 @@ index 0000000..6be713c
 +export function readCookie(name: string): string | null {
 +  const match = document.cookie.match(new RegExp(`(?:^|; *)${name}=([^;]*)`));
 +  return match?.[1] ?? null;
++}
+diff --git a/client/zjsearch/src/lib/dialogFocus.ts b/client/zjsearch/src/lib/dialogFocus.ts
+new file mode 100644
+index 0000000..4086ac9
+--- /dev/null
++++ b/client/zjsearch/src/lib/dialogFocus.ts
+@@ -0,0 +1,52 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import type { RefObject } from "react";
++import { useEffect, useRef } from "react";
++
++/**
++ * Focus management for the conditionally-rendered modal dialogs (overlay
++ * drawer, image lightbox, help modal): on mount focus moves to the element
++ * marked `data-dialog-close` (or the dialog itself — give it tabIndex={-1}),
++ * on unmount focus returns to the trigger, and Tab cycles inside the dialog
++ * so keyboard users cannot land behind the overlay.  Escape handling stays
++ * with each dialog (the lightbox closes through history state, the drawer
++ * through its own handler).
++ */
++export function useDialogFocus<T extends HTMLElement>(): RefObject<T | null> {
++  const ref = useRef<T>(null);
++  useEffect(() => {
++    const dialog = ref.current;
++    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
++    const close = dialog?.querySelector<HTMLElement>("[data-dialog-close]");
++    (close ?? dialog)?.focus();
++    const onKeyDown = (event: KeyboardEvent) => {
++      if (event.key !== "Tab" || !dialog) {
++        return;
++      }
++      const focusables = Array.from(
++        dialog.querySelectorAll<HTMLElement>(
++          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
++        ),
++      );
++      if (focusables.length === 0) {
++        return;
++      }
++      const first = focusables[0] as HTMLElement;
++      const last = focusables[focusables.length - 1] as HTMLElement;
++      const active = document.activeElement;
++      if (event.shiftKey && (active === first || !(active instanceof HTMLElement) || !dialog.contains(active))) {
++        event.preventDefault();
++        last.focus();
++      } else if (!event.shiftKey && active === last) {
++        event.preventDefault();
++        first.focus();
++      }
++    };
++    document.addEventListener("keydown", onKeyDown, true);
++    return () => {
++      document.removeEventListener("keydown", onKeyDown, true);
++      previouslyFocused?.focus();
++    };
++  }, []);
++  return ref;
 +}
 diff --git a/client/zjsearch/src/lib/engineDescriptions.ts b/client/zjsearch/src/lib/engineDescriptions.ts
 new file mode 100644
@@ -11192,12 +11388,51 @@ index 0000000..39dfd33
 +export function formatScore(score: number): string {
 +  return (Math.round(score * 10) / 10).toFixed(1);
 +}
+diff --git a/client/zjsearch/src/lib/http.ts b/client/zjsearch/src/lib/http.ts
+new file mode 100644
+index 0000000..3070470
+--- /dev/null
++++ b/client/zjsearch/src/lib/http.ts
+@@ -0,0 +1,33 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/**
++ * The one fetch wrapper: every page-data / autocompleter / description
++ * request goes through here so the `HTTP <status>` error contract, the
++ * abort handling and the error shape stay identical everywhere.
++ */
++
++export class HttpError extends Error {
++  readonly status: number;
++
++  constructor(status: number) {
++    super(`HTTP ${status}`);
++    this.name = "HttpError";
++    this.status = status;
++  }
++}
++
++async function request(url: string, init?: RequestInit): Promise<Response> {
++  const response = await fetch(url, init);
++  if (!response.ok) {
++    throw new HttpError(response.status);
++  }
++  return response;
++}
++
++export async function fetchText(url: string, init?: RequestInit): Promise<string> {
++  return (await request(url, init)).text();
++}
++
++export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
++  return (await request(url, init)).json() as Promise<T>;
++}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..977d99f
+index 0000000..f4ab3bf
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,55 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11216,7 +11451,7 @@ index 0000000..977d99f
 + * translations honest at compile time.
 + */
 +
-+import { createContext, useContext } from "react";
++import { createContext, useContext, useMemo } from "react";
 +import { EN, type StringKey } from "@/lib/i18n/en.ts";
 +import { ZH_CN } from "@/lib/i18n/zh-CN.ts";
 +
@@ -11246,8 +11481,12 @@ index 0000000..977d99f
 +
 +export function useT(): Translate {
 +  const locale = useContext(I18nContext);
-+  const catalog = CATALOGS[themeLocaleTag(locale)] ?? EN;
-+  return (key: StringKey) => catalog[key] ?? EN[key] ?? key;
++  // memoized so `t` keeps a stable identity across renders — callers put it
++  // in effect deps, and an unstable identity would re-run them needlessly
++  return useMemo(() => {
++    const catalog = CATALOGS[themeLocaleTag(locale)] ?? EN;
++    return (key: StringKey) => catalog[key] ?? EN[key] ?? key;
++  }, [locale]);
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
@@ -11753,10 +11992,10 @@ index 0000000..b627fa7
 +};
 diff --git a/client/zjsearch/src/lib/link.ts b/client/zjsearch/src/lib/link.ts
 new file mode 100644
-index 0000000..f83e89d
+index 0000000..9e4122f
 --- /dev/null
 +++ b/client/zjsearch/src/lib/link.ts
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,20 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** target/rel attributes for outbound links, following the
@@ -11765,12 +12004,24 @@ index 0000000..f83e89d
 +export function newTabLinkProps(onNewTab: boolean | undefined): { target?: string; rel: string } {
 +  return onNewTab ? { target: "_blank", rel: "noopener noreferrer" } : { rel: "noreferrer" };
 +}
++
++/** True when the click carries a modifier (new tab / window) or is not a
++    plain left click — SPA link handlers must let the browser take over. */
++export function isModifiedClick(event: {
++  altKey: boolean;
++  button: number;
++  ctrlKey: boolean;
++  metaKey: boolean;
++  shiftKey: boolean;
++}): boolean {
++  return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0;
++}
 diff --git a/client/zjsearch/src/lib/motion.ts b/client/zjsearch/src/lib/motion.ts
 new file mode 100644
-index 0000000..af18832
+index 0000000..e83514a
 --- /dev/null
 +++ b/client/zjsearch/src/lib/motion.ts
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,15 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11779,15 +12030,19 @@ index 0000000..af18832
 + * reach JS-initiated smooth scrolling — every `scrollTo`/`scrollIntoView`/
 + * `scrollBy` call must pass this as its `behavior`.
 + */
++export function reducedMotion(): boolean {
++  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
++}
++
 +export function scrollBehavior(): ScrollBehavior {
-+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
++  return reducedMotion() ? "auto" : "smooth";
 +}
 diff --git a/client/zjsearch/src/lib/pageData.ts b/client/zjsearch/src/lib/pageData.ts
 new file mode 100644
-index 0000000..c80217a
+index 0000000..c6f0bc6
 --- /dev/null
 +++ b/client/zjsearch/src/lib/pageData.ts
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,47 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11799,8 +12054,6 @@ index 0000000..c80217a
 +import type { ClientSettings } from "@/lib/settings.ts";
 +import { DEFAULT_CLIENT_SETTINGS } from "@/lib/settings.ts";
 +import type { AnyPageData } from "@/lib/types.ts";
-+
-+export type { AnyPageData };
 +
 +export function parseEmbeddedPageData(): AnyPageData | null {
 +  const el = document.getElementById("page-data");
@@ -11839,10 +12092,10 @@ index 0000000..c80217a
 +}
 diff --git a/client/zjsearch/src/lib/router.tsx b/client/zjsearch/src/lib/router.tsx
 new file mode 100644
-index 0000000..ac95a0c
+index 0000000..32b4bf9
 --- /dev/null
 +++ b/client/zjsearch/src/lib/router.tsx
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,211 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11950,6 +12203,7 @@ index 0000000..ac95a0c
 +        setData(pageData);
 +        setLoading(false);
 +        document.title = pageTitle(pageData);
++        // instant jump on purpose ("auto" never fights reduced motion)
 +        window.scrollTo(0, 0);
 +      } catch (err) {
 +        if (controller.signal.aborted || seq !== seqRef.current) {
@@ -12055,10 +12309,10 @@ index 0000000..ac95a0c
 +}
 diff --git a/client/zjsearch/src/lib/searchParams.ts b/client/zjsearch/src/lib/searchParams.ts
 new file mode 100644
-index 0000000..b74bdd7
+index 0000000..d5704de
 --- /dev/null
 +++ b/client/zjsearch/src/lib/searchParams.ts
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,121 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -12068,6 +12322,7 @@ index 0000000..b74bdd7
 + * body and the parser in sync.
 + */
 +
++import { fetchText } from "@/lib/http.ts";
 +import { extractPageData } from "@/lib/pageData.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
@@ -12132,7 +12387,7 @@ index 0000000..b74bdd7
 +}
 +
 +/** The same parameters as a multipart form body (POST-mode searches). */
-+export function toSearchFormData(params: SearchParams): FormData {
++function toSearchFormData(params: SearchParams): FormData {
 +  const body = new FormData();
 +  for (const [key, value] of searchParamEntries(params)) {
 +    body.append(key, value);
@@ -12173,14 +12428,11 @@ index 0000000..b74bdd7
 +/** Fetch one results page through the current effective method: POST mode
 +    pages the query through the request body, GET mode through the URL. */
 +export async function fetchSearchPage(params: SearchParams, method: "GET" | "POST"): Promise<SearchPageData> {
-+  const response =
++  const html =
 +    method === "POST"
-+      ? await fetch("/search", { body: toSearchFormData(params), headers: { Accept: "text/html" }, method: "POST" })
-+      : await fetch(buildSearchUrl(params), { headers: { Accept: "text/html" } });
-+  if (!response.ok) {
-+    throw new Error(`HTTP ${response.status}`);
-+  }
-+  return extractPageData(await response.text()) as SearchPageData;
++      ? await fetchText("/search", { body: toSearchFormData(params), headers: { Accept: "text/html" }, method: "POST" })
++      : await fetchText(buildSearchUrl(params), { headers: { Accept: "text/html" } });
++  return extractPageData(html) as SearchPageData;
 +}
 diff --git a/client/zjsearch/src/lib/settings.ts b/client/zjsearch/src/lib/settings.ts
 new file mode 100644
@@ -12245,10 +12497,10 @@ index 0000000..e63d8cb
 +}
 diff --git a/client/zjsearch/src/lib/styles.ts b/client/zjsearch/src/lib/styles.ts
 new file mode 100644
-index 0000000..c55bdfc
+index 0000000..83cc613
 --- /dev/null
 +++ b/client/zjsearch/src/lib/styles.ts
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,29 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -12264,6 +12516,20 @@ index 0000000..c55bdfc
 +    horizontally instead, like the mobile category tabs.  Callers add their
 +    own gap (e.g. gap-1 / gap-x-2). */
 +export const SWIPE_ROW = `flex flex-nowrap items-center overflow-x-auto ${SCROLLBAR_NONE} [&>*]:shrink-0`;
++
++/** Multi-part meta row that swipes horizontally on overflow (same hidden
++    scrollbar, children never shrink).  Callers add their own gap and text
++    size (e.g. gap-x-3 text-xs text-ink-3). */
++export const META_ROW = `flex items-center overflow-x-auto whitespace-nowrap ${SCROLLBAR_NONE} [&>*]:shrink-0`;
++
++/** Circular ghost icon button, 36px with 18px icons — header actions,
++    drawer/help closes, and every other chrome-level round button. */
++export const ICON_BTN =
++  "grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink";
++
++/** Tiny meta chip (engine pills, mono tokens, tag pills): callers add their
++    own text colour / font / hover on top of the shape. */
++export const CHIP = "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5";
 diff --git a/client/zjsearch/src/lib/tableSort.ts b/client/zjsearch/src/lib/tableSort.ts
 new file mode 100644
 index 0000000..d0d4b1d
@@ -12338,9 +12604,82 @@ index 0000000..1fab9a1
 +    }
 +  });
 +}
+diff --git a/client/zjsearch/src/lib/toast.ts b/client/zjsearch/src/lib/toast.ts
+new file mode 100644
+index 0000000..5b040d1
+--- /dev/null
++++ b/client/zjsearch/src/lib/toast.ts
+@@ -0,0 +1,67 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/**
++ * Imperative floating feedback pill — the shared 「已复制」/「已保存」 language:
++ * a rounded pill fixed at the bottom of the viewport, stacked when several
++ * fire together, auto-dismissed after a beat.  Every copy action confirms
++ * through `tone: "ok"`; `accent` covers neutral notices and `danger` the
++ * failure variants.  Meant for one-shot events (hotkey yank, clipboard
++ * writes, the debounced preferences auto-save) — never render such
++ * confirmations in flow, they would shift the page.
++ */
++
++export type ToastTone = "accent" | "ok" | "danger";
++
++/** accent: soft amber fill (neutral notice); ok/danger: bordered status pill. */
++const TONE_CLASS: Record<ToastTone, string> = {
++  accent: "bg-accent-soft text-accent",
++  ok: "border border-ok/40 bg-bg text-ok",
++  danger: "border border-danger/40 bg-bg text-danger",
++};
++
++const ICON = (path: string) =>
++  `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3.5 shrink-0"><path d="${path}"/></svg>`;
++
++const TONE_ICON: Record<ToastTone, string> = {
++  accent: "",
++  ok: ICON("M20 6 9 17l-5-5"),
++  danger: ICON("M18 6 6 18M6 6l12 12"),
++};
++
++let stack: HTMLDivElement | null = null;
++
++/** Toasts belong to the surface the action happened on: with the overlay
++    drawer open the stack is hosted inside its panel — the panel's residual
++    entrance transform contains `fixed`, so pills center within the drawer
++    instead of the viewport. */
++function toastHost(): HTMLElement {
++  return document.querySelector<HTMLElement>("[data-zjs-overlay-panel]") ?? document.body;
++}
++
++export function flashToast(
++  label: string,
++  { tone = "accent", timeoutMs = 1500 }: { tone?: ToastTone; timeoutMs?: number } = {},
++): void {
++  const chip = document.createElement("div");
++  chip.setAttribute("role", "status");
++  chip.className = `inline-flex animate-fade-up items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-medium shadow-pop ${TONE_CLASS[tone]}`;
++  if (TONE_ICON[tone]) {
++    chip.innerHTML = TONE_ICON[tone];
++  }
++  chip.appendChild(document.createTextNode(label));
++  const host = toastHost();
++  if (!stack) {
++    stack = document.createElement("div");
++    stack.className = "pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex flex-col items-center gap-2";
++  }
++  if (stack.parentElement !== host) {
++    host.appendChild(stack); // appendChild moves, keeping live toasts along
++  }
++  stack.appendChild(chip);
++  window.setTimeout(() => {
++    chip.classList.add("opacity-0", "transition-opacity", "duration-300");
++    window.setTimeout(() => {
++      chip.remove();
++    }, 300);
++  }, timeoutMs);
++}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..0d1d7cb
+index 0000000..9506a39
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
 @@ -0,0 +1,435 @@
@@ -12354,7 +12693,7 @@ index 0000000..0d1d7cb
 +
 +// ------------------------------------------------------------------ globals
 +
-+export interface LocaleInfo {
++interface LocaleInfo {
 +  tag: string;
 +  name: string;
 +  country: string;
@@ -12362,7 +12701,7 @@ index 0000000..0d1d7cb
 +  flag: string;
 +}
 +
-+export interface CustomLink {
++interface CustomLink {
 +  title: string;
 +  url: string;
 +}
@@ -12519,12 +12858,12 @@ index 0000000..0d1d7cb
 +  source_country?: string;
 +}
 +
-+export interface SuggestionItem {
++interface SuggestionItem {
 +  q: string;
 +  title: string;
 +}
 +
-+export interface TranslationItem {
++interface TranslationItem {
 +  text: string;
 +  transliteration: string;
 +  examples: string[];
@@ -12645,20 +12984,20 @@ index 0000000..0d1d7cb
 +  supports_time_range: boolean;
 +}
 +
-+export interface EngineGroup {
++interface EngineGroup {
 +  group: string;
 +  group_bang: string;
 +  engines: EngineEntry[];
 +}
 +
-+export interface EngineTab {
++interface EngineTab {
 +  category: string;
 +  label: string;
 +  is_default: boolean;
 +  groups: EngineGroup[];
 +}
 +
-+export interface PluginInfo {
++interface PluginInfo {
 +  id: string;
 +  name: string;
 +  description: string;
@@ -12724,7 +13063,7 @@ index 0000000..0d1d7cb
 +  reliability: number | null;
 +}
 +
-+export interface EngineError {
++interface EngineError {
 +  secondary: boolean;
 +  exception_classname: string;
 +  log_message: string;
@@ -12828,19 +13167,19 @@ index 0000000..58d1198
 +void bootstrap();
 diff --git a/client/zjsearch/src/pages/IndexPage.tsx b/client/zjsearch/src/pages/IndexPage.tsx
 new file mode 100644
-index 0000000..61d2848
+index 0000000..a525f25
 --- /dev/null
 +++ b/client/zjsearch/src/pages/IndexPage.tsx
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,159 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Lightbulb, SlidersHorizontal } from "lucide-react";
++import { Lightbulb, SlidersHorizontal, X } from "lucide-react";
 +import { useState } from "react";
 +import { HelpModal } from "@/components/HelpModal.tsx";
 +import { SearchBox } from "@/components/SearchBox.tsx";
 +import { CategoryTabs, defaultFilterValues, type FilterValues, SearchFilters } from "@/components/SearchControls.tsx";
 +import { Shell } from "@/components/Shell.tsx";
-+import { type HotkeyTarget, useHotkeys } from "@/features/hotkeys.ts";
++import { focusSearchInput, type HotkeyTarget, useHotkeys } from "@/features/hotkeys.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { useRouter } from "@/lib/router.tsx";
 +import { useSettings } from "@/lib/settings.ts";
@@ -12887,11 +13226,9 @@ index 0000000..61d2848
 +  const hotkeyTarget: HotkeyTarget = {
 +    move: () => {},
 +    open: () => {},
-+    yank: () => null,
++    yank: () => {},
 +    page: () => {},
-+    focusSearch: () => {
-+      (document.querySelector('input[name="q"]') as HTMLInputElement | null)?.focus();
-+    },
++    focusSearch: focusSearchInput,
 +  };
 +  useHotkeys(settings.hotkeys, hotkeyTarget, () => {
 +    setHelpOpen((open) => !open);
@@ -12902,7 +13239,7 @@ index 0000000..61d2848
 +      <main className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 pb-24">
 +        <h1 className="animate-fade-up text-6xl font-extrabold tracking-tight text-ink sm:text-7xl">
 +          {globals.instance_name}
-+          <span className="text-accent-strong">.</span>
++          <span className="text-accent">.</span>
 +        </h1>
 +        {/* raised stacking level: fade-up leaves a residual transform (a
 +            stacking context) on every animated sibling, which would let the
@@ -12977,14 +13314,14 @@ index 0000000..61d2848
 +            </button>
 +            <button
 +              aria-label={t("close")}
-+              className="shrink-0 rounded-lg px-2 py-1 text-xs text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
++              className="grid size-7 shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink"
 +              onClick={() => {
 +                window.localStorage.setItem("zjs-hint-hidden", "1");
 +                setHintHidden(true);
 +              }}
 +              type="button"
 +            >
-+              {t("close")}
++              <X aria-hidden="true" className="size-3.5" />
 +            </button>
 +          </div>
 +        </div>
@@ -12995,16 +13332,17 @@ index 0000000..61d2848
 +}
 diff --git a/client/zjsearch/src/pages/InfoPage.tsx b/client/zjsearch/src/pages/InfoPage.tsx
 new file mode 100644
-index 0000000..95aca24
+index 0000000..d64ec01
 --- /dev/null
 +++ b/client/zjsearch/src/pages/InfoPage.tsx
-@@ -0,0 +1,340 @@
+@@ -0,0 +1,326 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import type { LucideIcon } from "lucide-react";
 +import { ExternalLink, Info, Link2, LoaderCircle, Mail, Network, Scale, Search, Server, Shield } from "lucide-react";
 +import { useEffect, useRef, useState } from "react";
 +import { Shell } from "@/components/Shell.tsx";
++import { fetchJson, fetchText } from "@/lib/http.ts";
 +import { type StringKey, useT } from "@/lib/i18n.ts";
 +import { extractPageData } from "@/lib/pageData.ts";
 +import { type GlobalData, type InfoPageData, isInfoPageData } from "@/lib/types.ts";
@@ -13021,13 +13359,10 @@ index 0000000..95aca24
 +  const [config, setConfig] = useState<InstanceConfig | null>(null);
 +  useEffect(() => {
 +    const controller = new AbortController();
-+    void fetch("/config", { headers: { Accept: "application/json" }, signal: controller.signal })
-+      .then((resp) => {
-+        if (!resp.ok) {
-+          throw new Error(`HTTP ${resp.status}`);
-+        }
-+        return resp.json() as Promise<InstanceConfig>;
-+      })
++    void fetchJson<InstanceConfig>("/config", {
++      headers: { Accept: "application/json" },
++      signal: controller.signal,
++    })
 +      .then(setConfig)
 +      .catch(() => {
 +        /* quiet: sections that need it simply stay hidden */
@@ -13073,13 +13408,7 @@ index 0000000..95aca24
 +  const [text, setText] = useState("");
 +  useEffect(() => {
 +    const controller = new AbortController();
-+    void fetch(url, { signal: controller.signal })
-+      .then((resp) => {
-+        if (!resp.ok) {
-+          throw new Error(`HTTP ${resp.status}`);
-+        }
-+        return resp.text();
-+      })
++    void fetchText(url, { signal: controller.signal })
 +      .then(setText)
 +      .catch(() => {
 +        /* quiet: the label row still renders */
@@ -13092,7 +13421,7 @@ index 0000000..95aca24
 +    return null;
 +  }
 +  return (
-+    <pre className="mt-2 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-4 font-mono text-[11.5px] leading-relaxed text-ink-2">
++    <pre className="mt-2 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-4 font-mono text-xs leading-relaxed text-ink-2">
 +      {text}
 +    </pre>
 +  );
@@ -13153,7 +13482,7 @@ index 0000000..95aca24
 +  return (
 +    <article className="prose-basic animate-fade-up" dir="auto">
 +      <h1 className="flex items-center gap-2">
-+        <Server className="size-5 shrink-0" />
++        <Server aria-hidden="true" className="size-5 shrink-0 text-accent" />
 +        {globals.instance_name}
 +      </h1>
 +      <p className="font-mono text-xs text-ink-3" dir="ltr">
@@ -13258,13 +13587,7 @@ index 0000000..95aca24
 +    }
 +    const seq = ++seqRef.current;
 +    setSwitching(true);
-+    void fetch(href, { headers: { Accept: "text/html" } })
-+      .then((resp) => {
-+        if (!resp.ok) {
-+          throw new Error(`HTTP ${resp.status}`);
-+        }
-+        return resp.text();
-+      })
++    void fetchText(href, { headers: { Accept: "text/html" } })
 +      .then((html) => {
 +        const pageData = extractPageData(html);
 +        if (!isInfoPageData(pageData)) {
@@ -13322,7 +13645,7 @@ index 0000000..95aca24
 +        </nav>
 +        {switching ? (
 +          <div className="flex justify-center py-20 text-ink-3">
-+            <LoaderCircle className="size-5 animate-spin" />
++            <LoaderCircle className="size-5 animate-spin-slow" />
 +          </div>
 +        ) : active.html !== null ? (
 +          <article
@@ -13341,10 +13664,10 @@ index 0000000..95aca24
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..93547c7
+index 0000000..ab218cc
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,358 @@
+@@ -0,0 +1,372 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -13354,10 +13677,11 @@ index 0000000..93547c7
 +import { CategoryTabs, type FilterValues, SearchFilters } from "@/components/SearchControls.tsx";
 +import { HeaderActions, Link, Shell } from "@/components/Shell.tsx";
 +import { tryEvaluateExpression } from "@/features/calculator.ts";
-+import { useHotkeys } from "@/features/hotkeys.ts";
++import { focusSearchInput, useHotkeys } from "@/features/hotkeys.ts";
 +import { Answers } from "@/features/results/answers/Answers.tsx";
 +import { CalculatorAnswer } from "@/features/results/answers/Calculator.tsx";
-+import { CacheUrlProvider, ResultSkeleton } from "@/features/results/cardParts.tsx";
++import { CacheUrlProvider } from "@/features/results/cacheUrl.tsx";
++import { ResultSkeleton } from "@/features/results/cardParts.tsx";
 +import { DebugPanels } from "@/features/results/DebugPanels.tsx";
 +import { Corrections, NoResults } from "@/features/results/EmptyStates.tsx";
 +import { InfiniteScrollSentinel } from "@/features/results/InfiniteScroll.tsx";
@@ -13367,12 +13691,14 @@ index 0000000..93547c7
 +import { ResultsView } from "@/features/results/ResultsView.tsx";
 +import { Sidebar } from "@/features/results/Sidebar.tsx";
 +import { SuggestionsBox } from "@/features/results/SuggestionsBox.tsx";
++import { writeClipboard } from "@/lib/clipboard.ts";
 +import { readCookie } from "@/lib/cookies.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { scrollBehavior } from "@/lib/motion.ts";
 +import { useRouter } from "@/lib/router.tsx";
 +import { fetchSearchPage, parseSearchUrl, shareableSearchUrl } from "@/lib/searchParams.ts";
 +import { useHasPlugin, useSettings } from "@/lib/settings.ts";
++import { flashToast } from "@/lib/toast.ts";
 +import type { ResultItem, SearchPageData } from "@/lib/types.ts";
 +
 +export function ResultsPage({ data }: { data: SearchPageData }) {
@@ -13399,22 +13725,20 @@ index 0000000..93547c7
 +    }
 +  }, [href]);
 +
-+  const [filterValues, setFilterValues] = useState<FilterValues>(() => ({
++  // one literal for the URL→filter mapping so init and re-sync cannot drift
++  const filterValuesFrom = (): FilterValues => ({
 +    language: urlParams?.language ?? data.current_language ?? globals.language,
 +    time_range: urlParams?.time_range ?? data.time_range ?? "",
 +    safesearch: urlParams?.safesearch ?? globals.safesearch,
 +    search_language: data.search_language,
-+  }));
++  });
++
++  const [filterValues, setFilterValues] = useState<FilterValues>(filterValuesFrom);
 +
 +  // re-sync filters after any navigation (back/forward, payload change)
 +  // biome-ignore lint/correctness/useExhaustiveDependencies: URL is the source of truth
 +  useEffect(() => {
-+    setFilterValues({
-+      language: urlParams?.language ?? data.current_language ?? globals.language,
-+      time_range: urlParams?.time_range ?? data.time_range ?? "",
-+      safesearch: urlParams?.safesearch ?? globals.safesearch,
-+      search_language: data.search_language,
-+    });
++    setFilterValues(filterValuesFrom());
 +  }, [href]);
 +
 +  const settings = useSettings();
@@ -13546,16 +13870,23 @@ index 0000000..93547c7
 +        }
 +      }
 +    },
-+    yank: () => selectedCard()?.querySelector("a[href]")?.getAttribute("href") ?? null,
++    yank: () => {
++      const url = selectedCard()?.querySelector("a[href]")?.getAttribute("href");
++      if (url) {
++        void writeClipboard(url).then((ok) => {
++          if (ok) {
++            flashToast(t("copied"), { tone: "ok" });
++          }
++        });
++      }
++    },
 +    page: (delta: number) => {
 +      const next = data.pageno + delta;
 +      if (next >= 1 && (delta < 0 || data.paging)) {
 +        onPageRef.current(next);
 +      }
 +    },
-+    focusSearch: () => {
-+      (document.querySelector('input[name="q"]') as HTMLInputElement | null)?.focus();
-+    },
++    focusSearch: focusSearchInput,
 +  };
 +  useHotkeys(settings.hotkeys, hotkeyTarget, () => {
 +    setHelpOpen((open) => !open);
@@ -13589,9 +13920,9 @@ index 0000000..93547c7
 +            title={globals.instance_name}
 +          >
 +            {globals.instance_name}
-+            <span className="text-accent-strong">.</span>
++            <span className="text-accent">.</span>
 +          </Link>
-+          <div className="min-w-0 flex-1 max-w-2xl">
++          <div className="min-w-0 flex-1 max-w-2xl xl:max-w-3xl 2xl:max-w-4xl">
 +            <SearchBox initialQuery={data.q} onSubmitQuery={submitQuery} />
 +          </div>
 +          <div className="ms-auto">
@@ -13602,7 +13933,9 @@ index 0000000..93547c7
 +
 +      <main className="zjs-results-main mx-auto w-full flex-1 px-4 sm:px-6">
 +        <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
-+          <div className="min-w-0 flex-1 pt-4" ref={listRef}>
++          {/* @container: grid density keys off the actual column width, so
++              widescreen adds a column and centered mode drops one */}
++          <div className="@container min-w-0 flex-1 pt-4" ref={listRef}>
 +            {/* Kagi layout: the tabs and filters live in the results column so
 +                the infobox sidebar rises to the top of the page */}
 +            <CategoryTabs
@@ -13692,9 +14025,13 @@ index 0000000..93547c7
 +            )}
 +          </div>
 +
-+          <div className="hidden w-full shrink-0 pt-4 lg:flex lg:flex-col lg:gap-3 lg:w-80 lg:pb-6">
-+            {showSkeletons ? null : <Sidebar data={data} onSearch={submitQuery} />}
-+          </div>
++          {/* the rail area disappears entirely when it has no content (e.g.
++              "test"-style searches) so blank space never pushes content down */}
++          {showSkeletons || data.infoboxes.length > 0 || globals.method === "POST" ? (
++            <div className="hidden w-full shrink-0 pt-4 lg:flex lg:flex-col lg:gap-3 lg:w-80 xl:w-96 lg:pb-6">
++              {showSkeletons ? null : <Sidebar data={data} onSearch={submitQuery} />}
++            </div>
++          ) : null}
 +        </div>
 +      </main>
 +
@@ -13705,13 +14042,13 @@ index 0000000..93547c7
 +}
 diff --git a/client/zjsearch/src/pages/StatsPage.tsx b/client/zjsearch/src/pages/StatsPage.tsx
 new file mode 100644
-index 0000000..1a830ff
+index 0000000..b391f72
 --- /dev/null
 +++ b/client/zjsearch/src/pages/StatsPage.tsx
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,272 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ChevronLeft } from "lucide-react";
++import { ChartColumn, ChevronLeft } from "lucide-react";
 +import { useMemo } from "react";
 +import { Link, Shell } from "@/components/Shell.tsx";
 +import { SortHeader } from "@/components/SortHeader.tsx";
@@ -13776,14 +14113,16 @@ index 0000000..1a830ff
 +      <h2 className="mb-2 text-lg font-semibold text-ink">{title}</h2>
 +      <div className="space-y-3">
 +        {errors.map((error, index) => (
-+          <div className="overflow-hidden rounded-xl border border-line" key={index}>
++          <div className="overflow-x-auto rounded-xl border border-line" key={index}>
 +            <table className="w-full text-left text-xs">
 +              <tbody>
 +                <tr className="border-b border-line">
 +                  <th className="w-28 bg-surface-2 px-3 py-1.5 font-medium text-ink-3" scope="row">
 +                    {error.exception_classname ? t("exception") : t("message")}
 +                  </th>
-+                  <td className="px-3 py-1.5 font-medium text-ink">{error.exception_classname || error.log_message}</td>
++                  <td className="break-all px-3 py-1.5 font-medium text-ink">
++                    {error.exception_classname || error.log_message}
++                  </td>
 +                  <th className="w-28 bg-surface-2 px-3 py-1.5 font-medium text-ink-3" scope="row">
 +                    {t("percentage")}
 +                  </th>
@@ -13850,7 +14189,8 @@ index 0000000..1a830ff
 +    <Shell embedded={embedded} globals={globals}>
 +      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-16 sm:px-6">
 +        {embedded ? null : (
-+          <h1 className="py-5 text-2xl font-semibold tracking-tight text-ink">
++          <h1 className="flex items-center gap-2.5 py-5 text-2xl font-semibold tracking-tight text-ink">
++            <ChartColumn aria-hidden="true" className="size-5 shrink-0 text-accent" />
 +            {data.selected_engine_name ? (
 +              <>
 +                <Link className="hover:text-accent" href="/stats">
@@ -14239,16 +14579,17 @@ index 0000000..c858551
 +}
 diff --git a/client/zjsearch/src/pages/preferences/PreferencesPage.tsx b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
 new file mode 100644
-index 0000000..674a991
+index 0000000..241876c
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,112 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { AlertTriangle, Check, Cookie, LayoutGrid, Shield, SlidersHorizontal, Sun, Terminal } from "lucide-react";
-+import { useMemo, useState } from "react";
++import { AlertTriangle, Cookie, LayoutGrid, Shield, SlidersHorizontal, Sun, Terminal } from "lucide-react";
++import { useEffect, useMemo, useState } from "react";
 +import { Link, Shell } from "@/components/Shell.tsx";
 +import { useT } from "@/lib/i18n.ts";
++import { flashToast } from "@/lib/toast.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
 +import { CookiesTab } from "@/pages/preferences/tabs/CookiesTab.tsx";
 +import { EnginesPane } from "@/pages/preferences/tabs/EnginesPane.tsx";
@@ -14269,6 +14610,15 @@ index 0000000..674a991
 +  const [tab, setTab] = useState<PrefsTab>("general");
 +  const [engineTab, setEngineTab] = useState(0);
 +
++  // transient save confirmation in the shared floating-toast language —
++  // nothing in flow, so its appearance never shifts the form
++  const savedAt = form.savedAt;
++  useEffect(() => {
++    if (savedAt > 0) {
++      flashToast(t("saved"), { tone: "ok", timeoutMs: 2000 });
++    }
++  }, [savedAt, t]);
++
 +  const isPreview = new URLSearchParams(window.location.search).get("preferences_preview_only") === "true";
 +
 +  const tabs = [
@@ -14284,23 +14634,8 @@ index 0000000..674a991
 +    <Shell embedded={embedded} globals={globals}>
 +      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pb-20 sm:px-6">
 +        {!embedded ? (
-+          <div className="flex items-center justify-between py-6">
++          <div className="flex items-center py-6">
 +            <h1 className="text-2xl font-semibold tracking-tight text-ink">{t("preferences")}</h1>
-+            <div className="flex items-center gap-3">
-+              {form.savedAt > 0 ? (
-+                <span className="inline-flex items-center gap-1 text-xs text-ok animate-fade-in">
-+                  <Check className="size-3.5" />
-+                  {t("saved")}
-+                </span>
-+              ) : null}
-+            </div>
-+          </div>
-+        ) : form.savedAt > 0 ? (
-+          <div className="flex justify-end py-3">
-+            <span className="inline-flex items-center gap-1 text-xs text-ok animate-fade-in">
-+              <Check className="size-3.5" />
-+              {t("saved")}
-+            </span>
 +          </div>
 +        ) : null}
 +
@@ -14749,10 +15084,10 @@ index 0000000..5b21e51
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx b/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx
 new file mode 100644
-index 0000000..fe96d4f
+index 0000000..e595814
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,85 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Check, LayoutGrid, X } from "lucide-react";
@@ -14777,6 +15112,11 @@ index 0000000..fe96d4f
 +}) {
 +  const t = useT();
 +  const currentEngineTab = data.engine_tabs[engineTab];
++  const tabEngineKeys = currentEngineTab
++    ? currentEngineTab.groups.flatMap((group) =>
++        group.engines.map((engine) => `${engine.name}__${currentEngineTab.category}`),
++      )
++    : [];
 +  return (
 +    <div className="space-y-4">
 +      <div className="flex flex-wrap items-center justify-between gap-2">
@@ -14789,12 +15129,7 @@ index 0000000..fe96d4f
 +            <button
 +              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:border-ok hover:text-ok"
 +              onClick={() => {
-+                form.setAllEngines(
-+                  currentEngineTab.groups.flatMap((group) =>
-+                    group.engines.map((engine) => `${engine.name}__${currentEngineTab.category}`),
-+                  ),
-+                  true,
-+                );
++                form.setAllEngines(tabEngineKeys, true);
 +              }}
 +              type="button"
 +            >
@@ -14804,12 +15139,7 @@ index 0000000..fe96d4f
 +            <button
 +              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:border-danger hover:text-danger"
 +              onClick={() => {
-+                form.setAllEngines(
-+                  currentEngineTab.groups.flatMap((group) =>
-+                    group.engines.map((engine) => `${engine.name}__${currentEngineTab.category}`),
-+                  ),
-+                  false,
-+                );
++                form.setAllEngines(tabEngineKeys, false);
 +              }}
 +              type="button"
 +            >
@@ -15580,10 +15910,10 @@ index 0000000..54f490f
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..35e1f85
+index 0000000..285b95a
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,443 @@
+@@ -0,0 +1,445 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -15603,8 +15933,10 @@ index 0000000..35e1f85
 +  /* muted tier: must keep 4.5:1 against every surface it sits on (worst case
 +     surface-2 #f1efe8) */
 +  --ink-3: #716c61;
-+  --accent: #a67c00;
-+  --accent-hover: #8c6800;
++  /* text accent doubles as small-text colour (links, chips) — #8c6800 keeps
++     ≥4.5:1 on white / surface-2 / accent-soft, so light mode passes AA */
++  --accent: #8c6800;
++  --accent-hover: #7a5c00;
 +  --accent-strong: #f5c84c;
 +  --accent-strong-hover: #eebd35;
 +  --accent-soft: #faf0cf;
@@ -16350,7 +16682,7 @@ index 0000000..f920be3
 +{% block page_data %}{{ page_404() }}{% endblock %}
 diff --git a/searx/templates/zjsearch/base.html b/searx/templates/zjsearch/base.html
 new file mode 100644
-index 0000000..7403554
+index 0000000..8b5a27d
 --- /dev/null
 +++ b/searx/templates/zjsearch/base.html
 @@ -0,0 +1,63 @@
@@ -16361,7 +16693,7 @@ index 0000000..7403554
 +payload as JSON (``#page-data``) plus the base64 ``client_settings`` blob on the
 +module script tag.  See ``client/zjsearch/`` for the UI implementation. -#}
 +<!DOCTYPE html>
-+<html lang="{{ locale_rfc5646 }}"{{ ' dir="rtl"' if rtl }}{{ ' class="centered"' if preferences.get_value('center_alignment') }}>
++<html lang="{{ locale_rfc5646 }}"{% if rtl %} dir="rtl"{% endif %}{% if preferences.get_value('center_alignment') %} class="centered"{% endif %}>
 +<head>
 +  <meta charset="UTF-8">
 +  <meta name="viewport" content="width=device-width, initial-scale=1">
