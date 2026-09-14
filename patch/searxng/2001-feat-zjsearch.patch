@@ -3974,10 +3974,10 @@ index 0000000..db6b706
 +}
 diff --git a/client/zjsearch/src/components/CopyButton.tsx b/client/zjsearch/src/components/CopyButton.tsx
 new file mode 100644
-index 0000000..016aa07
+index 0000000..d6e99e4
 --- /dev/null
 +++ b/client/zjsearch/src/components/CopyButton.tsx
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,90 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Check } from "lucide-react";
@@ -3992,8 +3992,9 @@ index 0000000..016aa07
 +
 +/** Copy-to-clipboard button in the unified share-card language: a bordered
 +    pill that flips to a green check + 「已复制」 while the confirmation is
-+    up.  Pass `className` to restyle (e.g. the map's floating dark chip) —
-+    the copied feedback still applies. */
++    up.  `className` is merged on top (for positioning / surface tweaks like
++    the map's floating chip) — the pill shape and copied feedback always
++    apply. */
 +export function CopyButton({
 +  value,
 +  label,
@@ -4010,7 +4011,7 @@ index 0000000..016aa07
 +  const copied = isCopied(value);
 +  return (
 +    <button
-+      className={className ?? `${ACTION_PILL} ${copied ? ACTION_COPIED : ACTION_IDLE}`}
++      className={`${ACTION_PILL} ${copied ? ACTION_COPIED : ACTION_IDLE} ${className ?? ""}`}
 +      onClick={() => {
 +        copy(value);
 +      }}
@@ -4733,10 +4734,10 @@ index 0000000..b1374e6
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..4bdc941
+index 0000000..b04d3da
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,253 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Clock, Ellipsis, Languages, Shield } from "lucide-react";
@@ -4746,6 +4747,7 @@ index 0000000..4bdc941
 +import { Dropdown } from "@/components/Dropdown.tsx";
 +import { useT } from "@/lib/i18n.ts";
 +import { useSettings } from "@/lib/settings.ts";
++import { SCROLLBAR_NONE } from "@/lib/styles.ts";
 +import type { GlobalData } from "@/lib/types.ts";
 +
 +interface CategoryTabsProps {
@@ -4933,7 +4935,7 @@ index 0000000..4bdc941
 +    // single line at every width - narrow viewports scroll the row, exactly
 +    // like the category tab row above it; -ms-4 cancels the triggers' ps-4 so
 +    // their icons stay aligned with the tab icons and the meta line below
-+    <div className="-ms-4 flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
++    <div className={`-ms-4 flex items-center gap-1 overflow-x-auto ${SCROLLBAR_NONE} [&>*]:shrink-0`}>
 +      <SelectField
 +        icon={<Languages className="size-3.5 shrink-0" />}
 +        label={t("search_language")}
@@ -5221,6 +5223,49 @@ index 0000000..6314811
 +      <div className="flex flex-1 flex-col">{children}</div>
 +      <Footer globals={globals} />
 +    </div>
++  );
++}
+diff --git a/client/zjsearch/src/components/SortHeader.tsx b/client/zjsearch/src/components/SortHeader.tsx
+new file mode 100644
+index 0000000..f892eb3
+--- /dev/null
++++ b/client/zjsearch/src/components/SortHeader.tsx
+@@ -0,0 +1,37 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { ArrowDown, ArrowUp } from "lucide-react";
++import type { ReactNode } from "react";
++import type { SortState } from "@/lib/tableSort.ts";
++
++/** Sortable-table header button: label + direction arrow while the column is
++    the active sort.  Pair the `<th>` with `aria-sort` on the caller side. */
++export function SortHeader<K extends string>({
++  label,
++  columnKey,
++  sort,
++  onCycle,
++}: {
++  label: ReactNode;
++  columnKey: K;
++  sort: SortState<K>;
++  onCycle: (key: K) => void;
++}) {
++  const active = sort.key === columnKey;
++  return (
++    <button
++      className="inline-flex items-center gap-1 transition-colors hover:text-ink"
++      onClick={() => {
++        onCycle(columnKey);
++      }}
++      type="button"
++    >
++      {label}
++      {active ? (
++        <span aria-hidden="true" className="inline-flex">
++          {sort.asc ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
++        </span>
++      ) : null}
++    </button>
 +  );
 +}
 diff --git a/client/zjsearch/src/features/calculator.ts b/client/zjsearch/src/features/calculator.ts
@@ -5899,10 +5944,10 @@ index 0000000..5485f69
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 0000000..6ecec07
+index 0000000..93736f5
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,230 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5928,7 +5973,6 @@ index 0000000..6ecec07
 +import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
 +import { useCopyFeedback } from "@/lib/clipboard.ts";
 +import { useT } from "@/lib/i18n.ts";
-+import { shareableSearchUrl } from "@/lib/searchParams.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
 +/** per-format icons for the download strip; unknown configured formats fall
@@ -6642,7 +6686,7 @@ index 0000000..716687f
 +}
 diff --git a/client/zjsearch/src/features/results/MapView.tsx b/client/zjsearch/src/features/results/MapView.tsx
 new file mode 100644
-index 0000000..abee0a8
+index 0000000..4f75674
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/MapView.tsx
 @@ -0,0 +1,231 @@
@@ -6848,12 +6892,12 @@ index 0000000..abee0a8
 +      {open ? (
 +        <div className="relative mt-2">
 +          <div
-+            className="zjs-map h-72 w-full overflow-hidden rounded-xl border border-line animate-fade-in"
++            className="zjs-map h-72 w-full overflow-hidden rounded-2xl border border-line animate-fade-in"
 +            ref={containerRef}
 +          />
 +          {longitude && latitude ? (
 +            <CopyButton
-+              className="absolute end-2 top-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 font-mono text-[11px] text-white transition-colors hover:bg-black/80"
++              className="absolute end-2 top-2 z-10 bg-surface font-mono"
 +              icon={<MapPin className="size-3 shrink-0" />}
 +              label={`${Number(latitude).toFixed(4)}, ${Number(longitude).toFixed(4)}`}
 +              value={`${latitude}, ${longitude}`}
@@ -6862,14 +6906,14 @@ index 0000000..abee0a8
 +          {longitude && latitude ? (
 +            <button
 +              aria-label={t("recenter")}
-+              className="absolute left-[0.75rem] top-[4.4rem] z-10 flex size-7 items-center justify-center rounded-lg bg-black/70 text-white transition-colors hover:bg-black/85"
++              className="absolute left-[12px] top-[79px] z-10 flex size-[30px] items-center justify-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:border-accent hover:bg-surface-2 hover:text-accent"
 +              onClick={() => {
 +                restoreRef.current?.();
 +              }}
 +              title={t("recenter")}
 +              type="button"
 +            >
-+              <Crosshair className="size-4" />
++              <Crosshair className="size-[18px]" />
 +            </button>
 +          ) : null}
 +        </div>
@@ -7436,15 +7480,16 @@ index 0000000..5fcbbec
 +}
 diff --git a/client/zjsearch/src/features/results/ProductGrid.tsx b/client/zjsearch/src/features/results/ProductGrid.tsx
 new file mode 100644
-index 0000000..18586de
+index 0000000..40b9365
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/ProductGrid.tsx
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,65 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Globe, Package, Tag, Truck } from "lucide-react";
 +import { ResultLink } from "@/features/results/cardParts.tsx";
 +import { TileEngines, TileThumb } from "@/features/results/Tile.tsx";
++import { SWIPE_ROW } from "@/lib/styles.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
 +export function ProductGrid({ results, globals }: { results: ResultItem[]; globals: GlobalData }) {
@@ -7482,7 +7527,7 @@ index 0000000..18586de
 +              {result.price}
 +            </p>
 +          ) : null}
-+          <div className="mt-0.5 flex flex-nowrap items-center gap-x-2 overflow-x-auto text-xs text-ink-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
++          <div className={`mt-0.5 text-xs text-ink-3 ${SWIPE_ROW} gap-x-2`}>
 +            {result.shipping ? (
 +              <span className="inline-flex items-center gap-1">
 +                <Truck className="size-3" />
@@ -8551,13 +8596,13 @@ index 0000000..babc0f2
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Weather.tsx b/client/zjsearch/src/features/results/answers/Weather.tsx
 new file mode 100644
-index 0000000..f15b958
+index 0000000..8550223
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Weather.tsx
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,233 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { MapPin } from "lucide-react";
++import { ChevronLeft, MapPin } from "lucide-react";
 +import { useState } from "react";
 +import { useT } from "@/lib/i18n.ts";
 +import type { AnswerData, WeatherItem } from "@/lib/types.ts";
@@ -8773,12 +8818,13 @@ index 0000000..f15b958
 +          ) : null}
 +          {sourcesExpanded && hiddenSources > 0 ? (
 +            <button
-+              className="transition-colors hover:text-ink"
++              className="inline-flex items-center gap-1 transition-colors hover:text-ink"
 +              onClick={() => {
 +                setSourcesExpanded(false);
 +              }}
 +              type="button"
 +            >
++              <ChevronLeft className="size-3 shrink-0" />
 +              {t("show_less")}
 +            </button>
 +          ) : null}
@@ -8819,17 +8865,31 @@ index 0000000..22a2c98
 +}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 0000000..d815caf
+index 0000000..6bb60aa
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
-@@ -0,0 +1,364 @@
+@@ -0,0 +1,383 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Archive, Award, Calendar, Clock, Eye, Globe, ImageOff, Music, Play, Server, User } from "lucide-react";
++import {
++  Archive,
++  Award,
++  Calendar,
++  ChevronLeft,
++  Clock,
++  Eye,
++  Globe,
++  ImageOff,
++  Music,
++  Play,
++  Server,
++  User,
++} from "lucide-react";
 +import { createContext, type ReactNode, useContext, useState } from "react";
 +import { formatDate, formatLength, formatScore } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { newTabLinkProps } from "@/lib/link.ts";
++import { SWIPE_ROW } from "@/lib/styles.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
 +// ------------------------------------------------------------- shared parts
@@ -8994,10 +9054,8 @@ index 0000000..d815caf
 +  const pill = "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5";
 +  return (
 +    <div
-+      className={`mt-2 flex min-w-0 items-center text-xs text-ink-3 ${
-+        compact
-+          ? "flex-nowrap gap-x-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0"
-+          : "flex-wrap gap-x-2 gap-y-1"
++      className={`mt-2 flex min-w-0 items-center gap-x-2 text-xs text-ink-3 ${
++        compact ? SWIPE_ROW : "flex-wrap gap-y-1"
 +      }`}
 +    >
 +      {typeof result.score === "number" ? (
@@ -9030,7 +9088,14 @@ index 0000000..d815caf
 +          }}
 +          type="button"
 +        >
-+          {expanded ? t("show_less") : `+${hidden}`}
++          {expanded ? (
++            <>
++              <ChevronLeft className="size-3 shrink-0" />
++              {t("show_less")}
++            </>
++          ) : (
++            `+${hidden}`
++          )}
 +        </button>
 +      ) : null}
 +      {cacheUrl ? (
@@ -9616,13 +9681,13 @@ index 0000000..d1a29c2
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PackageCard.tsx b/client/zjsearch/src/features/results/cards/PackageCard.tsx
 new file mode 100644
-index 0000000..c329a07
+index 0000000..7769b9a
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PackageCard.tsx
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,135 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Calendar, Code, ExternalLink, Scale, Star, User } from "lucide-react";
++import { Calendar, ChevronLeft, Code, ExternalLink, Scale, Star, User } from "lucide-react";
 +import { type ReactNode, useState } from "react";
 +import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
@@ -9714,14 +9779,21 @@ index 0000000..c329a07
 +          {result.tags.length > 4 ? (
 +            <button
 +              aria-expanded={tagsExpanded}
-+              className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3 transition-colors hover:text-ink"
++              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-3 transition-colors hover:text-ink"
 +              onClick={() => {
 +                setTagsExpanded((value) => !value);
 +              }}
 +              title={result.tags.join(", ")}
 +              type="button"
 +            >
-+              {tagsExpanded ? t("show_less") : `+${result.tags.length - 4}`}
++              {tagsExpanded ? (
++                <>
++                  <ChevronLeft className="size-3 shrink-0" />
++                  {t("show_less")}
++                </>
++              ) : (
++                `+${result.tags.length - 4}`
++              )}
 +            </button>
 +          ) : null}
 +        </div>
@@ -9750,13 +9822,13 @@ index 0000000..c329a07
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PaperCard.tsx b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 new file mode 100644
-index 0000000..f1718cd
+index 0000000..f6a8f1f
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PaperCard.tsx
-@@ -0,0 +1,189 @@
+@@ -0,0 +1,196 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { BookOpen, Calendar, ExternalLink, FileText, Fingerprint, Quote, User } from "lucide-react";
++import { BookOpen, Calendar, ChevronLeft, ExternalLink, FileText, Fingerprint, Quote, User } from "lucide-react";
 +import { type ReactNode, useState } from "react";
 +import {
 +  type CardProps,
@@ -9918,14 +9990,21 @@ index 0000000..f1718cd
 +                  {tags.length > maxTags ? (
 +                    <button
 +                      aria-expanded={tagsExpanded}
-+                      className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3 transition-colors hover:text-ink"
++                      className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-3 transition-colors hover:text-ink"
 +                      onClick={() => {
 +                        setTagsExpanded((value) => !value);
 +                      }}
 +                      title={tags.join(", ")}
 +                      type="button"
 +                    >
-+                      {tagsExpanded ? t("show_less") : `+${tags.length - maxTags}`}
++                      {tagsExpanded ? (
++                        <>
++                          <ChevronLeft className="size-3 shrink-0" />
++                          {t("show_less")}
++                        </>
++                      ) : (
++                        `+${tags.length - maxTags}`
++                      )}
 +                    </button>
 +                  ) : null}
 +                </div>
@@ -10407,10 +10486,10 @@ index 0000000..16ff46c
 +}
 diff --git a/client/zjsearch/src/features/results/image/Lightbox.tsx b/client/zjsearch/src/features/results/image/Lightbox.tsx
 new file mode 100644
-index 0000000..41cd66e
+index 0000000..92d2b7c
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/Lightbox.tsx
-@@ -0,0 +1,410 @@
+@@ -0,0 +1,417 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -10754,13 +10833,20 @@ index 0000000..41cd66e
 +              {result.engines.length > 1 ? (
 +                <button
 +                  aria-expanded={enginesExpanded}
-+                  className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300 transition-colors hover:text-white"
++                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300 transition-colors hover:text-white"
 +                  onClick={() => {
 +                    setEnginesExpanded((value) => !value);
 +                  }}
 +                  type="button"
 +                >
-+                  {enginesExpanded ? t("show_less") : `+${result.engines.length - 1}`}
++                  {enginesExpanded ? (
++                    <>
++                      <ChevronLeft className="size-3 shrink-0" />
++                      {t("show_less")}
++                    </>
++                  ) : (
++                    `+${result.engines.length - 1}`
++                  )}
 +                </button>
 +              ) : null}
 +              {cacheUrl ? (
@@ -12156,6 +12242,57 @@ index 0000000..e63d8cb
 +export function useHasPlugin(): (id: string) => boolean {
 +  const settings = useSettings();
 +  return (id: string) => settings.plugins.includes(id);
++}
+diff --git a/client/zjsearch/src/lib/styles.ts b/client/zjsearch/src/lib/styles.ts
+new file mode 100644
+index 0000000..c55bdfc
+--- /dev/null
++++ b/client/zjsearch/src/lib/styles.ts
+@@ -0,0 +1,15 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/**
++ * Shared utility-class fragments for the result area's recurring visual
++ * patterns.  Keeping the long Tailwind strings here means a tweak to the
++ * swipe/scroll language updates every row at once.
++ */
++
++/** Hidden-scrollbar tail for horizontally swipeable rows (mobile-style). */
++export const SCROLLBAR_NONE = "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
++
++/** Single-line swipe row: children never wrap or shrink — overflow swipes
++    horizontally instead, like the mobile category tabs.  Callers add their
++    own gap (e.g. gap-1 / gap-x-2). */
++export const SWIPE_ROW = `flex flex-nowrap items-center overflow-x-auto ${SCROLLBAR_NONE} [&>*]:shrink-0`;
+diff --git a/client/zjsearch/src/lib/tableSort.ts b/client/zjsearch/src/lib/tableSort.ts
+new file mode 100644
+index 0000000..d0d4b1d
+--- /dev/null
++++ b/client/zjsearch/src/lib/tableSort.ts
+@@ -0,0 +1,24 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { useCallback, useState } from "react";
++
++export interface SortState<K extends string> {
++  key: K | null;
++  asc: boolean;
++}
++
++/** Shared sortable-table state.  Clicking a column header cycles
++    none → ascending → descending → none, so every table keeps a way back to
++    its natural order. */
++export function useSortState<K extends string>(initial: SortState<K> = { key: null, asc: true }) {
++  const [sort, setSort] = useState<SortState<K>>(initial);
++  const cycleSort = useCallback((key: K) => {
++    setSort(({ key: current, asc }) => {
++      if (current !== key) {
++        return { key, asc: true };
++      }
++      return asc ? { key, asc: false } : { key: null, asc: true };
++    });
++  }, []);
++  return { sort, cycleSort };
 +}
 diff --git a/client/zjsearch/src/lib/theme.ts b/client/zjsearch/src/lib/theme.ts
 new file mode 100644
@@ -13568,16 +13705,18 @@ index 0000000..93547c7
 +}
 diff --git a/client/zjsearch/src/pages/StatsPage.tsx b/client/zjsearch/src/pages/StatsPage.tsx
 new file mode 100644
-index 0000000..9fa06a3
+index 0000000..1a830ff
 --- /dev/null
 +++ b/client/zjsearch/src/pages/StatsPage.tsx
-@@ -0,0 +1,290 @@
+@@ -0,0 +1,269 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ArrowDown, ArrowUp, ChevronLeft } from "lucide-react";
-+import { useMemo, useState } from "react";
++import { ChevronLeft } from "lucide-react";
++import { useMemo } from "react";
 +import { Link, Shell } from "@/components/Shell.tsx";
++import { SortHeader } from "@/components/SortHeader.tsx";
 +import { useT } from "@/lib/i18n.ts";
++import { useSortState } from "@/lib/tableSort.ts";
 +import type { EngineStat, StatsPageData } from "@/lib/types.ts";
 +
 +type SortKey = "name" | "score" | "result_count" | "time" | "reliability";
@@ -13684,15 +13823,14 @@ index 0000000..9fa06a3
 +export function StatsPage({ data, embedded = false }: { data: StatsPageData; embedded?: boolean }) {
 +  const t = useT();
 +  const globals = data.globals;
-+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
-+  const [sortAsc, setSortAsc] = useState(true);
++  const { sort, cycleSort } = useSortState<SortKey>();
 +
 +  const engines = useMemo(() => {
-+    if (!sortKey) {
++    if (!sort.key) {
 +      return data.engines;
 +    }
-+    const dir = sortAsc ? 1 : -1;
-+    const key = sortKey === "time" ? "total" : sortKey;
++    const dir = sort.asc ? 1 : -1;
++    const key = sort.key === "time" ? "total" : sort.key;
 +    return [...data.engines].sort((a, b) => {
 +      const av = a[key];
 +      const bv = b[key];
@@ -13703,29 +13841,7 @@ index 0000000..9fa06a3
 +      const bn = bv ?? (key === "name" ? "" : -1);
 +      return (Number(an) - Number(bn)) * dir;
 +    });
-+  }, [data.engines, sortKey, sortAsc]);
-+
-+  const sortButton = (key: SortKey, label: string) => (
-+    <button
-+      className="inline-flex items-center gap-1 hover:text-ink"
-+      onClick={() => {
-+        if (sortKey === key) {
-+          setSortAsc((prev) => !prev);
-+        } else {
-+          setSortKey(key);
-+          setSortAsc(true);
-+        }
-+      }}
-+      type="button"
-+    >
-+      {label}
-+      {sortKey === key ? (
-+        <span aria-hidden="true" className="inline-flex">
-+          {sortAsc ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
-+        </span>
-+      ) : null}
-+    </button>
-+  );
++  }, [data.engines, sort]);
 +
 +  const selectedErrors = data.errors.filter((error) => !error.secondary);
 +  const warnings = data.errors.filter((error) => error.secondary);
@@ -13770,34 +13886,34 @@ index 0000000..9fa06a3
 +              <thead className="bg-surface-2 text-xs text-ink-3">
 +                <tr>
 +                  <th
-+                    aria-sort={sortKey === "name" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    aria-sort={sort.key === "name" ? (sort.asc ? "ascending" : "descending") : undefined}
 +                    className="px-4 py-2.5 font-medium"
 +                  >
-+                    {sortButton("name", t("engine_name"))}
++                    <SortHeader columnKey="name" label={t("engine_name")} onCycle={cycleSort} sort={sort} />
 +                  </th>
 +                  <th
-+                    aria-sort={sortKey === "score" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    aria-sort={sort.key === "score" ? (sort.asc ? "ascending" : "descending") : undefined}
 +                    className="px-4 py-2.5 font-medium"
 +                  >
-+                    {sortButton("score", t("scores"))}
++                    <SortHeader columnKey="score" label={t("scores")} onCycle={cycleSort} sort={sort} />
 +                  </th>
 +                  <th
-+                    aria-sort={sortKey === "result_count" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    aria-sort={sort.key === "result_count" ? (sort.asc ? "ascending" : "descending") : undefined}
 +                    className="px-4 py-2.5 font-medium"
 +                  >
-+                    {sortButton("result_count", t("result_count"))}
++                    <SortHeader columnKey="result_count" label={t("result_count")} onCycle={cycleSort} sort={sort} />
 +                  </th>
 +                  <th
-+                    aria-sort={sortKey === "time" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    aria-sort={sort.key === "time" ? (sort.asc ? "ascending" : "descending") : undefined}
 +                    className="px-4 py-2.5 font-medium"
 +                  >
-+                    {sortButton("time", t("response_time"))}
++                    <SortHeader columnKey="time" label={t("response_time")} onCycle={cycleSort} sort={sort} />
 +                  </th>
 +                  <th
-+                    aria-sort={sortKey === "reliability" ? (sortAsc ? "ascending" : "descending") : undefined}
++                    aria-sort={sort.key === "reliability" ? (sort.asc ? "ascending" : "descending") : undefined}
 +                    className="px-4 py-2.5 font-medium"
 +                  >
-+                    {sortButton("reliability", t("reliability"))}
++                    <SortHeader columnKey="reliability" label={t("reliability")} onCycle={cycleSort} sort={sort} />
 +                  </th>
 +                </tr>
 +              </thead>
@@ -13885,18 +14001,77 @@ index 0000000..ddc8ad1
 +export const StatsPage = lazy(() => import("@/pages/StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
 diff --git a/client/zjsearch/src/pages/preferences/EnginesTab.tsx b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
 new file mode 100644
-index 0000000..ed8c659
+index 0000000..c858551
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,232 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, Check, Minus } from "lucide-react";
 +import type { ReactNode } from "react";
++import { SortHeader } from "@/components/SortHeader.tsx";
 +import { loadEngineDescriptions } from "@/lib/engineDescriptions.ts";
 +import { useT } from "@/lib/i18n.ts";
-+import type { PreferencesPageData } from "@/lib/types.ts";
++import { type SortState, useSortState } from "@/lib/tableSort.ts";
++import type { EngineEntry, PreferencesPageData } from "@/lib/types.ts";
 +import { EngineTooltip, reliabilityColor, Switch } from "@/pages/preferences/parts.tsx";
++
++type EngineSortKey = "allow" | "name" | "safesearch" | "time_range" | "weight" | "time" | "timeout" | "reliability";
++
++function sortValue(
++  engine: EngineEntry,
++  key: EngineSortKey,
++  enabled: Record<string, boolean>,
++  category: string,
++): number | null {
++  switch (key) {
++    case "allow":
++      return enabled[`${engine.name}__${category}`] ? 1 : 0;
++    case "safesearch":
++      return engine.supports_safesearch ? 1 : 0;
++    case "time_range":
++      return engine.supports_time_range ? 1 : 0;
++    case "weight":
++      return engine.weight;
++    case "time":
++      return engine.stats_time;
++    case "timeout":
++      return engine.timeout;
++    case "reliability":
++      return engine.reliability;
++    case "name":
++      return null;
++  }
++}
++
++function compareEngines(
++  a: EngineEntry,
++  b: EngineEntry,
++  sort: SortState<EngineSortKey>,
++  enabled: Record<string, boolean>,
++  category: string,
++): number {
++  if (sort.key === "name") {
++    return a.name.localeCompare(b.name) * (sort.asc ? 1 : -1);
++  }
++  if (!sort.key) {
++    return 0;
++  }
++  const dir = sort.asc ? 1 : -1;
++  const av = sortValue(a, sort.key, enabled, category);
++  const bv = sortValue(b, sort.key, enabled, category);
++  // engines without a metric always sink to the bottom
++  if (av === null && bv === null) {
++    return a.name.localeCompare(b.name);
++  }
++  if (av === null) {
++    return 1;
++  }
++  if (bv === null) {
++    return -1;
++  }
++  return (av - bv) * dir;
++}
 +
 +export function EnginesTab({
 +  tab,
@@ -13910,123 +14085,158 @@ index 0000000..ed8c659
 +  showMetrics: boolean;
 +}) {
 +  const t = useT();
++  const { sort, cycleSort } = useSortState<EngineSortKey>();
++
++  const engineRow = (engine: EngineEntry): ReactNode => {
++    const key = `${engine.name}__${tab.category}`;
++    return (
++      <tr className="border-t border-line transition-colors hover:bg-surface-2/40" key={key}>
++        <td className="px-3 py-3">
++          <Switch
++            checked={enabled[key] ?? false}
++            label={`${t("allow")} ${engine.name}`}
++            onChange={(value) => {
++              toggleEngine(key, value);
++            }}
++          />
++        </td>
++        <td className="max-w-52 px-4 py-3">
++          {/* hover OR keyboard focus reveals the tooltip */}
++          <div className="group/engine relative">
++            <button
++              aria-label={`${t("show_engine_info")}: ${engine.name}`}
++              className="flex items-center gap-1 truncate font-medium text-ink"
++              onMouseEnter={() => void loadEngineDescriptions()}
++              type="button"
++            >
++              {engine.enable_http ? <AlertTriangle className="size-3.5 shrink-0 text-warning" /> : null}
++              <span className="truncate">
++                {engine.name}
++                {engine.language ? ` (${engine.language})` : ""}
++              </span>
++            </button>
++            <EngineTooltip engine={engine} />
++          </div>
++        </td>
++        <td className="px-4 py-3">
++          <code className="rounded bg-surface-2 px-1">!{engine.shortcut}</code>
++        </td>
++        <td className="px-4 py-3">
++          {engine.supports_safesearch ? (
++            <Check className="size-3.5 text-ok" />
++          ) : (
++            <Minus className="size-3.5 text-ink-3" />
++          )}
++        </td>
++        <td className="px-4 py-3">
++          {engine.supports_time_range ? (
++            <Check className="size-3.5 text-ok" />
++          ) : (
++            <Minus className="size-3.5 text-ink-3" />
++          )}
++        </td>
++        <td className="px-4 py-3">{engine.weight}</td>
++        {showMetrics ? (
++          <td className="px-4 py-3">
++            {engine.stats_time !== null ? (
++              <div className="flex items-center gap-2">
++                <span className="w-10 text-ink-2">{engine.stats_time}</span>
++                <span className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
++                  <span
++                    className="block h-full bg-accent-strong"
++                    style={{ width: `${Math.min(100, engine.stats_time)}%` }}
++                  />
++                </span>
++              </div>
++            ) : (
++              <span className="text-ink-3">–</span>
++            )}
++          </td>
++        ) : null}
++        <td className={`px-4 py-3 ${engine.warn_timeout ? "font-medium text-danger" : "text-ink-2"}`}>
++          {engine.timeout}s
++        </td>
++        {showMetrics ? (
++          <td className={`px-4 py-3 font-medium ${reliabilityColor(engine.reliability)}`}>
++            {engine.reliability ?? "–"}
++          </td>
++        ) : null}
++      </tr>
++    );
++  };
++
++  const rows: ReactNode[] = [];
++  if (!sort.key) {
++    // natural order: grouped by engine group with group header rows
++    for (const group of tab.groups) {
++      if (group.engines.length > 1) {
++        rows.push(
++          <tr className="bg-surface-2/60" key={`group-${group.group}`}>
++            <td className="px-3 py-1.5 font-medium text-ink-2" colSpan={2}>
++              {group.group}
++            </td>
++            <td className="px-3 py-1.5" colSpan={showMetrics ? 7 : 5}>
++              {group.group_bang ? <code className="rounded bg-surface-2 px-1">{group.group_bang}</code> : null}
++            </td>
++          </tr>,
++        );
++      }
++      for (const engine of group.engines) {
++        rows.push(engineRow(engine));
++      }
++    }
++  } else {
++    // sorted: one flat, fully ordered list
++    for (const engine of [...tab.groups.flatMap((group) => group.engines)].sort((a, b) =>
++      compareEngines(a, b, sort, enabled, tab.category),
++    )) {
++      rows.push(engineRow(engine));
++    }
++  }
++
++  const ariaSort = (key: EngineSortKey) => (sort.key === key ? (sort.asc ? "ascending" : "descending") : undefined);
++
 +  return (
 +    <div className="overflow-x-auto rounded-2xl border border-line">
 +      <table className="w-full min-w-[680px] text-left text-xs">
 +        <thead className="bg-surface-2 text-ink-3">
 +          <tr>
-+            <th className="px-4 py-3 font-medium">{t("allow")}</th>
-+            <th className="px-4 py-3 font-medium">{t("engine_name")}</th>
++            <th aria-sort={ariaSort("allow")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="allow" label={t("allow")} onCycle={cycleSort} sort={sort} />
++            </th>
++            <th aria-sort={ariaSort("name")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="name" label={t("engine_name")} onCycle={cycleSort} sort={sort} />
++            </th>
 +            <th className="px-4 py-3 font-medium">{t("bang")}</th>
-+            <th className="px-4 py-3 font-medium">{t("safesearch")}</th>
-+            <th className="px-4 py-3 font-medium">{t("time_range")}</th>
-+            <th className="px-4 py-3 font-medium">{t("weight")}</th>
-+            {showMetrics ? <th className="px-4 py-3 font-medium">{t("response_time")}</th> : null}
-+            <th className="px-4 py-3 font-medium">{t("max_time")}</th>
-+            {showMetrics ? <th className="px-4 py-3 font-medium">{t("reliability")}</th> : null}
++            <th aria-sort={ariaSort("safesearch")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="safesearch" label={t("safesearch")} onCycle={cycleSort} sort={sort} />
++            </th>
++            <th aria-sort={ariaSort("time_range")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="time_range" label={t("time_range")} onCycle={cycleSort} sort={sort} />
++            </th>
++            <th aria-sort={ariaSort("weight")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="weight" label={t("weight")} onCycle={cycleSort} sort={sort} />
++            </th>
++            {showMetrics ? (
++              <th aria-sort={ariaSort("time")} className="px-4 py-3 font-medium">
++                <SortHeader columnKey="time" label={t("response_time")} onCycle={cycleSort} sort={sort} />
++              </th>
++            ) : null}
++            <th aria-sort={ariaSort("timeout")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="timeout" label={t("max_time")} onCycle={cycleSort} sort={sort} />
++            </th>
++            {showMetrics ? (
++              <th aria-sort={ariaSort("reliability")} className="px-4 py-3 font-medium">
++                <SortHeader columnKey="reliability" label={t("reliability")} onCycle={cycleSort} sort={sort} />
++              </th>
++            ) : null}
 +          </tr>
 +        </thead>
-+        <tbody>
-+          {tab.groups.flatMap((group) => {
-+            const rows: ReactNode[] = [];
-+            if (group.engines.length > 1) {
-+              rows.push(
-+                <tr className="bg-surface-2/60" key={`group-${group.group}`}>
-+                  <td className="px-3 py-1.5 font-medium text-ink-2" colSpan={2}>
-+                    {group.group}
-+                  </td>
-+                  <td className="px-3 py-1.5" colSpan={showMetrics ? 7 : 5}>
-+                    {group.group_bang ? <code className="rounded bg-surface-2 px-1">{group.group_bang}</code> : null}
-+                  </td>
-+                </tr>,
-+              );
-+            }
-+            for (const engine of group.engines) {
-+              const key = `${engine.name}__${tab.category}`;
-+              rows.push(
-+                <tr className="border-t border-line transition-colors hover:bg-surface-2/40" key={key}>
-+                  <td className="px-3 py-3">
-+                    <Switch
-+                      checked={enabled[key] ?? false}
-+                      label={`${t("allow")} ${engine.name}`}
-+                      onChange={(value) => {
-+                        toggleEngine(key, value);
-+                      }}
-+                    />
-+                  </td>
-+                  <td className="max-w-52 px-4 py-3">
-+                    {/* hover OR keyboard focus reveals the tooltip */}
-+                    <div className="group/engine relative">
-+                      <button
-+                        aria-label={`${t("show_engine_info")}: ${engine.name}`}
-+                        className="flex items-center gap-1 truncate font-medium text-ink"
-+                        onMouseEnter={() => void loadEngineDescriptions()}
-+                        type="button"
-+                      >
-+                        {engine.enable_http ? <AlertTriangle className="size-3.5 shrink-0 text-warning" /> : null}
-+                        <span className="truncate">
-+                          {engine.name}
-+                          {engine.language ? ` (${engine.language})` : ""}
-+                        </span>
-+                      </button>
-+                      <EngineTooltip engine={engine} />
-+                    </div>
-+                  </td>
-+                  <td className="px-4 py-3">
-+                    <code className="rounded bg-surface-2 px-1">!{engine.shortcut}</code>
-+                  </td>
-+                  <td className="px-4 py-3">
-+                    {engine.supports_safesearch ? (
-+                      <Check className="size-3.5 text-ok" />
-+                    ) : (
-+                      <Minus className="size-3.5 text-ink-3" />
-+                    )}
-+                  </td>
-+                  <td className="px-4 py-3">
-+                    {engine.supports_time_range ? (
-+                      <Check className="size-3.5 text-ok" />
-+                    ) : (
-+                      <Minus className="size-3.5 text-ink-3" />
-+                    )}
-+                  </td>
-+                  <td className="px-4 py-3">{engine.weight}</td>
-+                  {showMetrics ? (
-+                    <td className="px-4 py-3">
-+                      {engine.stats_time !== null ? (
-+                        <div className="flex items-center gap-2">
-+                          <span className="w-10 text-ink-2">{engine.stats_time}</span>
-+                          <span className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
-+                            <span
-+                              className="block h-full bg-accent-strong"
-+                              style={{ width: `${Math.min(100, engine.stats_time)}%` }}
-+                            />
-+                          </span>
-+                        </div>
-+                      ) : (
-+                        <span className="text-ink-3">–</span>
-+                      )}
-+                    </td>
-+                  ) : null}
-+                  <td className={`px-4 py-3 ${engine.warn_timeout ? "font-medium text-danger" : "text-ink-2"}`}>
-+                    {engine.timeout}s
-+                  </td>
-+                  {showMetrics ? (
-+                    <td className={`px-4 py-3 font-medium ${reliabilityColor(engine.reliability)}`}>
-+                      {engine.reliability ?? "–"}
-+                    </td>
-+                  ) : null}
-+                </tr>,
-+              );
-+            }
-+            return rows;
-+          })}
-+        </tbody>
++        <tbody>{rows}</tbody>
 +      </table>
 +    </div>
 +  );
 +}
-+
-+// --------------------------------------------------------------------- page
 diff --git a/client/zjsearch/src/pages/preferences/PreferencesPage.tsx b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
 new file mode 100644
 index 0000000..674a991
@@ -15370,10 +15580,10 @@ index 0000000..54f490f
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..57e6b9a
+index 0000000..35e1f85
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,423 @@
+@@ -0,0 +1,443 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -15760,6 +15970,11 @@ index 0000000..57e6b9a
 +.zjs-map .ol-zoom {
 +  top: 0.625rem;
 +  left: 0.625rem;
++  /* kill OpenLayers' own container box — only the themed buttons remain */
++  background-color: transparent;
++  padding: 0;
++  border: none;
++  border-radius: 0;
 +}
 +.zjs-map .ol-zoom button {
 +  width: 1.75rem;
@@ -15767,8 +15982,8 @@ index 0000000..57e6b9a
 +  font-size: 1.125rem;
 +  font-weight: 600;
 +  line-height: 1;
-+  color: #fff;
-+  background-color: rgb(0 0 0 / 0.7);
++  color: var(--ink-2);
++  background-color: var(--surface);
 +  border: none;
 +  border-radius: 0;
 +  cursor: pointer;
@@ -15776,26 +15991,41 @@ index 0000000..57e6b9a
 +.zjs-map .ol-zoom button:hover,
 +.zjs-map .ol-zoom button:focus,
 +.zjs-map .ol-zoom button:active {
-+  background-color: rgb(0 0 0 / 0.85);
-+  color: #fff;
++  background-color: var(--surface-2);
++  color: var(--accent);
 +}
 +.zjs-map .ol-zoom .ol-zoom-in {
 +  border-radius: 0.5rem 0.5rem 0 0;
 +}
 +.zjs-map .ol-zoom .ol-zoom-out {
 +  border-radius: 0 0 0.5rem 0.5rem;
-+  border-top: 1px solid rgb(255 255 255 / 0.25);
++  border-top: 1px solid var(--line);
 +}
 +
 +.zjs-map .ol-scale-line {
-+  background: rgb(0 0 0 / 0.7);
-+  border-radius: 0.5rem;
-+  padding: 2px 6px;
++  background: transparent;
++  border-radius: 0;
++  padding: 0;
 +}
 +.zjs-map .ol-scale-line-inner {
 +  margin: 1px 0;
-+  color: #fff;
-+  border-color: #fff;
++  color: var(--ink-3);
++  border-color: var(--ink-3);
++}
++
++/* attribution rides bare: no chip, just muted text over the tiles */
++.zjs-map .ol-control.ol-attribution,
++.zjs-map .ol-attribution {
++  background: transparent;
++  border-radius: 0;
++}
++.zjs-map .ol-attribution a,
++.zjs-map .ol-attribution button {
++  color: var(--ink-3);
++}
++.zjs-map .ol-attribution a:hover,
++.zjs-map .ol-attribution button:hover {
++  color: var(--ink);
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
