@@ -33,6 +33,7 @@ COPY --from=get_info /tmp/BUILDTMP/SEARXNG/client/simple /app/client/simple
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/client/zjsearch /app/client/zjsearch
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/requirements.txt /app/requirements.txt
 COPY --from=get_info /tmp/BUILDTMP/SEARXNG/searx /app/searx
+COPY --from=get_info /tmp/BUILDTMP/SEARXNG/LICENSE /app/LICENSE
 
 WORKDIR /app/client/simple
 
