@@ -473,7 +473,7 @@ index 0000000..09c2c7f
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 0000000..33f6326
+index 0000000..f9e4be5
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
 @@ -0,0 +1,71 @@
@@ -497,11 +497,11 @@ index 0000000..33f6326
 +    - csv
 +    - json
 +    - rss
-+  # cached link on text results (uncomment to test; default off)
-+  # cache_url: "https://webcache.googleusercontent.com/search?q=cache:"
 +
 +ui:
 +  default_theme: zjsearch
++  # result "cached" pill prefix — defaults to https://web.archive.org/web/
++  # cache_url: "https://webcache.googleusercontent.com/search?q=cache:"
 +
 +# preference locks — locked rows vanish from the preferences UI
 +# (server also ignores their posted values). Lockable keys: categories,
@@ -617,10 +617,10 @@ index 0000000..65ca591
 +}
 diff --git a/client/zjsearch/make-patch.sh b/client/zjsearch/make-patch.sh
 new file mode 100644
-index 0000000..8a6a7a0
+index 0000000..fb2715b
 --- /dev/null
 +++ b/client/zjsearch/make-patch.sh
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,60 @@
 +#!/usr/bin/env bash
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine:
@@ -645,7 +645,13 @@ index 0000000..8a6a7a0
 +
 +base=${1:-}
 +if [ -z "$base" ]; then
-+  for ref in master origin/master; do
++  # a stale remote-tracking ref would sweep upstream-only changes into the
++  # patch (e.g. engine fixes made upstream after the last fetch); refresh it
++  # best-effort - offline runs keep whatever ref they already have
++  if ! git fetch --quiet origin +refs/heads/master:refs/remotes/origin/master 2>/dev/null; then
++    echo "note: could not refresh origin/master - using the local ref as-is" >&2
++  fi
++  for ref in origin/master master; do
 +    if git rev-parse -q --verify "$ref" >/dev/null 2>&1; then
 +      base=$ref
 +      break
@@ -5908,10 +5914,10 @@ index 0000000..5485f69
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 0000000..3a4b08f
+index 0000000..c8dada2
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,242 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5947,6 +5953,15 @@ index 0000000..3a4b08f
 +  rss: Rss,
 +  xml: FileCode2,
 +};
++
++/** Display priority for the export chips (config order is arbitrary);
++    unknown formats keep their config order at the end. */
++const FORMAT_ORDER = ["rss", "json", "csv", "xml"];
++
++function formatOrder(format: string): number {
++  const index = FORMAT_ORDER.indexOf(format);
++  return index === -1 ? FORMAT_ORDER.length : index;
++}
 +
 +const metaToggle = "inline-flex items-center gap-1 transition-colors hover:text-ink";
 +const stripChip =
@@ -6027,34 +6042,57 @@ index 0000000..3a4b08f
 +      </div>
 +
 +      {openPanel === "results" ? (
-+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-+          <button
-+            aria-label={t("copy_search_url")}
-+            className={stripChip}
-+            onClick={copyUrl}
-+            title={t("copy_search_url")}
-+            type="button"
-+          >
-+            {copied ? <Check className="size-3 shrink-0 text-ok" /> : <Link2 className="size-3 shrink-0" />}
-+            {copied ? t("copied") : t("copy_link")}
-+          </button>
-+          {searchUrl
-+            ? data.globals.search_formats.map((format) => {
-+                const Icon = FORMAT_ICONS[format] ?? FileCode2;
-+                return (
-+                  <a
-+                    className={stripChip}
-+                    href={`${searchUrl}&format=${format}`}
-+                    key={format}
-+                    rel="noreferrer"
-+                    target="_blank"
-+                  >
-+                    <Icon className="size-3 shrink-0 text-ink-3" />
-+                    {format.toUpperCase()}
-+                  </a>
-+                );
-+              })
-+            : null}
++        <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-3">
++          <div className="flex items-center gap-3">
++            <span
++              className={`grid size-9 shrink-0 place-items-center rounded-full transition-colors ${
++                copied ? "bg-ok/10 text-ok" : "bg-accent-soft text-accent"
++              }`}
++            >
++              {copied ? <Check className="size-[18px]" /> : <Link2 className="size-[18px]" />}
++            </span>
++            <div className="min-w-0 flex-1">
++              <p className="text-[13px] font-medium text-ink">{copied ? t("copied") : t("copy_search_url")}</p>
++              {searchUrl ? (
++                <p className="mt-0.5 truncate font-mono text-[11px] text-ink-3" dir="ltr" title={searchUrl}>
++                  {searchUrl}
++                </p>
++              ) : null}
++            </div>
++            <button
++              className={`shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
++                copied ? "border-ok/40 text-ok" : "border-line text-ink-2 hover:border-accent hover:text-accent"
++              }`}
++              onClick={copyUrl}
++              type="button"
++            >
++              {copied ? t("copied") : t("copy_link")}
++            </button>
++          </div>
++          {searchUrl && data.globals.search_formats.length > 0 ? (
++            <div className="mt-3 border-t border-line pt-3">
++              <p className="text-[11px] font-medium text-ink-3">{t("export_formats")}</p>
++              <div className="mt-2 flex flex-wrap gap-1.5">
++                {[...data.globals.search_formats]
++                  .sort((a, b) => formatOrder(a) - formatOrder(b))
++                  .map((format) => {
++                    const Icon = FORMAT_ICONS[format] ?? FileCode2;
++                    return (
++                      <a
++                        className={stripChip}
++                        href={`${searchUrl}&format=${format}`}
++                        key={format}
++                        rel="noreferrer"
++                        target="_blank"
++                      >
++                        <Icon className="size-3 shrink-0 text-ink-3" />
++                        {format.toUpperCase()}
++                      </a>
++                    );
++                  })}
++              </div>
++            </div>
++          ) : null}
 +        </div>
 +      ) : null}
 +
@@ -7424,7 +7462,7 @@ index 0000000..5fcbbec
 +}
 diff --git a/client/zjsearch/src/features/results/ProductGrid.tsx b/client/zjsearch/src/features/results/ProductGrid.tsx
 new file mode 100644
-index 0000000..ae3e5d8
+index 0000000..18586de
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/ProductGrid.tsx
 @@ -0,0 +1,64 @@
@@ -7470,7 +7508,7 @@ index 0000000..ae3e5d8
 +              {result.price}
 +            </p>
 +          ) : null}
-+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-ink-3">
++          <div className="mt-0.5 flex flex-nowrap items-center gap-x-2 overflow-x-auto text-xs text-ink-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
 +            {result.shipping ? (
 +              <span className="inline-flex items-center gap-1">
 +                <Truck className="size-3" />
@@ -7837,10 +7875,10 @@ index 0000000..9517e81
 +}
 diff --git a/client/zjsearch/src/features/results/Tile.tsx b/client/zjsearch/src/features/results/Tile.tsx
 new file mode 100644
-index 0000000..29107f6
+index 0000000..f6d2c08
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Tile.tsx
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,85 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Globe } from "lucide-react";
@@ -7882,9 +7920,10 @@ index 0000000..29107f6
 +}
 +
 +/** Compact engine attribution for tile views: the unified EnginesLine
-+    ([score] [first engine] [+N]). */
++    ([score] [first engine] [+N]); the cached link is icon-only so the row
++    stays on one line. */
 +export function TileEngines({ result }: { result: ResultItem }) {
-+  return <EnginesLine result={result} />;
++  return <EnginesLine compact result={result} />;
 +}
 +
 +/** Tile thumbnail with graceful failure: a missing/broken/hung thumbnail
@@ -8806,14 +8845,14 @@ index 0000000..22a2c98
 +}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 0000000..ac96974
+index 0000000..d815caf
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
-@@ -0,0 +1,324 @@
+@@ -0,0 +1,364 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Award, Calendar, Clock, Eye, Globe, ImageOff, Music, Play, Server, User } from "lucide-react";
-+import { type ReactNode, useState } from "react";
++import { Archive, Award, Calendar, Clock, Eye, Globe, ImageOff, Music, Play, Server, User } from "lucide-react";
++import { createContext, type ReactNode, useContext, useState } from "react";
 +import { formatDate, formatLength, formatScore } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { newTabLinkProps } from "@/lib/link.ts";
@@ -8946,8 +8985,32 @@ index 0000000..ac96974
 +/** Unified engine attribution for EVERY view: [score] [first engine] [+N],
 +    expanding inline on demand.  The score leads as a tabular pill; the
 +    first pill's title always carries the full engine list. */
-+export function EnginesLine({ result, leading }: { result: ResultItem; leading?: ReactNode }) {
++/** Instance-wide cache-link prefix (search.cache_url) — provided once around
++    the results area; EnginesLine turns it into a per-result "cached" pill,
++    mirroring upstream simple's result_sub_footer. */
++const CacheUrlContext = createContext<string | undefined>(undefined);
++
++export function CacheUrlProvider({ cacheUrl, children }: { cacheUrl?: string; children: ReactNode }) {
++  return <CacheUrlContext.Provider value={cacheUrl}>{children}</CacheUrlContext.Provider>;
++}
++
++/** Renderers outside EnginesLine (image lightbox) read the prefix directly. */
++export function useCacheUrl(): string | undefined {
++  return useContext(CacheUrlContext);
++}
++
++export function EnginesLine({
++  result,
++  leading,
++  compact = false,
++}: {
++  result: ResultItem;
++  leading?: ReactNode;
++  /** tile views: single-line row that swipes horizontally instead of wrapping */
++  compact?: boolean;
++}) {
 +  const t = useT();
++  const cacheUrl = useContext(CacheUrlContext);
 +  const [expanded, setExpanded] = useState(false);
 +  const engines = result.engines;
 +  if (engines.length === 0 && !leading) {
@@ -8956,7 +9019,13 @@ index 0000000..ac96974
 +  const hidden = engines.length - 1;
 +  const pill = "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5";
 +  return (
-+    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
++    <div
++      className={`mt-2 flex min-w-0 items-center text-xs text-ink-3 ${
++        compact
++          ? "flex-nowrap gap-x-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0"
++          : "flex-wrap gap-x-2 gap-y-1"
++      }`}
++    >
 +      {typeof result.score === "number" ? (
 +        <span className={`${pill} tabular-nums`} title={t("scores")}>
 +          <Award className="size-3 shrink-0" />
@@ -8989,6 +9058,16 @@ index 0000000..ac96974
 +        >
 +          {expanded ? t("show_less") : `+${hidden}`}
 +        </button>
++      ) : null}
++      {cacheUrl ? (
++        <a
++          className={`${pill} transition-colors hover:text-ink`}
++          href={cacheUrl + result.url}
++          {...newTabLinkProps(true)}
++        >
++          <Archive className="size-3 shrink-0" />
++          {t("cached")}
++        </a>
 +      ) : null}
 +    </div>
 +  );
@@ -9184,13 +9263,12 @@ index 0000000..48432c4
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DefaultCard.tsx b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 new file mode 100644
-index 0000000..eb43d3b
+index 0000000..a585d01
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,73 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Archive } from "lucide-react";
 +import {
 +  type CardProps,
 +  EmbedFrame,
@@ -9206,7 +9284,6 @@ index 0000000..eb43d3b
 +} from "@/features/results/cardParts.tsx";
 +import { formatLength } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
-+import { newTabLinkProps } from "@/lib/link.ts";
 +
 +/** News results share the DefaultCard anatomy (thumbnail on the right, same
 +    slot rhythm) so with-image and without-image news stay structurally
@@ -9259,21 +9336,7 @@ index 0000000..eb43d3b
 +          </ResultLink>
 +        ) : null}
 +      </div>
-+      <EnginesLine
-+        leading={
-+          globals.cache_url ? (
-+            <a
-+              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 transition-colors hover:text-ink"
-+              href={globals.cache_url + result.url}
-+              {...newTabLinkProps(true)}
-+            >
-+              <Archive className="size-3 shrink-0" />
-+              {t("cached")}
-+            </a>
-+          ) : null
-+        }
-+        result={result}
-+      />
++      <EnginesLine result={result} />
 +    </ResultArticle>
 +  );
 +}
@@ -10370,10 +10433,10 @@ index 0000000..16ff46c
 +}
 diff --git a/client/zjsearch/src/features/results/image/Lightbox.tsx b/client/zjsearch/src/features/results/image/Lightbox.tsx
 new file mode 100644
-index 0000000..99fc186
+index 0000000..41cd66e
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/Lightbox.tsx
-@@ -0,0 +1,398 @@
+@@ -0,0 +1,410 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -10382,8 +10445,9 @@ index 0000000..99fc186
 + * drag-pan, and an #image-viewer hash so the back button dismisses it.
 + */
 +
-+import { Award, ChevronLeft, ChevronRight, Download, ExternalLink, ImageOff, Server, X } from "lucide-react";
++import { Archive, Award, ChevronLeft, ChevronRight, Download, ExternalLink, ImageOff, Server, X } from "lucide-react";
 +import { useCallback, useEffect, useRef, useState } from "react";
++import { useCacheUrl } from "@/features/results/cardParts.tsx";
 +import { formatScore } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { newTabLinkProps } from "@/lib/link.ts";
@@ -10449,6 +10513,7 @@ index 0000000..99fc186
 +}) {
 +  const t = useT();
 +  const settings = useSettings();
++  const cacheUrl = useCacheUrl();
 +  const result = results[index];
 +  const touchStartX = useRef<number | null>(null);
 +  const stageRef = useRef<HTMLDivElement | null>(null);
@@ -10723,6 +10788,16 @@ index 0000000..99fc186
 +                >
 +                  {enginesExpanded ? t("show_less") : `+${result.engines.length - 1}`}
 +                </button>
++              ) : null}
++              {cacheUrl ? (
++                <a
++                  className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-zinc-300 transition-colors hover:text-white"
++                  href={cacheUrl + result.url}
++                  {...newTabLinkProps(true)}
++                >
++                  <Archive className="size-3 shrink-0" />
++                  {t("cached")}
++                </a>
 +              ) : null}
 +            </div>
 +          ) : null}
@@ -11072,10 +11147,10 @@ index 0000000..977d99f
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..73363f1
+index 0000000..2e66b6f
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,247 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -11319,15 +11394,16 @@ index 0000000..73363f1
 +  page_search_syntax: "Search syntax",
 +  page_about_searxng: "About SearXNG",
 +  cached: "Cached",
++  export_formats: "Export formats",
 +};
 +
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..e997d01
+index 0000000..b627fa7
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,243 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -11569,6 +11645,7 @@ index 0000000..e997d01
 +  page_search_syntax: "搜索语法",
 +  page_about_searxng: "关于 SearXNG",
 +  cached: "缓存页",
++  export_formats: "导出格式",
 +};
 diff --git a/client/zjsearch/src/lib/link.ts b/client/zjsearch/src/lib/link.ts
 new file mode 100644
@@ -11874,10 +11951,10 @@ index 0000000..ac95a0c
 +}
 diff --git a/client/zjsearch/src/lib/searchParams.ts b/client/zjsearch/src/lib/searchParams.ts
 new file mode 100644
-index 0000000..6b676d0
+index 0000000..b74bdd7
 --- /dev/null
 +++ b/client/zjsearch/src/lib/searchParams.ts
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,123 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11936,9 +12013,10 @@ index 0000000..6b676d0
 +}
 +
 +/** Shareable URL rebuilt from a results payload - the address bar carries no
-+    query in POST mode, so the meta line and the sidebar both offer this. */
++    query in POST mode, so the meta line and the sidebar both offer this.
++    Absolute on purpose: the result is meant to be copied or shared. */
 +export function shareableSearchUrl(data: SearchPageData): string {
-+  return buildSearchUrl({
++  return `${window.location.origin}${buildSearchUrl({
 +    q: data.q,
 +    categories: data.selected_categories.length > 0 ? data.selected_categories : undefined,
 +    pageno: data.pageno,
@@ -11946,7 +12024,7 @@ index 0000000..6b676d0
 +    time_range: data.time_range || undefined,
 +    timeout_limit: data.timeout_limit || undefined,
 +    safesearch: data.globals.safesearch,
-+  });
++  })}`;
 +}
 +
 +/** The same parameters as a multipart form body (POST-mode searches). */
@@ -13108,10 +13186,10 @@ index 0000000..95aca24
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..bf24ec6
+index 0000000..93547c7
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,356 @@
+@@ -0,0 +1,358 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -13124,7 +13202,7 @@ index 0000000..bf24ec6
 +import { useHotkeys } from "@/features/hotkeys.ts";
 +import { Answers } from "@/features/results/answers/Answers.tsx";
 +import { CalculatorAnswer } from "@/features/results/answers/Calculator.tsx";
-+import { ResultSkeleton } from "@/features/results/cardParts.tsx";
++import { CacheUrlProvider, ResultSkeleton } from "@/features/results/cardParts.tsx";
 +import { DebugPanels } from "@/features/results/DebugPanels.tsx";
 +import { Corrections, NoResults } from "@/features/results/EmptyStates.tsx";
 +import { InfiniteScrollSentinel } from "@/features/results/InfiniteScroll.tsx";
@@ -13427,16 +13505,18 @@ index 0000000..bf24ec6
 +                    <NoResults hasInfobox={data.infoboxes.length > 0} pageno={data.pageno} />
 +                  </div>
 +                ) : (
-+                  <ResultsView
-+                    collapsedBlocks={collapsedBlocks}
-+                    globals={globals}
-+                    layout={layout}
-+                    onToggleBlock={(key) => {
-+                      setCollapsedBlocks((prev) => ({ ...prev, [key]: !prev[key] }));
-+                    }}
-+                    results={allResults}
-+                    selected={hotkeysSelected}
-+                  />
++                  <CacheUrlProvider cacheUrl={globals.cache_url}>
++                    <ResultsView
++                      collapsedBlocks={collapsedBlocks}
++                      globals={globals}
++                      layout={layout}
++                      onToggleBlock={(key) => {
++                        setCollapsedBlocks((prev) => ({ ...prev, [key]: !prev[key] }));
++                      }}
++                      results={allResults}
++                      selected={hotkeysSelected}
++                    />
++                  </CacheUrlProvider>
 +                )}
 +
 +                {infiniteScroll &&
