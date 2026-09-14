@@ -473,10 +473,10 @@ index 0000000..09c2c7f
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 0000000..0d64d40
+index 0000000..a5e716f
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,69 @@
 +# zjsearch theme dev instance settings (tracked; carries LAN-specific values
 +# such as the outgoing proxy).
 +# Run with:
@@ -486,6 +486,10 @@ index 0000000..0d64d40
 +general:
 +  instance_name: ZJSearch
 +  debug: false
++  # instance URLs exercised by the info page (links card + header heart)
++  privacypolicy_url: https://example.com/privacy
++  donation_url: https://example.com/donate
++  contact_url: mailto:contact@example.com
 +
 +search:
 +  formats:
@@ -496,6 +500,33 @@ index 0000000..0d64d40
 +
 +ui:
 +  default_theme: zjsearch
++
++# preference locks — locked rows vanish from the preferences UI
++# (server also ignores their posted values). Lockable keys: categories,
++# language, autocomplete, favicon_resolver, safesearch, doi_resolver,
++# locale, theme, simple_style, center_alignment, results_on_new_tab,
++# search_on_category_select, method, image_proxy, query_in_title.
++# NOTE: hotkeys / url_formatting are NOT lockable server-side.
++# preferences:
++#   lock: [simple_style, safesearch, image_proxy]
++preferences:
++  lock: []
++
++# hide categories from the tabs (bangs like !it still reach them);
++# overriding replaces the default tab set, keep the ones you want:
++# categories_as_tabs:
++#   general:
++#   images:
++#   videos:
++#   news:
++
++# public instances link + custom links for the info page links card
++brand:
++  public_instances: https://searx.space
++  custom:
++    links:
++      Uptime: https://uptime.searxng.org/history/darmarit-org
++      Blog: https://example.com/blog
 +
 +server:
 +  secret_key: "zjsearch-local-dev-secret-key"
@@ -3664,7 +3695,7 @@ index 0000000..1ab9e71
 +}
 diff --git a/client/zjsearch/src/app.tsx b/client/zjsearch/src/app.tsx
 new file mode 100644
-index 0000000..2d38262
+index 0000000..ab44b93
 --- /dev/null
 +++ b/client/zjsearch/src/app.tsx
 @@ -0,0 +1,110 @@
@@ -3751,7 +3782,7 @@ index 0000000..2d38262
 +/** Which payloads can open as a drawer panel (URL unchanged). Panel chrome
 +    and plumbing live in features/overlay; the page selection stays here
 +    where the routing lives. Returns null for non-panel-able pages. */
-+function renderOverlayPanel(data: AnyPageData) {
++function renderOverlayPanel(data: AnyPageData, hint?: string) {
 +  if (isPreferencesPageData(data)) {
 +    return <PreferencesPage data={data} embedded />;
 +  }
@@ -3759,7 +3790,7 @@ index 0000000..2d38262
 +    return <StatsPage data={data} embedded />;
 +  }
 +  if (isInfoPageData(data)) {
-+    return <InfoPage data={data} embedded />;
++    return <InfoPage data={data} embedded initialPagename={hint} />;
 +  }
 +  return null;
 +}
@@ -4709,10 +4740,10 @@ index 0000000..b1374e6
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..5bb530d
+index 0000000..4bdc941
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,252 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Clock, Ellipsis, Languages, Shield } from "lucide-react";
@@ -4720,7 +4751,6 @@ index 0000000..5bb530d
 +import { CategoryIcon } from "@/components/CategoryIcon.tsx";
 +import type { DropdownOption } from "@/components/Dropdown.tsx";
 +import { Dropdown } from "@/components/Dropdown.tsx";
-+import { VISIBLE_CATEGORY_TABS } from "@/lib/categories.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { useSettings } from "@/lib/settings.ts";
 +import type { GlobalData } from "@/lib/types.ts";
@@ -4774,11 +4804,14 @@ index 0000000..5bb530d
 +  };
 +
 +  const tabs = globals.categories_as_tabs.length > 0 ? globals.categories_as_tabs : globals.categories;
-+  // high-frequency categories stay visible; everything else (and any future
-+  // category) folds into the "more" menu.  When a folded category is the
-+  // active selection the trigger itself shows its name, Google-style.
-+  const visibleTabs = tabs.filter((category) => VISIBLE_CATEGORY_TABS.includes(category));
-+  const overflowTabs = tabs.filter((category) => !VISIBLE_CATEGORY_TABS.includes(category));
++  // config order decides visibility: up to seven tabs lay out flat (a
++  // "more" trigger would only waste a slot); beyond that the first six stay
++  // visible and the rest folds into the "more" menu.  When a folded
++  // category is the active selection the trigger itself shows its name,
++  // Google-style.
++  const FLAT_TAB_LIMIT = 7;
++  const visibleTabs = tabs.length <= FLAT_TAB_LIMIT ? tabs : tabs.slice(0, FLAT_TAB_LIMIT - 1);
++  const overflowTabs = tabs.length <= FLAT_TAB_LIMIT ? [] : tabs.slice(FLAT_TAB_LIMIT - 1);
 +  const foldedSelected = overflowTabs.filter((category) => selected.includes(category));
 +  const label = (category: string) => globals.category_labels[category] ?? category;
 +  // trigger mirrors the folded selection: "更多" -> "科学" -> "科学 +1" (the
@@ -4965,13 +4998,13 @@ index 0000000..5bb530d
 +}
 diff --git a/client/zjsearch/src/components/Shell.tsx b/client/zjsearch/src/components/Shell.tsx
 new file mode 100644
-index 0000000..7e4f983
+index 0000000..6314811
 --- /dev/null
 +++ b/client/zjsearch/src/components/Shell.tsx
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,228 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ChartColumn, Heart, SlidersHorizontal } from "lucide-react";
++import { ChartColumn, Heart, Info, SlidersHorizontal } from "lucide-react";
 +import type { MouseEvent, ReactNode } from "react";
 +import { useEffect } from "react";
 +import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
@@ -5036,7 +5069,7 @@ index 0000000..7e4f983
 +const iconBtn =
 +  "grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink";
 +
-+/** Right-side icon group: Stats / Preferences open as slide-in
++/** Right-side icon group: About / Stats / Preferences open as slide-in
 +    panels (URL unchanged); theme style lives in the preferences panel. */
 +export function HeaderActions({ globals }: { globals: GlobalData }) {
 +  const t = useT();
@@ -5053,6 +5086,19 @@ index 0000000..7e4f983
 +        >
 +          <Heart className="size-[18px]" />
 +        </a>
++      ) : null}
++      {globals.about_url ? (
++        <button
++          aria-label={t("about")}
++          className={iconBtn}
++          onClick={() => {
++            openOverlay(globals.about_url, t("about"));
++          }}
++          title={t("about")}
++          type="button"
++        >
++          <Info className="size-[18px]" />
++        </button>
 +      ) : null}
 +      {globals.enable_metrics ? (
 +        <button
@@ -5101,11 +5147,25 @@ index 0000000..7e4f983
 +  );
 +}
 +
-+function Footer() {
++function Footer({ globals }: { globals: GlobalData }) {
++  const t = useT();
++  const { openOverlay } = useOverlay();
 +  const year = new Date().getFullYear();
 +  return (
 +    <footer className="mx-auto w-full max-w-5xl px-4 pb-8 text-center text-xs text-ink-3 sm:px-6">
 +      <p className="leading-5">© {year} Zhijie Online</p>
++      <p className="leading-5">
++        {t("powered_by")}{" "}
++        <button
++          className="cursor-pointer transition-colors hover:text-accent hover:underline"
++          onClick={() => {
++            openOverlay(globals.about_url, t("about"), "about");
++          }}
++          type="button"
++        >
++          SearXNG
++        </button>
++      </p>
 +    </footer>
 +  );
 +}
@@ -5156,7 +5216,7 @@ index 0000000..7e4f983
 +            footer rides inside so it scrolls away with overflowing content */}
 +        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 +          <div className="flex flex-1 flex-col justify-start pt-[20vh] sm:pt-[30vh]">{children}</div>
-+          <Footer />
++          <Footer globals={globals} />
 +        </div>
 +      </div>
 +    );
@@ -5166,7 +5226,7 @@ index 0000000..7e4f983
 +      <ProgressBar active={loading} />
 +      {hideTopNav ? null : <TopNav globals={globals} hideBrand={false} />}
 +      <div className="flex flex-1 flex-col">{children}</div>
-+      <Footer />
++      <Footer globals={globals} />
 +    </div>
 +  );
 +}
@@ -5355,10 +5415,10 @@ index 0000000..ad2928a
 +}
 diff --git a/client/zjsearch/src/features/overlay/OverlayProvider.tsx b/client/zjsearch/src/features/overlay/OverlayProvider.tsx
 new file mode 100644
-index 0000000..aa31694
+index 0000000..258246d
 --- /dev/null
 +++ b/client/zjsearch/src/features/overlay/OverlayProvider.tsx
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,223 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5379,7 +5439,7 @@ index 0000000..aa31694
 +/** Panels the app can render inside the drawer. Returning null means "this
 +    payload is not panel-able" and shows the fallback with an escape link. */
 +export interface OverlayPanels {
-+  renderPage: (data: AnyPageData) => ReactNode;
++  renderPage: (data: AnyPageData, hint?: string) => ReactNode;
 +}
 +
 +interface OverlayState {
@@ -5391,10 +5451,12 @@ index 0000000..aa31694
 +  text: string | null;
 +  loading: boolean;
 +  error: string | null;
++  /** free-form render hint forwarded to renderPage (e.g. the info tab to open) */
++  hint?: string;
 +}
 +
 +interface OverlayContextValue {
-+  openOverlay: (url: string, title: string) => void;
++  openOverlay: (url: string, title: string, hint?: string) => void;
 +  /** open a plain-text document (LICENSE.txt ...) rendered inside the panel */
 +  openDocument: (title: string, url: string) => void;
 +  closeOverlay: () => void;
@@ -5418,8 +5480,8 @@ index 0000000..aa31694
 +    setState(null);
 +  }, []);
 +
-+  const openOverlay = useCallback((url: string, title: string) => {
-+    setState({ url, title, mode: "page", data: null, text: null, loading: true, error: null });
++  const openOverlay = useCallback((url: string, title: string, hint?: string) => {
++    setState({ url, title, mode: "page", data: null, text: null, loading: true, error: null, hint });
 +  }, []);
 +
 +  const openDocument = useCallback((title: string, url: string) => {
@@ -5550,7 +5612,7 @@ index 0000000..aa31694
 +                </article>
 +              ) : state.data ? (
 +                <Suspense fallback={<PanelSkeleton />}>
-+                  {panels.renderPage(state.data) ?? <PanelFallback data={state.data} />}
++                  {panels.renderPage(state.data, state.hint) ?? <PanelFallback data={state.data} />}
 +                </Suspense>
 +              ) : null}
 +            </div>
@@ -5844,38 +5906,114 @@ index 0000000..5485f69
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 0000000..a9725a4
+index 0000000..3a4b08f
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,210 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ChevronDown, Timer } from "lucide-react";
-+import { type ReactNode, useState } from "react";
++/**
++ * The results meta line: 「found N results」 and 「took X s」 toggles, each
++ * expanding its own strip in place — the result strip carries the utility
++ * actions (copy the shareable URL, machine-readable download formats), the
++ * engine strip the per-engine timings and errors.
++ */
++
++import {
++  Check,
++  ChevronDown,
++  FileCode2,
++  FileJson,
++  FileSpreadsheet,
++  Link2,
++  List,
++  type LucideIcon,
++  Rss,
++  Timer,
++} from "lucide-react";
++import { useState } from "react";
 +import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
 +import { useT } from "@/lib/i18n.ts";
++import { shareableSearchUrl } from "@/lib/searchParams.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
-+export function DebugPanels({ data, leading }: { data: SearchPageData; leading?: ReactNode }) {
++/** per-format icons for the download strip; unknown configured formats fall
++    back to the code-file icon */
++const FORMAT_ICONS: Record<string, LucideIcon> = {
++  csv: FileSpreadsheet,
++  json: FileJson,
++  rss: Rss,
++  xml: FileCode2,
++};
++
++const metaToggle = "inline-flex items-center gap-1 transition-colors hover:text-ink";
++const stripChip =
++  "inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1 text-xs text-ink-2 transition-colors hover:text-ink";
++
++export function DebugPanels({
++  data,
++  resultCount,
++  searchUrl,
++}: {
++  data: SearchPageData;
++  /** number of rendered results (payload + appended infinite-scroll pages) */
++  resultCount: number;
++  /** shareable search URL: enables the copy action and the download formats
++      (GET /search?format=…, machine-readable results) */
++  searchUrl?: string;
++}) {
 +  const t = useT();
 +  const { openOverlay } = useOverlay();
 +  const hasEnginesPanel = data.unresponsive_engines.length > 0 || data.timings.length > 0;
 +  // with zero results the engine messages matter most — start expanded
-+  const [openPanel, setOpenPanel] = useState<null | "engines">(() =>
++  const [openPanel, setOpenPanel] = useState<null | "engines" | "results">(() =>
 +    hasEnginesPanel && data.results.length === 0 ? "engines" : null,
 +  );
++  const [copied, setCopied] = useState(false);
++  const toggle = (panel: "engines" | "results") => {
++    setOpenPanel((current) => (current === panel ? null : panel));
++  };
 +  const roundedTime = data.max_response_time ? Math.round(data.max_response_time * 10) / 10 : null;
 +  const maxTime = data.max_response_time ?? 0;
++
++  const copyUrl = () => {
++    if (!searchUrl) {
++      return;
++    }
++    void navigator.clipboard
++      .writeText(searchUrl)
++      .then(() => {
++        setCopied(true);
++        window.setTimeout(() => {
++          setCopied(false);
++        }, 1500);
++      })
++      .catch(() => {
++        /* clipboard unavailable */
++      });
++  };
++
 +  return (
 +    <div>
 +      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-3">
-+        {leading}
++        <button
++          aria-expanded={openPanel === "results"}
++          className={metaToggle}
++          onClick={() => {
++            toggle("results");
++          }}
++          type="button"
++        >
++          <List className="size-3 shrink-0" />
++          {t("meta_found")} {resultCount} {t("meta_results")}
++          <ChevronDown className={`size-3 transition-transform ${openPanel === "results" ? "rotate-180" : ""}`} />
++        </button>
 +        {hasEnginesPanel ? (
 +          <button
 +            aria-expanded={openPanel === "engines"}
-+            className="inline-flex items-center gap-1 transition-colors hover:text-ink"
++            className={metaToggle}
 +            onClick={() => {
-+              setOpenPanel((current) => (current === "engines" ? null : "engines"));
++              toggle("engines");
 +            }}
 +            type="button"
 +          >
@@ -5885,6 +6023,38 @@ index 0000000..a9725a4
 +          </button>
 +        ) : null}
 +      </div>
++
++      {openPanel === "results" ? (
++        <div className="mt-2 flex flex-wrap items-center gap-1.5">
++          <button
++            aria-label={t("copy_search_url")}
++            className={stripChip}
++            onClick={copyUrl}
++            title={t("copy_search_url")}
++            type="button"
++          >
++            {copied ? <Check className="size-3 shrink-0 text-ok" /> : <Link2 className="size-3 shrink-0" />}
++            {copied ? t("copied") : t("copy_link")}
++          </button>
++          {searchUrl
++            ? data.globals.search_formats.map((format) => {
++                const Icon = FORMAT_ICONS[format] ?? FileCode2;
++                return (
++                  <a
++                    className={stripChip}
++                    href={`${searchUrl}&format=${format}`}
++                    key={format}
++                    rel="noreferrer"
++                    target="_blank"
++                  >
++                    <Icon className="size-3 shrink-0 text-ink-3" />
++                    {format.toUpperCase()}
++                  </a>
++                );
++              })
++            : null}
++        </div>
++      ) : null}
 +
 +      {openPanel === "engines" ? (
 +        <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-3">
@@ -7496,10 +7666,10 @@ index 0000000..4dd3c7a
 +}
 diff --git a/client/zjsearch/src/features/results/Sidebar.tsx b/client/zjsearch/src/features/results/Sidebar.tsx
 new file mode 100644
-index 0000000..b545ad4
+index 0000000..1bf16bd
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Sidebar.tsx
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,61 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -7512,7 +7682,7 @@ index 0000000..b545ad4
 +import { ClickToCopy } from "@/components/CopyButton.tsx";
 +import { Infobox } from "@/features/results/Infobox.tsx";
 +import { useT } from "@/lib/i18n.ts";
-+import { buildSearchUrl } from "@/lib/searchParams.ts";
++import { shareableSearchUrl } from "@/lib/searchParams.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
 +function Box({ title, children }: { title: string; children: ReactNode }) {
@@ -7534,15 +7704,7 @@ index 0000000..b545ad4
 +  const hasInfobox = data.infoboxes.length > 0;
 +  // POST mode keeps the query out of the address bar, so the sidebar offers
 +  // the shareable URL reconstructed from the current search (upstream parity)
-+  const searchUrl = buildSearchUrl({
-+    q: data.q,
-+    categories: data.selected_categories.length > 0 ? data.selected_categories : undefined,
-+    pageno: data.pageno,
-+    language: data.current_language,
-+    time_range: data.time_range || undefined,
-+    timeout_limit: data.timeout_limit || undefined,
-+    safesearch: globals.safesearch,
-+  });
++  const searchUrl = shareableSearchUrl(data);
 +
 +  return (
 +    <aside className="flex flex-col gap-3">
@@ -10710,10 +10872,10 @@ index 0000000..248793e
 +}
 diff --git a/client/zjsearch/src/lib/categories.ts b/client/zjsearch/src/lib/categories.ts
 new file mode 100644
-index 0000000..f756d81
+index 0000000..5e9ea54
 --- /dev/null
 +++ b/client/zjsearch/src/lib/categories.ts
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,14 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -10725,10 +10887,6 @@ index 0000000..f756d81
 +/** Pseudo category of engine-bang searches (`!imdb bat`): the results carry
 +    their real category and the page inherits its presentation from them. */
 +export const NO_CATEGORY = "none";
-+
-+/** Categories that stay visible in the tab row; everything else (and any
-+    future category) folds into the "more" menu. */
-+export const VISIBLE_CATEGORY_TABS: readonly string[] = ["general", "images", "videos", "news", "map", "music"];
 +
 +/** In mixed searches the packages results are presented inside the it block. */
 +export const PACKAGES_BLOCK_CATEGORY = "it";
@@ -10896,10 +11054,10 @@ index 0000000..977d99f
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..ef62c0a
+index 0000000..4e21d9e
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,233 @@
+@@ -0,0 +1,245 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -11130,15 +11288,27 @@ index 0000000..ef62c0a
 +  widget_ip: "Show your IP or user agent",
 +  widget_hash: "Hash a string (MD5, SHA-1, SHA-256, …)",
 +  widget_random: "Random UUID, string, int, float or color",
++  // meta-line actions (results) and the info page
++  copy_link: "Copy link",
++  copy_search_url: "Copy search URL",
++  privacypolicy: "Privacy policy",
++  contact: "Contact",
++  public_instances: "Public instances",
++  about_instance: "About this instance",
++  categories: "Categories",
++  plugins: "Plugins",
++  about: "About",
++  page_search_syntax: "Search syntax",
++  page_about_searxng: "About SearXNG",
 +};
 +
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..be0129c
+index 0000000..e439df6
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,229 @@
+@@ -0,0 +1,241 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -11367,6 +11537,18 @@ index 0000000..be0129c
 +  widget_ip: "显示你的 IP 或 User-Agent",
 +  widget_hash: "计算字符串哈希(MD5、SHA-1、SHA-256…)",
 +  widget_random: "随机 UUID、字符串、整数、浮点数、颜色",
++  // meta-line actions (results) and the info page
++  copy_link: "复制链接",
++  copy_search_url: "复制搜索 URL",
++  privacypolicy: "隐私政策",
++  contact: "联系方式",
++  public_instances: "公共实例",
++  about_instance: "关于本实例",
++  categories: "分类",
++  plugins: "插件",
++  about: "关于",
++  page_search_syntax: "搜索语法",
++  page_about_searxng: "关于 SearXNG",
 +};
 diff --git a/client/zjsearch/src/lib/link.ts b/client/zjsearch/src/lib/link.ts
 new file mode 100644
@@ -11672,10 +11854,10 @@ index 0000000..ac95a0c
 +}
 diff --git a/client/zjsearch/src/lib/searchParams.ts b/client/zjsearch/src/lib/searchParams.ts
 new file mode 100644
-index 0000000..44aa036
+index 0000000..6b676d0
 --- /dev/null
 +++ b/client/zjsearch/src/lib/searchParams.ts
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,122 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11731,6 +11913,20 @@ index 0000000..44aa036
 +
 +export function buildSearchUrl(params: SearchParams): string {
 +  return `/search?${new URLSearchParams(searchParamEntries(params)).toString()}`;
++}
++
++/** Shareable URL rebuilt from a results payload - the address bar carries no
++    query in POST mode, so the meta line and the sidebar both offer this. */
++export function shareableSearchUrl(data: SearchPageData): string {
++  return buildSearchUrl({
++    q: data.q,
++    categories: data.selected_categories.length > 0 ? data.selected_categories : undefined,
++    pageno: data.pageno,
++    language: data.current_language,
++    time_range: data.time_range || undefined,
++    timeout_limit: data.timeout_limit || undefined,
++    safesearch: data.globals.safesearch,
++  });
 +}
 +
 +/** The same parameters as a multipart form body (POST-mode searches). */
@@ -12546,56 +12742,358 @@ index 0000000..61d2848
 +}
 diff --git a/client/zjsearch/src/pages/InfoPage.tsx b/client/zjsearch/src/pages/InfoPage.tsx
 new file mode 100644
-index 0000000..cfc80ae
+index 0000000..95aca24
 --- /dev/null
 +++ b/client/zjsearch/src/pages/InfoPage.tsx
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,340 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Link, Shell } from "@/components/Shell.tsx";
-+import type { InfoPageData } from "@/lib/types.ts";
++import type { LucideIcon } from "lucide-react";
++import { ExternalLink, Info, Link2, LoaderCircle, Mail, Network, Scale, Search, Server, Shield } from "lucide-react";
++import { useEffect, useRef, useState } from "react";
++import { Shell } from "@/components/Shell.tsx";
++import { type StringKey, useT } from "@/lib/i18n.ts";
++import { extractPageData } from "@/lib/pageData.ts";
++import { type GlobalData, type InfoPageData, isInfoPageData } from "@/lib/types.ts";
 +
-+export function InfoPage({ data, embedded = false }: { data: InfoPageData; embedded?: boolean }) {
++/** Minimal config shape the instance page reads from GET /config. */
++interface InstanceConfig {
++  version: string;
++  categories: string[];
++  engines: Array<{ enabled: boolean }>;
++  plugins: Array<{ enabled: boolean }>;
++}
++
++function useInstanceConfig(): InstanceConfig | null {
++  const [config, setConfig] = useState<InstanceConfig | null>(null);
++  useEffect(() => {
++    const controller = new AbortController();
++    void fetch("/config", { headers: { Accept: "application/json" }, signal: controller.signal })
++      .then((resp) => {
++        if (!resp.ok) {
++          throw new Error(`HTTP ${resp.status}`);
++        }
++        return resp.json() as Promise<InstanceConfig>;
++      })
++      .then(setConfig)
++      .catch(() => {
++        /* quiet: sections that need it simply stay hidden */
++      });
++    return () => {
++      controller.abort();
++    };
++  }, []);
++  return config;
++}
++
++/** Client-side pages (instance / license) — they render as React content but
++    sit in the same tab row as the upstream markdown pages. */
++type VirtualPage = "instance" | "license";
++
++type NavEntry =
++  | { kind: "server"; pagename: string; locale: string; title: string; icon: LucideIcon }
++  | { kind: "virtual"; pagename: VirtualPage; title: string; icon: LucideIcon };
++
++/** Theme-side titles for the upstream pages — the server only renders them
++    in languages the info markdown ships for (about_url falls back to en). */
++const SERVER_PAGE_TITLES: Partial<Record<string, StringKey>> = {
++  "search-syntax": "page_search_syntax",
++  about: "page_about_searxng",
++};
++
++const SERVER_PAGE_ICONS: Partial<Record<string, LucideIcon>> = {
++  "search-syntax": Search,
++  about: Info,
++};
++
++/** Tab order: About SearXNG before Search syntax (the server payload lists
++    them the other way around); unknown pages keep their relative order. */
++const SERVER_PAGE_ORDER = ["about", "search-syntax"];
++
++function serverPageOrder(pagename: string): number {
++  const index = SERVER_PAGE_ORDER.indexOf(pagename);
++  return index === -1 ? SERVER_PAGE_ORDER.length : index;
++}
++
++/** Fetches a license document and renders it verbatim; quiet when missing. */
++function LicenseText({ url }: { url: string }) {
++  const [text, setText] = useState("");
++  useEffect(() => {
++    const controller = new AbortController();
++    void fetch(url, { signal: controller.signal })
++      .then((resp) => {
++        if (!resp.ok) {
++          throw new Error(`HTTP ${resp.status}`);
++        }
++        return resp.text();
++      })
++      .then(setText)
++      .catch(() => {
++        /* quiet: the label row still renders */
++      });
++    return () => {
++      controller.abort();
++    };
++  }, [url]);
++  if (!text) {
++    return null;
++  }
++  return (
++    <pre className="mt-2 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-line bg-surface p-4 font-mono text-[11.5px] leading-relaxed text-ink-2">
++      {text}
++    </pre>
++  );
++}
++
++/** The theme's and the engine's licenses, full text side by side. */
++function LicensePage() {
++  const t = useT();
++  return (
++    <article className="prose-basic animate-fade-up" dir="auto">
++      <h1>{t("license")}</h1>
++      <div className="space-y-4">
++        <div>
++          <p className="text-[13px] font-medium text-ink-2">
++            ZJSearch <span className="font-normal text-ink-3">· Apache-2.0 with Commons Clause v1.0</span>
++          </p>
++          <LicenseText url="/static/themes/zjsearch/LICENSE.txt" />
++        </div>
++        <div>
++          <p className="text-[13px] font-medium text-ink-2">
++            SearXNG <span className="font-normal text-ink-3">· AGPL-3.0-or-later</span>
++          </p>
++          <LicenseText url="/static/themes/zjsearch/LICENSE-SearXNG.txt" />
++        </div>
++      </div>
++    </article>
++  );
++}
++
++function Stat({ label, value }: { label: string; value: number }) {
++  return (
++    <div className="bg-surface px-4 py-3.5 text-center">
++      <div className="text-xl font-semibold tabular-nums text-ink">{value}</div>
++      <div className="mt-0.5 text-xs text-ink-3">{label}</div>
++    </div>
++  );
++}
++
++/** Live instance page: version, engines / categories / plugins counts and
++    the configurable instance URLs (privacy policy, contact, public
++    instances, settings.yml custom links). */
++function InstancePage({ globals }: { globals: GlobalData }) {
++  const t = useT();
++  const config = useInstanceConfig();
++  const links: Array<{ label: string; url: string; icon: LucideIcon }> = [];
++  if (globals.privacypolicy_url) {
++    links.push({ label: t("privacypolicy"), url: globals.privacypolicy_url, icon: Shield });
++  }
++  if (globals.contact_url) {
++    links.push({ label: t("contact"), url: globals.contact_url, icon: Mail });
++  }
++  if (globals.public_instances_url) {
++    links.push({ label: t("public_instances"), url: globals.public_instances_url, icon: Network });
++  }
++  for (const custom of globals.custom_links) {
++    links.push({ label: custom.title, url: custom.url, icon: Link2 });
++  }
++  return (
++    <article className="prose-basic animate-fade-up" dir="auto">
++      <h1 className="flex items-center gap-2">
++        <Server className="size-5 shrink-0" />
++        {globals.instance_name}
++      </h1>
++      <p className="font-mono text-xs text-ink-3" dir="ltr">
++        v{config?.version || globals.version}
++      </p>
++      {config ? (
++        <div className="my-5 grid grid-cols-3 gap-px overflow-hidden rounded-2xl border border-line bg-line">
++          <Stat label={t("engines")} value={config.engines.filter((engine) => engine.enabled).length} />
++          <Stat label={t("categories")} value={config.categories.length} />
++          <Stat label={t("plugins")} value={config.plugins.filter((plugin) => plugin.enabled).length} />
++        </div>
++      ) : null}
++      {links.length > 0 ? (
++        <div className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
++          {links.map((link) => {
++            const Icon = link.icon;
++            return (
++              <a
++                className="flex items-center gap-3 px-4 py-3 text-sm text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
++                href={link.url}
++                key={link.url}
++                rel="noreferrer"
++                target="_blank"
++              >
++                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-3">
++                  <Icon className="size-4" />
++                </span>
++                <span className="font-medium">{link.label}</span>
++                <ExternalLink className="ms-auto size-3.5 shrink-0 text-ink-3" />
++              </a>
++            );
++          })}
++        </div>
++      ) : null}
++    </article>
++  );
++}
++
++export function InfoPage({
++  data,
++  embedded = false,
++  initialPagename,
++}: {
++  data: InfoPageData;
++  embedded?: boolean;
++  initialPagename?: string;
++}) {
 +  const globals = data.globals;
++  const t = useT();
++  const [active, setActive] = useState<{ pagename: string; html: string | null }>(() => {
++    // the drawer opens on the instance page unless the entry point asks for
++    // a specific tab (footer "Powered by SearXNG" → About SearXNG);
++    // standalone URLs stay faithful to the address bar
++    if (embedded && !initialPagename) {
++      return { pagename: "instance", html: null };
++    }
++    return { pagename: data.active_pagename, html: data.active_html };
++  });
++  const [switching, setSwitching] = useState(false);
++  const cacheRef = useRef(new Map<string, InfoPageData>());
++  const seqRef = useRef(0);
++
++  const nav: NavEntry[] = [
++    { kind: "virtual", pagename: "instance", title: t("about_instance"), icon: Server },
++    ...data.pages
++      .map(
++        (page): NavEntry => ({
++          kind: "server",
++          ...page,
++          title: SERVER_PAGE_TITLES[page.pagename] ? t(SERVER_PAGE_TITLES[page.pagename] as StringKey) : page.title,
++          icon: SERVER_PAGE_ICONS[page.pagename] ?? Info,
++        }),
++      )
++      .sort(
++        (a, b) =>
++          serverPageOrder(a.kind === "server" ? a.pagename : "") -
++          serverPageOrder(b.kind === "server" ? b.pagename : ""),
++      ),
++    { kind: "virtual", pagename: "license", title: t("license"), icon: Scale },
++  ];
++
++  /** Swap the tab panel in place: client-side pages are pure state, server
++      pages are fetched once and cached.  Server pages update the URL via
++      replaceState (no history spam, no scroll jump); a failed fetch falls
++      back to a real navigation. */
++  const openPage = (entry: NavEntry) => {
++    if (entry.kind === "virtual") {
++      setActive({ pagename: entry.pagename, html: null });
++      return;
++    }
++    const href = `/info/${entry.locale}/${entry.pagename}`;
++    if (active.pagename === entry.pagename && active.html !== null) {
++      return;
++    }
++    const cached = cacheRef.current.get(entry.pagename);
++    if (cached) {
++      setActive({ pagename: entry.pagename, html: cached.active_html });
++      if (!embedded) {
++        window.history.replaceState(null, "", href);
++      }
++      return;
++    }
++    const seq = ++seqRef.current;
++    setSwitching(true);
++    void fetch(href, { headers: { Accept: "text/html" } })
++      .then((resp) => {
++        if (!resp.ok) {
++          throw new Error(`HTTP ${resp.status}`);
++        }
++        return resp.text();
++      })
++      .then((html) => {
++        const pageData = extractPageData(html);
++        if (!isInfoPageData(pageData)) {
++          throw new Error("unexpected page data");
++        }
++        cacheRef.current.set(entry.pagename, pageData);
++        if (seq !== seqRef.current) {
++          return;
++        }
++        setSwitching(false);
++        setActive({ pagename: entry.pagename, html: pageData.active_html });
++        if (!embedded) {
++          window.history.replaceState(null, "", href);
++        }
++      })
++      .catch(() => {
++        if (seq !== seqRef.current) {
++          return;
++        }
++        window.location.assign(href);
++      });
++  };
++
 +  return (
 +    <Shell embedded={embedded} globals={globals}>
 +      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-16 sm:px-6">
-+        <nav aria-label="info pages" className="flex flex-wrap gap-1.5 py-5">
-+          {data.pages.map((page) => {
-+            const active = page.pagename === data.active_pagename;
++        <nav
++          aria-label="info pages"
++          className="mb-6 mt-5 flex flex-wrap gap-1.5 rounded-2xl border border-line bg-surface p-2"
++          role="tablist"
++        >
++          {nav.map((entry) => {
++            const isActive = entry.pagename === active.pagename;
++            const Icon = entry.icon;
 +            return (
-+              <Link
-+                className={`rounded-full border px-3.5 py-1.5 text-[13px] transition-colors ${
-+                  active
-+                    ? "border-accent bg-accent-soft font-medium text-accent"
-+                    : "border-line text-ink-2 hover:border-ink-3 hover:text-ink"
++              <button
++                aria-selected={isActive}
++                className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-[13px] transition-colors ${
++                  isActive
++                    ? "bg-accent-strong font-medium text-accent-contrast"
++                    : "text-ink-2 hover:bg-surface-2 hover:text-ink"
 +                }`}
-+                href={`/info/${page.locale}/${page.pagename}`}
-+                key={`${page.locale}/${page.pagename}`}
++                key={entry.kind === "server" ? `${entry.locale}/${entry.pagename}` : entry.pagename}
++                onClick={() => {
++                  openPage(entry);
++                }}
++                role="tab"
++                type="button"
 +              >
-+                {page.title}
-+              </Link>
++                <Icon className="size-3.5" />
++                <span>{entry.title}</span>
++              </button>
 +            );
 +          })}
 +        </nav>
-+        <article
-+          className="prose-basic animate-fade-up"
-+          dangerouslySetInnerHTML={{ __html: data.active_html }}
-+          dir="auto"
-+        />
++        {switching ? (
++          <div className="flex justify-center py-20 text-ink-3">
++            <LoaderCircle className="size-5 animate-spin" />
++          </div>
++        ) : active.html !== null ? (
++          <article
++            className="prose-basic animate-fade-up"
++            dangerouslySetInnerHTML={{ __html: active.html }}
++            dir="auto"
++          />
++        ) : active.pagename === "license" ? (
++          <LicensePage />
++        ) : (
++          <InstancePage globals={globals} />
++        )}
 +      </main>
 +    </Shell>
 +  );
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..12781c5
+index 0000000..bf24ec6
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,365 @@
+@@ -0,0 +1,356 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { List } from "lucide-react";
 +import { useEffect, useMemo, useRef, useState } from "react";
 +import { BackToTop } from "@/components/BackToTop.tsx";
 +import { HelpModal } from "@/components/HelpModal.tsx";
@@ -12620,7 +13118,7 @@ index 0000000..12781c5
 +import { useT } from "@/lib/i18n.ts";
 +import { scrollBehavior } from "@/lib/motion.ts";
 +import { useRouter } from "@/lib/router.tsx";
-+import { fetchSearchPage, parseSearchUrl } from "@/lib/searchParams.ts";
++import { fetchSearchPage, parseSearchUrl, shareableSearchUrl } from "@/lib/searchParams.ts";
 +import { useHasPlugin, useSettings } from "@/lib/settings.ts";
 +import type { ResultItem, SearchPageData } from "@/lib/types.ts";
 +
@@ -12866,15 +13364,7 @@ index 0000000..12781c5
 +            {!showSkeletons && !error ? (
 +              <>
 +                <div className="mt-2">
-+                  <DebugPanels
-+                    data={data}
-+                    leading={
-+                      <span className="inline-flex items-center gap-1">
-+                        <List className="size-3 shrink-0" />
-+                        {t("meta_found")} {allResults.length} {t("meta_results")}
-+                      </span>
-+                    }
-+                  />
++                  <DebugPanels data={data} resultCount={allResults.length} searchUrl={shareableSearchUrl(data)} />
 +                </div>
 +                <div className="mt-3.5">
 +                  <SuggestionsBox data={data} onSearch={submitQuery} />
@@ -13421,16 +13911,15 @@ index 0000000..ed8c659
 +// --------------------------------------------------------------------- page
 diff --git a/client/zjsearch/src/pages/preferences/PreferencesPage.tsx b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
 new file mode 100644
-index 0000000..898372a
+index 0000000..674a991
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
-@@ -0,0 +1,146 @@
+@@ -0,0 +1,117 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, Check, Cookie, LayoutGrid, Shield, SlidersHorizontal, Sun, Terminal } from "lucide-react";
 +import { useMemo, useState } from "react";
 +import { Link, Shell } from "@/components/Shell.tsx";
-+import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
 +import { useT } from "@/lib/i18n.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
 +import { CookiesTab } from "@/pages/preferences/tabs/CookiesTab.tsx";
@@ -13445,7 +13934,6 @@ index 0000000..898372a
 +
 +export function PreferencesPage({ data, embedded = false }: { data: PreferencesPageData; embedded?: boolean }) {
 +  const t = useT();
-+  const { openDocument } = useOverlay();
 +  const globals = data.globals;
 +  const form = usePreferencesForm(data);
 +  const locked = useMemo(() => new Set(data.locked_preferences), [data.locked_preferences]);
@@ -13539,33 +14027,6 @@ index 0000000..898372a
 +          ) : null}
 +          {tab === "query" ? <QueryTab data={data} form={form} /> : null}
 +          {tab === "cookies" ? <CookiesTab data={data} form={form} /> : null}
-+        </div>
-+        <div className="mt-6 space-y-1 text-center text-xs text-ink-3">
-+          <p className="leading-5">
-+            {t("powered_by")}{" "}
-+            <a
-+              className="transition-colors hover:text-accent hover:underline"
-+              href={globals.git_url}
-+              rel="noreferrer"
-+              target="_blank"
-+            >
-+              SearXNG
-+            </a>
-+            {globals.version ? <span className="ms-1 opacity-70">v{globals.version}</span> : null}
-+          </p>
-+          <p className="leading-5">
-+            {t("license")}:{" "}
-+            <a
-+              className="transition-colors hover:text-accent hover:underline"
-+              href="/static/themes/zjsearch/LICENSE.txt"
-+              onClick={(event) => {
-+                event.preventDefault();
-+                openDocument(t("license"), "/static/themes/zjsearch/LICENSE.txt");
-+              }}
-+            >
-+              Apache-2.0 with Commons Clause v1.0
-+            </a>
-+          </p>
 +        </div>
 +      </main>
 +    </Shell>
@@ -14056,10 +14517,10 @@ index 0000000..fe96d4f
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx b/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx
 new file mode 100644
-index 0000000..98eb39c
+index 0000000..ce97927
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,169 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Book, Globe, Key, Languages, LayoutGrid, Search, Shield } from "lucide-react";
@@ -14084,7 +14545,9 @@ index 0000000..98eb39c
 +      {!locked.has("categories") ? (
 +        <SettingRow icon={<LayoutGrid className="size-4.5" />} stacked title={t("default_categories")}>
 +          <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-+            {globals.categories_as_tabs.map((category) => (
++            {/* globals.categories = tabs filtered to categories with enabled
++                engines — mirrors upstream simple preferences behaviour */}
++            {globals.categories.map((category) => (
 +              <CategoryTab
 +                active={form.categories.includes(category)}
 +                category={category}
@@ -14386,10 +14849,10 @@ index 0000000..53c7e97
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx b/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx
 new file mode 100644
-index 0000000..c75356d
+index 0000000..839abcf
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,173 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -14450,37 +14913,39 @@ index 0000000..c75356d
 +          />
 +        </SettingRow>
 +      ) : null}
-+      <SettingRow description={t("choose_auto")} icon={<Sun className="size-4.5" />} title={t("theme_style")}>
-+        <div className="inline-flex rounded-xl border border-line bg-surface p-0.5">
-+          {(
-+            [
-+              ["auto", cap(t("auto")), <Sun className="size-4" key="a" />],
-+              ["light", cap(t("light")), <Sun className="size-4" key="l" />],
-+              ["dark", cap(t("dark")), <Moon className="size-4" key="d" />],
-+              ["black", cap(t("black")), <Moon className="size-4" key="b" />],
-+            ] as const
-+          ).map(([value, label, icon]) => (
-+            <button
-+              aria-pressed={form.themeStyle === value}
-+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
-+                form.themeStyle === value
-+                  ? "bg-accent-strong font-medium text-accent-contrast"
-+                  : "text-ink-2 hover:text-ink"
-+              }`}
-+              key={value}
-+              onClick={() => {
-+                form.setThemeStyle(value);
-+                applyThemeStyle(value as ThemeStyle);
-+              }}
-+              title={label}
-+              type="button"
-+            >
-+              {icon}
-+              <span className="hidden md:inline">{label}</span>
-+            </button>
-+          ))}
-+        </div>
-+      </SettingRow>
++      {!locked.has("simple_style") ? (
++        <SettingRow description={t("choose_auto")} icon={<Sun className="size-4.5" />} title={t("theme_style")}>
++          <div className="inline-flex rounded-xl border border-line bg-surface p-0.5">
++            {(
++              [
++                ["auto", cap(t("auto")), <Sun className="size-4" key="a" />],
++                ["light", cap(t("light")), <Sun className="size-4" key="l" />],
++                ["dark", cap(t("dark")), <Moon className="size-4" key="d" />],
++                ["black", cap(t("black")), <Moon className="size-4" key="b" />],
++              ] as const
++            ).map(([value, label, icon]) => (
++              <button
++                aria-pressed={form.themeStyle === value}
++                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
++                  form.themeStyle === value
++                    ? "bg-accent-strong font-medium text-accent-contrast"
++                    : "text-ink-2 hover:text-ink"
++                }`}
++                key={value}
++                onClick={() => {
++                  form.setThemeStyle(value);
++                  applyThemeStyle(value as ThemeStyle);
++                }}
++                title={label}
++                type="button"
++              >
++                {icon}
++                <span className="hidden md:inline">{label}</span>
++              </button>
++            ))}
++          </div>
++        </SettingRow>
++      ) : null}
 +      {!locked.has("center_alignment") ? (
 +        <SettingRow
 +          description={t("center_alignment_desc")}
@@ -15216,10 +15681,10 @@ index 0000000..57e6b9a
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
-index 0000000..6ce420f
+index 0000000..fb88d10
 --- /dev/null
 +++ b/client/zjsearch/tools/assets.ts
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,43 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -15231,7 +15696,7 @@ index 0000000..6ce420f
 +import path from "node:path";
 +import sharp from "sharp";
 +
-+export function plgAssets(PATH: { brand: string; dist: string }): import("vite").Plugin {
++export function plgAssets(PATH: { brand: string; dist: string; root: string }): import("vite").Plugin {
 +  return {
 +    name: "zjsearch-assets",
 +    apply: "build",
@@ -15242,6 +15707,8 @@ index 0000000..6ce420f
 +
 +      // serve the license so the footer link resolves
 +      await fs.copyFile(path.resolve("LICENSE.txt"), path.join(PATH.dist, "LICENSE.txt"));
++      // serve SearXNG's own license next to it (instance info page)
++      await fs.copyFile(path.resolve(PATH.root, "LICENSE"), path.join(PATH.dist, "LICENSE-SearXNG.txt"));
 +
 +      const copies = ["favicon.svg", "empty_favicon.svg"] as const;
 +      for (const file of copies) {
@@ -15263,10 +15730,10 @@ index 0000000..6ce420f
 +}
 diff --git a/client/zjsearch/tsconfig.json b/client/zjsearch/tsconfig.json
 new file mode 100644
-index 0000000..73a6624
+index 0000000..9e0c7d6
 --- /dev/null
 +++ b/client/zjsearch/tsconfig.json
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,24 @@
 +{
 +  "compilerOptions": {
 +    "target": "ES2022",
@@ -15285,19 +15752,18 @@ index 0000000..73a6624
 +    "isolatedModules": true,
 +    "noEmit": true,
 +    "types": ["vite/client"],
-+    "baseUrl": ".",
 +    "paths": {
-+      "@/*": ["src/*"]
++      "@/*": ["./src/*"]
 +    }
 +  },
 +  "include": ["src", "tools", "vite.config.ts"]
 +}
 diff --git a/client/zjsearch/vite.config.ts b/client/zjsearch/vite.config.ts
 new file mode 100644
-index 0000000..47011a1
+index 0000000..b761cff
 --- /dev/null
 +++ b/client/zjsearch/vite.config.ts
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,94 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
@@ -15320,6 +15786,7 @@ index 0000000..47011a1
 +const PATH = {
 +  brand: "src/brand/",
 +  dist: resolve(ROOT, "searx/static/themes/zjsearch/"),
++  root: ROOT,
 +  src: "src/",
 +} as const;
 +
@@ -15391,6 +15858,41 @@ index 0000000..47011a1
 +
 +  plugins: [tailwindcss(), plgAssets(PATH)],
 +} satisfies import("vite").UserConfig;
+diff --git a/searx/_settings.py b/searx/_settings.py
+index 0db6247..dd9b0c7 100644
+--- a/searx/_settings.py
++++ b/searx/_settings.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Implementation of the :py:obj:`preference <searx.preference>` settings."""
++
+ # pylint: disable = too-few-public-methods
+ 
+ import typing as t
+diff --git a/searx/answerers/__init__.py b/searx/answerers/__init__.py
+index 7c8c800..292966d 100644
+--- a/searx/answerers/__init__.py
++++ b/searx/answerers/__init__.py
+@@ -38,7 +38,6 @@ area:
+ 
+ """
+ 
+-
+ __all__ = ["AnswererInfo", "Answerer", "AnswerStorage"]
+ 
+ 
+diff --git a/searx/answerers/_core.py b/searx/answerers/_core.py
+index c102be1..558ab9f 100644
+--- a/searx/answerers/_core.py
++++ b/searx/answerers/_core.py
+@@ -13,7 +13,6 @@ from dataclasses import dataclass
+ from searx.utils import load_module
+ from searx.result_types.answer import BaseAnswer
+ 
+-
+ _default = pathlib.Path(__file__).parent
+ log: logging.Logger = logging.getLogger("searx.answerers")
+ 
 diff --git a/searx/answerers/random.py b/searx/answerers/random.py
 index 4f7ed51..c04b952 100644
 --- a/searx/answerers/random.py
@@ -15429,6 +15931,712 @@ index 40a4c80..b17570a 100644
                  break
  
          return results
+diff --git a/searx/botdetection/__init__.py b/searx/botdetection/__init__.py
+index 5799b0f..4e51510 100644
+--- a/searx/botdetection/__init__.py
++++ b/searx/botdetection/__init__.py
+@@ -5,7 +5,6 @@ Implementations used for bot detection.
+ 
+ """
+ 
+-
+ __all__ = ["init", "dump_request", "get_network", "too_many_requests", "ProxyFix"]
+ 
+ 
+diff --git a/searx/botdetection/config.py b/searx/botdetection/config.py
+index 418d76a..f2ec475 100644
+--- a/searx/botdetection/config.py
++++ b/searx/botdetection/config.py
+@@ -182,7 +182,7 @@ class Config:
+             if default is UNSET:
+                 raise KeyError(name)
+             return default
+-        (modulename, name) = str(fqn).rsplit('.', 1)
++        modulename, name = str(fqn).rsplit('.', 1)
+         m = __import__(modulename, {}, {}, [name], 0)
+         return getattr(m, name)
+ 
+diff --git a/searx/botdetection/http_accept.py b/searx/botdetection/http_accept.py
+index 1ae34d3..df462fd 100644
+--- a/searx/botdetection/http_accept.py
++++ b/searx/botdetection/http_accept.py
+@@ -13,7 +13,6 @@ Accept_ header ..
+ 
+ """
+ 
+-
+ from ipaddress import (
+     IPv4Network,
+     IPv6Network,
+diff --git a/searx/botdetection/http_accept_encoding.py b/searx/botdetection/http_accept_encoding.py
+index 918490c..59aa9ca 100644
+--- a/searx/botdetection/http_accept_encoding.py
++++ b/searx/botdetection/http_accept_encoding.py
+@@ -14,7 +14,6 @@ bot if the Accept-Encoding_ header ..
+ 
+ """
+ 
+-
+ from ipaddress import (
+     IPv4Network,
+     IPv6Network,
+diff --git a/searx/botdetection/http_accept_language.py b/searx/botdetection/http_accept_language.py
+index 626ed6b..e18ff29 100644
+--- a/searx/botdetection/http_accept_language.py
++++ b/searx/botdetection/http_accept_language.py
+@@ -11,7 +11,6 @@ if the Accept-Language_ header is unset.
+ 
+ """
+ 
+-
+ from ipaddress import (
+     IPv4Network,
+     IPv6Network,
+diff --git a/searx/botdetection/http_connection.py b/searx/botdetection/http_connection.py
+index 0b7d9ae..854a7ef 100644
+--- a/searx/botdetection/http_connection.py
++++ b/searx/botdetection/http_connection.py
+@@ -11,7 +11,6 @@ the Connection_ header is set to ``close``.
+ 
+ """
+ 
+-
+ from ipaddress import (
+     IPv4Network,
+     IPv6Network,
+diff --git a/searx/botdetection/http_sec_fetch.py b/searx/botdetection/http_sec_fetch.py
+index c1ea733..90da0b5 100644
+--- a/searx/botdetection/http_sec_fetch.py
++++ b/searx/botdetection/http_sec_fetch.py
+@@ -20,6 +20,7 @@ Metadata`_.  A request is filtered out in case of:
+ 
+ 
+ """
++
+ # pylint: disable=unused-argument
+ 
+ 
+diff --git a/searx/botdetection/http_user_agent.py b/searx/botdetection/http_user_agent.py
+index 76d2558..c65cb2a 100644
+--- a/searx/botdetection/http_user_agent.py
++++ b/searx/botdetection/http_user_agent.py
+@@ -12,7 +12,6 @@ the User-Agent_ header is unset or matches the regular expression
+ 
+ """
+ 
+-
+ import re
+ from ipaddress import (
+     IPv4Network,
+@@ -25,7 +24,6 @@ import flask
+ from . import config
+ from ._helpers import too_many_requests
+ 
+-
+ USER_AGENT = (
+     r'('
+     + r'unknown'
+diff --git a/searx/botdetection/ip_limit.py b/searx/botdetection/ip_limit.py
+index b2559a9..abad650 100644
+--- a/searx/botdetection/ip_limit.py
++++ b/searx/botdetection/ip_limit.py
+@@ -55,7 +55,6 @@ from ._helpers import (
+     logger,
+ )
+ 
+-
+ logger = logger.getChild('ip_limit')
+ 
+ BURST_WINDOW = 20
+diff --git a/searx/botdetection/ip_lists.py b/searx/botdetection/ip_lists.py
+index 19f0e36..2072f85 100644
+--- a/searx/botdetection/ip_lists.py
++++ b/searx/botdetection/ip_lists.py
+@@ -23,6 +23,7 @@ The ``ip_lists`` method implements :py:obj:`block-list <block_ip>` and
+    ]
+ 
+ """
++
+ # pylint: disable=unused-argument
+ 
+ 
+diff --git a/searx/botdetection/trusted_proxies.py b/searx/botdetection/trusted_proxies.py
+index 1e4c688..bf0f23b 100644
+--- a/searx/botdetection/trusted_proxies.py
++++ b/searx/botdetection/trusted_proxies.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Implementation of a middleware to determine the real IP of an HTTP request
+ (:py:obj:`flask.request.remote_addr`) behind a proxy chain."""
++
+ # pylint: disable=too-many-branches
+ 
+ 
+diff --git a/searx/botdetection/valkeydb.py b/searx/botdetection/valkeydb.py
+index 44f2658..9041064 100644
+--- a/searx/botdetection/valkeydb.py
++++ b/searx/botdetection/valkeydb.py
+@@ -1,7 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Providing a Valkey database for the botdetection methods."""
+ 
+-
+ import valkey
+ 
+ __all__ = ["set_valkey_client", "get_valkey_client"]
+diff --git a/searx/brand.py b/searx/brand.py
+index dcd1dd9..85596a8 100644
+--- a/searx/brand.py
++++ b/searx/brand.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Implementations needed for a branding of SearXNG."""
++
+ # pylint: disable=too-few-public-methods
+ 
+ # Struct fields aren't discovered in Python 3.14
+diff --git a/searx/cache.py b/searx/cache.py
+index 93304f1..7bef219 100644
+--- a/searx/cache.py
++++ b/searx/cache.py
+@@ -465,7 +465,7 @@ class ExpireCacheSQLite(sqlitedb.SQLiteAppl, ExpireCache):
+ 
+         # Check if value is expired. It's possible that it's expired but has not
+         # yet been automatically deleted by the periodic maintenance
+-        (value, expire) = row
++        value, expire = row
+         now = time.time()
+         if expire < now:
+             # The record is deleted during the maintenance interval. Deleting
+diff --git a/searx/compat.py b/searx/compat.py
+index 418d537..067a9fb 100644
+--- a/searx/compat.py
++++ b/searx/compat.py
+@@ -3,7 +3,6 @@
+ 
+ import warnings
+ 
+-
+ # limiter backward compatibility
+ # ------------------------------
+ 
+diff --git a/searx/data/__init__.py b/searx/data/__init__.py
+index ff42362..ec91772 100644
+--- a/searx/data/__init__.py
++++ b/searx/data/__init__.py
+@@ -4,6 +4,7 @@
+ make data.all
+ 
+ """
++
+ # pylint: disable=invalid-name
+ 
+ __all__ = ["ahmia_blacklist_loader", "data_dir", "get_cache"]
+diff --git a/searx/data/tracker_patterns.py b/searx/data/tracker_patterns.py
+index 0802fa9..9c61efb 100644
+--- a/searx/data/tracker_patterns.py
++++ b/searx/data/tracker_patterns.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Simple implementation to store TrackerPatterns data in a SQL database."""
++
+ # pylint: disable=too-many-branches
+ 
+ import typing as t
+diff --git a/searx/engines/azure.py b/searx/engines/azure.py
+index e00d758..c4e63eb 100644
+--- a/searx/engines/azure.py
++++ b/searx/engines/azure.py
+@@ -25,6 +25,7 @@ To use this engine, add an entry similar to the following to your engine list in
+     https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+ 
+ """
++
+ import typing as t
+ 
+ from searx.enginelib import EngineCache
+diff --git a/searx/engines/base.py b/searx/engines/base.py
+index d0f0bfd..212b4e8 100755
+--- a/searx/engines/base.py
++++ b/searx/engines/base.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """BASE (Scholar publications)"""
++
+ from datetime import datetime
+ import re
+ 
+diff --git a/searx/engines/command.py b/searx/engines/command.py
+index afeaa37..d4b93d3 100644
+--- a/searx/engines/command.py
++++ b/searx/engines/command.py
+@@ -84,7 +84,6 @@ from threading import Thread
+ from searx import logger
+ from searx.result_types import EngineResults
+ 
+-
+ engine_type = 'offline'
+ paging = True
+ command = []
+diff --git a/searx/engines/docker_hub.py b/searx/engines/docker_hub.py
+index dc1d1dd..cbb6533 100644
+--- a/searx/engines/docker_hub.py
++++ b/searx/engines/docker_hub.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Docker Hub (IT)"""
++
+ # pylint: disable=use-dict-literal
+ 
+ from urllib.parse import urlencode
+diff --git a/searx/engines/duckduckgo.py b/searx/engines/duckduckgo.py
+index e2801d7..b32e0ed 100644
+--- a/searx/engines/duckduckgo.py
++++ b/searx/engines/duckduckgo.py
+@@ -164,6 +164,7 @@ Terms / phrases that you keep coming across:
+    https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-Language
+ 
+ """
++
+ # pylint: disable=global-statement
+ 
+ import json
+diff --git a/searx/engines/duckduckgo_definitions.py b/searx/engines/duckduckgo_definitions.py
+index bf21688..ecb20fe 100644
+--- a/searx/engines/duckduckgo_definitions.py
++++ b/searx/engines/duckduckgo_definitions.py
+@@ -12,6 +12,7 @@ least we could not find out how language support should work.  It seems that
+ most of the features are based on English terms.
+ 
+ """
++
+ import typing as t
+ 
+ from urllib.parse import urlencode, urlparse, urljoin
+diff --git a/searx/engines/duckduckgo_weather.py b/searx/engines/duckduckgo_weather.py
+index d7762c7..996b958 100644
+--- a/searx/engines/duckduckgo_weather.py
++++ b/searx/engines/duckduckgo_weather.py
+@@ -17,7 +17,6 @@ from searx.result_types import EngineResults
+ from searx.extended_types import SXNG_Response
+ from searx import weather
+ 
+-
+ about = {
+     "website": 'https://duckduckgo.com/',
+     "wikidata_id": 'Q12805',
+diff --git a/searx/engines/dummy-offline.py b/searx/engines/dummy-offline.py
+index 4e9d8b2..c3d6baa 100644
+--- a/searx/engines/dummy-offline.py
++++ b/searx/engines/dummy-offline.py
+@@ -2,7 +2,6 @@
+ # pylint: disable=invalid-name
+ """Dummy Offline"""
+ 
+-
+ # about
+ about = {
+     "wikidata_id": None,
+diff --git a/searx/engines/github_code.py b/searx/engines/github_code.py
+index 0a2d266..73a112d 100644
+--- a/searx/engines/github_code.py
++++ b/searx/engines/github_code.py
+@@ -65,7 +65,6 @@ code lines are just relabeled (starting from 1) and appended (a disjoint set of
+ code blocks in a single file might be returned from the API).
+ """
+ 
+-
+ import typing as t
+ from urllib.parse import urlencode
+ 
+diff --git a/searx/engines/hex.py b/searx/engines/hex.py
+index 4c4920f..6a54688 100644
+--- a/searx/engines/hex.py
++++ b/searx/engines/hex.py
+@@ -4,7 +4,6 @@
+ from urllib.parse import urlencode
+ from dateutil import parser
+ 
+-
+ about = {
+     # pylint: disable=line-too-long
+     "website": "https://hex.pm/",
+diff --git a/searx/engines/jisho.py b/searx/engines/jisho.py
+index b167d86..ae9b010 100644
+--- a/searx/engines/jisho.py
++++ b/searx/engines/jisho.py
+@@ -108,14 +108,12 @@ def get_infobox(alt_forms, result_url, definitions):
+         infobox_content.append(f'<p><i>Other forms:</i> {", ".join(alt_forms[1:])}</p>')
+ 
+     # definitions
+-    infobox_content.append(
+-        '''
++    infobox_content.append('''
+         <small><a href="https://www.edrdg.org/wiki/index.php/JMdict-EDICT_Dictionary_Project">JMdict</a>
+         and <a href="https://www.edrdg.org/enamdict/enamdict_doc.html">JMnedict</a>
+         by <a href="https://www.edrdg.org/edrdg/licence.html">EDRDG</a>, CC BY-SA 3.0.</small>
+         <ul>
+-    '''
+-    )
++    ''')
+     for pos, engdef, extra in definitions:
+         if pos == 'Wikipedia definition':
+             infobox_content.append('</ul><small>Wikipedia, CC BY-SA 3.0.</small><ul>')
+diff --git a/searx/engines/mongodb.py b/searx/engines/mongodb.py
+index 8c3f18b..7194fb4 100644
+--- a/searx/engines/mongodb.py
++++ b/searx/engines/mongodb.py
+@@ -49,7 +49,6 @@ except ImportError:
+ 
+ from searx.result_types import EngineResults
+ 
+-
+ engine_type = 'offline'
+ 
+ # mongodb connection variables
+diff --git a/searx/engines/npm.py b/searx/engines/npm.py
+index c2d4284..e6640be 100644
+--- a/searx/engines/npm.py
++++ b/searx/engines/npm.py
+@@ -4,7 +4,6 @@
+ from urllib.parse import urlencode
+ from dateutil import parser
+ 
+-
+ about = {
+     "website": "https://npms.io/",
+     "wikidata_id": "Q7067518",
+diff --git a/searx/engines/open_meteo.py b/searx/engines/open_meteo.py
+index 948996b..c396086 100644
+--- a/searx/engines/open_meteo.py
++++ b/searx/engines/open_meteo.py
+@@ -9,7 +9,6 @@ from datetime import datetime
+ from searx.result_types import EngineResults, WeatherAnswer
+ from searx import weather
+ 
+-
+ about = {
+     "website": "https://open-meteo.com",
+     "wikidata_id": None,
+diff --git a/searx/engines/openverse.py b/searx/engines/openverse.py
+index 08b4cc1..3fc5617 100644
+--- a/searx/engines/openverse.py
++++ b/searx/engines/openverse.py
+@@ -12,12 +12,10 @@ from dateutil import parser
+ 
+ from searx.result_types import EngineResults
+ 
+-
+ if t.TYPE_CHECKING:
+     from searx.extended_types import SXNG_Response
+     from searx.search.processors import OnlineParams
+ 
+-
+ about = {
+     "website": "https://openverse.org/",
+     "wikidata_id": None,
+diff --git a/searx/engines/pexels.py b/searx/engines/pexels.py
+index 67bbe46..51af574 100644
+--- a/searx/engines/pexels.py
++++ b/searx/engines/pexels.py
+@@ -13,7 +13,6 @@ from searx.enginelib import EngineCache
+ from searx.exceptions import SearxEngineAPIException, SearxEngineAccessDeniedException
+ from searx.network import get
+ 
+-
+ # about
+ about = {
+     "website": 'https://www.pexels.com',
+diff --git a/searx/engines/piped.py b/searx/engines/piped.py
+index 249540c..f6bf758 100644
+--- a/searx/engines/piped.py
++++ b/searx/engines/piped.py
+@@ -48,7 +48,6 @@ Implementations
+ 
+ """
+ 
+-
+ import time
+ import random
+ from urllib.parse import urlencode
+diff --git a/searx/engines/privacywall.py b/searx/engines/privacywall.py
+index 4d8cac4..e108fd5 100644
+--- a/searx/engines/privacywall.py
++++ b/searx/engines/privacywall.py
+@@ -18,7 +18,6 @@ from searx.utils import eval_xpath_list, eval_xpath, extract_text, extr
+ from searx.locales import region_tag
+ from searx.result_types import EngineResults
+ 
+-
+ if t.TYPE_CHECKING:
+     from lxml.etree import ElementBase
+     from searx.extended_types import SXNG_Response
+diff --git a/searx/engines/recoll.py b/searx/engines/recoll.py
+index d58f60b..8cdd922 100644
+--- a/searx/engines/recoll.py
++++ b/searx/engines/recoll.py
+@@ -35,6 +35,7 @@ Implementations
+ ===============
+ 
+ """
++
+ import typing as t
+ 
+ from datetime import date, timedelta
+diff --git a/searx/engines/solr.py b/searx/engines/solr.py
+index 3e0388d..cd5383b 100644
+--- a/searx/engines/solr.py
++++ b/searx/engines/solr.py
+@@ -34,7 +34,6 @@ from searx.exceptions import SearxEngineAPIException
+ from searx.result_types import EngineResults
+ from searx.extended_types import SXNG_Response
+ 
+-
+ base_url = 'http://localhost:8983'
+ collection = ''
+ rows = 10
+diff --git a/searx/engines/soundcloud.py b/searx/engines/soundcloud.py
+index 4066c91..12b5e26 100644
+--- a/searx/engines/soundcloud.py
++++ b/searx/engines/soundcloud.py
+@@ -118,7 +118,7 @@ def response(resp):
+ 
+ def setup(engine_settings: dict[str, t.Any]) -> bool:
+     global CACHE  # pylint: disable=global-statement
+-    CACHE = EngineCache(engine_settings["name"])  # type:ignore
++    CACHE = EngineCache(engine_settings["name"])  # type: ignore
+     return True
+ 
+ 
+diff --git a/searx/engines/sqlite.py b/searx/engines/sqlite.py
+index fe7f6f9..84acc25 100644
+--- a/searx/engines/sqlite.py
++++ b/searx/engines/sqlite.py
+@@ -44,6 +44,7 @@ Implementations
+ ===============
+ 
+ """
++
+ import typing as t
+ import sqlite3
+ import contextlib
+diff --git a/searx/engines/startpage.py b/searx/engines/startpage.py
+index ea82624..7c910ef 100644
+--- a/searx/engines/startpage.py
++++ b/searx/engines/startpage.py
+@@ -85,6 +85,7 @@ Startpage's category (for Web-search, News, Videos, ..) is set by
+   Supported categories are ``web``, ``news`` and ``images``.
+ 
+ """
++
+ # pylint: disable=too-many-statements
+ 
+ import hashlib
+diff --git a/searx/engines/tubearchivist.py b/searx/engines/tubearchivist.py
+index 765152f..5ec41fc 100644
+--- a/searx/engines/tubearchivist.py
++++ b/searx/engines/tubearchivist.py
+@@ -74,7 +74,6 @@ Implementations
+ ===============
+ """
+ 
+-
+ import typing as t
+ from urllib.parse import urlencode
+ from dateutil.parser import parse
+diff --git a/searx/engines/vuhuv.py b/searx/engines/vuhuv.py
+index fe19aa1..08a8d79 100644
+--- a/searx/engines/vuhuv.py
++++ b/searx/engines/vuhuv.py
+@@ -12,7 +12,6 @@ from lxml import html
+ from searx.result_types import EngineResults
+ from searx.utils import eval_xpath_list, eval_xpath, extract_text
+ 
+-
+ if t.TYPE_CHECKING:
+     from lxml.etree import ElementBase
+     from searx.extended_types import SXNG_Response
+diff --git a/searx/engines/wikidata.py b/searx/engines/wikidata.py
+index 6b8181e..5662dc6 100644
+--- a/searx/engines/wikidata.py
++++ b/searx/engines/wikidata.py
+@@ -3,6 +3,7 @@
+ 
+ Some implementations are shared from :ref:`wikipedia engine`.
+ """
++
+ # pylint: disable=missing-class-docstring
+ 
+ import typing as t
+diff --git a/searx/engines/wolframalpha_noapi.py b/searx/engines/wolframalpha_noapi.py
+index 3eb348c..a7d55bd 100644
+--- a/searx/engines/wolframalpha_noapi.py
++++ b/searx/engines/wolframalpha_noapi.py
+@@ -53,7 +53,7 @@ seconds."""
+ 
+ def setup(engine_settings: dict[str, t.Any]) -> bool | None:
+     global CACHE  # pylint: disable=global-statement
+-    CACHE = EngineCache(engine_settings["name"])  # type:ignore
++    CACHE = EngineCache(engine_settings["name"])  # type: ignore
+ 
+ 
+ def obtain_token() -> str:
+diff --git a/searx/engines/yacy.py b/searx/engines/yacy.py
+index 3e6be2c..31d9628 100644
+--- a/searx/engines/yacy.py
++++ b/searx/engines/yacy.py
+@@ -50,6 +50,7 @@ the engine).
+ Implementations
+ ===============
+ """
++
+ # pylint: disable=fixme
+ 
+ import typing as t
+diff --git a/searx/engines/yandex.py b/searx/engines/yandex.py
+index 5b362a0..4324854 100644
+--- a/searx/engines/yandex.py
++++ b/searx/engines/yandex.py
+@@ -8,7 +8,6 @@ from lxml import html
+ from searx.exceptions import SearxEngineCaptchaException
+ from searx.utils import humanize_bytes, eval_xpath, eval_xpath_list, extract_text, extr
+ 
+-
+ # Engine metadata
+ about = {
+     "website": 'https://yandex.com/',
+diff --git a/searx/extended_types.py b/searx/extended_types.py
+index b136490..445ff04 100644
+--- a/searx/extended_types.py
++++ b/searx/extended_types.py
+@@ -19,6 +19,7 @@
+    :members:
+ 
+ """
++
+ # pylint: disable=invalid-name
+ 
+ __all__ = ["SXNG_Request", "sxng_request", "SXNG_Response"]
+diff --git a/searx/external_urls.py b/searx/external_urls.py
+index d834ac5..bff9403 100644
+--- a/searx/external_urls.py
++++ b/searx/external_urls.py
+@@ -5,7 +5,6 @@ import math
+ 
+ from searx.data import EXTERNAL_URLS
+ 
+-
+ IMDB_PREFIX_TO_URL_ID = {
+     'tt': 'imdb_title',
+     'mn': 'imdb_name',
+diff --git a/searx/favicons/__init__.py b/searx/favicons/__init__.py
+index 921cda6..41c6b3b 100644
+--- a/searx/favicons/__init__.py
++++ b/searx/favicons/__init__.py
+@@ -8,7 +8,6 @@ an example in which the command line is called in the development environment::
+   (py3) python -m searx.favicons --help
+ """
+ 
+-
+ __all__ = ["init", "favicon_url", "favicon_proxy"]
+ 
+ import pathlib
+diff --git a/searx/favicons/proxy.py b/searx/favicons/proxy.py
+index f62fcf6..e258433 100644
+--- a/searx/favicons/proxy.py
++++ b/searx/favicons/proxy.py
+@@ -1,7 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Implementations for a favicon proxy"""
+ 
+-
+ from typing import Callable
+ 
+ import importlib
+diff --git a/searx/favicons/resolvers.py b/searx/favicons/resolvers.py
+index 8007330..81b5b02 100644
+--- a/searx/favicons/resolvers.py
++++ b/searx/favicons/resolvers.py
+@@ -6,7 +6,6 @@ timeout``) and returns a tuple ``(data, mime)``.
+ 
+ """
+ 
+-
+ __all__ = ["DEFAULT_RESOLVER_MAP", "allesedv", "duckduckgo", "google", "kagi", "yandex"]
+ 
+ from typing import Callable
+diff --git a/searx/infopage/__init__.py b/searx/infopage/__init__.py
+index 2765edf..62458cd 100644
+--- a/searx/infopage/__init__.py
++++ b/searx/infopage/__init__.py
+@@ -36,7 +36,6 @@ from .. import get_setting
+ from ..version import GIT_URL
+ from ..locales import LOCALE_NAMES
+ 
+-
+ logger = logging.getLogger('searx.infopage')
+ _INFO_FOLDER = os.path.abspath(os.path.dirname(__file__))
+ INFO_PAGES: 'InfoPageSet'
+diff --git a/searx/locales.py b/searx/locales.py
+index 71bf4f2..aa3ca60 100644
+--- a/searx/locales.py
++++ b/searx/locales.py
+@@ -26,7 +26,6 @@ SearXNG’s locale implementations
+ ================================
+ """
+ 
+-
+ import typing as t
+ from pathlib import Path
+ 
+diff --git a/searx/metrics/error_recorder.py b/searx/metrics/error_recorder.py
+index d89aed1..f2b1140 100644
+--- a/searx/metrics/error_recorder.py
++++ b/searx/metrics/error_recorder.py
+@@ -16,7 +16,6 @@ from searx.exceptions import (
+ from searx import searx_parent_dir, settings
+ from searx.engines import engines
+ 
+-
+ errors_per_engines: dict[str, t.Any] = {}
+ 
+ LogParametersType = tuple[str, ...]
+diff --git a/searx/metrics/models.py b/searx/metrics/models.py
+index 3061e9a..07dd538 100644
+--- a/searx/metrics/models.py
++++ b/searx/metrics/models.py
+@@ -8,7 +8,6 @@ import threading
+ 
+ from searx import logger
+ 
+-
+ __all__ = ["Histogram", "HistogramStorage", "CounterStorage"]
+ 
+ logger = logger.getChild('searx.metrics')
+diff --git a/searx/network/network.py b/searx/network/network.py
+index 42828ce..db1ee7f 100644
+--- a/searx/network/network.py
++++ b/searx/network/network.py
+@@ -25,7 +25,6 @@ from searx.extended_types import SXNG_Response
+ from .client import DEFAULT_IMPERSONATE, AsyncClient, new_client, get_loop
+ from .raise_for_httperror import raise_for_httperror
+ 
+-
+ logger = logger.getChild('network')
+ DEFAULT_NAME = '__DEFAULT__'
+ NETWORKS: dict[str, "Network"] = {}
+diff --git a/searx/plugins/__init__.py b/searx/plugins/__init__.py
+index 0779f8d..ed39c24 100644
+--- a/searx/plugins/__init__.py
++++ b/searx/plugins/__init__.py
+@@ -94,7 +94,6 @@ Implementation
+    :members:
+ """
+ 
+-
+ __all__ = ["PluginInfo", "Plugin", "PluginStorage", "PluginCfg"]
+ 
+ 
 diff --git a/searx/plugins/hash_plugin.py b/searx/plugins/hash_plugin.py
 index b733bcc..d8cb503 100644
 --- a/searx/plugins/hash_plugin.py
@@ -15507,11 +16715,55 @@ index 9239a3f..46abb26 100644
                  )
              )
  
+diff --git a/searx/plugins/tor_check.py b/searx/plugins/tor_check.py
+index 5645179..4077ddf 100644
+--- a/searx/plugins/tor_check.py
++++ b/searx/plugins/tor_check.py
+@@ -4,6 +4,7 @@ user searches for ``tor-check``.  It fetches the tor exit node list from
+ :py:obj:`url_exit_list` and parses all the IPs into a list, then checks if the
+ user's IP address is in it.
+ """
++
+ from ipaddress import ip_address
+ import typing
+ 
+diff --git a/searx/plugins/unit_converter.py b/searx/plugins/unit_converter.py
+index 0a698bf..3a91a8e 100644
+--- a/searx/plugins/unit_converter.py
++++ b/searx/plugins/unit_converter.py
+@@ -8,6 +8,7 @@ converters, each converter is one item in the list (compare
+ of measurement are evaluated.  The weighting in the evaluation results from the
+ sorting of the :py:obj:`list of unit converters<symbol_to_si>`.
+ """
++
+ import typing
+ import re
+ import babel.numbers
+diff --git a/searx/result_types/__init__.py b/searx/result_types/__init__.py
+index 5a2ae6f..5a782c2 100644
+--- a/searx/result_types/__init__.py
++++ b/searx/result_types/__init__.py
+@@ -9,6 +9,7 @@
+    gradually.  For more, please read :ref:`result types`.
+ 
+ """
++
+ # pylint: disable=too-few-public-methods
+ 
+ 
 diff --git a/searx/result_types/answer.py b/searx/result_types/answer.py
-index eba07bb..4341387 100644
+index 1a24f12..4341387 100644
 --- a/searx/result_types/answer.py
 +++ b/searx/result_types/answer.py
-@@ -86,6 +86,11 @@ class Answer(BaseAnswer, kw_only=True):
+@@ -26,6 +26,7 @@ template.
+    :members:
+    :show-inheritance:
+ """
++
+ # pylint: disable=too-few-public-methods
+ 
+ 
+@@ -85,6 +86,11 @@ class Answer(BaseAnswer, kw_only=True):
      answer: str
      """Text of the answer."""
  
@@ -15523,6 +16775,97 @@ index eba07bb..4341387 100644
      def __hash__(self):
          """The hash value of field *answer* is the hash value of the
          :py:obj:`Answer` object.  :py:obj:`Answer <Result.__eq__>` objects are
+diff --git a/searx/result_types/code.py b/searx/result_types/code.py
+index d6dec10..2813b62 100644
+--- a/searx/result_types/code.py
++++ b/searx/result_types/code.py
+@@ -12,6 +12,7 @@ template.  For highlighting the code passages, Pygments_ is used.
+    :show-inheritance:
+ 
+ """
++
+ # pylint: disable=too-few-public-methods, disable=invalid-name
+ 
+ __all__ = ["Code"]
+@@ -26,7 +27,6 @@ from pygments.formatters import HtmlFormatter  # pylint: disable=no-name-in-modu
+ 
+ from ._base import MainResult
+ 
+-
+ _pygments_languages: list[str] = []
+ 
+ 
+diff --git a/searx/result_types/file.py b/searx/result_types/file.py
+index 5b58116..c973998 100644
+--- a/searx/result_types/file.py
++++ b/searx/result_types/file.py
+@@ -11,6 +11,7 @@ template.
+    :show-inheritance:
+ 
+ """
++
+ # pylint: disable=too-few-public-methods
+ 
+ 
+diff --git a/searx/result_types/image.py b/searx/result_types/image.py
+index d75498d..5a6cc62 100644
+--- a/searx/result_types/image.py
++++ b/searx/result_types/image.py
+@@ -11,6 +11,7 @@ template.
+    :members:
+ 
+ """
++
+ # pylint: disable=too-few-public-methods
+ __all__ = ["Image", "ImageRef"]
+ 
+diff --git a/searx/result_types/keyvalue.py b/searx/result_types/keyvalue.py
+index 33718e7..1d70de2 100644
+--- a/searx/result_types/keyvalue.py
++++ b/searx/result_types/keyvalue.py
+@@ -11,6 +11,7 @@ template.
+    :show-inheritance:
+ 
+ """
++
+ # pylint: disable=too-few-public-methods
+ 
+ 
+diff --git a/searx/result_types/paper.py b/searx/result_types/paper.py
+index 6cad4c2..b98d7d6 100644
+--- a/searx/result_types/paper.py
++++ b/searx/result_types/paper.py
+@@ -19,6 +19,7 @@ Related topics:
+    :show-inheritance:
+ 
+ """
++
+ # pylint: disable=too-few-public-methods, disable=invalid-name
+ 
+ __all__ = ["Paper"]
+diff --git a/searx/searxng.msg b/searx/searxng.msg
+index 1ca29a5..beb9008 100644
+--- a/searx/searxng.msg
++++ b/searx/searxng.msg
+@@ -8,7 +8,6 @@ from searx import webutils
+ from searx import engines
+ from searx.weather import WeatherConditionType
+ 
+-
+ __all__ = [
+     'CONSTANT_NAMES',
+     'CATEGORY_NAMES',
+diff --git a/searx/settings_defaults.py b/searx/settings_defaults.py
+index cdc30c5..28eeec9 100644
+--- a/searx/settings_defaults.py
++++ b/searx/settings_defaults.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Implementation of the default settings."""
++
+ from __future__ import annotations
+ 
+ import typing as t
 diff --git a/searx/templates/zjsearch/404.html b/searx/templates/zjsearch/404.html
 new file mode 100644
 index 0000000..f920be3
@@ -16469,3 +17812,114 @@ index 0000000..8efbf10
 +{% from "zjsearch/data/macros.html" import page_stats with context %}
 +{% block title %}{{ _('Engine stats') }} - {% endblock %}
 +{% block page_data %}{{ page_stats(sort_order, selected_engine_name, engine_stats, engine_reliabilities) }}{% endblock %}
+diff --git a/searx/weather.py b/searx/weather.py
+index a583241..94327df 100644
+--- a/searx/weather.py
++++ b/searx/weather.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Implementations used for weather conditions and forecast."""
++
+ # pylint: disable=too-few-public-methods
+ 
+ __all__ = [
+diff --git a/searx/webapp.py b/searx/webapp.py
+index 8be3252..da87340 100755
+--- a/searx/webapp.py
++++ b/searx/webapp.py
+@@ -1,6 +1,7 @@
+ #!/usr/bin/env python
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """WebApp"""
++
+ # pylint: disable=use-dict-literal
+ 
+ import json
+@@ -118,7 +119,6 @@ from searx.sxng_locales import sxng_locales
+ import searx.search
+ from searx.network import stream as http_stream, set_context_network_name
+ 
+-
+ logger = logger.getChild('webapp')
+ 
+ warnings.simplefilter("always")
+@@ -1119,17 +1119,13 @@ def stats():
+ 
+     technical_report = []
+     for error in engine_reliabilities.get(selected_engine_name, {}).get('errors', []):
+-        technical_report.append(
+-            f"\
++        technical_report.append(f"\
+             Error: {error['exception_classname'] or error['log_message']} \
+             Parameters: {error['log_parameters']} \
+             File name: {error['filename'] }:{ error['line_no'] } \
+             Error Function: {error['function']} \
+             Code: {error['code']} \
+-            ".replace(
+-                ' ' * 12, ''
+-            ).strip()
+-        )
++            ".replace(' ' * 12, '').strip())
+     technical_report = ' '.join(technical_report)
+ 
+     engine_stats['time'] = sorted(engine_stats['time'], reverse=reverse, key=get_key)
+diff --git a/searx/wikidata.py b/searx/wikidata.py
+index defb2a0..96f550a 100644
+--- a/searx/wikidata.py
++++ b/searx/wikidata.py
+@@ -7,7 +7,6 @@ from urllib.parse import urlencode
+ from searx.network import get, post
+ from searx.utils import gen_useragent
+ 
+-
+ # SPARQL
+ SPARQL_ENDPOINT_URL = "https://query.wikidata.org/sparql"
+ SPARQL_EXPLAIN_URL = "https://query.wikidata.org/bigdata/namespace/wdq/sparql?explain"
+diff --git a/searx/wikidata_properties.py b/searx/wikidata_properties.py
+index 81b5df4..80d2da6 100644
+--- a/searx/wikidata_properties.py
++++ b/searx/wikidata_properties.py
+@@ -93,9 +93,7 @@ class WDAmountAttribute(WDAttribute):
+     def get_where(self):
+         return """  OPTIONAL { ?item p:{name} ?{name}Node .
+     ?{name}Node rdf:type wikibase:BestRank ; ps:{name} ?{name} .
+-    OPTIONAL { ?{name}Node psv:{name}/wikibase:quantityUnit ?{name}Unit. } }""".replace(
+-            '{name}', self.name
+-        )
++    OPTIONAL { ?{name}Node psv:{name}/wikibase:quantityUnit ?{name}Unit. } }""".replace('{name}', self.name)
+ 
+     def get_group_by(self) -> str:
+         return self.get_select()
+@@ -126,9 +124,7 @@ class WDArticle(WDAttribute):
+         return """OPTIONAL { ?article{language} schema:about ?item ;
+              schema:inLanguage "{language}" ;
+              schema:isPartOf <https://{language}.wikipedia.org/> ;
+-             schema:name ?articleName{language} . }""".replace(
+-            '{language}', self.language
+-        )
++             schema:name ?articleName{language} . }""".replace('{language}', self.language)
+ 
+     def get_group_by(self):
+         return self.get_select()
+@@ -216,9 +212,7 @@ class WDGeoAttribute(WDAttribute):
+     def get_where(self):
+         return """OPTIONAL { ?item p:{name}/psv:{name} [
+     wikibase:geoLatitude ?{name}Lat ;
+-    wikibase:geoLongitude ?{name}Long ] }""".replace(
+-            '{name}', self.name
+-        )
++    wikibase:geoLongitude ?{name}Long ] }""".replace('{name}', self.name)
+ 
+     def get_group_by(self):
+         return self.get_select()
+@@ -258,9 +252,7 @@ class WDDateAttribute(WDAttribute):
+     wikibase:timePrecision ?{name}timePrecision ;
+     wikibase:timeTimezone ?{name}timeZone ;
+     wikibase:timeCalendarModel ?{name}timeCalendar ] . }
+-    hint:Prior hint:rangeSafe true;""".replace(
+-            '{name}', self.name
+-        )
++    hint:Prior hint:rangeSafe true;""".replace('{name}', self.name)
+ 
+     def get_group_by(self):
+         return self.get_select()
