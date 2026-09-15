@@ -544,10 +544,10 @@ index 0000000..09c2c7f
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 0000000..c0655d4
+index 0000000..2a89b92
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,100 @@
 +# zjsearch theme dev instance settings (tracked; carries LAN-specific values
 +# such as the outgoing proxy).
 +# Run with:
@@ -607,25 +607,29 @@ index 0000000..c0655d4
 +  image_proxy: true
 +
 +# proxy so region-blocked engines are reachable from this network
++# (LAN-specific: uncomment and set your own proxy when needed)
 +outgoing:
 +  request_timeout: 5.0
-+  proxies:
-+    all://:
-+      - http://10.192.7.1:7890
++  # proxies:
++  #   all://:
++  #     - http://192.168.20.23:7890
 +
-+# tor_check plugin: check.torproject.org is not reachable from every
-+# network, so this one fetch goes through its own proxy (without proxying
-+# any engine traffic).  NOTE: a `plugins:` override REPLACES the default
-+# set (settings_loader.update_settings), so the previously-default active
-+# plugins are mirrored here.
++# tor_check plugin: fetches check.torproject.org through the outgoing proxy
++# above (reachable that way on this network).  NOTE: a `plugins:` override
++# REPLACES the default set (settings_loader.update_settings), so the
++# previously-default active plugins are mirrored here.
 +plugins:
 +  searx.plugins.calculator.SXNGPlugin:
++    active: true
++  searx.plugins.currency_convert.SXNGPlugin:
 +    active: true
 +  searx.plugins.hash_plugin.SXNGPlugin:
 +    active: true
 +  searx.plugins.self_info.SXNGPlugin:
 +    active: true
 +  searx.plugins.unit_converter.SXNGPlugin:
++    active: true
++  searx.plugins.advanced_search_syntax.SXNGPlugin:
 +    active: true
 +  searx.plugins.ahmia_filter.SXNGPlugin:
 +    active: true
@@ -637,9 +641,6 @@ index 0000000..c0655d4
 +    active: true
 +  searx.plugins.tor_check.SXNGPlugin:
 +    active: true
-+
-+tor_check:
-+  proxy_url: http://192.168.7.1:7890
 +
 +# movie engines for the !movies poster wall (both disabled upstream)
 +engines:
@@ -4420,10 +4421,10 @@ index 0000000..f92f27c
 +}
 diff --git a/client/zjsearch/src/components/HelpModal.tsx b/client/zjsearch/src/components/HelpModal.tsx
 new file mode 100644
-index 0000000..489e42f
+index 0000000..c7cb539
 --- /dev/null
 +++ b/client/zjsearch/src/components/HelpModal.tsx
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,144 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Keyboard shortcuts help dialog (opened with "?"). */
@@ -4498,6 +4499,7 @@ index 0000000..489e42f
 +    ["avg 123 548 2.04", t("widget_stats")],
 +    ["1+2", t("widget_calc")],
 +    ["5m to cm", t("widget_unit")],
++    ["5 usd to cny", t("widget_currency")],
 +    ["time Berlin", t("widget_time")],
 +    ["user-agent", t("widget_ip")],
 +    ["md5 lorem ipsum", t("widget_hash")],
@@ -11758,10 +11760,10 @@ index 0000000..f4ab3bf
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..5786466
+index 0000000..1887eab
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,258 @@
+@@ -0,0 +1,259 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -11993,6 +11995,7 @@ index 0000000..5786466
 +  widget_hash: "Hash a string (MD5, SHA-1, SHA-256, …)",
 +  widget_random: "Random UUID, string, int, float or color",
 +  widget_unit: "Convert between units",
++  widget_currency: "Convert between currencies (aggregated rates)",
 +  widget_tor: "Check if you are using Tor",
 +  tor_using: "You are using Tor",
 +  tor_not_using: "You are not using Tor",
@@ -12022,10 +12025,10 @@ index 0000000..5786466
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..7a1c44f
+index 0000000..fb9311c
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,255 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -12255,6 +12258,7 @@ index 0000000..7a1c44f
 +  widget_hash: "计算字符串哈希(MD5、SHA-1、SHA-256…)",
 +  widget_random: "随机 UUID、字符串、整数、浮点数、颜色",
 +  widget_unit: "单位之间互相换算",
++  widget_currency: "货币之间互相换算（聚合汇率）",
 +  widget_tor: "检测是否正在使用 Tor",
 +  tor_using: "你正在使用 Tor",
 +  tor_not_using: "你未使用 Tor",
@@ -16890,6 +16894,1042 @@ index 40a4c80..b17570a 100644
                  break
  
          return results
+diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
+new file mode 100644
+index 0000000..a62d286
+--- /dev/null
++++ b/searx/plugins/advanced_search_syntax.py
+@@ -0,0 +1,792 @@
++# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++# pylint: disable=too-many-return-statements, too-many-branches
++"""Advanced search syntax plugin for ZJSearch.
++
++Supports site filtering, filetype filtering, date range filtering,
+++word/+/regex/ inclusion, word exclusion, exact phrase matching,
++and positive/negative positional search with /regex/ support.
++"""
++
++import typing
++import re
++import functools
++from datetime import datetime, timezone
++from urllib.parse import urlparse
++
++from flask_babel import gettext
++from werkzeug.datastructures import ImmutableMultiDict
++
++from searx.extended_types import SXNG_Request
++from searx.plugins import Plugin, PluginInfo
++from searx.result_types import Result
++
++if typing.TYPE_CHECKING:
++    from searx.plugins import PluginCfg
++    from searx.search import SearchWithPlugins
++
++
++# Pre-compiled patterns used across instances (class-level for sharing)
++# Combined pattern for fast pre-check of any advanced syntax
++_COMBINED_SYNTAX_CHECK = re.compile(
++    r'(?:^|\s)(?:'
++    r'[+-]?site:|'
++    r'[+-]?(?:intitle|inurl|intext):|'
++    r'\+/|'
++    r'\+[^\s/]+|'
++    r'(?<!\w)-/|'
++    r'(?<!\w)-(?:site:|intitle:|inurl:|intext:)?[^\s/]+|'
++    r'filetype:|'
++    r'before:|after:|'
++    r'"'
++    r')',
++    re.IGNORECASE,
++)
++
++# Patterns for cleaning the query before sending to engines
++# Note: /regex/flags support (e.g., /pattern/i) — flags after closing / are included in the match
++_CLEAN_PATTERNS = [
++    re.compile(r'(?:^|\s)[+-]?site:[^\s]+', re.IGNORECASE),
++    re.compile(r'(?:^|\s)[+-]?intitle:(?:/[^/]+/[a-z]*|[^\s/]+)', re.IGNORECASE),
++    re.compile(r'(?:^|\s)[+-]?inurl:(?:/[^/]+/[a-z]*|[^\s/]+)', re.IGNORECASE),
++    re.compile(r'(?:^|\s)[+-]?intext:(?:/[^/]+/[a-z]*|[^\s/]+)', re.IGNORECASE),
++    re.compile(r'(?:^|\s)\+/[^/]+/[a-z]*', re.IGNORECASE),
++    re.compile(r'(?:^|\s)\+[^\s/]+', re.IGNORECASE),
++    re.compile(r'(?:^|\s)-/[^/]+/[a-z]*', re.IGNORECASE),
++    # -word: only match when followed by whitespace or end-of-string (not /, avoids file paths)
++    re.compile(r'(?:^|\s)-(?:site:|intitle:|inurl:|intext:|filetype:|before:|after:)?[^\s/]+(?=\s|$)', re.IGNORECASE),
++    re.compile(r'(?:^|\s)filetype:[^\s]+', re.IGNORECASE),
++    re.compile(r'(?:^|\s)(?:before|after):\d{4}-\d{2}-\d{2}', re.IGNORECASE),
++    # exact phrases: only the quote marks are stripped further down (the
++    # phrase terms themselves stay in the engine query -- the exact-match
++    # constraint is enforced client-side in on_result)
++]
++
++# Pre-compiled patterns for final cleanup verification
++_VERIFY_PATTERNS = [
++    re.compile(r'(?:^|\s)site:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)intitle:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)inurl:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)intext:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)[+-]site:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)[+-]intitle:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)[+-]inurl:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)[+-]intext:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)\+/', re.IGNORECASE),
++    re.compile(r'(?:^|\s)-/', re.IGNORECASE),
++    re.compile(r'(?:intitle|inurl|intext):/[^/]+/', re.IGNORECASE),
++    re.compile(r'(?:^|\s)\+\w', re.IGNORECASE),
++    re.compile(r'(?:^|\s)filetype:', re.IGNORECASE),
++    re.compile(r'(?:^|\s)(?:before|after):', re.IGNORECASE),
++]
++
++# Date pattern for before:/after: filters
++_DATE_PATTERN = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
++
++# Regex to detect advanced syntax context (for distinguishing /regex/ in syntax vs file paths)
++_ADVANCED_REGEX_CONTEXT = re.compile(
++    r'(?:^|\s)(?:\+|-)?(?:intitle|inurl|intext):/[^/]+/[a-z]*|'
++    r'(?:^|\s)\+/[^/]+/[a-z]*|'
++    r'(?:^|\s)-/[^/]+/[a-z]*',
++    re.IGNORECASE,
++)
++
++# File extension at the end of a URL path (filetype: filter)
++_EXT_PATTERN = re.compile(r'\.([a-z0-9]+)$', re.IGNORECASE)
++
++# syntax-key groups of the positional filters: (pos_words, pos_regexes,
++# neg_words, neg_regexes) per searched field (title, content, url)
++_POSITIONAL_KEYS = (
++    ('intitle_words', 'intitle_regexes', 'neg_intitle_words', 'neg_intitle_regexes'),
++    ('intext_words', 'intext_regexes', 'neg_intext_words', 'neg_intext_regexes'),
++    ('inurl_words', 'inurl_regexes', 'neg_inurl_words', 'neg_inurl_regexes'),
++)
++
++# Aggressive fallback removals for the (rare) case that cleaning left
++# advanced syntax behind; pre-compiled once instead of re-built per query.
++_AGGRESSIVE_PATTERNS = [
++    re.compile(p.pattern + r'[^\s]*', re.IGNORECASE) for p in _VERIFY_PATTERNS
++]
++
++
++class SXNGPlugin(Plugin):
++    """Plugin that enhances search with advanced syntax support.
++
++    Supported syntax:
++    - site:domain / -site:domain — include/exclude sites
++    - filetype:ext — filter by file extension in URL
++    - before:YYYY-MM-DD / after:YYYY-MM-DD — date range filter
++    - intitle:word / intitle:/regex/ — positive title filters
++    - inurl:word / inurl:/regex/ — positive URL filters
++    - intext:word / intext:/regex/ — positive content filters
++    - -intitle:word / -intitle:/regex/ — negative title filters
++    - -inurl:word / -inurl:/regex/ — negative URL filters
++    - -intext:word / -intext:/regex/ — negative content filters
++    - +word / +/regex/ — mandatory inclusion
++    - -word / -/regex/ — exclusion
++    - "exact phrase" — exact phrase matching
++    """
++
++    id = "advanced_search_syntax"
++
++    def __init__(self, plg_cfg: "PluginCfg") -> None:
++        super().__init__(plg_cfg)
++        self.info = PluginInfo(
++            id=self.id,
++            name=gettext("Advanced Search Syntax"),
++            description=gettext(
++                "Enhanced search with site, filetype, date filtering, "
++                "+word/+/regex/ inclusion, word exclusion, exact phrase matching, "
++                "and positive/negative positional search with /regex/ support"
++            ),
++            preference_section="general",
++        )
++
++        # Pre-compile regex patterns for extracting syntax values
++        # Note: /regex/flags patterns capture only the regex body, not the flags.
++        # The flags (e.g., /pattern/i) are consumed during matching but discarded.
++        self._patterns = {
++            'site_include': re.compile(r'(?:^|\s)site:([^\s]+)', re.IGNORECASE),
++            'site_exclude': re.compile(r'(?:^|\s)-site:([^\s]+)', re.IGNORECASE),
++            'filetype': re.compile(r'(?:^|\s)filetype:([^\s]+)', re.IGNORECASE),
++            'before': re.compile(r'(?:^|\s)before:(\d{4}-\d{2}-\d{2})', re.IGNORECASE),
++            'after': re.compile(r'(?:^|\s)after:(\d{4}-\d{2}-\d{2})', re.IGNORECASE),
++            'exact_phrase': re.compile(r'"([^"]+)"', re.IGNORECASE),
++            # Positive positional patterns (with /regex/flags support)
++            'intitle_regex': re.compile(r'(?:^|\s)intitle:/([^/]+)/[a-z]*', re.IGNORECASE),
++            'intitle_word': re.compile(r'(?:^|\s)intitle:([^\s/]+)', re.IGNORECASE),
++            'inurl_regex': re.compile(r'(?:^|\s)inurl:/([^/]+)/[a-z]*', re.IGNORECASE),
++            'inurl_word': re.compile(r'(?:^|\s)inurl:([^\s/]+)', re.IGNORECASE),
++            'intext_regex': re.compile(r'(?:^|\s)intext:/([^/]+)/[a-z]*', re.IGNORECASE),
++            'intext_word': re.compile(r'(?:^|\s)intext:([^\s/]+)', re.IGNORECASE),
++            # Negative positional patterns (with /regex/flags support)
++            'neg_intitle_regex': re.compile(r'(?:^|\s)-intitle:/([^/]+)/[a-z]*', re.IGNORECASE),
++            'neg_intitle_word': re.compile(r'(?:^|\s)-intitle:([^\s/]+)', re.IGNORECASE),
++            'neg_inurl_regex': re.compile(r'(?:^|\s)-inurl:/([^/]+)/[a-z]*', re.IGNORECASE),
++            'neg_inurl_word': re.compile(r'(?:^|\s)-inurl:([^\s/]+)', re.IGNORECASE),
++            'neg_intext_regex': re.compile(r'(?:^|\s)-intext:/([^/]+)/[a-z]*', re.IGNORECASE),
++            'neg_intext_word': re.compile(r'(?:^|\s)-intext:([^\s/]+)', re.IGNORECASE),
++            # Include/exclude patterns (with /regex/flags support)
++            'include_regex': re.compile(r'(?:^|\s)\+/([^/]+)/[a-z]*', re.IGNORECASE),
++            'include_word': re.compile(r'(?:^|\s)\+([^\s/]+)', re.IGNORECASE),
++            'exclude_regex': re.compile(r'(?:^|\s)-/([^/]+)/[a-z]*', re.IGNORECASE),
++            # -word: (?=\s|$) ensures we only match complete tokens, not file paths like -path/to/file
++            'exclude_word': re.compile(
++                r'(?:^|\s)-((?!site:|intitle:|inurl:|intext:|filetype:|before:|after:)[^\s/]+)(?=\s|$)',
++                re.IGNORECASE,
++            ),
++        }
++
++        # Single combined regex for faster pre-check than iterating all patterns
++        self._syntax_check_re = _COMBINED_SYNTAX_CHECK
++
++    @staticmethod
++    @functools.lru_cache(maxsize=128)
++    def _compile_user_regex(pattern: str) -> re.Pattern:
++        """Safely compile user-provided regex patterns with LRU caching."""
++        try:
++            return re.compile(pattern, re.IGNORECASE | re.MULTILINE)
++        except re.error:
++            return re.compile(re.escape(pattern), re.IGNORECASE)
++
++    @staticmethod
++    def _word_matcher(word: str) -> tuple[str, str | re.Pattern]:
++        """Precompute a word match for the result hot path.
++
++        Returns a ``('sub', word_lower)`` tuple for words with non-word
++        characters (plain substring check) or a ``('wb', compiled)`` tuple
++        with a pre-compiled word-boundary pattern -- the same branch decision
++        ``_text_matches`` made at match time, just once per word at parse
++        time.
++        """
++        w = word.lower()
++        if re.search(r'[^\w\s]', w):
++            return ('sub', w)
++        return ('wb', re.compile(r'\b' + re.escape(w) + r'\b'))
++
++    @staticmethod
++    def _matcher_matches(matcher: tuple, text_lower: str) -> bool:
++        """Apply a precomputed word matcher (see `_word_matcher`) to
++        already-lowercased text."""
++        kind, payload = matcher
++        if kind == 'sub':
++            return payload in text_lower
++        return bool(payload.search(text_lower))
++
++    @staticmethod
++    def _regex_list_matches(compiled_list: list, text: str) -> bool:
++        """True if any pre-compiled user regex matches (checked against the
++        original text, they carry their own IGNORECASE flag)."""
++        return any(c.search(text) for c in compiled_list)
++
++    def _has_advanced_syntax(self, query: str) -> bool:
++        """Check if the query contains any advanced search syntax.
++
++        Uses a single combined regex for O(n) check instead of iterating
++        all individual patterns.
++        """
++        return bool(self._syntax_check_re.search(query))
++
++    @staticmethod
++    def _is_regex_in_advanced_context(text: str) -> bool:
++        """Check if text contains /regex/ patterns within advanced syntax context.
++
++        This distinguishes between /regex/ used as search syntax vs.
++        file paths that happen to contain slashes.
++        """
++        return bool(_ADVANCED_REGEX_CONTEXT.search(text))
++
++    def _clean_query_for_engines(self, query: str) -> str:
++        """Clean query by removing ALL advanced syntax patterns for external engines.
++
++        Uses pre-compiled class-level patterns for efficiency.
++        """
++        cleaned = query
++
++        # Single pass: remove all advanced syntax patterns
++        for pattern in _CLEAN_PATTERNS:
++            cleaned = pattern.sub(' ', cleaned)
++
++        # Normalize whitespace
++        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
++
++        # Remove exact phrase quotes that are now orphaned
++        cleaned = cleaned.replace('"', '')
++
++        # Final verification pass — ensure no advanced syntax remains
++        remaining = [p for p in _VERIFY_PATTERNS if p.search(cleaned)]
++        if remaining:
++            self.log.warning(
++                "Advanced syntax still present after cleaning: %s in query '%s'",
++                [p.pattern for p in remaining],
++                cleaned,
++            )
++            # Aggressive removal for any remaining patterns
++            for pattern in _AGGRESSIVE_PATTERNS:
++                cleaned = pattern.sub(' ', cleaned)
++            cleaned = re.sub(r'\s+', ' ', cleaned).strip()
++
++        return cleaned
++
++    def _extract_remaining_terms(self, original_query: str, syntax: dict) -> list:
++        """Extract remaining search terms from original query after removing all advanced syntax.
++
++        Remaining terms are matched with OR logic: a result passes if it contains
++        ANY of the remaining terms (not necessarily all).
++        """
++        all_words = re.findall(r'[^\s"]+', original_query)
++
++        # Collect words that are part of advanced syntax patterns
++        excluded_words = set()
++
++        # Words from site/filetype patterns
++        for site in syntax['site_include'] + syntax['site_exclude']:
++            excluded_words.update(re.findall(r'\w+', site.lower()))
++        for ft in syntax['filetypes']:
++            excluded_words.update(re.findall(r'\w+', ft.lower()))
++
++        # Words from regex patterns (cautious extraction)
++        regex_lists = [
++            syntax['include_regexes'], syntax['exclude_regexes'],
++            syntax['intitle_regexes'], syntax['intext_regexes'], syntax['inurl_regexes'],
++            syntax['neg_intitle_regexes'], syntax['neg_intext_regexes'], syntax['neg_inurl_regexes'],
++        ]
++        for pattern_list in regex_lists:
++            for pat in pattern_list:
++                excluded_words.update(re.findall(r'\b[a-zA-Z]{3,}\b', pat.lower()))
++
++        # Words from word patterns
++        word_lists = [
++            syntax['include_words'], syntax['exclude_words'],
++            syntax['intitle_words'], syntax['inurl_words'], syntax['intext_words'],
++            syntax['neg_intitle_words'], syntax['neg_inurl_words'], syntax['neg_intext_words'],
++        ]
++        for word_list in word_lists:
++            for word in word_list:
++                excluded_words.update(re.findall(r'\w+', word.lower()))
++
++        # Filter remaining words
++        remaining = []
++        for word in all_words:
++            if word.startswith('"') and word.endswith('"'):
++                continue  # Exact phrases are handled separately
++            if self._is_advanced_syntax_word(word):
++                continue
++            if self._is_regex_in_advanced_context(f" {word} "):
++                continue
++
++            word_parts = re.findall(r'\w+', word.lower())
++            if word_parts and not any(p in excluded_words for p in word_parts):
++                remaining.append(word)
++
++        return self._remove_duplicates_preserve_order(remaining)
++
++    def _is_advanced_syntax_word(self, word: str) -> bool:
++        """Check if a word starts with advanced syntax indicators."""
++        # Check prefixed operators
++        prefixes = [
++            'site:', '-site:',
++            'intitle:', '-intitle:',
++            'inurl:', '-inurl:',
++            'intext:', '-intext:',
++            'filetype:', 'before:', 'after:',
++        ]
++        if any(word.startswith(prefix) for prefix in prefixes):
++            return True
++
++        # +word or +/regex/ format
++        if word.startswith('+'):
++            return True
++
++        # -word format (but not file paths)
++        if word.startswith('-'):
++            # -/regex/ format (must end with /)
++            if len(word) > 1 and word[1] == '/':
++                return word.endswith('/') and len(word) > 3
++            # -word format: ensure it's not part of a hyphenated compound
++            # and not a file path
++            return not any(word.startswith(p) for p in prefixes)
++
++        return False
++
++    @staticmethod
++    def _remove_duplicates_preserve_order(items: list) -> list:
++        """Remove duplicates while preserving insertion order."""
++        seen = set()
++        unique_items = []
++        for item in items:
++            item_lower = item.lower()
++            if item_lower not in seen:
++                seen.add(item_lower)
++                unique_items.append(item)
++        return unique_items
++
++    def _parse_advanced_syntax(self, query: str) -> tuple[str, dict]:
++        """Parse and extract all advanced syntax patterns from query.
++
++        Returns:
++            tuple of (cleaned_query_for_engines, syntax_dict)
++        """
++        syntax = {
++            'site_include': [],
++            'site_exclude': [],
++            'filetypes': [],
++            'before_date': None,
++            'after_date': None,
++            'exact_phrases': [],
++            'include_regexes': [],
++            'include_words': [],
++            'exclude_regexes': [],
++            'exclude_words': [],
++            # Positive positional
++            'intitle_words': [],
++            'intitle_regexes': [],
++            'inurl_words': [],
++            'inurl_regexes': [],
++            'intext_words': [],
++            'intext_regexes': [],
++            # Negative positional
++            'neg_intitle_words': [],
++            'neg_intitle_regexes': [],
++            'neg_inurl_words': [],
++            'neg_inurl_regexes': [],
++            'neg_intext_words': [],
++            'neg_intext_regexes': [],
++            'remaining_terms': [],
++            # Pre-computed for performance
++            '_site_include_set': set(),
++            '_site_exclude_set': set(),
++        }
++
++        p = self._patterns
++
++        # 1. Site patterns
++        syntax['site_include'] = [m.lower().strip() for m in p['site_include'].findall(query)]
++        syntax['site_exclude'] = [m.lower().strip() for m in p['site_exclude'].findall(query)]
++
++        # Pre-compute normalized domain sets for fast lookup
++        syntax['_site_include_set'] = {self._normalize_domain(d) for d in syntax['site_include']}
++        syntax['_site_exclude_set'] = {self._normalize_domain(d) for d in syntax['site_exclude']}
++
++        # 2. Filetype patterns
++        syntax['filetypes'] = [m.lower().strip().lstrip('.') for m in p['filetype'].findall(query)]
++
++        # 3. Date range patterns
++        before_matches = p['before'].findall(query)
++        if before_matches:
++            syntax['before_date'] = self._parse_date(before_matches[0])
++        after_matches = p['after'].findall(query)
++        if after_matches:
++            syntax['after_date'] = self._parse_date(after_matches[0])
++
++        # 4. Exact phrase patterns
++        syntax['exact_phrases'] = [m.strip() for m in p['exact_phrase'].findall(query)]
++
++        # 5. Positive positional patterns
++        for key_prefix, regex_key, word_key in [
++            ('intitle', 'intitle_regex', 'intitle_word'),
++            ('intext', 'intext_regex', 'intext_word'),
++            ('inurl', 'inurl_regex', 'inurl_word'),
++        ]:
++            regexes = [m.strip() for m in p[regex_key].findall(query)]
++            syntax[f'{key_prefix}_regexes'] = regexes
++            words = p[word_key].findall(query)
++            syntax[f'{key_prefix}_words'] = [
++                w.strip() for w in words if not any(w in r for r in regexes)
++            ]
++
++        # 6. Negative positional patterns
++        for key_prefix, regex_key, word_key in [
++            ('neg_intitle', 'neg_intitle_regex', 'neg_intitle_word'),
++            ('neg_intext', 'neg_intext_regex', 'neg_intext_word'),
++            ('neg_inurl', 'neg_inurl_regex', 'neg_inurl_word'),
++        ]:
++            regexes = [m.strip() for m in p[regex_key].findall(query)]
++            syntax[f'{key_prefix}_regexes'] = regexes
++            words = p[word_key].findall(query)
++            syntax[f'{key_prefix}_words'] = [
++                w.strip() for w in words if not any(w in r for r in regexes)
++            ]
++
++        # 7. Include/Exclude patterns
++        syntax['include_regexes'] = [m.strip() for m in p['include_regex'].findall(query)]
++        syntax['include_words'] = [m.strip() for m in p['include_word'].findall(query)]
++        syntax['exclude_regexes'] = [m.strip() for m in p['exclude_regex'].findall(query)]
++        syntax['exclude_words'] = [m.strip() for m in p['exclude_word'].findall(query)]
++
++        # 8. Clean query for engines
++        cleaned_query = self._clean_query_for_engines(query)
++
++        # 9. Extract remaining terms from original query
++        syntax['remaining_terms'] = self._extract_remaining_terms(query, syntax)
++
++        # 10. Precompute everything the per-result hot path needs: compiled
++        # user regexes, word matchers, lowercased phrases and the filetype
++        # set -- on_result never compiles, branches or re-lowercases.
++        syntax['_regex_compiled'] = {
++            key: [self._compile_user_regex(p) for p in syntax[key]]
++            for key in (
++                'include_regexes', 'exclude_regexes',
++                'intitle_regexes', 'inurl_regexes', 'intext_regexes',
++                'neg_intitle_regexes', 'neg_inurl_regexes', 'neg_intext_regexes',
++            )
++        }
++        for key in (
++            'include_words', 'exclude_words', 'remaining_terms',
++            'intitle_words', 'inurl_words', 'intext_words',
++            'neg_intitle_words', 'neg_inurl_words', 'neg_intext_words',
++        ):
++            syntax[key] = [self._word_matcher(w) for w in syntax[key]]
++        syntax['_phrases_lower'] = [p.lower() for p in syntax['exact_phrases']]
++        syntax['_filetype_set'] = set(syntax['filetypes'])
++
++        return cleaned_query, syntax
++
++    @staticmethod
++    def _parse_date(date_str: str) -> datetime | None:
++        """Parse a YYYY-MM-DD date string to a UTC datetime."""
++        match = _DATE_PATTERN.match(date_str)
++        if not match:
++            return None
++        try:
++            return datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)),
++                          tzinfo=timezone.utc)
++        except ValueError:
++            return None
++
++    def _update_form_query(self, form, new_query: str) -> None:
++        """Safely update form query value."""
++        try:
++            if hasattr(form, 'q'):
++                form.q = new_query
++                return
++        except (AttributeError, TypeError):
++            pass
++
++        try:
++            form['q'] = new_query
++            return
++        except (TypeError, KeyError):
++            pass
++
++        raise TypeError("Form object is immutable and cannot be modified")
++
++    @staticmethod
++    def _create_new_form_with_query(original_form, new_query: str):
++        """Create a new form object with updated query."""
++        form_dict = dict(original_form.items()) if hasattr(original_form, 'items') else dict(original_form)
++        form_dict['q'] = new_query
++        return ImmutableMultiDict(form_dict)
++
++    def pre_search(self, request: SXNG_Request, search: "SearchWithPlugins") -> bool:
++        """Parse the search query for advanced syntax patterns and modify the query sent to engines."""
++        original_query = request.form.get('q', '')
++
++        if not self._has_advanced_syntax(original_query):
++            request.search_syntax = {'has_advanced_syntax': False, 'original_query': original_query}
++            return True
++
++        cleaned_query, syntax = self._parse_advanced_syntax(original_query)
++        syntax.update({
++            'has_advanced_syntax': True,
++            'original_query': original_query,
++            'cleaned_query': cleaned_query,
++        })
++
++        request.original_query = original_query
++        request.search_syntax = syntax
++
++        # Update the query in form
++        if hasattr(request, 'form') and 'q' in request.form:
++            try:
++                self._update_form_query(request.form, cleaned_query or original_query)
++            except TypeError:
++                request.form = self._create_new_form_with_query(request.form, cleaned_query or original_query)
++
++        if hasattr(request, 'args') and 'q' in request.args:
++            try:
++                self._update_form_query(request.args, cleaned_query or original_query)
++            except TypeError:
++                pass
++
++        if hasattr(search, 'search_query'):
++            search.search_query.query = cleaned_query or original_query
++
++        return True
++
++    @staticmethod
++    def _normalize_domain(domain: str) -> str:
++        """Normalize domain by removing protocol, path, and port."""
++        if not domain:
++            return ""
++        domain = re.sub(r'^https?://', '', domain).split('/')[0].split(':')[0]
++        return domain.lower().strip()
++
++    @staticmethod
++    def _domain_matches(result_domain: str, target_domain: str) -> bool:
++        """Check if result domain matches target domain (exact or subdomain)."""
++        if not result_domain or not target_domain:
++            return False
++        return result_domain == target_domain or result_domain.endswith('.' + target_domain)
++
++    def _check_site_filters(self, result_url: str, syntax: dict) -> bool:
++        """Check if result passes site include/exclude filters.
++
++        Uses pre-computed domain sets for O(1) lookup on exact matches,
++        with fallback to subdomain matching.
++        """
++        if not result_url:
++            return not syntax['site_include']
++
++        try:
++            result_domain = urlparse(result_url).hostname
++            if not result_domain:
++                return not syntax['site_include']
++
++            result_domain = result_domain.lower()
++
++            # Check exclude filters using pre-computed set
++            if syntax['_site_exclude_set']:
++                if result_domain in syntax['_site_exclude_set']:
++                    return False
++                # Check subdomain match for excluded domains
++                if any(result_domain.endswith('.' + d) for d in syntax['_site_exclude_set']):
++                    return False
++
++            # Check include filters
++            if not syntax['_site_include_set']:
++                return True
++
++            if result_domain in syntax['_site_include_set']:
++                return True
++            # Check subdomain match for included domains
++            return any(result_domain.endswith('.' + d) for d in syntax['_site_include_set'])
++
++        except (ValueError, AttributeError):
++            return not syntax['site_include']
++
++    def _check_filetype_filter(self, result_url: str, syntax: dict) -> bool:
++        """Check if result passes filetype filter."""
++        if not syntax['_filetype_set'] or not result_url:
++            return True
++
++        try:
++            path = urlparse(result_url).path
++            # Extract file extension from URL path
++            ext_match = _EXT_PATTERN.search(path)
++            if not ext_match:
++                # No extension — fail if filetype is specified
++                return False
++            return ext_match.group(1).lower() in syntax['_filetype_set']
++        except (ValueError, AttributeError):
++            return True
++
++    def _check_date_filters(self, result, syntax: dict) -> bool:
++        """Check if result passes date range filters."""
++        if not syntax['before_date'] and not syntax['after_date']:
++            return True
++
++        pub_date = getattr(result, 'publishedDate', None)
++        if not pub_date:
++            # No date available — pass through (don't filter out results without dates)
++            return True
++
++        if pub_date.tzinfo is None:
++            # naive datetimes can't be compared to aware ones (TypeError)
++            pub_date = pub_date.replace(tzinfo=timezone.utc)
++
++        if syntax['before_date'] and pub_date >= syntax['before_date']:
++            return False
++        if syntax['after_date'] and pub_date <= syntax['after_date']:
++            return False
++
++        return True
++
++    def _check_positional_filters(self, title: str, content: str, url: str, syntax: dict) -> bool:
++        """Check positive and negative positional filters.
++
++        Returns False if any positive filter fails to match, or any negative filter matches.
++        Word matchers run against the lowercased field, user regexes against
++        the original field; each field is lowercased at most once and only
++        when the group actually has filters.
++        """
++        for keys, field in zip(_POSITIONAL_KEYS, (title, content, url)):
++            pos_words = syntax[keys[0]]
++            pos_regexes = syntax['_regex_compiled'][keys[1]]
++            neg_words = syntax[keys[2]]
++            neg_regexes = syntax['_regex_compiled'][keys[3]]
++            if not (pos_words or pos_regexes or neg_words or neg_regexes):
++                continue
++            field_lower = field.lower()
++
++            # Positive filters — all must match
++            for matcher in pos_words:
++                if not self._matcher_matches(matcher, field_lower):
++                    return False
++            if not all(c.search(field) for c in pos_regexes):
++                return False
++
++            # Negative filters — none should match
++            for matcher in neg_words:
++                if self._matcher_matches(matcher, field_lower):
++                    return False
++            if any(c.search(field) for c in neg_regexes):
++                return False
++
++        return True
++
++    def _check_exclusion_filters(self, search_text: str, search_text_lower: str, syntax: dict) -> bool:
++        """Check exclusion filters (-regexes, -words, exact phrases).
++
++        Returns False if any exclusion pattern matches the search text.
++        """
++        if any(c.search(search_text) for c in syntax['_regex_compiled']['exclude_regexes']):
++            return False
++
++        for matcher in syntax['exclude_words']:
++            if self._matcher_matches(matcher, search_text_lower):
++                return False
++
++        return True
++
++    def _check_inclusion_filters(self, search_text: str, search_text_lower: str, syntax: dict) -> bool:
++        """Check inclusion filters (+regexes, +words, exact phrases, remaining terms).
++
++        Returns False if any required inclusion pattern does NOT match.
++        Remaining terms use OR logic: any single term matching is sufficient.
++        """
++        # +regexes — all must match
++        for compiled in syntax['_regex_compiled']['include_regexes']:
++            if not compiled.search(search_text):
++                return False
++
++        # +words — all must match
++        for matcher in syntax['include_words']:
++            if not self._matcher_matches(matcher, search_text_lower):
++                return False
++
++        # Exact phrases — all must match
++        for phrase in syntax['_phrases_lower']:
++            if phrase not in search_text_lower:
++                return False
++
++        # Remaining terms — OR logic: at least one must match
++        remaining = syntax['remaining_terms']
++        if remaining and not any(self._matcher_matches(m, search_text_lower) for m in remaining):
++            return False
++
++        return True
++
++    def _apply_filters(self, result: Result, syntax: dict) -> bool:
++        """Apply all filters to a result.
++
++        Filters are applied in optimal order with short-circuit evaluation:
++        1. Site filters (fast domain check)
++        2. Filetype filter (URL extension check)
++        3. Date filters (temporal check)
++        4. Positional filters (title/content/URL)
++        5. Exclusion filters
++        6. Inclusion filters
++        """
++        title = getattr(result, 'title', '') or ''
++        content = getattr(result, 'content', '') or ''
++        url = getattr(result, 'url', '') or ''
++
++        # Short-circuit: apply filters in order of cost/selectivity
++        # 1. Site filters (uses pre-computed sets, very fast)
++        if (syntax['site_include'] or syntax['site_exclude']):
++            if not self._check_site_filters(url, syntax):
++                return False
++
++        # 2. Filetype filter
++        if syntax['filetypes']:
++            if not self._check_filetype_filter(url, syntax):
++                return False
++
++        # 3. Date filters
++        if syntax['before_date'] or syntax['after_date']:
++            if not self._check_date_filters(result, syntax):
++                return False
++
++        # 4. Positional filters
++        if not self._check_positional_filters(title, content, url, syntax):
++            return False
++
++        # 5-6. Build the search text once (only when there is anything to
++        # check) -- lowercased once, shared by word matchers and phrases
++        has_excl = syntax['exclude_words'] or syntax['_regex_compiled']['exclude_regexes']
++        has_incl = (
++            syntax['include_words'] or syntax['_regex_compiled']['include_regexes']
++            or syntax['_phrases_lower'] or syntax['remaining_terms']
++        )
++        if has_excl or has_incl:
++            search_text = f"{title} {content}"
++            search_text_lower = search_text.lower()
++
++            # 5. Exclusion filters
++            if has_excl and not self._check_exclusion_filters(search_text, search_text_lower, syntax):
++                return False
++
++            # 6. Inclusion filters
++            if has_incl and not self._check_inclusion_filters(search_text, search_text_lower, syntax):
++                return False
++
++        return True
++
++    def on_result(self, request: SXNG_Request, search: "SearchWithPlugins", result: Result) -> bool:
++        """Filter results based on advanced search syntax."""
++        if not hasattr(request, 'search_syntax'):
++            return True
++
++        syntax = request.search_syntax
++        if not syntax.get('has_advanced_syntax', False):
++            return True
++
++        return self._apply_filters(result, syntax)
++
++    def post_search(self, request: SXNG_Request, search: "SearchWithPlugins") -> None:
++        """Restore original query for UI display after search completion."""
++        if hasattr(request, 'original_query') and hasattr(request, 'form'):
++            try:
++                self._update_form_query(request.form, request.original_query)
++            except TypeError:
++                request.form = self._create_new_form_with_query(request.form, request.original_query)
+diff --git a/searx/plugins/currency_convert.py b/searx/plugins/currency_convert.py
+new file mode 100644
+index 0000000..f15e200
+--- /dev/null
++++ b/searx/plugins/currency_convert.py
+@@ -0,0 +1,232 @@
++# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++"""A plugin to convert currency pairs given in the query term (e.g.
++``5 usd to cny``).  It complements the unit_converter plugin: currency rates
++are dynamic, so this plugin fetches the Frankfurter API v2 aggregated rates
++and carries the whole rate table of the queried base currency in the payload
++-- the theme's converter can then switch between any listed pair without a
++new request.
++
++The accepted currency codes are not hardcoded: the plugin caches the API's
++currency list (``/v2/currencies``) for a day and gates queries against it.
++
++Rates are cached in-process for an hour (reference rates move once a
++business day).  When the rate table is unavailable the plugin is silent --
++queries simply get no answer.
++"""
++
++import asyncio
++import concurrent.futures
++import json
++import logging
++import time
++import typing
++import re
++import babel.numbers
++
++from curl_cffi.requests.exceptions import RequestException
++
++from flask_babel import gettext, get_locale
++
++from searx.network.client import get_loop
++from searx.network.network import get_network
++from searx.plugins import Plugin, PluginInfo
++from searx.result_types import EngineResults
++
++if typing.TYPE_CHECKING:
++    from searx.search import SearchWithPlugins
++    from searx.extended_types import SXNG_Request
++    from searx.plugins import PluginCfg
++
++logger = logging.getLogger("searx.plugins.currency_convert")
++
++
++CONVERT_KEYWORDS = ["in", "to", "as"]
++
++RE_MEASURE = r'''
++(?P<sign>[-+]?)         # +/- or nothing for positive
++(\s*)                   # separator: white space or nothing
++(?P<number>[\d\.,]*)    # number: 1,000.00 (en) or 1.000,00 (de)
++(?P<E>[eE][-+]?\d+)?    # scientific notation: e(+/-)2 (*10^2)
++(\s*)                   # separator: white space or nothing
++(?P<unit>\S+)           # unit of measure (ISO-4217 alpha code)
++'''
++
++FRANKFURTER_URL = "https://api.frankfurter.dev/v2/rates?base={base}"
++CURRENCIES_URL = "https://api.frankfurter.dev/v2/currencies"
++CURRENCY_CACHE_TTL = 3600.0
++"""Reference rates are updated once per business day; an hour is plenty."""
++
++CURRENCY_LIST_TTL = 86400.0
++"""The currency catalogue is static in practice; refreshing once a day is plenty."""
++
++_currency_cache: dict[str, tuple[float, dict[str, float]]] = {}
++"""base currency -> (monotonic fetch time, rates ``X per 1 base``)."""
++
++_currency_codes: frozenset[str] | None = None
++"""Cached catalogue of ISO codes the API can serve, with fetch time."""
++
++
++def _supported_currencies() -> frozenset[str] | None:
++    """The ISO codes the API accepts (``/v2/currencies``), cached for a day.
++    ``None`` while the catalogue is unavailable -- the plugin stays silent.
++
++    The fetch goes through the instance's default network, so the
++    ``outgoing.proxies`` settings apply like for every engine."""
++    global _currency_codes
++    now = time.monotonic()
++    if _currency_codes and now - _currency_codes[0] < CURRENCY_LIST_TTL:
++        return _currency_codes[1]
++
++    future = asyncio.run_coroutine_threadsafe(
++        get_network().request("GET", CURRENCIES_URL, allow_redirects=True, timeout=8),
++        get_loop(),
++    )
++    try:
++        body = future.result(timeout=12).text
++    except (concurrent.futures.TimeoutError, RequestException) as exc:
++        # no user-facing message -- silence is fine, the query simply gets no answer
++        logger.warning("currency list fetch failed: %r", exc)
++        return None
++
++    try:
++        # v2 answers with a JSON array of currency objects ("iso_code", ...)
++        codes = frozenset(c["iso_code"].upper() for c in json.loads(body))
++    except (ValueError, KeyError, AttributeError, TypeError) as exc:
++        logger.warning("unexpected currency list payload: %r", exc)
++        return None
++    if not codes:
++        logger.warning("empty currency list payload")
++        return None
++
++    _currency_codes = (now, codes)
++    return codes
++
++
++def _currency_rates(base: str) -> dict[str, float] | None:
++    """Rates of the dimension: ``X per 1 base`` for every supported currency.
++    Cached in-process (rates move once a day, searches don't have to).
++
++    The fetch goes through the instance's default network, so the
++    ``outgoing.proxies`` settings apply like for every engine."""
++    now = time.monotonic()
++    cached = _currency_cache.get(base)
++    if cached and now - cached[0] < CURRENCY_CACHE_TTL:
++        return cached[1]
++
++    future = asyncio.run_coroutine_threadsafe(
++        get_network().request("GET", FRANKFURTER_URL.format(base=base), allow_redirects=True, timeout=8),
++        get_loop(),
++    )
++    try:
++        body = future.result(timeout=12).text
++    except (concurrent.futures.TimeoutError, RequestException) as exc:
++        # no user-facing message -- silence is fine, the query simply gets no answer
++        logger.warning("currency rates fetch failed: %r", exc)
++        raise RequestException(f"currency rates unavailable ({exc})") from exc
++
++    try:
++        # v2 answers with a JSON array of {"date", "base", "quote", "rate"}
++        # rows; error payloads (e.g. HTTP 422 for an invalid currency) are a
++        # dict instead, which surfaces here as a TypeError.
++        rows = json.loads(body)
++        rates = {r["quote"]: float(r["rate"]) for r in rows if float(r["rate"]) > 0}
++    except (ValueError, KeyError, TypeError) as exc:
++        raise RequestException("unexpected currency rates payload") from exc
++    if not rates:
++        raise RequestException("empty currency rates payload")
++
++    _currency_cache[base] = (now, rates)
++    return rates
++
++
++def _convert(base: str, to_unit: str, value: float, locale: str) -> tuple[str, dict] | None:
++    """Convert ``value`` from currency ``base`` to ``to_unit`` and build the
++    payload of the theme's interactive converter (factors of every listed
++    currency relative to ``base``)."""
++    rates = _currency_rates(base)
++    if rates is None:
++        return None
++    rate = 1.0 if to_unit == base else rates.get(to_unit)
++    if not rate:
++        return None
++
++    format_args = {"locale": locale, "format": "#,##0.##########;-#"}
++    result = babel.numbers.format_decimal(value * rate, **format_args)
++    from_value = babel.numbers.format_decimal(value, **format_args)
++
++    units = [{"symbol": base, "to_si": 1.0}]
++    # v2 lists the base currency itself at rate 1.0 -- skip it, "base" is
++    # already the units head above.
++    units.extend({"symbol": sym, "to_si": 1.0 / r} for sym, r in sorted(rates.items()) if r and sym != base)
++
++    data = {
++        "kind": "unit_conversion",
++        "from_value": from_value,
++        "from_unit": base,
++        "to_value": result,
++        "to_unit": to_unit,
++        "units": units,
++    }
++    return f'{result} {to_unit}', data
++
++
++class SXNGPlugin(Plugin):
++    """Convert currency pairs.  The result is displayed in the "answers" area
++    with the same interactive converter as the unit_converter plugin."""
++
++    id = "currency_convert"
++
++    def __init__(self, plg_cfg: "PluginCfg") -> None:
++        super().__init__(plg_cfg)
++
++        self.info = PluginInfo(
++            id=self.id,
++            name=gettext("Currency converter plugin"),
++            description=gettext("Convert between currencies (Frankfurter aggregated rates)"),
++            preference_section="general",
++        )
++
++    def post_search(self, request: "SXNG_Request", search: "SearchWithPlugins") -> EngineResults:
++        results = EngineResults()
++
++        # only convert on the first page
++        if search.search_query.pageno > 1:
++            return results
++
++        query = search.search_query.query
++        query_parts = query.split(" ")
++
++        if len(query_parts) < 3:
++            return results
++
++        for query_part in query_parts:
++            for keyword in CONVERT_KEYWORDS:
++                if query_part == keyword:
++                    from_query, to_query = query.split(keyword, 1)
++                    converted = _parse_and_convert(from_query.strip(), to_query.strip())
++                    if converted:
++                        answer, data = converted
++                        results.add(results.types.Answer(answer=answer, data=data))
++
++        return results
++
++
++def _parse_and_convert(from_query, to_query) -> tuple[str, dict] | None:
++    if not (from_query and to_query):
++        return None
++
++    measured = re.match(RE_MEASURE, from_query, re.VERBOSE)
++    if not measured:
++        return None
++
++    from_cur = (measured.group('unit') or '').upper()
++    to_cur = to_query.strip().upper()
++    codes = _supported_currencies()
++    if not codes or from_cur not in codes or to_cur not in codes:
++        return None
++
++    locale = get_locale() or 'en_US'
++    value = measured.group('sign') + measured.group('number') + (measured.group('E') or '')
++    value = babel.numbers.parse_decimal(value, locale=locale)
++
++    return _convert(from_cur, to_cur, float(value), locale)
 diff --git a/searx/plugins/hash_plugin.py b/searx/plugins/hash_plugin.py
 index b733bcc..d8cb503 100644
 --- a/searx/plugins/hash_plugin.py
@@ -16969,76 +18009,10 @@ index 9239a3f..46abb26 100644
              )
  
 diff --git a/searx/plugins/tor_check.py b/searx/plugins/tor_check.py
-index 4077ddf..909441e 100644
+index 4077ddf..218e61f 100644
 --- a/searx/plugins/tor_check.py
 +++ b/searx/plugins/tor_check.py
-@@ -3,16 +3,26 @@
- user searches for ``tor-check``.  It fetches the tor exit node list from
- :py:obj:`url_exit_list` and parses all the IPs into a list, then checks if the
- user's IP address is in it.
-+
-+check.torproject.org is not reachable from every network.  To route only this
-+fetch through a proxy (without proxying all engine traffic), set in settings.yml::
-+
-+    tor_check:
-+      proxy_url: http://proxy:7890
- """
- 
- from ipaddress import ip_address
- import typing
- 
-+import asyncio
-+import concurrent.futures
- import re
- from flask_babel import gettext
- from curl_cffi.requests.exceptions import RequestException
- 
--from searx.network import get
-+from searx import settings
-+from searx.network.client import get_loop
-+from searx.network.network import Network
- from searx.plugins import Plugin, PluginInfo
- from searx.result_types import EngineResults
- 
-@@ -28,6 +38,30 @@ reg = re.compile(r"(?<=ExitAddress )\S+")
- url_exit_list = "https://check.torproject.org/exit-addresses"
- """URL to load Tor exit list from."""
- 
-+_network: Network | None = None
-+
-+
-+def _exit_list_network() -> Network:
-+    """Dedicated network for the exit-list fetch; built once, on first use."""
-+    global _network  # pylint: disable=global-statement
-+    if _network is None:
-+        proxy_url = (settings.get("tor_check", {}) or {}).get("proxy_url")
-+        _network = Network(proxies=proxy_url) if proxy_url else Network()
-+    return _network
-+
-+
-+def _get_exit_list() -> str:
-+    """Fetch the Tor exit list through the plugin's own network (mirrors the
-+    coroutine plumbing of :py:obj:`searx.network.request`)."""
-+    future = asyncio.run_coroutine_threadsafe(
-+        _exit_list_network().request("GET", url_exit_list, allow_redirects=True),
-+        get_loop(),
-+    )
-+    try:
-+        return future.result(timeout=10).text
-+    except concurrent.futures.TimeoutError as exc:
-+        raise RequestException("timeout fetching the Tor exit list") from exc
-+
- 
- class SXNGPlugin(Plugin):
-     """Rewrite hostnames, remove results or prioritize them."""
-@@ -57,23 +91,38 @@ class SXNGPlugin(Plugin):
- 
-             # Request the list of tor exit nodes.
-             try:
--                resp = get(url_exit_list)
--                node_list = re.findall(reg, resp.text)  # type: ignore
-+                node_list = re.findall(reg, _get_exit_list())
- 
+@@ -63,17 +63,33 @@ class SXNGPlugin(Plugin):
              except RequestException:
                  # No answer, return error
                  msg = gettext("Could not download the list of Tor exit-nodes from")
