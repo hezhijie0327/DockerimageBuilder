@@ -4863,10 +4863,10 @@ index 0000000..64b1318
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..f0fab2f
+index 0000000..83fad6d
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,255 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Clock, Ellipsis, Languages, Shield } from "lucide-react";
@@ -4874,6 +4874,7 @@ index 0000000..f0fab2f
 +import { CategoryIcon } from "@/components/CategoryIcon.tsx";
 +import type { DropdownOption } from "@/components/Dropdown.tsx";
 +import { Dropdown } from "@/components/Dropdown.tsx";
++import { categoryLabel } from "@/lib/categories.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { scrollBehavior } from "@/lib/motion.ts";
 +import { useSettings } from "@/lib/settings.ts";
@@ -4938,7 +4939,7 @@ index 0000000..f0fab2f
 +  const visibleTabs = tabs.length <= FLAT_TAB_LIMIT ? tabs : tabs.slice(0, FLAT_TAB_LIMIT - 1);
 +  const overflowTabs = tabs.length <= FLAT_TAB_LIMIT ? [] : tabs.slice(FLAT_TAB_LIMIT - 1);
 +  const foldedSelected = overflowTabs.filter((category) => selected.includes(category));
-+  const label = (category: string) => globals.category_labels[category] ?? category;
++  const label = (category: string) => categoryLabel(category, t);
 +  // trigger mirrors the folded selection: "更多" -> "科学" -> "科学 +1" (the
 +  // same +N language as the engine pills), accent while anything is selected
 +  const firstFolded = foldedSelected[0];
@@ -5968,10 +5969,10 @@ index 0000000..1fed8f7
 +}
 diff --git a/client/zjsearch/src/features/results/CategoryBlocks.tsx b/client/zjsearch/src/features/results/CategoryBlocks.tsx
 new file mode 100644
-index 0000000..5485f69
+index 0000000..419899d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/CategoryBlocks.tsx
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,122 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5990,6 +5991,8 @@ index 0000000..5485f69
 +import { PackageGrid } from "@/features/results/PackageGrid.tsx";
 +import { PosterGrid } from "@/features/results/PosterGrid.tsx";
 +import { VideoGrid } from "@/features/results/VideoGrid.tsx";
++import { categoryLabel } from "@/lib/categories.ts";
++import { useT } from "@/lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
 +/** The grid views for the categories that have one; everything else falls
@@ -6051,6 +6054,7 @@ index 0000000..5485f69
 +  collapsedBlocks: Record<string, boolean>;
 +  onToggleBlock: (key: string) => void;
 +}) {
++  const t = useT();
 +  const blocks = collectBlocks(results);
 +  // persisted user order first (tab order is the fallback), then categories
 +  // never seen before
@@ -6068,7 +6072,7 @@ index 0000000..5485f69
 +              category={key}
 +              collapsed={collapsed}
 +              count={items.length}
-+              label={globals.category_labels[key] ?? key}
++              label={categoryLabel(key, t)}
 +              onToggle={() => {
 +                onToggleBlock(key);
 +              }}
@@ -8998,18 +9002,98 @@ index 0000000..70018e8
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Weather.tsx b/client/zjsearch/src/features/results/answers/Weather.tsx
 new file mode 100644
-index 0000000..459faa6
+index 0000000..b2bff8e
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Weather.tsx
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,319 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronLeft, MapPin } from "lucide-react";
 +import { useState } from "react";
-+import { useT } from "@/lib/i18n.ts";
++import { useLocale, useT } from "@/lib/i18n.ts";
 +import type { AnswerData, WeatherItem } from "@/lib/types.ts";
 +
 +const MAX_SOURCES_SHOWN = 3;
++
++/** zh labels for the upstream weather condition ids (WeatherConditionType in
++    searx/weather.py); other locales render the prettified id.  The theme owns
++    these — the server ships the raw id only. */
++const WEATHER_CONDITION_ZH: Record<string, string> = {
++  "clear sky": "晴",
++  fair: "晴朗",
++  "partly cloudy": "局部多云",
++  cloudy: "多云",
++  fog: "雾",
++  "light rain": "小雨",
++  rain: "雨",
++  "heavy rain": "大雨",
++  "light rain showers": "小阵雨",
++  "rain showers": "阵雨",
++  "heavy rain showers": "强阵雨",
++  "light rain and thunder": "小雨有雷",
++  "rain and thunder": "雷雨",
++  "heavy rain and thunder": "大雨有雷",
++  "light rain showers and thunder": "小阵雨有雷",
++  "rain showers and thunder": "雷阵雨",
++  "heavy rain showers and thunder": "强雷阵雨",
++  "light sleet": "小雨夹雪",
++  sleet: "雨夹雪",
++  "heavy sleet": "大雨夹雪",
++  "light sleet showers": "小阵雨夹雪",
++  "sleet showers": "阵雨夹雪",
++  "heavy sleet showers": "强阵雨夹雪",
++  "light sleet and thunder": "小雨夹雪有雷",
++  "sleet and thunder": "雨夹雪有雷",
++  "heavy sleet and thunder": "大雨夹雪有雷",
++  "light sleet showers and thunder": "小阵雨夹雪有雷",
++  "sleet showers and thunder": "雷阵雨夹雪",
++  "heavy sleet showers and thunder": "强阵雨夹雪有雷",
++  "light snow": "小雪",
++  snow: "雪",
++  "heavy snow": "大雪",
++  "light snow showers": "小阵雪",
++  "snow showers": "阵雪",
++  "heavy snow showers": "强阵雪",
++  "light snow and thunder": "小雪有雷",
++  "snow and thunder": "雪有雷",
++  "heavy snow and thunder": "大雪有雷",
++  "light snow showers and thunder": "小阵雪有雷",
++  "snow showers and thunder": "雷阵雪",
++  "heavy snow showers and thunder": "强阵雪有雷",
++};
++
++function conditionLabel(condition: string, locale: string): string {
++  if (locale.startsWith("zh")) {
++    return WEATHER_CONDITION_ZH[condition] ?? condition;
++  }
++  return condition.charAt(0).toUpperCase() + condition.slice(1);
++}
++
++/** The server datetime is location wall-clock (no offset): HH:mm is a plain
++    substring, the weekday comes from the date part. */
++function formatSlotTime(item: WeatherItem): string {
++  if (!item.datetime_iso) {
++    return "";
++  }
++  return item.datetime_iso.slice(11, 16);
++}
++
++function formatWeekday(item: WeatherItem, locale: string): string {
++  const fallback = item.date_iso ?? "";
++  if (!item.datetime_iso) {
++    return fallback;
++  }
++  const [y = NaN, m = NaN, d = NaN] = item.datetime_iso.slice(0, 10).split("-").map(Number);
++  if (![y, m, d].every(Number.isFinite)) {
++    return fallback;
++  }
++  const formatter = new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en-US", { weekday: "short" });
++  try {
++    return formatter.format(new Date(y, m - 1, d));
++  } catch {
++    return fallback;
++  }
++}
 +
 +/** SVG temperature trend over the next hourly slots (accent area line with
 +    temp / time labels every third slot), horizontally scrollable. */
@@ -9038,7 +9122,7 @@ index 0000000..459faa6
 +  points.forEach((p, i) => {
 +    const slot = slots[i];
 +    if (slot && i % 3 === 0) {
-+      labels.push({ x: p.x, y: p.y, temp: slot.temp_c, time: slot.time ?? "" });
++      labels.push({ x: p.x, y: p.y, temp: slot.temp_c, time: formatSlotTime(slot) });
 +    }
 +  });
 +  return (
@@ -9065,6 +9149,7 @@ index 0000000..459faa6
 +/** Daily strip grouped from the hourly slots: weekday, mid-day symbol and
 +    the day's high/low temperature (Google weather style). */
 +function WeatherDaily({ forecasts }: { forecasts: WeatherItem[] }) {
++  const locale = useLocale();
 +  const days: Array<{
 +    date: string;
 +    weekday: string;
@@ -9082,7 +9167,7 @@ index 0000000..459faa6
 +    if (!day) {
 +      day = {
 +        date: f.date_iso,
-+        weekday: f.weekday ?? f.date_iso,
++        weekday: formatWeekday(f, locale),
 +        symbol: f.symbol,
 +        hi: f.temp_c,
 +        lo: f.temp_c,
@@ -9136,6 +9221,7 @@ index 0000000..459faa6
 +  sources: Array<{ service: string; url: string }>;
 +}) {
 +  const t = useT();
++  const locale = useLocale();
 +  // same cap-and-expand contract as EnginesLine: 3 pills + "+N"
 +  const [sourcesExpanded, setSourcesExpanded] = useState(false);
 +  const shownSources = sourcesExpanded ? sources : sources.slice(0, MAX_SOURCES_SHOWN);
@@ -9144,17 +9230,20 @@ index 0000000..459faa6
 +  const heroC = Math.round(current.temp_c);
 +  const heroF = Math.round(current.temp_f);
 +  const meta: Array<[string, string]> = [];
-+  if (current.feels_like) {
-+    meta.push([t("feels_like"), current.feels_like]);
++  if (current.feels_like !== undefined) {
++    meta.push([t("feels_like"), `${Math.round(current.feels_like)} °C`]);
 +  }
 +  if (current.wind) {
-+    meta.push([t("wind"), current.wind_speed ? `${current.wind} ${current.wind_speed}` : current.wind]);
++    meta.push([
++      t("wind"),
++      current.wind_speed !== undefined ? `${current.wind} ${Math.round(current.wind_speed)} km/h` : current.wind,
++    ]);
 +  }
-+  if (current.humidity) {
-+    meta.push([t("humidity"), current.humidity]);
++  if (current.humidity !== undefined) {
++    meta.push([t("humidity"), `${Math.round(current.humidity)}%`]);
 +  }
-+  if (current.pressure) {
-+    meta.push([t("pressure"), current.pressure]);
++  if (current.pressure !== undefined) {
++    meta.push([t("pressure"), `${Math.round(current.pressure)} hPa`]);
 +  }
 +  return (
 +    <div>
@@ -9173,7 +9262,7 @@ index 0000000..459faa6
 +              </span>
 +              <span className="mt-1 border-s border-line ps-2 text-sm text-ink-3">{heroF} °F</span>
 +            </p>
-+            <p className="mt-2 text-sm text-ink-2">{current.condition_display}</p>
++            <p className="mt-2 text-sm text-ink-2">{conditionLabel(current.condition, locale)}</p>
 +          </div>
 +        </div>
 +        <dl className="grid grid-cols-2 gap-x-10 gap-y-1 text-xs">
@@ -11460,10 +11549,10 @@ index 0000000..508bc76
 +}
 diff --git a/client/zjsearch/src/lib/categories.ts b/client/zjsearch/src/lib/categories.ts
 new file mode 100644
-index 0000000..5e9ea54
+index 0000000..cd8173f
 --- /dev/null
 +++ b/client/zjsearch/src/lib/categories.ts
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,37 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11472,12 +11561,35 @@ index 0000000..5e9ea54
 + * constants only pin down the names the client special-cases.
 + */
 +
++import type { StringKey, Translate } from "@/lib/i18n.ts";
++
 +/** Pseudo category of engine-bang searches (`!imdb bat`): the results carry
 +    their real category and the page inherits its presentation from them. */
 +export const NO_CATEGORY = "none";
 +
 +/** In mixed searches the packages results are presented inside the it block. */
 +export const PACKAGES_BLOCK_CATEGORY = "it";
++
++/** Server group id for engines that fit none of the tab's sub-categories. */
++export const NO_SUBGROUPING = "without further subgrouping";
++
++/** Localized label for a category id (`cat_<id>` in the i18n catalogs).  The
++    theme owns its category labels — the server ships ids only.  Unknown ids
++    fall back to the prettified id. */
++export function categoryLabel(category: string, t: Translate): string {
++  const key = `cat_${category.replaceAll(" ", "_")}` as StringKey;
++  const label = t(key);
++  return label === key ? category.charAt(0).toUpperCase() + category.slice(1) : label;
++}
++
++/** Localized label for an engine subgroup id inside a preferences engine tab. */
++export function engineGroupLabel(group: string, t: Translate): string {
++  if (group === NO_SUBGROUPING) {
++    const label = t("group_unsubgrouped");
++    return label === "group_unsubgrouped" ? group : label;
++  }
++  return categoryLabel(group, t);
++}
 diff --git a/client/zjsearch/src/lib/clipboard.ts b/client/zjsearch/src/lib/clipboard.ts
 new file mode 100644
 index 0000000..ceb7138
@@ -11699,10 +11811,10 @@ index 0000000..3070470
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..f4ab3bf
+index 0000000..6eec2f8
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,60 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11749,6 +11861,11 @@ index 0000000..f4ab3bf
 +
 +export const I18nContext = createContext<string>("en");
 +
++/** The active UI locale tag (server preference mirrored by the client). */
++export function useLocale(): string {
++  return useContext(I18nContext);
++}
++
 +export function useT(): Translate {
 +  const locale = useContext(I18nContext);
 +  // memoized so `t` keeps a stable identity across renders — callers put it
@@ -11760,10 +11877,10 @@ index 0000000..f4ab3bf
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..1887eab
+index 0000000..c5ffa03
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,323 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -11996,6 +12113,70 @@ index 0000000..1887eab
 +  widget_random: "Random UUID, string, int, float or color",
 +  widget_unit: "Convert between units",
 +  widget_currency: "Convert between currencies (aggregated rates)",
++  plugin_currency_convert: "Currency converter plugin",
++  plugin_currency_convert_desc: "Convert between currencies (Frankfurter aggregated rates)",
++  plugin_advanced_search_syntax: "Advanced Search Syntax",
++  plugin_advanced_search_syntax_desc:
++    "Enhanced search with site, filetype, date filtering, +word/+/regex/ inclusion, word exclusion, " +
++    "exact phrase matching, and positive/negative positional search with /regex/ support",
++  plugin_bm25_reranker: "BM25 Reranker",
++  plugin_bm25_reranker_desc: "Reranks search results using BM25 text relevance scoring with RRF fusion.",
++  plugin_calculator: "Calculator",
++  plugin_calculator_desc: "Parses and solves mathematical expressions.",
++  plugin_self_info: "Self Information",
++  plugin_self_info_desc:
++    "Displays your IP if the query is \u201cip\u201d and your user agent if the query is \u201cuser-agent\u201d.",
++  plugin_time_zone: "Timezones plugin",
++  plugin_time_zone_desc: "Display the current time on different time zones.",
++  plugin_tracker_url_remover: "Tracker URL remover",
++  plugin_tracker_url_remover_desc: "Remove trackers arguments from the returned URL",
++  plugin_tor_check: "Tor check plugin",
++  plugin_tor_check_desc:
++    "This plugin checks if the address of the request is a Tor exit-node, and informs the user if it is; like check.torproject.org, but from SearXNG.",
++  plugin_hash_plugin: "Hash plugin",
++  plugin_hash_plugin_desc:
++    "Converts strings to different hash digests. Available functions: md5, sha1, sha224, sha256, sha384, sha512.",
++  plugin_unit_converter: "Unit converter plugin",
++  plugin_unit_converter_desc: "Convert between units",
++  plugin_ahmia_filter: "Ahmia blacklist",
++  plugin_ahmia_filter_desc: "Filter out onion results that appear in Ahmia's blacklist.",
++  plugin_hostnames: "Hostnames plugin",
++  plugin_hostnames_desc: "Rewrite hostnames and remove or prioritize results based on the hostname",
++  cat_general: "General",
++  cat_images: "Images",
++  cat_videos: "Videos",
++  cat_news: "News",
++  cat_map: "Map",
++  cat_music: "Music",
++  cat_it: "IT",
++  cat_science: "Science",
++  cat_files: "Files",
++  cat_social_media: "Social media",
++  cat_other: "Other",
++  cat_apps: "Apps",
++  cat_blogs: "Blogs",
++  cat_books: "Books",
++  cat_currency: "Currency",
++  cat_dictionaries: "Dictionaries",
++  cat_icons: "Icons",
++  cat_lyrics: "Lyrics",
++  cat_movies: "Movies",
++  cat_packages: "Packages",
++  "cat_q&a": "Q&A",
++  cat_radio: "Radio",
++  cat_repos: "Repos",
++  cat_scientific_publications: "Scientific publications",
++  cat_shopping: "Shopping",
++  cat_software_wikis: "Software wikis",
++  cat_translate: "Translate",
++  cat_weather: "Weather",
++  cat_web: "Web",
++  cat_wikimedia: "Wikimedia",
++  group_unsubgrouped: "Ungrouped",
++  answerer_stats: "Statistics functions",
++  answerer_stats_desc: "Compute min/max/avg/sum over the arguments",
++  answerer_random: "Random value generator",
++  answerer_random_desc: "Generate a random UUID, string, integer, float or color",
 +  widget_tor: "Check if you are using Tor",
 +  tor_using: "You are using Tor",
 +  tor_not_using: "You are not using Tor",
@@ -12025,10 +12206,10 @@ index 0000000..1887eab
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..fb9311c
+index 0000000..3a62549
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,315 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -12259,6 +12440,66 @@ index 0000000..fb9311c
 +  widget_random: "随机 UUID、字符串、整数、浮点数、颜色",
 +  widget_unit: "单位之间互相换算",
 +  widget_currency: "货币之间互相换算（聚合汇率）",
++  plugin_currency_convert: "汇率换算插件",
++  plugin_currency_convert_desc: "在各货币间换算（聚合汇率）",
++  plugin_advanced_search_syntax: "高级搜索语法",
++  plugin_advanced_search_syntax_desc:
++    "增强搜索：站点与文件类型过滤、日期范围过滤、+词 或 +/正则/ 强制包含、-词 或 -/正则/ 排除、精确短语匹配，以及支持 /正则/ 的标题、URL、正文正反向位置匹配",
++  plugin_bm25_reranker: "BM25 重排序插件",
++  plugin_bm25_reranker_desc: "使用 BM25 文本相关性评分与 RRF 融合对搜索结果重新排序",
++  plugin_calculator: "计算器",
++  plugin_calculator_desc: "解析并求解数学表达式",
++  plugin_self_info: "本机信息",
++  plugin_self_info_desc: "查询 “ip” 显示你的 IP，查询 “user-agent” 显示你的 User-Agent",
++  plugin_time_zone: "时区插件",
++  plugin_time_zone_desc: "显示各时区的当前时间",
++  plugin_tracker_url_remover: "URL 跟踪参数清理",
++  plugin_tracker_url_remover_desc: "从结果链接中移除跟踪参数",
++  plugin_tor_check: "Tor 检测",
++  plugin_tor_check_desc: "检测当前请求是否经由 Tor 出口节点并告知用户，类似 check.torproject.org",
++  plugin_hash_plugin: "哈希计算",
++  plugin_hash_plugin_desc: "将字符串转换为不同哈希摘要（MD5、SHA1、SHA224、SHA256、SHA384、SHA512）",
++  plugin_unit_converter: "单位转换器",
++  plugin_unit_converter_desc: "单位间互相换算",
++  plugin_ahmia_filter: "Ahmia 黑名单过滤",
++  plugin_ahmia_filter_desc: "过滤出现在 Ahmia 黑名单中的 onion 结果",
++  plugin_hostnames: "主机名重写",
++  plugin_hostnames_desc: "按主机名规则重写链接、移除或提升结果",
++  cat_general: "综合",
++  cat_images: "图片",
++  cat_videos: "视频",
++  cat_news: "新闻",
++  cat_map: "地图",
++  cat_music: "音乐",
++  cat_it: "信息技术",
++  cat_science: "科学",
++  cat_files: "文件",
++  cat_social_media: "社交媒体",
++  cat_other: "其他",
++  cat_apps: "应用",
++  cat_blogs: "博客",
++  cat_books: "图书",
++  cat_currency: "货币",
++  cat_dictionaries: "词典",
++  cat_icons: "图标",
++  cat_lyrics: "歌词",
++  cat_movies: "电影",
++  cat_packages: "软件包",
++  "cat_q&a": "问答",
++  cat_radio: "电台",
++  cat_repos: "代码仓库",
++  cat_scientific_publications: "学术出版物",
++  cat_shopping: "购物",
++  cat_software_wikis: "软件维基",
++  cat_translate: "翻译",
++  cat_weather: "天气",
++  cat_web: "网页",
++  cat_wikimedia: "维基媒体",
++  group_unsubgrouped: "未细分",
++  answerer_stats: "统计函数",
++  answerer_stats_desc: "对参数计算最小值/最大值/平均值/总和",
++  answerer_random: "随机数生成器",
++  answerer_random_desc: "生成随机 UUID、字符串、整数、浮点数、颜色",
 +  widget_tor: "检测是否正在使用 Tor",
 +  tor_using: "你正在使用 Tor",
 +  tor_not_using: "你未使用 Tor",
@@ -12973,10 +13214,10 @@ index 0000000..5b040d1
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..cb20c2e
+index 0000000..bf75b52
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,454 @@
+@@ -0,0 +1,456 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -13016,7 +13257,6 @@ index 0000000..cb20c2e
 +  categories_as_tabs: string[];
 +  categories: string[];
 +  default_category: string;
-+  category_labels: Record<string, string>;
 +  locales: LocaleInfo[];
 +  language: string;
 +  safesearch: 0 | 1 | 2;
@@ -13198,24 +13438,28 @@ index 0000000..cb20c2e
 +  summary: string;
 +  symbol: string;
 +  location_name: string;
-+  condition_display: string;
++  /** raw upstream condition id ("light rain showers") — localized client-side */
++  condition: string;
 +  /** temperature in °C — trend chart and daily hi/lo */
 +  temp_c: number;
 +  /** temperature in °F — small secondary readout in the hero */
 +  temp_f: number;
-+  datetime_display?: string;
-+  /** localized HH:mm — hourly slots only */
-+  time?: string;
-+  /** localized weekday (EEE) — hourly slots only */
-+  weekday?: string;
++  /** location-timezone ISO instant — hourly slots only */
++  datetime_iso?: string;
++  /** IANA timezone of the location — client-side date/time formatting */
++  timezone?: string;
 +  /** ISO date (YYYY-MM-DD) — hourly slots only, groups the daily strip */
 +  date_iso?: string;
 +  hour?: number;
-+  feels_like?: string;
++  /** feels-like temperature in °C */
++  feels_like?: number;
 +  wind?: string;
-+  wind_speed?: string;
-+  pressure?: string;
-+  humidity?: string;
++  /** wind speed in km/h */
++  wind_speed?: number;
++  /** pressure in hPa */
++  pressure?: number;
++  /** relative humidity in % */
++  humidity?: number;
 +}
 +
 +export type AnswerData =
@@ -13305,7 +13549,6 @@ index 0000000..cb20c2e
 +
 +interface EngineTab {
 +  category: string;
-+  label: string;
 +  is_default: boolean;
 +  groups: EngineGroup[];
 +}
@@ -14654,15 +14897,16 @@ index 0000000..ddc8ad1
 +export const StatsPage = lazy(() => import("@/pages/StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
 diff --git a/client/zjsearch/src/pages/preferences/EnginesTab.tsx b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
 new file mode 100644
-index 0000000..c858551
+index 0000000..c7f2ed4
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,233 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, Check, Minus } from "lucide-react";
 +import type { ReactNode } from "react";
 +import { SortHeader } from "@/components/SortHeader.tsx";
++import { engineGroupLabel } from "@/lib/categories.ts";
 +import { loadEngineDescriptions } from "@/lib/engineDescriptions.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { type SortState, useSortState } from "@/lib/tableSort.ts";
@@ -14826,7 +15070,7 @@ index 0000000..c858551
 +        rows.push(
 +          <tr className="bg-surface-2/60" key={`group-${group.group}`}>
 +            <td className="px-3 py-1.5 font-medium text-ink-2" colSpan={2}>
-+              {group.group}
++              {engineGroupLabel(group.group, t)}
 +            </td>
 +            <td className="px-3 py-1.5" colSpan={showMetrics ? 7 : 5}>
 +              {group.group_bang ? <code className="rounded bg-surface-2 px-1">{group.group_bang}</code> : null}
@@ -15010,10 +15254,10 @@ index 0000000..241876c
 +}
 diff --git a/client/zjsearch/src/pages/preferences/parts.tsx b/client/zjsearch/src/pages/preferences/parts.tsx
 new file mode 100644
-index 0000000..a9a89eb
+index 0000000..70dd1cb
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/parts.tsx
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,291 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, ExternalLink, Sparkle } from "lucide-react";
@@ -15023,6 +15267,7 @@ index 0000000..a9a89eb
 +import { Dropdown } from "@/components/Dropdown.tsx";
 +import { Link } from "@/components/Shell.tsx";
 +import { loadEngineDescriptions } from "@/lib/engineDescriptions.ts";
++import { type StringKey, type Translate, useT } from "@/lib/i18n.ts";
 +import type { EngineEntry } from "@/lib/types.ts";
 +
 +// ------------------------------------------------------------- row primitives
@@ -15178,6 +15423,40 @@ index 0000000..a9a89eb
 +  );
 +}
 +
++/** ZJSearch-side translations for the plugins our deployments ship (the
++    upstream server catalogs only cover upstream plugins and searx/ stays
++    untouched). Unknown plugin ids fall back to the server strings. */
++const PLUGIN_I18N: Record<string, { description: StringKey; name: StringKey }> = {
++  advanced_search_syntax: {
++    description: "plugin_advanced_search_syntax_desc",
++    name: "plugin_advanced_search_syntax",
++  },
++  ahmia_filter: { description: "plugin_ahmia_filter_desc", name: "plugin_ahmia_filter" },
++  bm25_reranker: { description: "plugin_bm25_reranker_desc", name: "plugin_bm25_reranker" },
++  calculator: { description: "plugin_calculator_desc", name: "plugin_calculator" },
++  currency_convert: { description: "plugin_currency_convert_desc", name: "plugin_currency_convert" },
++  hash_plugin: { description: "plugin_hash_plugin_desc", name: "plugin_hash_plugin" },
++  hostnames: { description: "plugin_hostnames_desc", name: "plugin_hostnames" },
++  self_info: { description: "plugin_self_info_desc", name: "plugin_self_info" },
++  time_zone: { description: "plugin_time_zone_desc", name: "plugin_time_zone" },
++  tor_check: { description: "plugin_tor_check_desc", name: "plugin_tor_check" },
++  tracker_url_remover: {
++    description: "plugin_tracker_url_remover_desc",
++    name: "plugin_tracker_url_remover",
++  },
++  unit_converter: { description: "plugin_unit_converter_desc", name: "plugin_unit_converter" },
++};
++
++export function pluginLabels(
++  plugin: { id: string; name: string; description: string },
++  t: Translate,
++): { description: string; name: string } {
++  const keys = PLUGIN_I18N[plugin.id];
++  return keys
++    ? { description: t(keys.description), name: t(keys.name) }
++    : { description: plugin.description, name: plugin.name };
++}
++
 +export function PluginRow({
 +  plugin,
 +  enabled,
@@ -15187,9 +15466,11 @@ index 0000000..a9a89eb
 +  enabled: boolean;
 +  onChange: (checked: boolean) => void;
 +}) {
++  const t = useT();
++  const labels = pluginLabels(plugin, t);
 +  return (
-+    <SettingRow description={plugin.description} icon={<Sparkle className="size-4.5" />} title={plugin.name}>
-+      <Switch checked={enabled} label={plugin.name} onChange={onChange} />
++    <SettingRow description={labels.description} icon={<Sparkle className="size-4.5" />} title={labels.name}>
++      <Switch checked={enabled} label={labels.name} onChange={onChange} />
 +    </SettingRow>
 +  );
 +}
@@ -15402,13 +15683,14 @@ index 0000000..5b21e51
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx b/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx
 new file mode 100644
-index 0000000..e595814
+index 0000000..abfac91
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,86 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Check, LayoutGrid, X } from "lucide-react";
++import { categoryLabel } from "@/lib/categories.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
 +import { EnginesTab } from "@/pages/preferences/EnginesTab.tsx";
@@ -15473,7 +15755,7 @@ index 0000000..e595814
 +            active={index === engineTab}
 +            category={tabInfo.category}
 +            key={tabInfo.category}
-+            label={tabInfo.label}
++            label={categoryLabel(tabInfo.category, t)}
 +            onClick={() => {
 +              onEngineTab(index);
 +            }}
@@ -15493,13 +15775,14 @@ index 0000000..e595814
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx b/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx
 new file mode 100644
-index 0000000..ce97927
+index 0000000..3886577
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,170 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Book, Globe, Key, Languages, LayoutGrid, Search, Shield } from "lucide-react";
++import { categoryLabel } from "@/lib/categories.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
 +import { Card, CategoryTab, PluginRow, Select, SettingRow } from "@/pages/preferences/parts.tsx";
@@ -15528,7 +15811,7 @@ index 0000000..ce97927
 +                active={form.categories.includes(category)}
 +                category={category}
 +                key={category}
-+                label={globals.category_labels[category] ?? category}
++                label={categoryLabel(category, t)}
 +                onClick={() => {
 +                  form.setCategories((prev) =>
 +                    prev.includes(category) ? prev.filter((item) => item !== category) : [...prev, category],
@@ -15750,16 +16033,28 @@ index 0000000..5c77af4
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/QueryTab.tsx b/client/zjsearch/src/pages/preferences/tabs/QueryTab.tsx
 new file mode 100644
-index 0000000..53c7e97
+index 0000000..503197e
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/QueryTab.tsx
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,87 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { useT } from "@/lib/i18n.ts";
++import { type StringKey, useT } from "@/lib/i18n.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
-+import { Switch } from "@/pages/preferences/parts.tsx";
++import { pluginLabels, Switch } from "@/pages/preferences/parts.tsx";
 +import type { PreferencesForm } from "@/pages/preferences/usePreferencesForm.ts";
++
++/** ZJSearch-side labels for the built-in answerers (server strings stay
++    untranslated — same rationale as PLUGIN_I18N in parts.tsx). */
++const ANSWERER_I18N: Record<string, { description: StringKey; name: StringKey }> = {
++  "Random value generator": { description: "answerer_random_desc", name: "answerer_random" },
++  "Statistics functions": { description: "answerer_stats_desc", name: "answerer_stats" },
++};
++
++function answererLabels(name: string, description: string, t: ReturnType<typeof useT>) {
++  const keys = ANSWERER_I18N[name];
++  return keys ? { description: t(keys.description), name: t(keys.name) } : { description, name };
++}
 +
 +export function QueryTab({ data, form }: { data: PreferencesPageData; form: PreferencesForm }) {
 +  const t = useT();
@@ -15781,17 +16076,20 @@ index 0000000..53c7e97
 +              {t("instant_answer_modules")}
 +            </td>
 +          </tr>
-+          {data.answerers.map((answerer) => (
-+            <tr className="border-t border-line" key={answerer.name}>
-+              <td className="px-4 py-3 text-center text-ink-3">–</td>
-+              <td className="px-4 py-3">
-+                <code className="rounded bg-surface-2 px-1.5 py-0.5">{answerer.keywords.join(", ")}</code>
-+              </td>
-+              <td className="px-4 py-2.5 font-medium">{answerer.name}</td>
-+              <td className="px-4 py-2.5 text-ink-2">{answerer.description}</td>
-+              <td className="px-4 py-2.5 text-ink-2">{answerer.examples.join(", ")}</td>
-+            </tr>
-+          ))}
++          {data.answerers.map((answerer) => {
++            const labels = answererLabels(answerer.name, answerer.description, t);
++            return (
++              <tr className="border-t border-line" key={answerer.name}>
++                <td className="px-4 py-3 text-center text-ink-3">–</td>
++                <td className="px-4 py-3">
++                  <code className="rounded bg-surface-2 px-1.5 py-0.5">{answerer.keywords.join(", ")}</code>
++                </td>
++                <td className="px-4 py-2.5 font-medium">{labels.name}</td>
++                <td className="px-4 py-2.5 text-ink-2">{labels.description}</td>
++                <td className="px-4 py-2.5 text-ink-2">{answerer.examples.join(", ")}</td>
++              </tr>
++            );
++          })}
 +          <tr className="bg-surface-2/60">
 +            <td className="px-4 py-2.5 font-medium text-ink-2" colSpan={5}>
 +              {t("plugins_list")}
@@ -15799,25 +16097,28 @@ index 0000000..53c7e97
 +          </tr>
 +          {data.plugins
 +            .filter((plugin) => plugin.section === "query")
-+            .map((plugin) => (
-+              <tr className="border-t border-line" key={plugin.id}>
-+                <td className="px-4 py-3">
-+                  <Switch
-+                    checked={form.plugins[plugin.id] ?? false}
-+                    label={plugin.name}
-+                    onChange={(value) => {
-+                      form.setPluginEnabled(plugin.id, value);
-+                    }}
-+                  />
-+                </td>
-+                <td className="px-4 py-3">
-+                  <code className="rounded bg-surface-2 px-1.5 py-0.5">{plugin.keywords.join(", ")}</code>
-+                </td>
-+                <td className="px-4 py-2.5 font-medium">{plugin.name}</td>
-+                <td className="px-4 py-2.5 text-ink-2">{plugin.description}</td>
-+                <td className="px-4 py-2.5 text-ink-2">{plugin.examples.join(", ")}</td>
-+              </tr>
-+            ))}
++            .map((plugin) => {
++              const labels = pluginLabels(plugin, t);
++              return (
++                <tr className="border-t border-line" key={plugin.id}>
++                  <td className="px-4 py-3">
++                    <Switch
++                      checked={form.plugins[plugin.id] ?? false}
++                      label={labels.name}
++                      onChange={(value) => {
++                        form.setPluginEnabled(plugin.id, value);
++                      }}
++                    />
++                  </td>
++                  <td className="px-4 py-3">
++                    <code className="rounded bg-surface-2 px-1.5 py-0.5">{plugin.keywords.join(", ")}</code>
++                  </td>
++                  <td className="px-4 py-2.5 font-medium">{labels.name}</td>
++                  <td className="px-4 py-2.5 text-ink-2">{labels.description}</td>
++                  <td className="px-4 py-2.5 text-ink-2">{plugin.examples.join(", ")}</td>
++                </tr>
++              );
++            })}
 +        </tbody>
 +      </table>
 +    </div>
@@ -18259,10 +18560,10 @@ index 0000000..8b5a27d
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..4aedd14
+index 0000000..5a23b66
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,561 @@
+@@ -0,0 +1,554 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -18293,18 +18594,13 @@ index 0000000..4aedd14
 +  "contact_url": {{ (get_setting('general.contact_url') or '')|tojson }},
 +  "custom_links": [
 +    {%- for title, link in get_setting('brand.custom.links').items() -%}
-+    {"title": {{ _(title)|tojson }}, "url": {{ link|tojson }}}{{ ", " if not loop.last }}
++    {"title": {{ title|tojson }}, "url": {{ link|tojson }}}{{ ", " if not loop.last }}
 +    {%- endfor -%}
 +  ],
 +  "search_formats": {{ search_formats|tojson }},
 +  "categories_as_tabs": {{ categories_as_tabs|tojson }},
 +  "categories": {{ categories|tojson }},
 +  "default_category": {{ DEFAULT_CATEGORY|tojson }},
-+  "category_labels": {
-+    {%- for c in categories_as_tabs -%}
-+    {{ c|tojson }}: {{ _(c)|tojson }}{{ ", " if not loop.last }}
-+    {%- endfor -%}
-+  },
 +  "locales": [
 +    {%- for tag, name, country, english, flag in sxng_locales -%}
 +    {"tag": {{ tag|tojson }}, "name": {{ name|tojson }}, "country": {{ country|tojson }}, "english": {{ english|tojson }}, "flag": {{ flag|tojson }}}{{ ", " if not loop.last }}
@@ -18496,20 +18792,19 @@ index 0000000..4aedd14
 +  "summary": {{ (data.summary or '')|tojson }},
 +  "symbol": {{ (data.url or '')|tojson }},
 +  "location_name": {{ data.location.name|tojson }},
-+  "condition_display": {{ _(data.condition.capitalize())|tojson }},
++  "timezone": {{ data.location.timezone|tojson }},
++  "condition": {{ (data.condition or '')|tojson }},
 +  "temp_c": {{ data.temperature.value("°C") }},
 +  "temp_f": {{ data.temperature.value("°F") }}
 +  {%- if data.datetime %},
-+  "datetime_display": {{ data.datetime.l10n(locale=data.location, fmt='short')|tojson }},
-+  "time": {{ data.datetime.l10n(locale=data.location, fmt='HH:mm')|tojson }},
-+  "weekday": {{ data.datetime.l10n(locale=data.location, fmt='EEE')|tojson }},
++  "datetime_iso": {{ data.datetime.datetime.isoformat()|tojson }},
 +  "date_iso": {{ data.datetime.datetime.date().isoformat()|tojson }},
 +  "hour": {{ data.datetime.datetime.hour }}{% endif %}
-+  {%- if data.feels_like %}, "feels_like": {{ data.feels_like.l10n(locale=data.location, unit="°C")|tojson }}{% endif %}
-+  {%- if data.wind_from %}, "wind": {{ data.wind_from.l10n(locale=data.location)|tojson }}{% endif %}
-+  {%- if data.wind_speed %}, "wind_speed": {{ data.wind_speed.l10n(locale=data.location)|tojson }}{% endif %}
-+  {%- if data.pressure %}, "pressure": {{ data.pressure.l10n(locale=data.location)|tojson }}{% endif %}
-+  {%- if data.humidity %}, "humidity": {{ data.humidity.l10n(locale=data.location)|tojson }}{% endif %}
++  {%- if data.feels_like %}, "feels_like": {{ data.feels_like.value("°C") }}{% endif %}
++  {%- if data.wind_from %}, "wind": {{ data.wind_from.value("Point")|tojson }}{% endif %}
++  {%- if data.wind_speed %}, "wind_speed": {{ data.wind_speed.value("km/h") }}{% endif %}
++  {%- if data.pressure %}, "pressure": {{ data.pressure.value("hPa") }}{% endif %}
++  {%- if data.humidity %}, "humidity": {{ data.humidity.value() }}{% endif %}
 +}
 +{%- endmacro %}
 +
@@ -18734,19 +19029,18 @@ index 0000000..4aedd14
 +  ],
 +  "plugins": [
 +    {%- for plugin in plugins_storage -%}
-+    {"id": {{ plugin.id|tojson }}, "name": {{ _(plugin.name)|tojson }}, "description": {{ _(plugin.description)|tojson }}, "section": {{ (plugin.preference_section or '')|tojson }}, "enabled": {{ 'true' if plugin.id in allowed_plugins else 'false' }}, "keywords": {{ ((plugin.keywords or []))|tojson }}, "examples": {{ ((plugin.examples or []))|tojson }}, "plugin": true}{{ ", " if not loop.last }}
++    {"id": {{ plugin.id|tojson }}, "name": {{ (plugin.name or '')|tojson }}, "description": {{ (plugin.description or '')|tojson }}, "section": {{ (plugin.preference_section or '')|tojson }}, "enabled": {{ 'true' if plugin.id in allowed_plugins else 'false' }}, "keywords": {{ ((plugin.keywords or []))|tojson }}, "examples": {{ ((plugin.examples or []))|tojson }}, "plugin": true}{{ ", " if not loop.last }}
 +    {%- endfor -%}
 +  ],
 +  "engine_tabs": [
 +    {%- for categ in categories_as_tabs + [DEFAULT_CATEGORY] -%}
 +    {
 +      "category": {{ categ|tojson }},
-+      "label": {{ _(categ)|tojson }},
 +      "is_default": {{ 'true' if categ == DEFAULT_CATEGORY else 'false' }},
 +      "groups": [
 +        {%- for group, group_bang, group_engines in engines_by_category[categ] | group_engines_in_tab -%}
 +        {
-+          "group": {{ _(group)|tojson }},
++          "group": {{ group|tojson }},
 +          "group_bang": {{ (group_bang or '')|tojson }},
 +          "engines": [
 +            {%- for engine in group_engines -%}
