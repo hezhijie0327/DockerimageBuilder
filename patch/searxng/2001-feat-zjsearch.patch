@@ -544,10 +544,10 @@ index 0000000..09c2c7f
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 0000000..f9e4be5
+index 0000000..c0655d4
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,99 @@
 +# zjsearch theme dev instance settings (tracked; carries LAN-specific values
 +# such as the outgoing proxy).
 +# Run with:
@@ -612,6 +612,34 @@ index 0000000..f9e4be5
 +  proxies:
 +    all://:
 +      - http://10.192.7.1:7890
++
++# tor_check plugin: check.torproject.org is not reachable from every
++# network, so this one fetch goes through its own proxy (without proxying
++# any engine traffic).  NOTE: a `plugins:` override REPLACES the default
++# set (settings_loader.update_settings), so the previously-default active
++# plugins are mirrored here.
++plugins:
++  searx.plugins.calculator.SXNGPlugin:
++    active: true
++  searx.plugins.hash_plugin.SXNGPlugin:
++    active: true
++  searx.plugins.self_info.SXNGPlugin:
++    active: true
++  searx.plugins.unit_converter.SXNGPlugin:
++    active: true
++  searx.plugins.ahmia_filter.SXNGPlugin:
++    active: true
++  searx.plugins.hostnames.SXNGPlugin:
++    active: true
++  searx.plugins.time_zone.SXNGPlugin:
++    active: true
++  searx.plugins.tracker_url_remover.SXNGPlugin:
++    active: true
++  searx.plugins.tor_check.SXNGPlugin:
++    active: true
++
++tor_check:
++  proxy_url: http://192.168.7.1:7890
 +
 +# movie engines for the !movies poster wall (both disabled upstream)
 +engines:
@@ -4392,10 +4420,10 @@ index 0000000..f92f27c
 +}
 diff --git a/client/zjsearch/src/components/HelpModal.tsx b/client/zjsearch/src/components/HelpModal.tsx
 new file mode 100644
-index 0000000..2cc8b31
+index 0000000..489e42f
 --- /dev/null
 +++ b/client/zjsearch/src/components/HelpModal.tsx
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,143 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Keyboard shortcuts help dialog (opened with "?"). */
@@ -4469,9 +4497,11 @@ index 0000000..2cc8b31
 +    ["random uuid", t("widget_random")],
 +    ["avg 123 548 2.04", t("widget_stats")],
 +    ["1+2", t("widget_calc")],
++    ["5m to cm", t("widget_unit")],
 +    ["time Berlin", t("widget_time")],
 +    ["user-agent", t("widget_ip")],
 +    ["md5 lorem ipsum", t("widget_hash")],
++    ["tor-check", t("widget_tor")],
 +  ];
 +}
 +
@@ -4535,6 +4565,40 @@ index 0000000..2cc8b31
 +        </div>
 +      </div>
 +    </div>
++  );
++}
+diff --git a/client/zjsearch/src/components/OnionIcon.tsx b/client/zjsearch/src/components/OnionIcon.tsx
+new file mode 100644
+index 0000000..e950b62
+--- /dev/null
++++ b/client/zjsearch/src/components/OnionIcon.tsx
+@@ -0,0 +1,28 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import type { SVGProps } from "react";
++
++/** Hand-drawn onion (Tor's mascot) — lucide ships no onion, so this follows
++    the lucide stroke language instead: 24px grid, 2px round strokes,
++    currentColor (same exception as the hand-drawn BrandMark). */
++export function OnionIcon(props: SVGProps<SVGSVGElement>) {
++  return (
++    <svg
++      aria-hidden="true"
++      fill="none"
++      stroke="currentColor"
++      strokeLinecap="round"
++      strokeLinejoin="round"
++      strokeWidth={2}
++      viewBox="0 0 24 24"
++      {...props}
++    >
++      <path d="M12 7c3.6 2.4 5.5 5.1 5.5 8a5.5 5.5 0 0 1-11 0C6.5 12.1 8.4 9.4 12 7Z" />
++      <path d="M12 7V4.5" />
++      <path d="M12 4.5C11.3 2.9 10 2 8.3 2c.2 1.7 1.6 2.8 3.7 3" />
++      <path d="M12 4.5c.7-1.6 2-2.5 3.7-2.5-.2 1.7-1.6 2.8-3.7 3" />
++      <path d="M9.2 13.5c0 2 1.2 3.6 2.8 4.2" />
++      <path d="M14.8 13.5c0 2-1.2 3.6-2.8 4.2" />
++    </svg>
 +  );
 +}
 diff --git a/client/zjsearch/src/components/SearchBox.tsx b/client/zjsearch/src/components/SearchBox.tsx
@@ -8392,23 +8456,29 @@ index 0000000..e8964c2
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Legacy.tsx b/client/zjsearch/src/features/results/answers/Legacy.tsx
 new file mode 100644
-index 0000000..73b7b54
+index 0000000..fa9edd1
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Legacy.tsx
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,162 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
++import { ShieldAlert } from "lucide-react";
 +import { ClickToCopy } from "@/components/CopyButton.tsx";
++import { OnionIcon } from "@/components/OnionIcon.tsx";
++import { UnitConverterAnswer } from "@/features/results/answers/UnitConverter.tsx";
++import { useT } from "@/lib/i18n.ts";
 +import { newTabLinkProps } from "@/lib/link.ts";
 +import { useSettings } from "@/lib/settings.ts";
 +import type { AnswerData } from "@/lib/types.ts";
 +
-+/** Special-query answers (random, statistics, hash, self-info, time zone)
-+    carry a structured *data* payload emitted by their plugins; the layouts
-+    below render strictly from those fields — no parsing of the localized
-+    *answer* text — and unknown payloads fall back to plain text. */
++/** Special-query answers (random, statistics, hash, self-info, time zone,
++    unit conversion, tor check) carry a structured *data* payload emitted by
++    their plugins; the layouts below render strictly from those fields — no
++    parsing of the localized *answer* text — and unknown payloads fall back
++    to plain text. */
 +export function LegacyAnswer({ answer }: { answer: Extract<AnswerData, { template: "answer/legacy.html" }> }) {
 +  const settings = useSettings();
++  const t = useT();
 +  const text = answer.answer;
 +  const data = answer.data;
 +  let hostname = "";
@@ -8418,6 +8488,43 @@ index 0000000..73b7b54
 +    } catch {
 +      hostname = answer.url;
 +    }
++  }
++  if (data?.kind === "unit_conversion") {
++    return <UnitConverterAnswer data={data} />;
++  }
++  if (data?.kind === "tor_check") {
++    if (data.status === "error") {
++      return (
++        <p className="flex items-center gap-2 text-sm text-danger">
++          <ShieldAlert className="size-4 shrink-0" />
++          {t("tor_check_failed")}
++        </p>
++      );
++    }
++    const usingTor = data.status === "using_tor";
++    return (
++      <div>
++        <p className={`flex items-center gap-2 text-sm font-medium ${usingTor ? "text-ok" : "text-ink"}`}>
++          <OnionIcon className="size-4 shrink-0" />
++          {usingTor ? t("tor_using") : t("tor_not_using")}
++        </p>
++        {data.ip ? (
++          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-3">
++            <span>{t("tor_external_ip")}:</span>
++            <ClickToCopy value={data.ip}>
++              <span className="rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
++                {data.ip}
++              </span>
++            </ClickToCopy>
++          </div>
++        ) : null}
++        {data.nodes ? (
++          <p className="mt-1 text-xs text-ink-3">
++            {t("tor_exit_nodes")}: {data.nodes}
++          </p>
++        ) : null}
++      </div>
++    );
 +  }
 +  if (data?.kind === "hash") {
 +    return (
@@ -8723,6 +8830,167 @@ index 0000000..89a328d
 +        </details>
 +      ) : null}
 +      {answer.engine ? <p className="mt-2 text-xs text-ink-3">{answer.engine}</p> : null}
++    </div>
++  );
++}
+diff --git a/client/zjsearch/src/features/results/answers/UnitConverter.tsx b/client/zjsearch/src/features/results/answers/UnitConverter.tsx
+new file mode 100644
+index 0000000..70018e8
+--- /dev/null
++++ b/client/zjsearch/src/features/results/answers/UnitConverter.tsx
+@@ -0,0 +1,155 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/** Interactive unit converter (the "unit_converter" plugin): Kagi-style twin
++    panels — from/to unit dropdowns with live recomputation and a swap
++    button.  The server payload lists the sibling units of the resolved
++    dimension (same SI unit); special (callable) converters — °C / °F / Bft —
++    are implemented here, the server can't ship them as factors. */
++
++import { ArrowLeftRight } from "lucide-react";
++import { useMemo, useState } from "react";
++import { Dropdown, type DropdownOption } from "@/components/Dropdown.tsx";
++import { useT } from "@/lib/i18n.ts";
++import type { LegacyAnswerData, UnitEntry } from "@/lib/types.ts";
++
++type UnitConversionData = Extract<LegacyAnswerData, { kind: "unit_conversion" }>;
++
++/** Beaufort scale in m/s — mirrors searx/wikidata_units.Beaufort. */
++const BFT_SCALE = [0.2, 1.5, 3.3, 5.4, 7.9, 10.7, 13.8, 17.1, 20.7, 24.4, 28.4, 32.6, 32.7, 41.1, 45.8, 50.8, 55.6];
++
++const SPECIAL_UNITS: Record<string, { toSI: (v: number) => number; fromSI: (v: number) => number }> = {
++  "°C": { toSI: (v) => v + 273.15, fromSI: (v) => v - 273.15 },
++  "°F": { toSI: (v) => ((v + 459.67) * 5) / 9, fromSI: (v) => (v * 9) / 5 - 459.67 },
++  Bft: {
++    toSI: (v) => {
++      const idx = Math.round(v);
++      return idx >= 0 && idx <= 16 ? (BFT_SCALE[idx] ?? Number.NaN) : Number.NaN;
++    },
++    fromSI: (v) => {
++      const idx = BFT_SCALE.findIndex((mps) => mps >= v);
++      return idx === -1 ? 16 : idx;
++    },
++  },
++};
++
++function toSI(value: number, unit: UnitEntry): number {
++  if (unit.special) {
++    return SPECIAL_UNITS[unit.symbol]?.toSI(value) ?? Number.NaN;
++  }
++  return value * (unit.to_si ?? 1);
++}
++
++function fromSI(value: number, unit: UnitEntry): number {
++  if (unit.special) {
++    return SPECIAL_UNITS[unit.symbol]?.fromSI(value) ?? Number.NaN;
++  }
++  return value / (unit.to_si ?? 1);
++}
++
++/** Same number language as the server: grouping, up to 10 decimals. */
++function formatValue(value: number, maxFraction = 10): string {
++  if (!Number.isFinite(value)) {
++    return "–";
++  }
++  return new Intl.NumberFormat("en-US", { maximumFractionDigits: maxFraction }).format(value);
++}
++
++function parseValue(raw: string): number | null {
++  const cleaned = raw.replaceAll(",", "").trim();
++  if (!cleaned) {
++    return null;
++  }
++  const value = Number(cleaned);
++  return Number.isFinite(value) ? value : null;
++}
++
++export function UnitConverterAnswer({ data }: { data: UnitConversionData }) {
++  const t = useT();
++  const units = useMemo<UnitEntry[]>(
++    () => [...(data.units ?? [])].sort((a, b) => a.symbol.localeCompare(b.symbol)),
++    [data.units],
++  );
++  const [fromUnit, setFromUnit] = useState(data.from_unit);
++  const [toUnit, setToUnit] = useState(data.to_unit);
++  const [fromInput, setFromInput] = useState(data.from_value);
++
++  const fromEntry = units.find((unit) => unit.symbol === fromUnit);
++  const toEntry = units.find((unit) => unit.symbol === toUnit);
++  const value = parseValue(fromInput);
++  const converted = value !== null && fromEntry && toEntry ? fromSI(toSI(value, fromEntry), toEntry) : null;
++
++  // "1 X = Y Z" only makes sense for linear (factor) dimensions, not for
++  // affine ones like temperature
++  const linear = Boolean(fromEntry && toEntry && !fromEntry.special && !toEntry.special);
++  const rate = linear && fromEntry && toEntry ? formatValue(fromSI(toSI(1, fromEntry), toEntry), 6) : null;
++  const rateInverse = linear && fromEntry && toEntry ? formatValue(fromSI(toSI(1, toEntry), fromEntry), 6) : null;
++
++  const swap = () => {
++    setFromUnit(toUnit);
++    setToUnit(fromUnit);
++    // carry the converted value over, like Kagi's swap
++    if (converted !== null) {
++      setFromInput(formatValue(converted));
++    }
++  };
++
++  const unitOptions: DropdownOption[] = units.map((unit) => ({ value: unit.symbol, label: unit.symbol }));
++
++  return (
++    <div className="animate-fade-up rounded-2xl border border-accent/25 bg-accent-soft/50 px-4 py-4">
++      <div className="grid items-stretch gap-2 md:grid-cols-[1fr_auto_1fr] md:gap-3">
++        <div className="rounded-2xl border border-line bg-surface px-4 py-3">
++          <Dropdown
++            align="start"
++            ariaLabel={t("unit_from")}
++            onChange={setFromUnit}
++            options={unitOptions}
++            value={fromUnit}
++            variant="boxed"
++          />
++          <input
++            aria-label={t("unit_value")}
++            className="mt-2 w-full min-w-0 bg-transparent text-end text-4xl font-semibold tabular-nums text-ink outline-none"
++            dir="ltr"
++            inputMode="decimal"
++            onChange={(event) => {
++              setFromInput(event.target.value);
++            }}
++            spellCheck={false}
++            value={fromInput}
++          />
++          <p className="mt-2 truncate border-t border-line pt-2 text-xs text-ink-3" dir="ltr">
++            {rate !== null ? `1 ${fromUnit} = ${rate} ${toUnit}` : "\u00A0"}
++          </p>
++        </div>
++        <div className="grid place-items-center">
++          <button
++            aria-label={t("unit_swap")}
++            className="grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
++            onClick={swap}
++            title={t("unit_swap")}
++            type="button"
++          >
++            <ArrowLeftRight aria-hidden="true" className="size-4.5 max-md:rotate-90" />
++          </button>
++        </div>
++        <div className="rounded-2xl border border-line bg-surface px-4 py-3">
++          <Dropdown
++            align="start"
++            ariaLabel={t("unit_to")}
++            onChange={setToUnit}
++            options={unitOptions}
++            value={toUnit}
++            variant="boxed"
++          />
++          <p className="mt-2 min-h-10 truncate text-end text-4xl font-semibold tabular-nums text-ink" dir="ltr">
++            {converted === null ? "–" : formatValue(converted)}
++          </p>
++          <p className="mt-2 truncate border-t border-line pt-2 text-xs text-ink-3" dir="ltr">
++            {rateInverse !== null ? `1 ${toUnit} = ${rateInverse} ${fromUnit}` : "\u00A0"}
++          </p>
++        </div>
++      </div>
 +    </div>
 +  );
 +}
@@ -11490,10 +11758,10 @@ index 0000000..f4ab3bf
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..2e66b6f
+index 0000000..5786466
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,258 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -11724,6 +11992,17 @@ index 0000000..2e66b6f
 +  widget_ip: "Show your IP or user agent",
 +  widget_hash: "Hash a string (MD5, SHA-1, SHA-256, …)",
 +  widget_random: "Random UUID, string, int, float or color",
++  widget_unit: "Convert between units",
++  widget_tor: "Check if you are using Tor",
++  tor_using: "You are using Tor",
++  tor_not_using: "You are not using Tor",
++  tor_check_failed: "Tor check failed",
++  tor_external_ip: "External IP",
++  tor_exit_nodes: "Exit nodes checked",
++  unit_swap: "Swap units",
++  unit_from: "From unit",
++  unit_to: "To unit",
++  unit_value: "Value to convert",
 +  // meta-line actions (results) and the info page
 +  copy_link: "Copy link",
 +  copy_search_url: "Copy search URL",
@@ -11743,10 +12022,10 @@ index 0000000..2e66b6f
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..b627fa7
+index 0000000..7a1c44f
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,254 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -11975,6 +12254,17 @@ index 0000000..b627fa7
 +  widget_ip: "显示你的 IP 或 User-Agent",
 +  widget_hash: "计算字符串哈希(MD5、SHA-1、SHA-256…)",
 +  widget_random: "随机 UUID、字符串、整数、浮点数、颜色",
++  widget_unit: "单位之间互相换算",
++  widget_tor: "检测是否正在使用 Tor",
++  tor_using: "你正在使用 Tor",
++  tor_not_using: "你未使用 Tor",
++  tor_check_failed: "Tor 检测失败",
++  tor_external_ip: "外部 IP",
++  tor_exit_nodes: "已核对出口节点",
++  unit_swap: "交换单位",
++  unit_from: "源单位",
++  unit_to: "目标单位",
++  unit_value: "要换算的数值",
 +  // meta-line actions (results) and the info page
 +  copy_link: "复制链接",
 +  copy_search_url: "复制搜索 URL",
@@ -12679,10 +12969,10 @@ index 0000000..5b040d1
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..9506a39
+index 0000000..cb20c2e
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,435 @@
+@@ -0,0 +1,454 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -12871,15 +13161,34 @@ index 0000000..9506a39
 +  synonyms: string[];
 +}
 +
++/** One convertible unit of the unit-converter's dimension (same SI unit).
++    Special (callable) converters — °C / °F / Bft — carry no factor and are
++    implemented client-side. */
++export interface UnitEntry {
++  symbol: string;
++  /** multiplier to the dimension's SI unit */
++  to_si?: number;
++  special?: boolean;
++}
++
 +/** Structured payload of the special-query answers (see
-+    searx/plugins/{hash_plugin,self_info,time_zone}.py and
-+    searx/answerers/{random,statistics}.py). */
++    searx/plugins/{hash_plugin,self_info,time_zone,unit_converter,tor_check}.py
++    and searx/answerers/{random,statistics}.py). */
 +export type LegacyAnswerData =
 +  | { kind: "hash"; algo: string; digest: string }
 +  | { kind: "stats"; func: string; args: string; result: string }
 +  | { kind: "time"; zone?: string; time: string; abbr?: string }
 +  | { kind: "self"; label: string; value: string }
-+  | { kind: "value"; value: string; swatch?: string };
++  | { kind: "value"; value: string; swatch?: string }
++  | {
++      kind: "unit_conversion";
++      from_value: string;
++      from_unit: string;
++      to_value: string;
++      to_unit: string;
++      units: UnitEntry[];
++    }
++  | { kind: "tor_check"; status: "error" | "not_tor" | "using_tor"; ip?: string; nodes?: string };
 +
 +export interface WeatherItem {
 +  summary: string;
@@ -14697,10 +15006,10 @@ index 0000000..241876c
 +}
 diff --git a/client/zjsearch/src/pages/preferences/parts.tsx b/client/zjsearch/src/pages/preferences/parts.tsx
 new file mode 100644
-index 0000000..0d65594
+index 0000000..a9a89eb
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/parts.tsx
-@@ -0,0 +1,249 @@
+@@ -0,0 +1,254 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, ExternalLink, Sparkle } from "lucide-react";
@@ -14824,7 +15133,10 @@ index 0000000..0d65594
 +      aria-checked={checked}
 +      aria-label={label}
 +      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
-+        checked ? "bg-accent-strong" : "bg-surface-2 ring-1 ring-line"
++        // the knob must keep >=3:1 against its track in every palette: light
++        // pairs the amber track with the dark accent-contrast knob, dark and
++        // black invert it — dark amber track with the amber knob on top
++        checked ? "bg-accent-strong dark:bg-accent-soft" : "bg-surface-2 ring-1 ring-line"
 +      }`}
 +      onClick={() => {
 +        onChange(!checked);
@@ -14835,7 +15147,9 @@ index 0000000..0d65594
 +      <span
 +        className={`size-5 rounded-full shadow transition-transform ${
 +          // translate-x is physical: RTL tracks must move the knob the other way
-+          checked ? "translate-x-5 rtl:-translate-x-5 bg-accent-contrast" : "translate-x-0 bg-ink-3"
++          checked
++            ? "translate-x-5 rtl:-translate-x-5 bg-accent-contrast dark:bg-accent-strong"
++            : "translate-x-0 bg-ink-3"
 +        }`}
 +      />
 +    </button>
@@ -16654,18 +16968,238 @@ index 9239a3f..46abb26 100644
                  )
              )
  
+diff --git a/searx/plugins/tor_check.py b/searx/plugins/tor_check.py
+index 4077ddf..909441e 100644
+--- a/searx/plugins/tor_check.py
++++ b/searx/plugins/tor_check.py
+@@ -3,16 +3,26 @@
+ user searches for ``tor-check``.  It fetches the tor exit node list from
+ :py:obj:`url_exit_list` and parses all the IPs into a list, then checks if the
+ user's IP address is in it.
++
++check.torproject.org is not reachable from every network.  To route only this
++fetch through a proxy (without proxying all engine traffic), set in settings.yml::
++
++    tor_check:
++      proxy_url: http://proxy:7890
+ """
+ 
+ from ipaddress import ip_address
+ import typing
+ 
++import asyncio
++import concurrent.futures
+ import re
+ from flask_babel import gettext
+ from curl_cffi.requests.exceptions import RequestException
+ 
+-from searx.network import get
++from searx import settings
++from searx.network.client import get_loop
++from searx.network.network import Network
+ from searx.plugins import Plugin, PluginInfo
+ from searx.result_types import EngineResults
+ 
+@@ -28,6 +38,30 @@ reg = re.compile(r"(?<=ExitAddress )\S+")
+ url_exit_list = "https://check.torproject.org/exit-addresses"
+ """URL to load Tor exit list from."""
+ 
++_network: Network | None = None
++
++
++def _exit_list_network() -> Network:
++    """Dedicated network for the exit-list fetch; built once, on first use."""
++    global _network  # pylint: disable=global-statement
++    if _network is None:
++        proxy_url = (settings.get("tor_check", {}) or {}).get("proxy_url")
++        _network = Network(proxies=proxy_url) if proxy_url else Network()
++    return _network
++
++
++def _get_exit_list() -> str:
++    """Fetch the Tor exit list through the plugin's own network (mirrors the
++    coroutine plumbing of :py:obj:`searx.network.request`)."""
++    future = asyncio.run_coroutine_threadsafe(
++        _exit_list_network().request("GET", url_exit_list, allow_redirects=True),
++        get_loop(),
++    )
++    try:
++        return future.result(timeout=10).text
++    except concurrent.futures.TimeoutError as exc:
++        raise RequestException("timeout fetching the Tor exit list") from exc
++
+ 
+ class SXNGPlugin(Plugin):
+     """Rewrite hostnames, remove results or prioritize them."""
+@@ -57,23 +91,38 @@ class SXNGPlugin(Plugin):
+ 
+             # Request the list of tor exit nodes.
+             try:
+-                resp = get(url_exit_list)
+-                node_list = re.findall(reg, resp.text)  # type: ignore
++                node_list = re.findall(reg, _get_exit_list())
+ 
+             except RequestException:
+                 # No answer, return error
+                 msg = gettext("Could not download the list of Tor exit-nodes from")
+-                results.add(results.types.Answer(answer=f"{msg} {url_exit_list}"))
++                results.add(
++                    results.types.Answer(
++                        answer=f"{msg} {url_exit_list}",
++                        data={"kind": "tor_check", "status": "error"},
++                    )
++                )
+                 return results
+ 
+             real_ip = ip_address(address=str(request.remote_addr)).compressed
+ 
+             if real_ip in node_list:
+                 msg = gettext("You are using Tor and it looks like you have the external IP address")
+-                results.add(results.types.Answer(answer=f"{msg} {real_ip}"))
+-
++                status = "using_tor"
+             else:
+                 msg = gettext("You are not using Tor and you have the external IP address")
+-                results.add(results.types.Answer(answer=f"{msg} {real_ip}"))
++                status = "not_tor"
++
++            results.add(
++                results.types.Answer(
++                    answer=f"{msg} {real_ip}",
++                    data={
++                        "kind": "tor_check",
++                        "status": status,
++                        "ip": str(real_ip),
++                        "nodes": str(len(node_list)),
++                    },
++                )
++            )
+ 
+         return results
+diff --git a/searx/plugins/unit_converter.py b/searx/plugins/unit_converter.py
+index 3a91a8e..da47e8c 100644
+--- a/searx/plugins/unit_converter.py
++++ b/searx/plugins/unit_converter.py
+@@ -62,9 +62,10 @@ class SXNGPlugin(Plugin):
+             for keyword in CONVERT_KEYWORDS:
+                 if query_part == keyword:
+                     from_query, to_query = query.split(keyword, 1)
+-                    target_val = _parse_text_and_convert(from_query.strip(), to_query.strip())
+-                    if target_val:
+-                        results.add(results.types.Answer(answer=target_val))
++                    converted = _parse_text_and_convert(from_query.strip(), to_query.strip())
++                    if converted:
++                        answer, data = converted
++                        results.add(results.types.Answer(answer=answer, data=data))
+ 
+         return results
+ 
+@@ -80,7 +81,7 @@ RE_MEASURE = r'''
+ '''
+ 
+ 
+-def _parse_text_and_convert(from_query, to_query) -> str | None:
++def _parse_text_and_convert(from_query, to_query) -> tuple[str, dict] | None:
+ 
+     # pylint: disable=too-many-branches, too-many-locals
+ 
+@@ -102,14 +103,14 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
+     for symbol, si_name, from_si, to_si, orig_symbol in symbol_to_si():
+ 
+         if symbol == measured.group('unit'):
+-            source_list.append((si_name, to_si))
++            source_list.append((si_name, to_si, orig_symbol))
+         if symbol == to_query:
+             target_list.append((si_name, from_si, orig_symbol))
+ 
+     if not (source_list and target_list):
+         return None
+ 
+-    source_to_si = target_from_si = target_symbol = None
++    source_to_si = target_from_si = target_symbol = source_symbol = si_name = None
+ 
+     # second: find the right unit by comparing list of from-units with list of to-units
+ 
+@@ -119,6 +120,8 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
+                 source_to_si = source[1]
+                 target_from_si = target[1]
+                 target_symbol = target[2]
++                source_symbol = source[2]
++                si_name = source[0]
+ 
+     if not (source_to_si and target_from_si):
+         return None
+@@ -127,13 +130,14 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
+ 
+     value = measured.group('sign') + measured.group('number') + (measured.group('E') or '')
+     value = babel.numbers.parse_decimal(value, locale=_locale)
++    value_in = float(value)
+ 
+     # convert value to SI unit
+ 
+     if isinstance(source_to_si, (float, int)):
+-        value = float(value) * source_to_si
++        value = value_in * source_to_si
+     else:
+-        value = source_to_si(float(value))
++        value = source_to_si(value_in)
+ 
+     # convert value from SI unit to target unit
+ 
+@@ -148,4 +152,30 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
+     else:
+         result = babel.numbers.format_decimal(value, locale=_locale, format='#,##0.##########;-#')
+ 
+-    return f'{result} {target_symbol}'
++    from_value = babel.numbers.format_decimal(value_in, locale=_locale, format='#,##0.##########;-#')
++
++    # Sibling units of the resolved dimension (same SI unit) for the theme's
++    # interactive converter.  Special (callable) converters can't be shipped
++    # as factors -- the theme implements °C / °F / Bft natively.
++
++    units: list[dict] = []
++    seen: set[str] = set()
++    for sym, unit_si_name, _from_si, to_si_f, orig in symbol_to_si():
++        if unit_si_name != si_name or sym != orig or sym in seen:
++            continue
++        seen.add(sym)
++        if isinstance(to_si_f, (float, int)):
++            units.append({"symbol": sym, "to_si": float(to_si_f)})
++        else:
++            units.append({"symbol": sym, "special": True})
++
++    data = {
++        "kind": "unit_conversion",
++        "from_value": from_value,
++        "from_unit": source_symbol,
++        "to_value": result,
++        "to_unit": target_symbol,
++        "units": units,
++    }
++
++    return f'{result} {target_symbol}', data
 diff --git a/searx/result_types/answer.py b/searx/result_types/answer.py
-index eba07bb..4341387 100644
+index eba07bb..b1c184e 100644
 --- a/searx/result_types/answer.py
 +++ b/searx/result_types/answer.py
-@@ -86,6 +86,11 @@ class Answer(BaseAnswer, kw_only=True):
+@@ -34,6 +34,7 @@ __all__ = ["AnswerSet", "Answer", "Translations", "WeatherAnswer"]
+ 
+ from flask_babel import gettext
+ import msgspec
++import typing
+ 
+ from searx import weather
+ from ._base import Result
+@@ -86,6 +87,13 @@ class Answer(BaseAnswer, kw_only=True):
      answer: str
      """Text of the answer."""
  
-+    data: dict[str, str] | None = None
++    data: dict[str, typing.Any] | None = None
 +    """Optional structured payload for theme renderers, e.g. ``{"kind":
 +    "hash", "algo": "sha512", "digest": "..."}``.  Themes without support for
-+    these fields just render the *answer* text."""
++    these fields just render the *answer* text.  Beside string values the
++    payload may carry nested structures (e.g. the unit converter's list of
++    sibling units)."""
 +
      def __hash__(self):
          """The hash value of field *answer* is the hash value of the
