@@ -17584,55 +17584,20 @@ index 0000000..3cb9852
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
-index 0000000..9ce71b9
+index 0000000..fb88d10
 --- /dev/null
 +++ b/client/zjsearch/tools/assets.ts
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,43 @@
 +// SPDX-License-Identifier: AGPL-3.0-or-later
 +
 +/**
 + * Build-time brand assets: copy theme SVGs and rasterize the PWA/favicon PNGs
 + * into the served static folder (searx/static/themes/zjsearch/img/).
-+ *
-+ * Also emits pre-compressed .gz/.br siblings for every compressible text
-+ * asset: WhiteNoise serves them automatically when the client accepts the
-+ * encoding, so the 410 kB bundle ships as ~120 kB gzip / ~100 kB brotli.
 + */
 +
 +import fs from "node:fs/promises";
 +import path from "node:path";
-+import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 +import sharp from "sharp";
-+
-+const COMPRESSIBLE = new Set([".js", ".css", ".html", ".svg", ".json", ".xml", ".txt"]);
-+const MIN_COMPRESS_SIZE = 1024;
-+
-+async function writeCompressedVariants(dir: string): Promise<[number, number]> {
-+  let gzCount = 0;
-+  let brCount = 0;
-+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-+    const p = path.join(dir, entry.name);
-+    if (entry.isDirectory()) {
-+      const [gz, br] = await writeCompressedVariants(p);
-+      gzCount += gz;
-+      brCount += br;
-+      continue;
-+    }
-+    const ext = path.extname(entry.name).toLowerCase();
-+    if (!COMPRESSIBLE.has(ext) || entry.name.endsWith(".gz") || entry.name.endsWith(".br")) {
-+      continue;
-+    }
-+    const buf = await fs.readFile(p);
-+    if (buf.byteLength < MIN_COMPRESS_SIZE) {
-+      continue;
-+    }
-+    await fs.writeFile(`${p}.gz`, gzipSync(buf, { level: 9 }));
-+    await fs.writeFile(`${p}.br`, brotliCompressSync(buf, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }));
-+    gzCount++;
-+    brCount++;
-+  }
-+  return [gzCount, brCount];
-+}
 +
 +export function plgAssets(PATH: { brand: string; dist: string; root: string }): import("vite").Plugin {
 +  return {
@@ -17663,9 +17628,6 @@ index 0000000..9ce71b9
 +      for (const [file, size] of sizes) {
 +        await sharp(src, { density: 300 }).resize(size, size).png().toFile(path.join(imgDir, file));
 +      }
-+
-+      const [gz, br] = await writeCompressedVariants(PATH.dist);
-+      console.log(`  ${gz} .gz / ${br} .br pre-compressed variants written`);
 +    },
 +  };
 +}
