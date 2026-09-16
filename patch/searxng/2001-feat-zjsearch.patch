@@ -13294,10 +13294,10 @@ index 0000000..b8935db
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..bf75b52
+index 0000000..19d25a2
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,456 @@
+@@ -0,0 +1,487 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -13322,7 +13322,7 @@ index 0000000..bf75b52
 +}
 +
 +export interface GlobalData {
-+  page: "index" | "results" | "preferences" | "stats" | "info" | "404";
++  page: "index" | "results" | "preferences" | "stats" | "info" | "404" | "redirect" | "error";
 +  instance_name: string;
 +  version: string;
 +  git_url: string;
@@ -13737,10 +13737,41 @@ index 0000000..bf75b52
 +  globals: GlobalData;
 +}
 +
-+export type AnyPageData = SearchPageData | PreferencesPageData | StatsPageData | InfoPageData | BasicPageData;
++/** Boot payload of the streamed search page when the search turned out to be
++    a redirect (external bang `!!w`, instant-redirect preference): main.tsx
++    navigates to `url` instead of rendering the app. */
++export interface RedirectPageData {
++  globals: GlobalData;
++  url: string;
++}
++
++/** Boot payload of the streamed search page when the engines run failed
++    (the HTTP status is already out by then): main.tsx renders a minimal
++    error screen with `message` (server-localized). */
++export interface ErrorPageData {
++  globals: GlobalData;
++  message: string;
++}
++
++export type AnyPageData =
++  | SearchPageData
++  | PreferencesPageData
++  | StatsPageData
++  | InfoPageData
++  | RedirectPageData
++  | ErrorPageData
++  | BasicPageData;
 +
 +export function isSearchPageData(data: AnyPageData): data is SearchPageData {
 +  return data.globals.page === "results";
++}
++
++export function isRedirectPageData(data: AnyPageData): data is RedirectPageData {
++  return data.globals.page === "redirect";
++}
++
++export function isErrorPageData(data: AnyPageData): data is ErrorPageData {
++  return data.globals.page === "error";
 +}
 +
 +export function isPreferencesPageData(data: AnyPageData): data is PreferencesPageData {
@@ -13756,17 +13787,17 @@ index 0000000..bf75b52
 +}
 diff --git a/client/zjsearch/src/main.tsx b/client/zjsearch/src/main.tsx
 new file mode 100644
-index 0000000..58d1198
+index 0000000..03a768d
 --- /dev/null
 +++ b/client/zjsearch/src/main.tsx
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,66 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { createRoot } from "react-dom/client";
 +import { App } from "@/app.tsx";
 +import { extractPageData, parseClientSettings, parseEmbeddedPageData } from "@/lib/pageData.ts";
 +import { watchSystemTheme } from "@/lib/theme.ts";
-+import type { AnyPageData } from "@/lib/types.ts";
++import { type AnyPageData, isErrorPageData, isRedirectPageData } from "@/lib/types.ts";
 +import "./styles/global.css";
 +
 +/**
@@ -13789,6 +13820,21 @@ index 0000000..58d1198
 +  return null;
 +}
 +
++/** Minimal error screen for the streamed search page: the HTTP status was
++    already out when the engines failed, so the failure arrives as a boot
++    payload (never rendered inside the router). */
++function renderBootError(container: HTMLElement, message: string, instanceName: string): void {
++  const box = document.createElement("div");
++  box.className = "zjs-boot-error";
++  const p = document.createElement("p");
++  p.textContent = message;
++  const a = document.createElement("a");
++  a.href = "/";
++  a.textContent = instanceName;
++  box.append(p, a);
++  container.append(box);
++}
++
 +async function bootstrap(): Promise<void> {
 +  const container = document.getElementById("app");
 +  if (!container) {
@@ -13796,6 +13842,16 @@ index 0000000..58d1198
 +  }
 +  watchSystemTheme();
 +  const initialData = await bootData();
++  // boot payloads of the streamed search page: handled before the app takes
++  // over (the static boot skeleton is still on screen until this point)
++  if (initialData && isRedirectPageData(initialData)) {
++    window.location.replace(initialData.url);
++    return;
++  }
++  if (initialData && isErrorPageData(initialData)) {
++    renderBootError(container, initialData.message, initialData.globals.instance_name);
++    return;
++  }
 +  const settings = parseClientSettings();
 +  createRoot(container).render(<App initialData={initialData} settings={settings} />);
 +}
@@ -16643,10 +16699,10 @@ index 0000000..b717522
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..35f8221
+index 0000000..8389fa7
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,631 @@
+@@ -0,0 +1,763 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -17080,6 +17136,138 @@ index 0000000..35f8221
 +    inset: 0;
 +    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--surface) 65%, transparent), transparent);
 +    animation: var(--animate-shimmer);
++  }
++
++  /* boot skeleton: streamed by the server before the search finishes
++     (results page shell), wiped by React on boot.  Layout mirrors the
++     results header + text-card skeleton; hidden for no-JS via the inline
++     <noscript><style> in the skeleton markup. */
++  .zjs-boot {
++    max-width: var(--results-max, 90rem);
++    margin-inline: auto;
++    padding: 0.75rem 1rem 2rem;
++  }
++  .zjs-boot-top {
++    display: flex;
++    align-items: center;
++    gap: 1rem;
++  }
++  .zjs-boot-brand {
++    display: none;
++    flex: none;
++    font-size: 1.25rem;
++    font-weight: 800;
++    letter-spacing: -0.025em;
++    color: var(--ink);
++    white-space: nowrap;
++  }
++  .zjs-boot-brand span {
++    color: var(--accent);
++  }
++  .zjs-boot-q {
++    flex: 1 1 auto;
++    min-width: 0;
++    max-width: 42rem;
++    padding: 0.5rem 1rem;
++    border: 1px solid var(--line);
++    border-radius: 9999px;
++    background: var(--surface);
++    color: var(--ink-2);
++    font-size: 1rem;
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++  }
++  .zjs-boot-btn {
++    flex: none;
++    width: 2.25rem;
++    height: 2.25rem;
++    margin-inline-start: auto;
++    border-radius: 9999px;
++  }
++  .zjs-boot-body {
++    display: flex;
++    gap: 2rem;
++    margin-top: 1.5rem;
++  }
++  .zjs-boot-main {
++    flex: 1 1 0;
++    min-width: 0;
++  }
++  .zjs-boot-card {
++    border-radius: 1rem;
++    padding: 1rem;
++  }
++  .zjs-boot-side {
++    display: none;
++  }
++  .zjs-boot-w40 {
++    height: 12px;
++    width: 160px;
++  }
++  .zjs-boot-title {
++    height: 20px;
++    width: 75%;
++    margin-top: 12px;
++  }
++  .zjs-boot-line {
++    height: 12px;
++    width: 100%;
++    margin-top: 12px;
++  }
++  .zjs-boot-line2 {
++    height: 12px;
++    width: 83%;
++    margin-top: 8px;
++  }
++  .zjs-boot-meta {
++    height: 12px;
++    width: 96px;
++    margin-top: 16px;
++  }
++  .zjs-boot-pill {
++    height: 14px;
++    width: 112px;
++    margin-top: 8px;
++    border-radius: 9999px;
++  }
++  .zjs-boot-side-card {
++    height: 320px;
++    width: 100%;
++    border-radius: 1rem;
++  }
++  @media (min-width: 30rem) {
++    .zjs-boot-brand {
++      display: block;
++    }
++  }
++  @media (min-width: 64rem) {
++    .zjs-boot-side {
++      display: block;
++      flex: 0 0 20rem;
++    }
++  }
++
++  /* boot error: replacement screen when the streamed search reports a
++     failure as a boot payload (the app never renders for it) */
++  .zjs-boot-error {
++    display: flex;
++    min-height: 60dvh;
++    flex-direction: column;
++    align-items: center;
++    justify-content: center;
++    gap: 0.75rem;
++    text-align: center;
++  }
++  .zjs-boot-error p {
++    font-size: 0.875rem;
++    color: var(--ink-2);
++  }
++  .zjs-boot-error a {
++    font-size: 0.875rem;
++    color: var(--accent);
++    text-decoration: underline;
++    text-underline-offset: 2px;
 +  }
 +
 +  /* server-rendered info/about pages (markdown-generated HTML) */
@@ -18839,7 +19027,7 @@ index 0000000..902020e
 +{% block noscript %}{{ ns_404() }}{% endblock %}
 diff --git a/searx/templates/zjsearch/base.html b/searx/templates/zjsearch/base.html
 new file mode 100644
-index 0000000..e7250d6
+index 0000000..5a4b980
 --- /dev/null
 +++ b/searx/templates/zjsearch/base.html
 @@ -0,0 +1,61 @@
@@ -18890,7 +19078,7 @@ index 0000000..e7250d6
 +  {% block head %}{% endblock %}
 +</head>
 +<body>
-+  <div id="app"></div>
++  <div id="app">{% block app_skeleton %}{% endblock %}</div>
 +  <noscript>
 +    {% block noscript %}
 +    <div class="zjs-noscript">
@@ -18906,10 +19094,10 @@ index 0000000..e7250d6
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..02bbfc7
+index 0000000..62be4b5
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,554 @@
+@@ -0,0 +1,565 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -19231,6 +19419,17 @@ index 0000000..02bbfc7
 +
 +{% macro page_404() -%}
 +{"globals": {{ globals('404') }}}
++{%- endmacro %}
++
++{# boot payloads of the streamed search page: the HTTP status is already out
++   when the search finishes, so redirects and failures close the stream with
++   these payloads instead (the client boots into them, see main.tsx) #}
++{% macro page_redirect(url) -%}
++{"globals": {{ globals('redirect') }}, "url": {{ url|tojson }}}
++{%- endmacro %}
++
++{% macro page_error(message) -%}
++{"globals": {{ globals('error') }}, "message": {{ (message or '')|tojson }}}
 +{%- endmacro %}
 +
 +{% macro page_index(selected_categories) -%}
@@ -19728,26 +19927,49 @@ index 0000000..f900ce7
 +{%- endblock %}
 diff --git a/searx/templates/zjsearch/results.html b/searx/templates/zjsearch/results.html
 new file mode 100644
-index 0000000..5da9b73
+index 0000000..c9f3db9
 --- /dev/null
 +++ b/searx/templates/zjsearch/results.html
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,40 @@
++{#- zjsearch: search results page, always rendered as a streaming response
++    (zjsearch_search_stream): everything up to the boot skeleton flushes
++    immediately, the `streamed` runner runs the engines when the template
++    first reads a result property (noscript block / page-data). -#}
 +{% extends "zjsearch/base.html" %}
-+{% from "zjsearch/data/macros.html" import page_results with context %}
++{% from "zjsearch/data/macros.html" import page_results, page_redirect, page_error with context %}
 +{% from "zjsearch/noscript.html" import ns_results with context %}
 +{% block title %}{% if query_in_title %}{{- q|e }} - {% endif %}{% endblock %}
-+{% block noscript %}{{ ns_results(results, q, pageno, paging, answers, corrections, suggestions) }}{% endblock %}
++{% block app_skeleton %}{% include "zjsearch/skeleton.html" %}{% endblock %}
 +{% block head %}<link rel="alternate" type="application/rss+xml" title="{{ instance_name }} search: {{ q|e }}" href="{{ url_for('search', _external=True) }}?q={{ q|urlencode }}&amp;categories={{ selected_categories|join(",") | replace(' ','+') }}&amp;pageno={{ pageno }}&amp;time_range={{ time_range }}&amp;language={{ current_language }}&amp;safesearch={{ safesearch }}&amp;format=rss">{% endblock %}
++{% block noscript %}
++{%- if streamed.error_message -%}
++<div class="zjs-noscript">
++  <h1>{{ instance_name }}</h1>
++  <p>{{ streamed.error_message }}</p>
++  <p><a href="{{ url_for('index') }}">Back to search</a></p>
++</div>
++{%- elif streamed.redirect_url -%}
++<meta http-equiv="refresh" content="0;url={{ streamed.redirect_url }}">
++{%- else -%}
++{{ ns_results(streamed.results, q, pageno, streamed.paging, streamed.answers, streamed.corrections, streamed.suggestions) }}
++{%- endif -%}
++{% endblock %}
 +{% block page_data -%}
-+{%- if results and results|map(attribute='template')|unique|list|count == 1 -%}
-+  {%- set only_template = results[0]['template']|default('default.html')|replace('.html', '') -%}
++{%- if streamed.error_message -%}
++{{- page_error(streamed.error_message) -}}
++{%- elif streamed.redirect_url -%}
++{{- page_redirect(streamed.redirect_url) -}}
++{%- else -%}
++{%- if streamed.results and streamed.results|map(attribute='template')|unique|list|count == 1 -%}
++  {%- set only_template = streamed.results[0]['template']|default('default.html')|replace('.html', '') -%}
 +{%- else -%}
 +  {%- set only_template = '' -%}
 +{%- endif -%}
-+{{- page_results(results, q, selected_categories, pageno, time_range, suggestions,
-+                 corrections, answers, infoboxes, engine_data, paging,
-+                 unresponsive_engines, timings, max_response_time,
-+                 timeout_limit, current_language, search_language, only_template) -}}
++{{- page_results(streamed.results, q, selected_categories, pageno, time_range, streamed.suggestions,
++                 streamed.corrections, streamed.answers, streamed.infoboxes, streamed.engine_data, streamed.paging,
++                 streamed.unresponsive_engines, streamed.timings, streamed.max_response_time,
++                 timeout_limit, current_language, streamed.search_language, only_template) -}}
++{%- endif -%}
 +{%- endblock %}
 diff --git a/searx/templates/zjsearch/rss.xsl b/searx/templates/zjsearch/rss.xsl
 new file mode 100644
@@ -19887,6 +20109,45 @@ index 0000000..fcd302b
 +    </html>
 +  </xsl:template>
 +</xsl:stylesheet>
+diff --git a/searx/templates/zjsearch/skeleton.html b/searx/templates/zjsearch/skeleton.html
+new file mode 100644
+index 0000000..00245f5
+--- /dev/null
++++ b/searx/templates/zjsearch/skeleton.html
+@@ -0,0 +1,33 @@
++{#- zjsearch: static boot skeleton, streamed by the server before the search
++    finishes (see zjsearch_search_stream).  It is wiped when React boots with
++    the page payload and hidden entirely when JavaScript is disabled (the
++    noscript results replace it).  The `<!--zjs-shell-->` marker marks the end
++    of the early shell chunk -- do not remove it. -#}
++<div aria-busy="true" class="zjs-boot">
++  <div class="zjs-boot-top">
++    <div class="zjs-boot-brand">{{ instance_name }}<span>.</span></div>
++    <div class="zjs-boot-q">{{ q|e }}</div>
++    <div class="zjs-skeleton zjs-boot-btn"></div>
++  </div>
++  <div class="zjs-boot-body">
++    <div class="zjs-boot-main">
++      {%- for _ in range(5) -%}
++      <div class="zjs-boot-card">
++        <div class="zjs-skeleton zjs-boot-w40"></div>
++        <div class="zjs-skeleton zjs-boot-title"></div>
++        <div class="zjs-skeleton zjs-boot-line"></div>
++        <div class="zjs-skeleton zjs-boot-line2"></div>
++        <div class="zjs-skeleton zjs-boot-meta"></div>
++        <div class="zjs-skeleton zjs-boot-pill"></div>
++      </div>
++      {%- endfor -%}
++    </div>
++    <div class="zjs-boot-side">
++      <div class="zjs-skeleton zjs-boot-side-card"></div>
++    </div>
++  </div>
++  <noscript>
++    <style>.zjs-boot { display: none !important; }</style>
++  </noscript>
++</div>
++<!--zjs-shell-->
 diff --git a/searx/templates/zjsearch/stats.html b/searx/templates/zjsearch/stats.html
 new file mode 100644
 index 0000000..97e507b
@@ -19899,3 +20160,387 @@ index 0000000..97e507b
 +{% block title %}Engine stats - {% endblock %}
 +{% block page_data %}{{ page_stats(sort_order, selected_engine_name, engine_stats, engine_reliabilities) }}{% endblock %}
 +{% block noscript %}{{ ns_stats(engine_stats, engine_reliabilities) }}{% endblock %}
+diff --git a/searx/webapp.py b/searx/webapp.py
+index da87340..4de1df3 100755
+--- a/searx/webapp.py
++++ b/searx/webapp.py
+@@ -1404,5 +1404,13 @@ application = app
+ 
+ init()
+ 
++# zjsearch theme: stream search HTML responses (app shell first, the engines
++# run while the browser shows the boot skeleton).  Everything lives in
++# searx/zjsearch_stream.py -- this file only registers the hook, so upstream
++# changes here cannot conflict with the fork.
++import searx.zjsearch_stream  # pylint: disable=cyclic-import,wrong-import-position
++
++searx.zjsearch_stream.install(app)
++
+ if __name__ == "__main__":
+     run()
+diff --git a/searx/zjsearch_stream.py b/searx/zjsearch_stream.py
+new file mode 100644
+index 0000000..a9c3f2b
+--- /dev/null
++++ b/searx/zjsearch_stream.py
+@@ -0,0 +1,360 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""zjsearch theme: streaming search responses.
++
++A full page load of ``/search`` used to stay blank until every engine had
++answered: the upstream ``search()`` view renders the whole results page only
++after the search completed.  This module registers a ``before_request`` hook
++(Flask short-circuits the view when a before_request handler returns a
++response) that answers zjsearch HTML searches with a streaming response
++instead: the application shell (head + static boot skeleton) is flushed right
++away, the engines run while the browser already shows the loading state, then
++the page-data payload and the no-JS fallback close the document.
++
++Everything lives in this module on purpose: ``searx/webapp.py`` only appends
++the ``install(app)`` call at its end, so upstream changes to ``search()`` /
++``render()`` cannot conflict with this fork.  The one price is a mirror of
++the context building part of ``webapp.render`` (:py:func:`_render_context`)
++-- re-sync it when upstream changes ``render``.
++"""
++
++import base64
++import json
++
++import flask
++from flask_babel import gettext
++from markupsafe import escape
++
++from searx import logger, settings
++from searx.extended_types import sxng_request
++from searx.locales import RTL_LOCALES, match_locale
++from searx.webadapter import get_search_query_from_webapp
++from searx.webutils import get_translated_errors, highlight_content
++
++logger = logger.getChild('zjsearch_stream')
++
++THEME = 'zjsearch'
++
++# the template streams the shell first and only blocks on the streamed search
++# inside the <noscript>/page-data blocks; the shell is coalesced into one
++# chunk (up to the marker comment) so the browser paints the skeleton from a
++# single write
++SHELL_END = '<!--zjs-shell-->'
++
++
++class ZjsearchStreamedSearch:
++    """Lazy zjsearch HTML search.
++
++    The streaming response flushes the app shell before the engines run; the
++    results template touches the properties below only in its second half,
++    which triggers :py:meth:`_run` exactly once -- the engines run while the
++    browser already shows the boot skeleton.  A failure or a redirect is
++    reported as a page payload instead of a HTTP error response, because the
++    HTTP status (and the shell) is already out by then.  The result
++    post-processing mirrors the HTML branch of the upstream ``search()`` view.
++    """
++
++    def __init__(self, search_query, raw_text_query, selected_locale):
++        self.search_query = search_query
++        self.raw_text_query = raw_text_query
++        self.selected_locale = selected_locale
++        self._error_message = None
++        self._redirect_url = None
++        self._data = None
++
++    def _run(self):
++        if self._data is not None:
++            return
++        data = {}
++        try:
++            import searx.search  # pylint: disable=import-outside-toplevel
++
++            search_obj = searx.search.SearchWithPlugins(self.search_query, sxng_request, sxng_request.user_plugins)
++            result_container = search_obj.search()
++
++            # 1. check if the result is a redirect for an external bang
++            if result_container.redirect_url:
++                self._redirect_url = result_container.redirect_url
++                return
++
++            results = result_container.get_ordered_results()
++
++            if self.search_query.redirect_to_first_result and results:
++                self._redirect_url = results[0]['url']
++                return
++
++            # the same result post-processing as the HTML branch of search()
++            current_template = None
++            previous_result = None
++            for result in results:
++                if 'content' in result and result['content']:
++                    result['content'] = highlight_content(escape(result['content'][:1024]), self.search_query.query)
++                if 'title' in result and result['title']:
++                    result['title'] = highlight_content(escape(result['title'] or ''), self.search_query.query)
++                if current_template != result.template:
++                    result.open_group = True
++                    if previous_result:
++                        previous_result.close_group = True  # pylint: disable=unsupported-assignment-operation
++                current_template = result.template
++                previous_result = result
++            if previous_result:
++                previous_result.close_group = True
++
++            # suggestions: use RawTextQuery to get the suggestion URLs with the same bang
++            suggestion_urls = list(
++                map(
++                    lambda suggestion: {
++                        'url': self.raw_text_query.changeQuery(suggestion).getFullQuery(),
++                        'title': suggestion,
++                    },
++                    result_container.suggestions,
++                )
++            )
++
++            correction_urls = list(
++                map(
++                    lambda correction: {
++                        'url': self.raw_text_query.changeQuery(correction).getFullQuery(),
++                        'title': correction,
++                    },
++                    result_container.corrections,
++                )
++            )
++
++            # engine_timings: get engine response times sorted from slowest to fastest
++            engine_timings = sorted(result_container.get_timings(), reverse=True, key=lambda e: e.total)
++
++            data = {
++                'results': results,
++                'suggestions': suggestion_urls,
++                'corrections': correction_urls,
++                'answers': result_container.answers,
++                'infoboxes': result_container.infoboxes,
++                'engine_data': result_container.engine_data,
++                'paging': result_container.paging,
++                'unresponsive_engines': get_translated_errors(result_container.unresponsive_engines),
++                'timings': [(timing.engine, timing.total) for timing in engine_timings],
++                'max_response_time': engine_timings[0].total if engine_timings else None,
++                'search_language': match_locale(
++                    search_obj.search_query.lang,
++                    settings['search']['languages'],
++                    fallback=sxng_request.preferences.get_value("language"),
++                ),
++            }
++        except Exception:  # pylint: disable=broad-except
++            logger.exception('search error')
++            self._error_message = gettext('search error')
++        finally:
++            self._data = data
++
++    # error_message / redirect_url are properties too: the template reads
++    # them in its first branch, that access must trigger the search
++
++    @property
++    def error_message(self):
++        self._run()
++        return self._error_message
++
++    @property
++    def redirect_url(self):
++        self._run()
++        return self._redirect_url
++
++    # every property the template reads in its second half; the getters are
++    # only reached when the search did not fail and did not redirect
++
++    @property
++    def results(self):
++        self._run()
++        return self._data.get('results', [])
++
++    @property
++    def suggestions(self):
++        self._run()
++        return self._data.get('suggestions', [])
++
++    @property
++    def corrections(self):
++        self._run()
++        return self._data.get('corrections', [])
++
++    @property
++    def answers(self):
++        self._run()
++        return self._data.get('answers', [])
++
++    @property
++    def infoboxes(self):
++        self._run()
++        return self._data.get('infoboxes', [])
++
++    @property
++    def engine_data(self):
++        self._run()
++        return self._data.get('engine_data', [])
++
++    @property
++    def paging(self):
++        self._run()
++        return self._data.get('paging', False)
++
++    @property
++    def unresponsive_engines(self):
++        self._run()
++        return self._data.get('unresponsive_engines', [])
++
++    @property
++    def timings(self):
++        self._run()
++        return self._data.get('timings', [])
++
++    @property
++    def max_response_time(self):
++        self._run()
++        return self._data.get('max_response_time')
++
++    @property
++    def search_language(self):
++        self._run()
++        return self._data.get('search_language')
++
++
++def _render_context(webapp, template_name: str, **kwargs):
++    # mirror of searx.webapp.render() without the final render_template()
++    # call -- helpers are read from the webapp module so this stays in sync
++    # by construction; re-check against webapp.render when upstream changes it
++    client_settings = webapp.get_client_settings()
++    kwargs['client_settings'] = base64.b64encode(json.dumps(client_settings).encode('utf-8')).decode('utf-8')
++    kwargs['preferences'] = sxng_request.preferences
++    kwargs.update(client_settings)
++
++    # values from the HTTP requests
++    kwargs['endpoint'] = 'results' if 'q' in kwargs else sxng_request.endpoint
++    kwargs['cookies'] = sxng_request.cookies
++    kwargs['errors'] = sxng_request.errors
++    kwargs['link_token'] = webapp.link_token.get_token()
++
++    kwargs['categories_as_tabs'] = list(settings['categories_as_tabs'].keys())
++    kwargs['categories'] = webapp.get_enabled_categories(settings['categories_as_tabs'].keys())
++    kwargs['DEFAULT_CATEGORY'] = webapp.DEFAULT_CATEGORY
++
++    # i18n
++    kwargs['sxng_locales'] = [l for l in webapp.sxng_locales if l[0] in settings['search']['languages']]
++
++    locale = sxng_request.preferences.get_value('locale')
++    kwargs['locale_rfc5646'] = webapp._get_locale_rfc5646(locale)  # pylint: disable=protected-access
++
++    if locale in RTL_LOCALES and 'rtl' not in kwargs:
++        kwargs['rtl'] = True
++
++    if 'current_language' not in kwargs:
++        kwargs['current_language'] = webapp.parse_lang(sxng_request.preferences, {}, webapp.RawTextQuery('', []))
++
++    # values from settings
++    kwargs['search_formats'] = [x for x in settings['search']['formats'] if x != 'html']
++    kwargs['instance_name'] = webapp.get_setting('general.instance_name')
++    kwargs['searxng_version'] = webapp.VERSION_STRING
++    kwargs['searxng_git_url'] = webapp.GIT_URL
++    kwargs['enable_metrics'] = webapp.get_setting('general.enable_metrics')
++    kwargs['get_setting'] = webapp.get_setting
++    kwargs['get_pretty_url'] = webapp.get_pretty_url
++
++    # values from settings: donation_url
++    donation_url = webapp.get_setting('general.donation_url')
++    if donation_url is True:
++        donation_url = webapp.custom_url_for('info', pagename='donate')
++    kwargs['donation_url'] = donation_url
++
++    # helpers to create links to other pages
++    kwargs['url_for'] = webapp.custom_url_for  # override url_for function in templates
++    kwargs['image_proxify'] = webapp.image_proxify
++    kwargs['favicon_url'] = webapp.favicons.favicon_url
++    kwargs['cache_url'] = settings['ui']['cache_url']
++    kwargs['get_result_template'] = webapp.get_result_template
++    kwargs['opensearch_url'] = (
++        webapp.url_for('opensearch')
++        + '?'
++        + webapp.urlencode(
++            {
++                'method': sxng_request.preferences.get_value('method'),
++                'autocomplete': sxng_request.preferences.get_value('autocomplete'),
++            }
++        )
++    )
++    kwargs['urlparse'] = webapp.urlparse
++
++    return kwargs
++
++
++def _search_stream_response(search_query, raw_text_query, selected_locale) -> flask.Response:
++    """Build the streaming response for a zjsearch HTML search."""
++    import searx.webapp as webapp  # pylint: disable=import-outside-toplevel,cyclic-import
++
++    streamed = ZjsearchStreamedSearch(search_query, raw_text_query, selected_locale)
++    context = _render_context(
++        webapp,
++        'results.html',
++        # fmt: off
++        q=sxng_request.form['q'],
++        selected_categories=search_query.categories,
++        pageno=search_query.pageno,
++        time_range=search_query.time_range or '',
++        timeout_limit=sxng_request.form.get('timeout_limit', None),
++        current_language=selected_locale,
++        streamed=streamed,
++        # fmt: on
++    )
++    template = flask.current_app.jinja_env.get_template('{}/results.html'.format(context['theme']))
++
++    def generate():
++        buf = None
++        for chunk in template.stream(context):
++            if buf is not None:
++                buf.append(chunk)
++                if SHELL_END in chunk:
++                    yield ''.join(buf)
++                    buf = None
++            else:
++                yield chunk
++        if buf:
++            yield ''.join(buf)
++
++    response = flask.Response(flask.stream_with_context(generate()), mimetype='text/html')
++    # ask reverse proxies to pass the early shell through unbuffered
++    response.headers['X-Accel-Buffering'] = 'no'
++    return response
++
++
++def _before_request():
++    """Return the streaming response for zjsearch HTML searches, or None to
++    let the upstream ``search()`` view handle the request unchanged."""
++
++    if sxng_request.endpoint != 'search':
++        return None
++    if sxng_request.preferences.get_value('theme') != THEME:
++        return None
++    if sxng_request.form.get('format', 'html') != 'html':
++        return None  # RSS / JSON / CSV: upstream view
++    if 'html' not in settings['search']['formats']:
++        return None  # disabled upstream: let the view answer (403)
++    if not sxng_request.form.get('q'):
++        return None  # no query: the view renders the index page
++
++    # parse errors fall through to the upstream view, which answers with the
++    # canonical error page for this request
++    try:
++        search_query, raw_text_query, _, _, selected_locale = get_search_query_from_webapp(
++            sxng_request.preferences, sxng_request.form
++        )
++    except Exception:  # pylint: disable=broad-except
++        return None
++
++    return _search_stream_response(search_query, raw_text_query, selected_locale)
++
++
++def install(app: flask.Flask) -> None:
++    """Register the streaming hook; called once at the end of webapp.py.
++
++    Registered after the upstream before_request hooks, so the preferences
++    (theme) and the merged GET/POST form are already prepared.
++    """
++    app.before_request(_before_request)
