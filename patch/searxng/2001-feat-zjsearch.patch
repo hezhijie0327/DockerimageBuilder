@@ -657,10 +657,10 @@ index 0000000..00196ea
 +    disabled: false
 diff --git a/client/zjsearch/make-patch.ps1 b/client/zjsearch/make-patch.ps1
 new file mode 100644
-index 0000000..65ca591
+index 0000000..0e71d2c
 --- /dev/null
 +++ b/client/zjsearch/make-patch.ps1
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,71 @@
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine. PowerShell twin of
 +# make-patch.sh - keep the two in sync.
@@ -689,7 +689,17 @@ index 0000000..65ca591
 +$ErrorActionPreference = "Stop"
 +
 +if (-not $Base) {
-+    foreach ($ref in @("master", "origin/master")) {
++    # a stale remote-tracking ref would sweep upstream-only changes into the
++    # patch (e.g. engine fixes made upstream after the last fetch) - refresh
++    # it best-effort; offline runs keep whatever ref they already have
++    & git fetch --quiet origin "+refs/heads/master:refs/remotes/origin/master"
++    if ($LASTEXITCODE -ne 0) {
++        Write-Host "WARNING: could not refresh origin/master - the local ref may be stale"
++        Write-Host "WARNING: and the patch may include unrelated upstream changes"
++    }
++    # prefer the remote-tracking ref (refreshed above) over a possibly stale
++    # local master branch - same order as make-patch.sh
++    foreach ($ref in @("origin/master", "master")) {
 +        & git rev-parse -q --verify "$ref" *> $null
 +        if ($LASTEXITCODE -eq 0) { $Base = $ref; break }
 +    }
@@ -724,10 +734,10 @@ index 0000000..65ca591
 +}
 diff --git a/client/zjsearch/make-patch.sh b/client/zjsearch/make-patch.sh
 new file mode 100644
-index 0000000..fb2715b
+index 0000000..8a0c669
 --- /dev/null
 +++ b/client/zjsearch/make-patch.sh
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,61 @@
 +#!/usr/bin/env bash
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine:
@@ -756,7 +766,8 @@ index 0000000..fb2715b
 +  # patch (e.g. engine fixes made upstream after the last fetch); refresh it
 +  # best-effort - offline runs keep whatever ref they already have
 +  if ! git fetch --quiet origin +refs/heads/master:refs/remotes/origin/master 2>/dev/null; then
-+    echo "note: could not refresh origin/master - using the local ref as-is" >&2
++    echo "WARNING: could not refresh origin/master - the local ref may be stale" >&2
++    echo "WARNING: and the patch may include unrelated upstream changes" >&2
 +  fi
 +  for ref in origin/master master; do
 +    if git rev-parse -q --verify "$ref" >/dev/null 2>&1; then
@@ -8876,7 +8887,7 @@ index 0000000..9167858
 +}
 diff --git a/client/zjsearch/src/features/results/answers/UnitConverter.tsx b/client/zjsearch/src/features/results/answers/UnitConverter.tsx
 new file mode 100644
-index 0000000..10cf884
+index 0000000..be7ad17
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/UnitConverter.tsx
 @@ -0,0 +1,160 @@
@@ -8982,60 +8993,60 @@ index 0000000..10cf884
 +  // frame; the negative margin lines the trigger up with the value below it
 +  const unitTrigger = "-ms-3 px-3 font-medium text-ink hover:text-accent";
 +
++  // the Answers list wrapper already draws the accent card — render only the
++  // twin panels, no container of our own (a nested one reads as rings)
 +  return (
-+    <div className="animate-fade-up rounded-2xl border border-accent/25 bg-accent-soft/50 px-4 py-3">
-+      <div className="grid items-stretch gap-2 md:grid-cols-[1fr_auto_1fr] md:gap-3">
-+        <div className="rounded-xl bg-surface px-4 py-3">
-+          <Dropdown
-+            align="start"
-+            ariaLabel={t("unit_from")}
-+            onChange={setFromUnit}
-+            options={unitOptions}
-+            triggerClassName={unitTrigger}
-+            value={fromUnit}
-+            variant="bare"
-+          />
-+          <input
-+            aria-label={t("unit_value")}
-+            className="mt-2 w-full min-w-0 bg-transparent text-end text-3xl font-semibold tabular-nums text-ink outline-none sm:text-4xl"
-+            dir="ltr"
-+            inputMode="decimal"
-+            onChange={(event) => {
-+              setFromInput(event.target.value);
-+            }}
-+            spellCheck={false}
-+            value={fromInput}
-+          />
-+          <p className="mt-2 truncate border-t border-line pt-2 text-xs text-ink-3" dir="ltr">
-+            {rate !== null ? `1 ${fromUnit} = ${rate} ${toUnit}` : "\u00A0"}
-+          </p>
-+        </div>
-+        <div className="grid place-items-center">
-+          <button aria-label={t("unit_swap")} className={ICON_BTN} onClick={swap} title={t("unit_swap")} type="button">
-+            <ArrowLeftRight aria-hidden="true" className="size-4.5 max-md:rotate-90" />
-+          </button>
-+        </div>
-+        <div className="rounded-xl bg-surface px-4 py-3">
-+          <Dropdown
-+            align="start"
-+            ariaLabel={t("unit_to")}
-+            onChange={setToUnit}
-+            options={unitOptions}
-+            triggerClassName={unitTrigger}
-+            value={toUnit}
-+            variant="bare"
-+          />
-+          <p
-+            className="mt-2 min-h-10 truncate text-end text-3xl font-semibold tabular-nums text-ink sm:text-4xl"
-+            dir="ltr"
-+            title={converted === null ? undefined : formatValue(converted)}
-+          >
-+            {converted === null ? "–" : formatValue(converted)}
-+          </p>
-+          <p className="mt-2 truncate border-t border-line pt-2 text-xs text-ink-3" dir="ltr">
-+            {rateInverse !== null ? `1 ${toUnit} = ${rateInverse} ${fromUnit}` : "\u00A0"}
-+          </p>
-+        </div>
++    <div className="grid items-stretch gap-2 md:grid-cols-[1fr_auto_1fr] md:gap-3">
++      <div className="rounded-xl bg-surface px-4 py-3">
++        <Dropdown
++          align="start"
++          ariaLabel={t("unit_from")}
++          onChange={setFromUnit}
++          options={unitOptions}
++          triggerClassName={unitTrigger}
++          value={fromUnit}
++          variant="bare"
++        />
++        <input
++          aria-label={t("unit_value")}
++          className="mt-2 w-full min-w-0 bg-transparent text-end text-3xl font-semibold tabular-nums text-ink outline-none sm:text-4xl"
++          dir="ltr"
++          inputMode="decimal"
++          onChange={(event) => {
++            setFromInput(event.target.value);
++          }}
++          spellCheck={false}
++          value={fromInput}
++        />
++        <p className="mt-2 truncate border-t border-line pt-2 text-xs text-ink-3" dir="ltr">
++          {rate !== null ? `1 ${fromUnit} = ${rate} ${toUnit}` : "\u00A0"}
++        </p>
++      </div>
++      <div className="grid place-items-center">
++        <button aria-label={t("unit_swap")} className={ICON_BTN} onClick={swap} title={t("unit_swap")} type="button">
++          <ArrowLeftRight aria-hidden="true" className="size-4.5 max-md:rotate-90" />
++        </button>
++      </div>
++      <div className="rounded-xl bg-surface px-4 py-3">
++        <Dropdown
++          align="start"
++          ariaLabel={t("unit_to")}
++          onChange={setToUnit}
++          options={unitOptions}
++          triggerClassName={unitTrigger}
++          value={toUnit}
++          variant="bare"
++        />
++        <p
++          className="mt-2 min-h-10 truncate text-end text-3xl font-semibold tabular-nums text-ink sm:text-4xl"
++          dir="ltr"
++          title={converted === null ? undefined : formatValue(converted)}
++        >
++          {converted === null ? "–" : formatValue(converted)}
++        </p>
++        <p className="mt-2 truncate border-t border-line pt-2 text-xs text-ink-3" dir="ltr">
++          {rateInverse !== null ? `1 ${toUnit} = ${rateInverse} ${fromUnit}` : "\u00A0"}
++        </p>
 +      </div>
 +    </div>
 +  );
