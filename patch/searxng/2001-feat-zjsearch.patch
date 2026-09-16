@@ -4457,10 +4457,10 @@ index 0000000..5283448
 +}
 diff --git a/client/zjsearch/src/components/HelpModal.tsx b/client/zjsearch/src/components/HelpModal.tsx
 new file mode 100644
-index 0000000..c7cb539
+index 0000000..b15f84a
 --- /dev/null
 +++ b/client/zjsearch/src/components/HelpModal.tsx
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,145 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Keyboard shortcuts help dialog (opened with "?"). */
@@ -4537,7 +4537,8 @@ index 0000000..c7cb539
 +    ["5m to cm", t("widget_unit")],
 +    ["5 usd to cny", t("widget_currency")],
 +    ["time Berlin", t("widget_time")],
-+    ["user-agent", t("widget_ip")],
++    ["ip", t("widget_ip")],
++    ["user-agent", t("widget_ua")],
 +    ["md5 lorem ipsum", t("widget_hash")],
 +    ["tor-check", t("widget_tor")],
 +  ];
@@ -4641,10 +4642,10 @@ index 0000000..e950b62
 +}
 diff --git a/client/zjsearch/src/components/SearchBox.tsx b/client/zjsearch/src/components/SearchBox.tsx
 new file mode 100644
-index 0000000..029144f
+index 0000000..7d8a1eb
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchBox.tsx
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,257 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { LoaderCircle, Search, X } from "lucide-react";
@@ -4662,7 +4663,9 @@ index 0000000..029144f
 +async function fetchSuggestions(q: string, signal: AbortSignal): Promise<string[]> {
 +  // silent failure by design: suggestions are best-effort
 +  try {
-+    const payload = await fetchJson<unknown>(`autocompleter?q=${encodeURIComponent(q)}`, { signal });
++    // absolute path: the box also renders on nested routes (info pages),
++    // where a relative URL would resolve against the current directory
++    const payload = await fetchJson<unknown>(`/autocompleter?q=${encodeURIComponent(q)}`, { signal });
 +    // server answers with [prefix, [suggestions], [], [], relevances] or a plain array
 +    if (Array.isArray(payload) && Array.isArray(payload[1])) {
 +      return (payload[1] as unknown[]).filter((item): item is string => typeof item === "string");
@@ -5608,10 +5611,10 @@ index 0000000..26c2ef0
 +}
 diff --git a/client/zjsearch/src/features/overlay/OverlayProvider.tsx b/client/zjsearch/src/features/overlay/OverlayProvider.tsx
 new file mode 100644
-index 0000000..3c9fb88
+index 0000000..8a6a31b
 --- /dev/null
 +++ b/client/zjsearch/src/features/overlay/OverlayProvider.tsx
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,249 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5672,7 +5675,9 @@ index 0000000..3c9fb88
 +export function OverlayProvider({ panels, children }: { panels: OverlayPanels; children: ReactNode }) {
 +  const t = useT();
 +  const [state, setState] = useState<OverlayState | null>(null);
-+  const dialogRef = useDialogFocus<HTMLDivElement>();
++  // the drawer element is rendered by this always-mounted provider: pass the
++  // open flag so the focus effect runs when the dialog actually appears
++  const dialogRef = useDialogFocus<HTMLDivElement>(state !== null);
 +
 +  const closeOverlay = useCallback(() => {
 +    setState(null);
@@ -11600,10 +11605,10 @@ index 0000000..6be713c
 +}
 diff --git a/client/zjsearch/src/lib/dialogFocus.ts b/client/zjsearch/src/lib/dialogFocus.ts
 new file mode 100644
-index 0000000..4086ac9
+index 0000000..71f38e5
 --- /dev/null
 +++ b/client/zjsearch/src/lib/dialogFocus.ts
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,60 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import type { RefObject } from "react";
@@ -11617,10 +11622,18 @@ index 0000000..4086ac9
 + * so keyboard users cannot land behind the overlay.  Escape handling stays
 + * with each dialog (the lightbox closes through history state, the drawer
 + * through its own handler).
++ *
++ * `active` covers dialogs whose element is rendered by an always-mounted
++ * provider (the overlay drawer): pass e.g. `open !== null` so the effect
++ * re-runs when the dialog actually appears — the ref alone cannot trigger
++ * the effect, it only receives the element during the same commit.
 + */
-+export function useDialogFocus<T extends HTMLElement>(): RefObject<T | null> {
++export function useDialogFocus<T extends HTMLElement>(active = true): RefObject<T | null> {
 +  const ref = useRef<T>(null);
 +  useEffect(() => {
++    if (!active) {
++      return;
++    }
 +    const dialog = ref.current;
 +    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 +    const close = dialog?.querySelector<HTMLElement>("[data-dialog-close]");
@@ -11639,11 +11652,11 @@ index 0000000..4086ac9
 +      }
 +      const first = focusables[0] as HTMLElement;
 +      const last = focusables[focusables.length - 1] as HTMLElement;
-+      const active = document.activeElement;
-+      if (event.shiftKey && (active === first || !(active instanceof HTMLElement) || !dialog.contains(active))) {
++      const current = document.activeElement;
++      if (event.shiftKey && (current === first || !(current instanceof HTMLElement) || !dialog.contains(current))) {
 +        event.preventDefault();
 +        last.focus();
-+      } else if (!event.shiftKey && active === last) {
++      } else if (!event.shiftKey && current === last) {
 +        event.preventDefault();
 +        first.focus();
 +      }
@@ -11653,7 +11666,7 @@ index 0000000..4086ac9
 +      document.removeEventListener("keydown", onKeyDown, true);
 +      previouslyFocused?.focus();
 +    };
-+  }, []);
++  }, [active]);
 +  return ref;
 +}
 diff --git a/client/zjsearch/src/lib/engineDescriptions.ts b/client/zjsearch/src/lib/engineDescriptions.ts
@@ -11871,10 +11884,10 @@ index 0000000..9e3d246
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..d85441c
+index 0000000..286f6fb
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,341 @@
+@@ -0,0 +1,342 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -12088,17 +12101,18 @@ index 0000000..d85441c
 +  op_exclude: "Exclude a term or /regex/",
 +  op_intext: "Word or /regex/ in the content",
 +  op_dates: "Date range filter (YYYY-MM-DD)",
-+  widget_stats: "Statistics over the arguments (min / max / avg / sum)",
++  widget_stats: "Statistics over the arguments (min / max / avg / sum / prod / range)",
 +  widget_calc: "Solve math expressions",
-+  widget_time: "Current time in a timezone",
++  widget_time: "Current time in a timezone (time / now / clock / timezone)",
 +  bang_all: "All DuckDuckGo bangs work here",
 +  bang_engine: "Search with a specific engine — abbreviations chain (!map !ddg !wp paris)",
 +  bang_lang: "Set the language for this search (:fr !wp paris)",
 +  bang_external: "External DuckDuckGo bang — jumps straight to the external engine",
 +  bang_lucky: "Redirect to the first result (feeling lucky)",
-+  widget_ip: "Show your IP or user agent",
-+  widget_hash: "Hash a string (MD5, SHA-1, SHA-256, …)",
-+  widget_random: "Random UUID, string, int, float or color",
++  widget_ip: "Show your IP address",
++  widget_ua: "Show your user agent",
++  widget_hash: "Hash a string (md5 / sha1 / sha224 / sha256 / sha384 / sha512)",
++  widget_random: "Random value (uuid / int / float / sha256 / color / string)",
 +  widget_unit: "Convert between units",
 +  widget_currency: "Convert between currencies (aggregated rates)",
 +  plugin_currency_convert: "Currency converter plugin",
@@ -12218,10 +12232,10 @@ index 0000000..d85441c
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..9895401
+index 0000000..7b2f5b1
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,335 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -12434,17 +12448,18 @@ index 0000000..9895401
 +  op_exclude: "排除某个词或 /regex/",
 +  op_intext: "词或正则出现在正文中",
 +  op_dates: "日期范围过滤(YYYY-MM-DD)",
-+  widget_stats: "对参数做统计计算(min / max / avg / sum)",
++  widget_stats: "对参数做统计计算(min / max / avg / sum / prod / range)",
 +  widget_calc: "解析并求解数学表达式",
-+  widget_time: "显示指定时区的当前时间",
++  widget_time: "显示指定时区的当前时间(time / now / clock / timezone)",
 +  bang_all: "支持所有 DuckDuckGo bang",
 +  bang_engine: "用指定引擎搜索,缩写可串联(!map !ddg !wp paris)",
 +  bang_lang: "为本次搜索指定语言(:fr !wp paris)",
 +  bang_external: "DuckDuckGo 外部 bang,直接跳转到外部搜索引擎",
 +  bang_lucky: "直接跳转到第一条结果(手气不错)",
-+  widget_ip: "显示你的 IP 或 User-Agent",
-+  widget_hash: "计算字符串哈希(MD5、SHA-1、SHA-256…)",
-+  widget_random: "随机 UUID、字符串、整数、浮点数、颜色",
++  widget_ip: "显示你的 IP 地址",
++  widget_ua: "显示你的 User-Agent",
++  widget_hash: "计算字符串哈希(md5 / sha1 / sha224 / sha256 / sha384 / sha512)",
++  widget_random: "生成随机值(uuid / int / float / sha256 / color / string)",
 +  widget_unit: "单位之间互相换算",
 +  widget_currency: "货币之间互相换算（聚合汇率）",
 +  plugin_currency_convert: "汇率换算插件",
@@ -12615,10 +12630,10 @@ index 0000000..e83514a
 +}
 diff --git a/client/zjsearch/src/lib/pageData.ts b/client/zjsearch/src/lib/pageData.ts
 new file mode 100644
-index 0000000..c6f0bc6
+index 0000000..92ef5dc
 --- /dev/null
 +++ b/client/zjsearch/src/lib/pageData.ts
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,64 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -12633,6 +12648,23 @@ index 0000000..c6f0bc6
 +
 +export function parseEmbeddedPageData(): AnyPageData | null {
 +  const el = document.getElementById("page-data");
++  const text = el?.textContent?.trim();
++  if (!text) {
++    return null;
++  }
++  try {
++    return JSON.parse(text) as AnyPageData;
++  } catch {
++    return null;
++  }
++}
++
++/** First-stage payload of a streamed search page (see
++    searx/templates/zjsearch/data/macros.html, page_boot): globals + query
++    with `pending: true`, present in the early shell chunk while the engines
++    are still running. */
++export function parseBootData(): AnyPageData | null {
++  const el = document.getElementById("boot-data");
 +  const text = el?.textContent?.trim();
 +  if (!text) {
 +    return null;
@@ -12668,10 +12700,10 @@ index 0000000..c6f0bc6
 +}
 diff --git a/client/zjsearch/src/lib/router.tsx b/client/zjsearch/src/lib/router.tsx
 new file mode 100644
-index 0000000..b64fa14
+index 0000000..5e2a00d
 --- /dev/null
 +++ b/client/zjsearch/src/lib/router.tsx
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,250 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -12682,9 +12714,9 @@ index 0000000..b64fa14
 +
 +import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 +import { translateFor } from "@/lib/i18n.ts";
-+import { extractPageData } from "@/lib/pageData.ts";
++import { extractPageData, parseEmbeddedPageData } from "@/lib/pageData.ts";
 +import { buildSearchUrl, type SearchParams, searchParamEntries } from "@/lib/searchParams.ts";
-+import type { AnyPageData } from "@/lib/types.ts";
++import { type AnyPageData, isErrorPageData, isPendingSearchData, isRedirectPageData } from "@/lib/types.ts";
 +
 +export interface NavigateOptions {
 +  replace?: boolean;
@@ -12870,6 +12902,43 @@ index 0000000..b64fa14
 +      abortRef.current?.abort();
 +    };
 +  }, [load]);
++
++  // Streamed search pages boot into a pending payload while the engines run;
++  // the late chunk of the same HTTP response drops the real page-data into
++  // the document and notifies the app. We consume the pushed payload — the
++  // client must never re-fetch the query it is already waiting for.
++  useEffect(() => {
++    if (!isPendingSearchData(data)) {
++      return;
++    }
++    const consume = () => {
++      const parsed = parseEmbeddedPageData();
++      if (!parsed) {
++        return;
++      }
++      if (isRedirectPageData(parsed)) {
++        window.location.replace(parsed.url);
++        return;
++      }
++      if (isErrorPageData(parsed)) {
++        setError(parsed.message);
++        return;
++      }
++      setData(parsed);
++      setLoading(false);
++      document.title = pageTitle(parsed);
++    };
++    (window as { __zjsPageData?: () => void }).__zjsPageData = consume;
++    document.addEventListener("zjs:page-data", consume);
++    // the late chunk may already sit in the DOM when the app finishes booting
++    if (document.getElementById("page-data") !== null) {
++      consume();
++    }
++    return () => {
++      delete (window as { __zjsPageData?: unknown }).__zjsPageData;
++      document.removeEventListener("zjs:page-data", consume);
++    };
++  }, [data]);
 +
 +  return (
 +    <RouterContext.Provider value={{ data, loading, error, navigate, search, reload, href }}>
@@ -13294,10 +13363,10 @@ index 0000000..b8935db
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..19d25a2
+index 0000000..c0fcb55
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,487 @@
+@@ -0,0 +1,495 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -13595,6 +13664,10 @@ index 0000000..19d25a2
 +  current_language: string;
 +  search_language: string;
 +  only_template: string;
++  /** true in the first-stage payload of a streamed search page: the engines
++      are still running, the real payload arrives through #page-data later
++      (the stream pushes it, the client never re-fetches) */
++  pending?: boolean;
 +}
 +
 +// -------------------------------------------------------------- preferences
@@ -13766,6 +13839,10 @@ index 0000000..19d25a2
 +  return data.globals.page === "results";
 +}
 +
++export function isPendingSearchData(data: AnyPageData | null): data is SearchPageData {
++  return data !== null && data.globals.page === "results" && (data as SearchPageData).pending === true;
++}
++
 +export function isRedirectPageData(data: AnyPageData): data is RedirectPageData {
 +  return data.globals.page === "redirect";
 +}
@@ -13787,25 +13864,27 @@ index 0000000..19d25a2
 +}
 diff --git a/client/zjsearch/src/main.tsx b/client/zjsearch/src/main.tsx
 new file mode 100644
-index 0000000..03a768d
+index 0000000..0dd7e03
 --- /dev/null
 +++ b/client/zjsearch/src/main.tsx
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,68 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { createRoot } from "react-dom/client";
 +import { App } from "@/app.tsx";
-+import { extractPageData, parseClientSettings, parseEmbeddedPageData } from "@/lib/pageData.ts";
++import { extractPageData, parseBootData, parseClientSettings, parseEmbeddedPageData } from "@/lib/pageData.ts";
 +import { watchSystemTheme } from "@/lib/theme.ts";
 +import { type AnyPageData, isErrorPageData, isRedirectPageData } from "@/lib/types.ts";
 +import "./styles/global.css";
 +
 +/**
-+ * Prod: parse the payload embedded by the server shell.
++ * Prod: parse the payload embedded by the server shell — #page-data for
++ * finished documents, #boot-data for streamed search pages (engines still
++ * running, the real payload is pushed later through #page-data).
 + * Dev (vite dev server): fetch it through the dev proxy.
 + */
 +async function bootData(): Promise<AnyPageData | null> {
-+  const embedded = parseEmbeddedPageData();
++  const embedded = parseEmbeddedPageData() ?? parseBootData();
 +  if (embedded) {
 +    return embedded;
 +  }
@@ -14356,10 +14435,10 @@ index 0000000..90cac15
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..46bd9bf
+index 0000000..fd40f85
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,367 @@
+@@ -0,0 +1,369 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -14593,7 +14672,9 @@ index 0000000..46bd9bf
 +    }
 +    return tryEvaluateExpression(data.q);
 +  }, [data.q, hasPlugin]);
-+  const showSkeletons = loading && !error;
++  // `pending` covers streamed full loads: the app booted before the engines
++  // finished, the real payload swaps in through the router (no fetch here)
++  const showSkeletons = (loading || data.pending === true) && !error;
 +
 +  return (
 +    <Shell globals={globals} hideTopNav>
@@ -15015,247 +15096,6 @@ index 0000000..ddc8ad1
 +);
 +
 +export const StatsPage = lazy(() => import("@/pages/StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
-diff --git a/client/zjsearch/src/pages/preferences/EnginesTab.tsx b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
-new file mode 100644
-index 0000000..d208575
---- /dev/null
-+++ b/client/zjsearch/src/pages/preferences/EnginesTab.tsx
-@@ -0,0 +1,235 @@
-+// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
-+
-+import { AlertTriangle, Check, Minus } from "lucide-react";
-+import type { ReactNode } from "react";
-+import { SortHeader } from "@/components/SortHeader.tsx";
-+import { engineGroupLabel } from "@/lib/categories.ts";
-+import { loadEngineDescriptions } from "@/lib/engineDescriptions.ts";
-+import { useT } from "@/lib/i18n.ts";
-+import { reliabilityColor } from "@/lib/styles.ts";
-+import { type SortState, useSortState } from "@/lib/tableSort.ts";
-+import type { EngineEntry, PreferencesPageData } from "@/lib/types.ts";
-+import { EngineTooltip, Switch } from "@/pages/preferences/parts.tsx";
-+
-+type EngineSortKey = "allow" | "name" | "safesearch" | "time_range" | "weight" | "time" | "timeout" | "reliability";
-+
-+function sortValue(
-+  engine: EngineEntry,
-+  key: EngineSortKey,
-+  enabled: Record<string, boolean>,
-+  category: string,
-+): number | null {
-+  switch (key) {
-+    case "allow":
-+      return enabled[`${engine.name}__${category}`] ? 1 : 0;
-+    case "safesearch":
-+      return engine.supports_safesearch ? 1 : 0;
-+    case "time_range":
-+      return engine.supports_time_range ? 1 : 0;
-+    case "weight":
-+      return engine.weight;
-+    case "time":
-+      return engine.stats_time;
-+    case "timeout":
-+      return engine.timeout;
-+    case "reliability":
-+      return engine.reliability;
-+    case "name":
-+      return null;
-+  }
-+}
-+
-+function compareEngines(
-+  a: EngineEntry,
-+  b: EngineEntry,
-+  sort: SortState<EngineSortKey>,
-+  enabled: Record<string, boolean>,
-+  category: string,
-+): number {
-+  if (sort.key === "name") {
-+    return a.name.localeCompare(b.name) * (sort.asc ? 1 : -1);
-+  }
-+  if (!sort.key) {
-+    return 0;
-+  }
-+  const dir = sort.asc ? 1 : -1;
-+  const av = sortValue(a, sort.key, enabled, category);
-+  const bv = sortValue(b, sort.key, enabled, category);
-+  // engines without a metric always sink to the bottom
-+  if (av === null && bv === null) {
-+    return a.name.localeCompare(b.name);
-+  }
-+  if (av === null) {
-+    return 1;
-+  }
-+  if (bv === null) {
-+    return -1;
-+  }
-+  return (av - bv) * dir;
-+}
-+
-+export function EnginesTab({
-+  tab,
-+  enabled,
-+  toggleEngine,
-+  showMetrics,
-+}: {
-+  tab: PreferencesPageData["engine_tabs"][number];
-+  enabled: Record<string, boolean>;
-+  toggleEngine: (key: string, value: boolean) => void;
-+  showMetrics: boolean;
-+}) {
-+  const t = useT();
-+  const { sort, cycleSort } = useSortState<EngineSortKey>();
-+
-+  const engineRow = (engine: EngineEntry): ReactNode => {
-+    const key = `${engine.name}__${tab.category}`;
-+    return (
-+      <tr className="border-t border-line transition-colors hover:bg-surface-2/40" key={key}>
-+        <td className="px-3 py-3">
-+          <Switch
-+            checked={enabled[key] ?? false}
-+            label={`${t("allow")} ${engine.name}`}
-+            onChange={(value) => {
-+              toggleEngine(key, value);
-+            }}
-+          />
-+        </td>
-+        <td className="max-w-52 px-4 py-3">
-+          {/* hover OR keyboard focus reveals the tooltip */}
-+          <div className="group/engine relative">
-+            <button
-+              aria-label={`${t("show_engine_info")}: ${engine.name}`}
-+              className="flex items-center gap-1 truncate font-medium text-ink"
-+              onMouseEnter={() => void loadEngineDescriptions()}
-+              type="button"
-+            >
-+              {engine.enable_http ? <AlertTriangle className="size-3.5 shrink-0 text-warning" /> : null}
-+              <span className="truncate">
-+                {engine.name}
-+                {engine.language ? ` (${engine.language})` : ""}
-+              </span>
-+            </button>
-+            <EngineTooltip engine={engine} />
-+          </div>
-+        </td>
-+        <td className="px-4 py-3">
-+          <code className="rounded bg-surface-2 px-1">!{engine.shortcut}</code>
-+        </td>
-+        <td className="px-4 py-3">
-+          {engine.supports_safesearch ? (
-+            <Check className="size-3.5 text-ok" />
-+          ) : (
-+            <Minus className="size-3.5 text-ink-3" />
-+          )}
-+        </td>
-+        <td className="px-4 py-3">
-+          {engine.supports_time_range ? (
-+            <Check className="size-3.5 text-ok" />
-+          ) : (
-+            <Minus className="size-3.5 text-ink-3" />
-+          )}
-+        </td>
-+        <td className="px-4 py-3">{engine.weight}</td>
-+        {showMetrics ? (
-+          <td className="px-4 py-3">
-+            {engine.stats_time !== null ? (
-+              <div className="flex items-center gap-2">
-+                <span className="w-10 text-ink-2">{engine.stats_time}</span>
-+                <span className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
-+                  <span
-+                    className="block h-full bg-accent-strong"
-+                    style={{ width: `${Math.min(100, engine.stats_time)}%` }}
-+                  />
-+                </span>
-+              </div>
-+            ) : (
-+              <span className="text-ink-3">–</span>
-+            )}
-+          </td>
-+        ) : null}
-+        <td className={`px-4 py-3 ${engine.warn_timeout ? "font-medium text-danger" : "text-ink-2"}`}>
-+          {engine.timeout}s
-+        </td>
-+        {showMetrics ? (
-+          <td className={`px-4 py-3 font-medium ${reliabilityColor(engine.reliability)}`}>
-+            {engine.reliability ?? "–"}
-+          </td>
-+        ) : null}
-+      </tr>
-+    );
-+  };
-+
-+  const rows: ReactNode[] = [];
-+  if (!sort.key) {
-+    // natural order: grouped by engine group with group header rows
-+    for (const group of tab.groups) {
-+      if (group.engines.length > 1) {
-+        rows.push(
-+          <tr className="bg-surface-2/60" key={`group-${group.group}`}>
-+            <td className="px-3 py-1.5 font-medium text-ink-2" colSpan={2}>
-+              {engineGroupLabel(group.group, t)}
-+            </td>
-+            <td className="px-3 py-1.5" colSpan={showMetrics ? 7 : 5}>
-+              {group.group_bang ? <code className="rounded bg-surface-2 px-1">{group.group_bang}</code> : null}
-+            </td>
-+          </tr>,
-+        );
-+      }
-+      for (const engine of group.engines) {
-+        rows.push(engineRow(engine));
-+      }
-+    }
-+  } else {
-+    // sorted: one flat, fully ordered list
-+    for (const engine of [...tab.groups.flatMap((group) => group.engines)].sort((a, b) =>
-+      compareEngines(a, b, sort, enabled, tab.category),
-+    )) {
-+      rows.push(engineRow(engine));
-+    }
-+  }
-+
-+  const ariaSort = (key: EngineSortKey) => (sort.key === key ? (sort.asc ? "ascending" : "descending") : undefined);
-+
-+  return (
-+    /* no own border — the enclosing preferences Card frames the table */
-+    <div className="overflow-x-auto">
-+      <table className="w-full min-w-[680px] text-left text-xs">
-+        <thead className="bg-surface-2 text-ink-3">
-+          <tr>
-+            <th aria-sort={ariaSort("allow")} className="px-4 py-3 font-medium">
-+              <SortHeader columnKey="allow" label={t("allow")} onCycle={cycleSort} sort={sort} />
-+            </th>
-+            <th aria-sort={ariaSort("name")} className="px-4 py-3 font-medium">
-+              <SortHeader columnKey="name" label={t("engine_name")} onCycle={cycleSort} sort={sort} />
-+            </th>
-+            <th className="px-4 py-3 font-medium">{t("bang")}</th>
-+            <th aria-sort={ariaSort("safesearch")} className="px-4 py-3 font-medium">
-+              <SortHeader columnKey="safesearch" label={t("safesearch")} onCycle={cycleSort} sort={sort} />
-+            </th>
-+            <th aria-sort={ariaSort("time_range")} className="px-4 py-3 font-medium">
-+              <SortHeader columnKey="time_range" label={t("time_range")} onCycle={cycleSort} sort={sort} />
-+            </th>
-+            <th aria-sort={ariaSort("weight")} className="px-4 py-3 font-medium">
-+              <SortHeader columnKey="weight" label={t("weight")} onCycle={cycleSort} sort={sort} />
-+            </th>
-+            {showMetrics ? (
-+              <th aria-sort={ariaSort("time")} className="px-4 py-3 font-medium">
-+                <SortHeader columnKey="time" label={t("response_time")} onCycle={cycleSort} sort={sort} />
-+              </th>
-+            ) : null}
-+            <th aria-sort={ariaSort("timeout")} className="px-4 py-3 font-medium">
-+              <SortHeader columnKey="timeout" label={t("max_time")} onCycle={cycleSort} sort={sort} />
-+            </th>
-+            {showMetrics ? (
-+              <th aria-sort={ariaSort("reliability")} className="px-4 py-3 font-medium">
-+                <SortHeader columnKey="reliability" label={t("reliability")} onCycle={cycleSort} sort={sort} />
-+              </th>
-+            ) : null}
-+          </tr>
-+        </thead>
-+        <tbody>{rows}</tbody>
-+      </table>
-+    </div>
-+  );
-+}
 diff --git a/client/zjsearch/src/pages/preferences/PreferencesPage.tsx b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
 new file mode 100644
 index 0000000..d3a7b54
@@ -15782,9 +15622,250 @@ index 0000000..b6faf87
 +    </Card>
 +  );
 +}
+diff --git a/client/zjsearch/src/pages/preferences/tabs/EngineTable.tsx b/client/zjsearch/src/pages/preferences/tabs/EngineTable.tsx
+new file mode 100644
+index 0000000..f69cf68
+--- /dev/null
++++ b/client/zjsearch/src/pages/preferences/tabs/EngineTable.tsx
+@@ -0,0 +1,235 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { AlertTriangle, Check, Minus } from "lucide-react";
++import type { ReactNode } from "react";
++import { SortHeader } from "@/components/SortHeader.tsx";
++import { engineGroupLabel } from "@/lib/categories.ts";
++import { loadEngineDescriptions } from "@/lib/engineDescriptions.ts";
++import { useT } from "@/lib/i18n.ts";
++import { reliabilityColor } from "@/lib/styles.ts";
++import { type SortState, useSortState } from "@/lib/tableSort.ts";
++import type { EngineEntry, PreferencesPageData } from "@/lib/types.ts";
++import { EngineTooltip, Switch } from "@/pages/preferences/parts.tsx";
++
++type EngineSortKey = "allow" | "name" | "safesearch" | "time_range" | "weight" | "time" | "timeout" | "reliability";
++
++function sortValue(
++  engine: EngineEntry,
++  key: EngineSortKey,
++  enabled: Record<string, boolean>,
++  category: string,
++): number | null {
++  switch (key) {
++    case "allow":
++      return enabled[`${engine.name}__${category}`] ? 1 : 0;
++    case "safesearch":
++      return engine.supports_safesearch ? 1 : 0;
++    case "time_range":
++      return engine.supports_time_range ? 1 : 0;
++    case "weight":
++      return engine.weight;
++    case "time":
++      return engine.stats_time;
++    case "timeout":
++      return engine.timeout;
++    case "reliability":
++      return engine.reliability;
++    case "name":
++      return null;
++  }
++}
++
++function compareEngines(
++  a: EngineEntry,
++  b: EngineEntry,
++  sort: SortState<EngineSortKey>,
++  enabled: Record<string, boolean>,
++  category: string,
++): number {
++  if (sort.key === "name") {
++    return a.name.localeCompare(b.name) * (sort.asc ? 1 : -1);
++  }
++  if (!sort.key) {
++    return 0;
++  }
++  const dir = sort.asc ? 1 : -1;
++  const av = sortValue(a, sort.key, enabled, category);
++  const bv = sortValue(b, sort.key, enabled, category);
++  // engines without a metric always sink to the bottom
++  if (av === null && bv === null) {
++    return a.name.localeCompare(b.name);
++  }
++  if (av === null) {
++    return 1;
++  }
++  if (bv === null) {
++    return -1;
++  }
++  return (av - bv) * dir;
++}
++
++export function EngineTable({
++  tab,
++  enabled,
++  toggleEngine,
++  showMetrics,
++}: {
++  tab: PreferencesPageData["engine_tabs"][number];
++  enabled: Record<string, boolean>;
++  toggleEngine: (key: string, value: boolean) => void;
++  showMetrics: boolean;
++}) {
++  const t = useT();
++  const { sort, cycleSort } = useSortState<EngineSortKey>();
++
++  const engineRow = (engine: EngineEntry): ReactNode => {
++    const key = `${engine.name}__${tab.category}`;
++    return (
++      <tr className="border-t border-line transition-colors hover:bg-surface-2/40" key={key}>
++        <td className="px-3 py-3">
++          <Switch
++            checked={enabled[key] ?? false}
++            label={`${t("allow")} ${engine.name}`}
++            onChange={(value) => {
++              toggleEngine(key, value);
++            }}
++          />
++        </td>
++        <td className="max-w-52 px-4 py-3">
++          {/* hover OR keyboard focus reveals the tooltip */}
++          <div className="group/engine relative">
++            <button
++              aria-label={`${t("show_engine_info")}: ${engine.name}`}
++              className="flex items-center gap-1 truncate font-medium text-ink"
++              onMouseEnter={() => void loadEngineDescriptions()}
++              type="button"
++            >
++              {engine.enable_http ? <AlertTriangle className="size-3.5 shrink-0 text-warning" /> : null}
++              <span className="truncate">
++                {engine.name}
++                {engine.language ? ` (${engine.language})` : ""}
++              </span>
++            </button>
++            <EngineTooltip engine={engine} />
++          </div>
++        </td>
++        <td className="px-4 py-3">
++          <code className="rounded bg-surface-2 px-1">!{engine.shortcut}</code>
++        </td>
++        <td className="px-4 py-3">
++          {engine.supports_safesearch ? (
++            <Check className="size-3.5 text-ok" />
++          ) : (
++            <Minus className="size-3.5 text-ink-3" />
++          )}
++        </td>
++        <td className="px-4 py-3">
++          {engine.supports_time_range ? (
++            <Check className="size-3.5 text-ok" />
++          ) : (
++            <Minus className="size-3.5 text-ink-3" />
++          )}
++        </td>
++        <td className="px-4 py-3">{engine.weight}</td>
++        {showMetrics ? (
++          <td className="px-4 py-3">
++            {engine.stats_time !== null ? (
++              <div className="flex items-center gap-2">
++                <span className="w-10 text-ink-2">{engine.stats_time}</span>
++                <span className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
++                  <span
++                    className="block h-full bg-accent-strong"
++                    style={{ width: `${Math.min(100, engine.stats_time)}%` }}
++                  />
++                </span>
++              </div>
++            ) : (
++              <span className="text-ink-3">–</span>
++            )}
++          </td>
++        ) : null}
++        <td className={`px-4 py-3 ${engine.warn_timeout ? "font-medium text-danger" : "text-ink-2"}`}>
++          {engine.timeout}s
++        </td>
++        {showMetrics ? (
++          <td className={`px-4 py-3 font-medium ${reliabilityColor(engine.reliability)}`}>
++            {engine.reliability ?? "–"}
++          </td>
++        ) : null}
++      </tr>
++    );
++  };
++
++  const rows: ReactNode[] = [];
++  if (!sort.key) {
++    // natural order: grouped by engine group with group header rows
++    for (const group of tab.groups) {
++      if (group.engines.length > 1) {
++        rows.push(
++          <tr className="bg-surface-2/60" key={`group-${group.group}`}>
++            <td className="px-3 py-1.5 font-medium text-ink-2" colSpan={2}>
++              {engineGroupLabel(group.group, t)}
++            </td>
++            <td className="px-3 py-1.5" colSpan={showMetrics ? 7 : 5}>
++              {group.group_bang ? <code className="rounded bg-surface-2 px-1">{group.group_bang}</code> : null}
++            </td>
++          </tr>,
++        );
++      }
++      for (const engine of group.engines) {
++        rows.push(engineRow(engine));
++      }
++    }
++  } else {
++    // sorted: one flat, fully ordered list
++    for (const engine of [...tab.groups.flatMap((group) => group.engines)].sort((a, b) =>
++      compareEngines(a, b, sort, enabled, tab.category),
++    )) {
++      rows.push(engineRow(engine));
++    }
++  }
++
++  const ariaSort = (key: EngineSortKey) => (sort.key === key ? (sort.asc ? "ascending" : "descending") : undefined);
++
++  return (
++    /* no own border — the enclosing preferences Card frames the table */
++    <div className="overflow-x-auto">
++      <table className="w-full min-w-[680px] text-left text-xs">
++        <thead className="bg-surface-2 text-ink-3">
++          <tr>
++            <th aria-sort={ariaSort("allow")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="allow" label={t("allow")} onCycle={cycleSort} sort={sort} />
++            </th>
++            <th aria-sort={ariaSort("name")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="name" label={t("engine_name")} onCycle={cycleSort} sort={sort} />
++            </th>
++            <th className="px-4 py-3 font-medium">{t("bang")}</th>
++            <th aria-sort={ariaSort("safesearch")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="safesearch" label={t("safesearch")} onCycle={cycleSort} sort={sort} />
++            </th>
++            <th aria-sort={ariaSort("time_range")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="time_range" label={t("time_range")} onCycle={cycleSort} sort={sort} />
++            </th>
++            <th aria-sort={ariaSort("weight")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="weight" label={t("weight")} onCycle={cycleSort} sort={sort} />
++            </th>
++            {showMetrics ? (
++              <th aria-sort={ariaSort("time")} className="px-4 py-3 font-medium">
++                <SortHeader columnKey="time" label={t("response_time")} onCycle={cycleSort} sort={sort} />
++              </th>
++            ) : null}
++            <th aria-sort={ariaSort("timeout")} className="px-4 py-3 font-medium">
++              <SortHeader columnKey="timeout" label={t("max_time")} onCycle={cycleSort} sort={sort} />
++            </th>
++            {showMetrics ? (
++              <th aria-sort={ariaSort("reliability")} className="px-4 py-3 font-medium">
++                <SortHeader columnKey="reliability" label={t("reliability")} onCycle={cycleSort} sort={sort} />
++              </th>
++            ) : null}
++          </tr>
++        </thead>
++        <tbody>{rows}</tbody>
++      </table>
++    </div>
++  );
++}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx b/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx
 new file mode 100644
-index 0000000..5b470d0
+index 0000000..626371f
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx
 @@ -0,0 +1,105 @@
@@ -15794,8 +15875,8 @@ index 0000000..5b470d0
 +import { categoryLabel } from "@/lib/categories.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
-+import { EnginesTab } from "@/pages/preferences/EnginesTab.tsx";
 +import { Card, CategoryTab, GroupHeader, SettingRow } from "@/pages/preferences/parts.tsx";
++import { EngineTable } from "@/pages/preferences/tabs/EngineTable.tsx";
 +import type { PreferencesForm } from "@/pages/preferences/usePreferencesForm.ts";
 +
 +/** Engines tab pane: the private-engine tokens up top, then the per-category
@@ -15883,7 +15964,7 @@ index 0000000..5b470d0
 +        </div>
 +      </div>
 +      {currentEngineTab ? (
-+        <EnginesTab
++        <EngineTable
 +          enabled={form.engines}
 +          showMetrics={data.globals.enable_metrics}
 +          tab={currentEngineTab}
@@ -16699,10 +16780,10 @@ index 0000000..b717522
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..8389fa7
+index 0000000..3cb9852
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,763 @@
+@@ -0,0 +1,798 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -16980,7 +17061,31 @@ index 0000000..8389fa7
 +  }
 +
 +  .zjs-ns-wordmark .dot {
-+    color: var(--ns-accent-strong);
++    color: var(--ns-accent);
++  }
++
++  /* media extras so the no-JS face carries the same information as the app:
++     image thumbnails, torrent size/health/magnet, video duration/author */
++  .zjs-ns-thumb {
++    display: block;
++    margin: 0.35rem 0;
++  }
++  .zjs-ns-thumb img {
++    display: block;
++    max-width: 100%;
++    max-height: 220px;
++    border-radius: 8px;
++  }
++  .zjs-ns-meta2 {
++    display: flex;
++    flex-wrap: wrap;
++    gap: 0.3rem 0.9rem;
++    margin: 0.4rem 0 0;
++    font-size: 0.75rem;
++    color: var(--ns-ink-3);
++  }
++  .zjs-ns-meta2 a {
++    color: var(--ns-accent);
 +  }
 +
 +  .zjs-noscript h1 {
@@ -17166,24 +17271,35 @@ index 0000000..8389fa7
 +  }
 +  .zjs-boot-q {
 +    flex: 1 1 auto;
++    display: flex;
++    align-items: center;
++    gap: 0.5rem;
 +    min-width: 0;
 +    max-width: 42rem;
-+    padding: 0.5rem 1rem;
++    padding: 0.375rem 0.375rem 0.375rem 1rem;
 +    border: 1px solid var(--line);
 +    border-radius: 9999px;
 +    background: var(--surface);
 +    color: var(--ink-2);
 +    font-size: 1rem;
++  }
++  .zjs-boot-q-text {
++    flex: 1 1 auto;
++    min-width: 0;
 +    white-space: nowrap;
 +    overflow: hidden;
 +    text-overflow: ellipsis;
 +  }
-+  .zjs-boot-btn {
++  /* static stand-in for the accent submit button of the real search box */
++  .zjs-boot-submit {
 +    flex: none;
++    display: grid;
++    place-items: center;
 +    width: 2.25rem;
 +    height: 2.25rem;
-+    margin-inline-start: auto;
 +    border-radius: 9999px;
++    background: var(--accent-strong);
++    color: var(--accent-contrast);
 +  }
 +  .zjs-boot-body {
 +    display: flex;
@@ -19027,10 +19143,10 @@ index 0000000..902020e
 +{% block noscript %}{{ ns_404() }}{% endblock %}
 diff --git a/searx/templates/zjsearch/base.html b/searx/templates/zjsearch/base.html
 new file mode 100644
-index 0000000..5a4b980
+index 0000000..0ebb604
 --- /dev/null
 +++ b/searx/templates/zjsearch/base.html
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,63 @@
 +{#- zjsearch theme: application shell.
 +
 +The zjsearch theme renders no UI on the server.  Every page is a thin shell that
@@ -19079,6 +19195,7 @@ index 0000000..5a4b980
 +</head>
 +<body>
 +  <div id="app">{% block app_skeleton %}{% endblock %}</div>
++  {%- block body_tail %}
 +  <noscript>
 +    {% block noscript %}
 +    <div class="zjs-noscript">
@@ -19090,14 +19207,15 @@ index 0000000..5a4b980
 +  </noscript>
 +  <script id="page-data" type="application/json">{% block page_data %}{}{% endblock %}</script>
 +  <script type="module" src="{{ url_for('static', filename='zjsearch.min.js') }}" client_settings="{{ client_settings }}"></script>
++  {%- endblock %}
 +</body>
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..62be4b5
+index 0000000..8f8f667
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,565 @@
+@@ -0,0 +1,573 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -19432,6 +19550,14 @@ index 0000000..62be4b5
 +{"globals": {{ globals('error') }}, "message": {{ (message or '')|tojson }}}
 +{%- endmacro %}
 +
++{# first-stage payload of the streamed search page: the client boots into it
++   right away (interactive header + skeleton) while the engines run; the late
++   chunk of the same response replaces it through #page-data (RouterProvider
++   consumes the pushed payload, it never re-fetches) #}
++{% macro page_boot(q, selected_categories, pageno, time_range, current_language) -%}
++{"globals": {{ globals('results') }},"q": {{ q|tojson }},"selected_categories": {{ (selected_categories or [])|tojson }},"pageno": {{ pageno }},"time_range": {{ (time_range or '')|tojson }},"suggestions": [],"corrections": [],"answers": [],"infoboxes": [],"results": [],"engine_data": {},"paging": false,"unresponsive_engines": [],"timings": [],"max_response_time": null,"timeout_limit": "","current_language": {{ current_language|tojson }},"search_language": "","only_template": "","pending": true}
++{%- endmacro %}
++
 +{% macro page_index(selected_categories) -%}
 +{
 +  "globals": {{ globals('index') }},
@@ -19724,10 +19850,10 @@ index 0000000..ab76488
 +}
 diff --git a/searx/templates/zjsearch/noscript.html b/searx/templates/zjsearch/noscript.html
 new file mode 100644
-index 0000000..c6939fa
+index 0000000..d5a047f
 --- /dev/null
 +++ b/searx/templates/zjsearch/noscript.html
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,135 @@
 +{#- zjsearch theme: server-rendered <noscript> fallbacks.
 +
 +    The React application needs JavaScript; these macros render the same
@@ -19773,10 +19899,32 @@ index 0000000..c6939fa
 +    {%- endif %}
 +    <p class="zjs-ns-meta"><span class="count">{{ results|length }}</span> results</p>
 +    {%- for result in results %}
++    {%- set rtype = (result.template or '')|replace('.html', '') %}
 +    <article class="zjs-ns-article">
 +      <div class="zjs-ns-host">{{ result.pretty_url or result.url }}</div>
++      {%- if rtype == 'images' and (result.thumbnail_src or result.img_src) %}
++      <a aria-label="Open image" class="zjs-ns-thumb" href="{{ result.img_src or result.thumbnail_src }}"><img alt="" loading="lazy" src="{{ result.thumbnail_src or result.img_src }}"></a>
++      {%- endif %}
 +      <h3><a class="zjs-ns-title-link" href="{{ result.url }}" rel="noreferrer">{% if result.title %}{{ result.title|safe }}{% else %}{{ result.url }}{% endif %}</a></h3>
 +      {%- if result.content %}<p>{{ result.content|safe }}</p>{% endif %}
++      {%- if rtype == 'torrent' %}
++      <p class="zjs-ns-meta2">
++        {%- if result.filesize %}<span>{{ result.filesize }}</span>{% endif %}
++        {%- if result.seed is defined %}<span>&uarr; {{ result.seed }} &middot; &darr; {{ result.leech }}</span>{% endif %}
++        {%- if result.files %}<span>{{ result.files }} files</span>{% endif %}
++        {%- if result.magnetlink %}<a href="{{ result.magnetlink }}" rel="noreferrer">Magnet link</a>{% endif %}
++      </p>
++      {%- endif %}
++      {%- if rtype == 'videos' and (result.length or result.author or result.views) %}
++      <p class="zjs-ns-meta2">
++        {%- if result.length %}<span>{{ result.length }}</span>{% endif %}
++        {%- if result.author %}<span>{{ result.author }}</span>{% endif %}
++        {%- if result.views %}<span>{{ result.views }} views</span>{% endif %}
++      </p>
++      {%- endif %}
++      {%- if rtype == 'images' and result.resolution %}
++      <p class="zjs-ns-meta2"><span>{{ result.resolution }}</span></p>
++      {%- endif %}
 +      {%- if result.publishedDate %}<time>{{ result.publishedDate.strftime('%Y-%m-%d') }}</time>{% endif %}
 +    </article>
 +    {%- endfor %}
@@ -19870,10 +20018,10 @@ index 0000000..68e8cd6
 +</OpenSearchDescription>
 diff --git a/searx/templates/zjsearch/opensearch_response_rss.xml b/searx/templates/zjsearch/opensearch_response_rss.xml
 new file mode 100644
-index 0000000..c9c3fc4
+index 0000000..219a06f
 --- /dev/null
 +++ b/searx/templates/zjsearch/opensearch_response_rss.xml
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,40 @@
 +<?xml version="1.0" encoding="UTF-8"?>
 +<?xml-stylesheet href="{{ url_for('rss_xsl') }}" type="text/xsl"?>
 +<rss version="2.0"
@@ -19882,7 +20030,7 @@ index 0000000..c9c3fc4
 +  <channel>
 +    <instance_name>{{ instance_name }}</instance_name>
 +    <title>{{ instance_name }} search: {{ q|e }}</title>
-+    <link>{{ url_for('search', _external=True) }}?q={{ q|e }}</link>
++    <link>{{ url_for('search', _external=True) }}?q={{ q|urlencode }}</link>
 +    <description>Search results for "{{ q|e }}" - {{ instance_name }}</description>
 +    <opensearch:startIndex>1</opensearch:startIndex>
 +    <atom:link rel="search" type="application/opensearchdescription+xml" href="{{ opensearch_url }}"/>
@@ -19894,12 +20042,22 @@ index 0000000..c9c3fc4
 +    </item>
 +    {% endif %}
 +    {% for r in results %}
++    {% set rtype = (r.template or '')|replace('.html', '') %}
 +    <item>
-+      <title>{{ r.title }}</title>
++      <title>{{ r.title|e }}</title>
 +      <type>result</type>
-+      <link>{{ r.url }}</link>
-+      <description>{{ r.content }}</description>
-+      {% if r.pubdate %}<pubDate>{{ r.pubdate }}</pubDate>{% endif %}
++      <link>{{ r.url|e }}</link>
++      {%- if rtype == 'torrent' %}
++      <description>{{ (r.content or '')|e }}{% if r.filesize %} [{{ r.filesize }}]{% endif %}{% if r.seed %} seeds {{ r.seed }}, leech {{ r.leech }}{% endif %}{% if r.files %}, {{ r.files }} files{% endif %}{% if r.magnetlink %} | magnet: {{ r.magnetlink|e }}{% endif %}</description>
++      {%- else %}
++      <description>{{ (r.content or '')|e }}{% if rtype == 'videos' and r.length %} [{{ r.length }}]{% endif %}{% if r.author %} — {{ r.author|e }}{% endif %}{% if rtype == 'images' and r.resolution %} [{{ r.resolution }}]{% endif %}</description>
++      {%- endif %}
++      {%- if r.thumbnail_src or r.img_src %}
++      {%- set media = r.thumbnail_src or r.img_src %}
++      {%- set ext = media.split('?')[0].rsplit('.', 1)[-1]|lower %}
++      <enclosure length="0" type="image/{{ 'png' if ext == 'png' else ('webp' if ext == 'webp' else ('gif' if ext == 'gif' else 'jpeg')) }}" url="{{ media|e }}"/>
++      {%- endif %}
++      {% if r.publishedDate %}<pubDate>{{ r.publishedDate.strftime('%a, %d %b %Y %H:%M:%S') }} {{ r.publishedDate.strftime('%z') or '+0000' }}</pubDate>{% endif %}
 +    </item>
 +    {% endfor %}
 +  </channel>
@@ -19927,21 +20085,34 @@ index 0000000..f900ce7
 +{%- endblock %}
 diff --git a/searx/templates/zjsearch/results.html b/searx/templates/zjsearch/results.html
 new file mode 100644
-index 0000000..c9f3db9
+index 0000000..e2a6bf6
 --- /dev/null
 +++ b/searx/templates/zjsearch/results.html
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,62 @@
 +{#- zjsearch: search results page, always rendered as a streaming response
-+    (zjsearch_search_stream): everything up to the boot skeleton flushes
-+    immediately, the `streamed` runner runs the engines when the template
-+    first reads a result property (noscript block / page-data). -#}
++    (zjsearch_search_stream): the early chunk (head, boot skeleton, boot-data
++    payload, dynamic import of the app bundle) flushes immediately and the app
++    boots interactive while the engines run; `streamed` triggers the search on
++    first access in the late chunk, which replaces the pending payload through
++    #page-data (see RouterProvider). -#}
 +{% extends "zjsearch/base.html" %}
-+{% from "zjsearch/data/macros.html" import page_results, page_redirect, page_error with context %}
++{% from "zjsearch/data/macros.html" import page_boot, page_results, page_redirect, page_error with context %}
 +{% from "zjsearch/noscript.html" import ns_results with context %}
 +{% block title %}{% if query_in_title %}{{- q|e }} - {% endif %}{% endblock %}
 +{% block app_skeleton %}{% include "zjsearch/skeleton.html" %}{% endblock %}
 +{% block head %}<link rel="alternate" type="application/rss+xml" title="{{ instance_name }} search: {{ q|e }}" href="{{ url_for('search', _external=True) }}?q={{ q|urlencode }}&amp;categories={{ selected_categories|join(",") | replace(' ','+') }}&amp;pageno={{ pageno }}&amp;time_range={{ time_range }}&amp;language={{ current_language }}&amp;safesearch={{ safesearch }}&amp;format=rss">{% endblock %}
-+{% block noscript %}
++{% block body_tail %}
++<script id="boot-data" type="application/json" client_settings="{{ client_settings }}">{{- page_boot(q, selected_categories, pageno, time_range, current_language) -}}</script>
++{#- the app must not wait for the document to finish parsing: dynamic
++    import() evaluates the module as soon as it is fetched -#}
++<script>
++  import("{{ url_for('static', filename='zjsearch.min.js') }}").catch(function () {
++    window.location.reload();
++  });
++</script>
++<!--zjs-shell-->
++{#- everything below blocks on the streamed search -#}
++<noscript>
 +{%- if streamed.error_message -%}
 +<div class="zjs-noscript">
 +  <h1>{{ instance_name }}</h1>
@@ -19953,8 +20124,8 @@ index 0000000..c9f3db9
 +{%- else -%}
 +{{ ns_results(streamed.results, q, pageno, streamed.paging, streamed.answers, streamed.corrections, streamed.suggestions) }}
 +{%- endif -%}
-+{% endblock %}
-+{% block page_data -%}
++</noscript>
++<script id="page-data" type="application/json">
 +{%- if streamed.error_message -%}
 +{{- page_error(streamed.error_message) -}}
 +{%- elif streamed.redirect_url -%}
@@ -19970,10 +20141,19 @@ index 0000000..c9f3db9
 +                 streamed.unresponsive_engines, streamed.timings, streamed.max_response_time,
 +                 timeout_limit, current_language, streamed.search_language, only_template) -}}
 +{%- endif -%}
-+{%- endblock %}
++</script>
++<script>
++  if (window.__zjsPageData) {
++    window.__zjsPageData();
++  } else {
++    // module not booted yet — it picks #page-data up from the DOM on boot
++    document.dispatchEvent(new CustomEvent("zjs:page-data"));
++  }
++</script>
++{% endblock %}
 diff --git a/searx/templates/zjsearch/rss.xsl b/searx/templates/zjsearch/rss.xsl
 new file mode 100644
-index 0000000..fcd302b
+index 0000000..1750253
 --- /dev/null
 +++ b/searx/templates/zjsearch/rss.xsl
 @@ -0,0 +1,132 @@
@@ -20021,7 +20201,7 @@ index 0000000..fcd302b
 +            padding: 2rem 0 1.5rem; border-bottom: 2px solid var(--accent-strong);
 +          }
 +          .brand .wordmark { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.01em; }
-+          .brand .wordmark .dot { color: var(--accent-strong); }
++          .brand .wordmark .dot { color: var(--accent); }
 +          h1 { font-size: 1.25rem; font-weight: 600; margin: 1.4rem 0 0.2rem; }
 +          .meta { font-size: 0.8rem; color: var(--ink-3); margin-bottom: 1.1rem; }
 +          .meta .count { font-weight: 600; color: var(--ink-2); }
@@ -20111,20 +20291,26 @@ index 0000000..fcd302b
 +</xsl:stylesheet>
 diff --git a/searx/templates/zjsearch/skeleton.html b/searx/templates/zjsearch/skeleton.html
 new file mode 100644
-index 0000000..00245f5
+index 0000000..51e5cb6
 --- /dev/null
 +++ b/searx/templates/zjsearch/skeleton.html
-@@ -0,0 +1,33 @@
+@@ -0,0 +1,38 @@
 +{#- zjsearch: static boot skeleton, streamed by the server before the search
 +    finishes (see zjsearch_search_stream).  It is wiped when React boots with
-+    the page payload and hidden entirely when JavaScript is disabled (the
-+    noscript results replace it).  The `<!--zjs-shell-->` marker marks the end
-+    of the early shell chunk -- do not remove it. -#}
++    the pending page payload and hidden entirely when JavaScript is disabled
++    (the noscript results replace it). -#}
 +<div aria-busy="true" class="zjs-boot">
 +  <div class="zjs-boot-top">
 +    <div class="zjs-boot-brand">{{ instance_name }}<span>.</span></div>
-+    <div class="zjs-boot-q">{{ q|e }}</div>
-+    <div class="zjs-skeleton zjs-boot-btn"></div>
++    <div class="zjs-boot-q">
++      <span class="zjs-boot-q-text">{{ q|e }}</span>
++      <span aria-hidden="true" class="zjs-boot-submit">
++        <svg fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="18">
++          <circle cx="11" cy="11" r="8" />
++          <path d="m21 21-4.3-4.3" />
++        </svg>
++      </span>
++    </div>
 +  </div>
 +  <div class="zjs-boot-body">
 +    <div class="zjs-boot-main">
@@ -20147,7 +20333,6 @@ index 0000000..00245f5
 +    <style>.zjs-boot { display: none !important; }</style>
 +  </noscript>
 +</div>
-+<!--zjs-shell-->
 diff --git a/searx/templates/zjsearch/stats.html b/searx/templates/zjsearch/stats.html
 new file mode 100644
 index 0000000..97e507b
