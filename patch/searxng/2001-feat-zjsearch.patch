@@ -18751,10 +18751,10 @@ index 40a4c80..b17570a 100644
          return results
 diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
 new file mode 100644
-index 0000000..6c44d6c
+index 0000000..b027aeb
 --- /dev/null
 +++ b/searx/plugins/advanced_search_syntax.py
-@@ -0,0 +1,804 @@
+@@ -0,0 +1,820 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +# pylint: disable=too-many-return-statements, too-many-branches
 +"""Advanced search syntax plugin for ZJSearch.
@@ -18849,6 +18849,11 @@ index 0000000..6c44d6c
 +
 +# File extension at the end of a URL path (filetype: filter)
 +_EXT_PATTERN = re.compile(r'\.([a-z0-9]+)$', re.IGNORECASE)
++
++# Kana + CJK ideographs (unified, extension A, compatibility) -- scripts
++# written without word separators; see `_word_matcher` (hangul is spaced and
++# keeps word boundaries)
++_CJK_TERM_RE = re.compile(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]')
 +
 +# syntax-key groups of the positional filters: (pos_words, pos_regexes,
 +# neg_words, neg_regexes) per searched field (title, content, url)
@@ -18949,16 +18954,21 @@ index 0000000..6c44d6c
 +    def _word_matcher(word: str) -> tuple[str, str | re.Pattern]:
 +        """Precompute a word match for the result hot path.
 +
-+        Returns a ``('sub', word_lower)`` tuple for words with non-word
-+        characters (plain substring check) or a ``('wb', compiled)`` tuple
-+        with a pre-compiled word-boundary pattern -- the same branch decision
-+        ``_text_matches`` made at match time, just once per word at parse
-+        time.
++        Returns a ``('sub', word_lower)`` tuple for plain substring checks or
++        a ``('wb', compiled)`` tuple with a pre-compiled word-boundary
++        pattern -- decided once per word at parse time.
++
++        Word boundaries only exist in scripts that separate words with
++        spaces/punctuation.  Inside continuous CJK text every character is a
++        word character, so ``\\b教程\\b`` can never match and a ``+教程`` /
++        ``intitle:教程`` filter would drop every result while ``-教程``
++        would never exclude one -- terms containing such characters fall
++        back to a substring match.
 +        """
 +        w = word.lower()
-+        if re.search(r'[^\w\s]', w):
-+            return ('sub', w)
-+        return ('wb', re.compile(r'\b' + re.escape(w) + r'\b'))
++        if not _CJK_TERM_RE.search(w) and not re.search(r'[^\w\s]', w):
++            return ('wb', re.compile(r'\b' + re.escape(w) + r'\b'))
++        return ('sub', w)
 +
 +    @staticmethod
 +    def _matcher_matches(matcher: tuple, text_lower: str) -> bool:
@@ -19318,6 +19328,12 @@ index 0000000..6c44d6c
 +                pass
 +
 +        if hasattr(search, 'search_query'):
++            # A query that cleans to nothing (a bare "site:example.com",
++            # "-word", "filetype:pdf") would make the engines search the
++            # literal operator string.  The include-domains are the closest
++            # real search term, DDG-style site lookup.
++            if not engine_query and syntax['site_include']:
++                engine_query = " ".join(syntax['site_include'])
 +            search.search_query.query = engine_query or original_query
 +
 +        return True
