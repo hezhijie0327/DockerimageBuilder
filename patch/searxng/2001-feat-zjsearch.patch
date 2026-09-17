@@ -19371,10 +19371,10 @@ index 314cc85..c59c9d7 100644
          return results
 diff --git a/searx/plugins/stock_quote.py b/searx/plugins/stock_quote.py
 new file mode 100644
-index 0000000..aa4d944
+index 0000000..73453a1
 --- /dev/null
 +++ b/searx/plugins/stock_quote.py
-@@ -0,0 +1,510 @@
+@@ -0,0 +1,583 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +# pylint: disable=missing-module-docstring
 +
@@ -19405,6 +19405,11 @@ index 0000000..aa4d944
 +CACHE_TTL = 60.0
 +"""Quotes move by the minute; repeated searches inside a minute reuse one fetch."""
 +
++FETCH_TIMEOUT = 3.0
++"""Per-request budget.  A provider that cannot answer within it fails and the
++lookup falls back to the other one; parallel batches cost the slowest request,
++not the sum."""
++
 +QUOTE_CACHE: dict[str, tuple[float, dict[str, t.Any] | None]] = {}
 +"""``{source}:{symbol}`` -> (fetch time, payload or None while the resolve failed)."""
 +
@@ -19431,10 +19436,10 @@ index 0000000..aa4d944
 +
 +def _fetch_json(url: str) -> t.Any:
 +    future = asyncio.run_coroutine_threadsafe(
-+        get_network().request("GET", url, allow_redirects=True, timeout=6, headers=_headers()),
++        get_network().request("GET", url, allow_redirects=True, timeout=FETCH_TIMEOUT, headers=_headers()),
 +        get_loop(),
 +    )
-+    return json.loads(future.result(timeout=10).text)
++    return json.loads(future.result(timeout=FETCH_TIMEOUT + 1).text)
 +
 +
 +def _fetch_json_multi(urls: list[str]) -> list[t.Any]:
@@ -19444,7 +19449,7 @@ index 0000000..aa4d944
 +    loop = get_loop()
 +    futures = [
 +        asyncio.run_coroutine_threadsafe(
-+            get_network().request("GET", url, allow_redirects=True, timeout=6, headers=_headers()),
++            get_network().request("GET", url, allow_redirects=True, timeout=FETCH_TIMEOUT, headers=_headers()),
 +            loop,
 +        )
 +        for url in urls
@@ -19452,7 +19457,20 @@ index 0000000..aa4d944
 +    out: list[t.Any] = []
 +    for future in futures:
 +        try:
-+            out.append(json.loads(future.result(timeout=10).text))
++            out.append(json.loads(future.result(timeout=FETCH_TIMEOUT + 1).text))
++        except Exception:  # pylint: disable=broad-except
++            out.append(None)
++    return out
++
++
++def _fetch_json_seq(urls: list[str]) -> list[t.Any]:
++    """Sequential variant of :py:func:`_fetch_json_multi`.  Tencent's kline
++    host drops concurrent connections from one client, so its batches run one
++    after another (a failed item is ``None`` instead of aborting the batch)."""
++    out: list[t.Any] = []
++    for url in urls:
++        try:
++            out.append(_fetch_json(url))
 +        except Exception:  # pylint: disable=broad-except
 +            out.append(None)
 +    return out
@@ -19623,21 +19641,24 @@ index 0000000..aa4d944
 +
 +def _tencent_symbol(symbol: str) -> str:
 +    """Normalize a user symbol to a tencent one (``sh600519``, ``hk00700``,
-+    ``usAAPL``).  Already-prefixed symbols pass through unchanged."""
-+    s = symbol.strip().lower()
-+    if re.fullmatch(r"(sh|sz|bj|hk|us)[0-9a-z.]{2,12}", s):
-+        return s
-+    if re.fullmatch(r"[0-9]{6}", s):
-+        if s[0] == "6":
-+            return "sh" + s
-+        if s[0] in "48":
-+            return "bj" + s
-+        return "sz" + s
-+    hk = re.fullmatch(r"([0-9]{1,5})\.?hk", s)
++    ``usAAPL``).  Already-prefixed symbols pass through unchanged.  US tickers
++    are upper-cased: tencent's kline host is case-sensitive there and serves
++    a stripped response for the all-lowercase spelling."""
++    s = symbol.strip()
++    low = s.lower()
++    if re.fullmatch(r"(sh|sz|bj|hk|us)[0-9a-z.]{2,12}", low):
++        return low[:2] + low[2:].upper() if low.startswith("us") else low
++    if re.fullmatch(r"[0-9]{6}", low):
++        if low[0] == "6":
++            return "sh" + low
++        if low[0] in "48":
++            return "bj" + low
++        return "sz" + low
++    hk = re.fullmatch(r"([0-9]{1,5})\.?hk", low)
 +    if hk:
 +        return "hk" + hk.group(1).zfill(5)
-+    if re.fullmatch(r"[a-z]{1,6}", s):
-+        return "us" + s
++    if re.fullmatch(r"[a-z]{1,6}", low):
++        return "us" + s.upper()
 +    return s
 +
 +
@@ -19678,24 +19699,44 @@ index 0000000..aa4d944
 +
 +def _tencent_fetch(symbol: str) -> dict[str, t.Any] | None:
 +    tx_symbol = _tencent_symbol(symbol)
++    # qt[1] carries the listing name; the bare code is the fallback
++    code = tx_symbol[2:].upper()
++    name = code
 +
-+    today = datetime.date.today()
-+    day_start = (today - datetime.timedelta(days=730)).isoformat()
-+    week_start = (today - datetime.timedelta(days=2100)).isoformat()
-+    tomorrow = (today + datetime.timedelta(days=1)).isoformat()
++    # US listings only return their full kline history under the
++    # exchange-suffixed code (qt block index 2, e.g. "usAAPL.OQ"); a bare
++    # "usAAPL" day request yields just two bars, so discover the suffix on a
++    # cheap two-bar probe before fetching the series.  CN/HK codes work bare.
++    series_symbol = tx_symbol
++    if tx_symbol.startswith("us"):
++        try:
++            probe_qt = _tx_qt(
++                _fetch_json(TX_KLINE_URL.format(symbol=tx_symbol, granularity="day", start="", end="", count=2)),
++                tx_symbol,
++            )
++            suffixed = str(probe_qt[2]).strip() if len(probe_qt) > 2 and probe_qt[2] else ""
++            if suffixed:
++                series_symbol = "us" + suffixed
++        except Exception:  # pylint: disable=broad-except
++            pass  # probe is best-effort; the bare-symbol request below still carries qt
 +
-+    day_j, week_j, m5_j, m15_j = _fetch_json_multi(
++    year_start = f"{datetime.date.today().year}-01-01"
++
++    day_j, week_j, m5_j, m15_j = _fetch_json_seq(
 +        [
-+            TX_KLINE_URL.format(symbol=tx_symbol, granularity="day", start=day_start, end=tomorrow, count=280),
-+            TX_KLINE_URL.format(symbol=tx_symbol, granularity="week", start=week_start, end=tomorrow, count=320),
-+            TX_MKLINE_URL.format(symbol=tx_symbol, granularity="m5", count=80),
-+            TX_MKLINE_URL.format(symbol=tx_symbol, granularity="m15", count=130),
++            TX_KLINE_URL.format(symbol=series_symbol, granularity="day", start="", end="", count=280),
++            TX_KLINE_URL.format(symbol=series_symbol, granularity="week", start="", end="", count=320),
++            TX_MKLINE_URL.format(symbol=series_symbol, granularity="m5", count=80),
++            TX_MKLINE_URL.format(symbol=series_symbol, granularity="m15", count=130),
 +        ]
 +    )
 +
-+    def rows_of(payload: t.Any, *keys: str) -> list[list]:
++    def node_of(payload: t.Any) -> dict[str, t.Any]:
 +        data = (payload or {}).get("data") or {}
-+        node = data.get(tx_symbol) or {}
++        return data.get(series_symbol) or data.get(tx_symbol) or {}
++
++    def rows_of(payload: t.Any, *keys: str) -> list[list]:
++        node = node_of(payload)
 +        rows: list[list] = []
 +        for key in keys:
 +            rows = rows or node.get(key) or []
@@ -19709,18 +19750,32 @@ index 0000000..aa4d944
 +        return None
 +
 +    day_candles = _candles(day_rows, *TX_ROW_CANDLE)
-+    week_candles = _candles(week_rows, *TX_ROW_CANDLE)
 +
-+    qt = _tx_qt(day_j, tx_symbol)
++    qt_node = node_of(day_j).get("qt") or {}
++    qt = qt_node.get(series_symbol) or qt_node.get(tx_symbol) or []
++    if not isinstance(qt, list) or len(qt) < 30:
++        # degraded realtime block (US responses sometimes carry only a sparse
++        # field dict) -- the daily bars take over for the quote fields below
++        qt = []
 +    qt_float = lambda index: _qt_float(qt, index)  # noqa: E731
++    if len(qt) > 1 and qt[1]:
++        name = str(qt[1])
 +
 +    # the qt layout differs per market: CN/HK report the P/E at index 52 and
 +    # 52-week extremes at 47/48; US listings carry the P/E at index 39 and
 +    # no 52-week extremes at all
 +    is_us = tx_symbol.startswith("us")
 +
++    # realtime fields first, daily bars as the fallback (close vs prior close)
++    last_bar = day_candles[-1] if day_candles else None
++    prev_bar = day_candles[-2] if len(day_candles) >= 2 else None
++
 +    price = qt_float(3)
++    if price is None and last_bar:
++        price = last_bar[3]
 +    previous_close = qt_float(4)
++    if previous_close is None and prev_bar:
++        previous_close = prev_bar[3]
 +    if price is None or previous_close is None:
 +        return None
 +    change = qt_float(31)
@@ -19732,6 +19787,22 @@ index 0000000..aa4d944
 +
 +    market_cap = qt_float(45)
 +    market_cap = market_cap * 1e8 if market_cap is not None else None
++
++    open_price = qt_float(5)
++    if open_price is None and last_bar:
++        open_price = last_bar[0]
++    high = qt_float(33)
++    if high is None and last_bar:
++        high = last_bar[1]
++    low = qt_float(34)
++    if low is None and last_bar:
++        low = last_bar[2]
++
++    recent = day_candles[-250:]
++    # 52-week extremes always derive from the daily bars -- the qt indexes
++    # that carry them differ per market and some layouts misreport
++    week52_high = max(c[1] for c in recent) if recent else None
++    week52_low = min(c[2] for c in recent) if recent else None
 +
 +    def rows_series(rows: list[list]) -> dict[str, t.Any]:
 +        return {
@@ -19755,6 +19826,8 @@ index 0000000..aa4d944
 +    }
 +
 +    as_of_date, as_of_time = _tencent_as_of(qt)
++    if not as_of_date and day_rows:
++        as_of_date = str(day_rows[-1][0])
 +
 +    return {
 +        "kind": "stock",
@@ -19767,13 +19840,13 @@ index 0000000..aa4d944
 +        "previous_close": previous_close,
 +        "change": change,
 +        "change_percent": change_percent,
-+        "open": qt_float(5),
-+        "high": qt_float(33),
-+        "low": qt_float(34),
++        "open": open_price,
++        "high": high,
++        "low": low,
 +        "pe": qt_float(39 if is_us else 52),
 +        "market_cap": market_cap,
-+        "week52_high": None if is_us else qt_float(47),
-+        "week52_low": None if is_us else qt_float(48),
++        "week52_high": week52_high,
++        "week52_low": week52_low,
 +        "avg_volume": _avg_volume(day_candles),
 +        "as_of_date": as_of_date,
 +        "as_of_time": as_of_time,
