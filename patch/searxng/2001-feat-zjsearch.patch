@@ -9779,10 +9779,10 @@ index 0000000..22a2c98
 +}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 0000000..4821c84
+index 0000000..8973dbd
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
-@@ -0,0 +1,375 @@
+@@ -0,0 +1,378 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -10145,16 +10145,19 @@ index 0000000..4821c84
 +  /** first results load their thumbnail eagerly (LCP) */
 +  eager?: boolean;
 +}
++/** Placeholder of a text card, in the loaded card's exact slot rhythm
++    (url / mt-1 title / mt-1.5 snippet ×2 / mt-2 engines pill) so the swap to
++    the real cards does not shift heights.  The streamed server skeleton
++    (skeleton.html) mirrors these bars — keep both in sync. */
 +export function ResultSkeleton() {
 +  return (
 +    <div className="rounded-2xl p-4">
-+      <div className="zjs-skeleton h-3 w-40" />
-+      <div className="zjs-skeleton mt-3 h-5 w-3/4" />
-+      <div className="zjs-skeleton mt-3 h-3 w-full" />
-+      <div className="zjs-skeleton mt-2 h-3 w-5/6" />
-+      <div className="zjs-skeleton mt-4 h-3 w-24" />
++      <div className="zjs-skeleton h-4 w-40" />
++      <div className="zjs-skeleton mt-1 h-6 w-3/4" />
++      <div className="zjs-skeleton mt-1.5 h-5.5 w-full" />
++      <div className="zjs-skeleton mt-1.5 h-5.5 w-5/6" />
 +      {/* engines-row slot so the skeleton matches the loaded card height */}
-+      <div className="zjs-skeleton mt-2 h-3.5 w-28 rounded-full" />
++      <div className="zjs-skeleton mt-2 h-5.5 w-28 rounded-full" />
 +    </div>
 +  );
 +}
@@ -14899,7 +14902,7 @@ index 0000000..90cac15
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..fd40f85
+index 0000000..4ccdfad
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
 @@ -0,0 +1,369 @@
@@ -15208,7 +15211,7 @@ index 0000000..fd40f85
 +            ) : null}
 +
 +            {showSkeletons ? (
-+              <div aria-busy="true">
++              <div aria-busy="true" className="mt-2 space-y-1">
 +                {Array.from({ length: 5 }, (_, index) => (
 +                  <ResultSkeleton key={index} />
 +                ))}
@@ -17255,10 +17258,10 @@ index 0000000..b717522
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..3cb9852
+index 0000000..6f814e3
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,798 @@
+@@ -0,0 +1,868 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -17719,13 +17722,19 @@ index 0000000..3cb9852
 +  }
 +
 +  /* boot skeleton: streamed by the server before the search finishes
-+     (results page shell), wiped by React on boot.  Layout mirrors the
-+     results header + text-card skeleton; hidden for no-JS via the inline
-+     <noscript><style> in the skeleton markup. */
++     (results page shell), wiped by React on boot.  Geometry mirrors the real
++     results page — header row, category tabs, filter row, text cards, an
++     empty right rail — so the boot swap does not shift the layout; hidden
++     for no-JS via the inline <noscript><style> in the skeleton markup. */
 +  .zjs-boot {
 +    max-width: var(--results-max, 90rem);
 +    margin-inline: auto;
 +    padding: 0.75rem 1rem 2rem;
++  }
++  @media (min-width: 40rem) {
++    .zjs-boot {
++      padding-inline: 1.5rem;
++    }
 +  }
 +  .zjs-boot-top {
 +    display: flex;
@@ -17744,6 +17753,8 @@ index 0000000..3cb9852
 +  .zjs-boot-brand span {
 +    color: var(--accent);
 +  }
++  /* stand-in for the real compact SearchBox: h-12 ps-5 pe-2 with the
++     max-w-2xl xl:max-w-3xl 2xl:max-w-4xl column of ResultsPage's header */
 +  .zjs-boot-q {
 +    flex: 1 1 auto;
 +    display: flex;
@@ -17751,12 +17762,23 @@ index 0000000..3cb9852
 +    gap: 0.5rem;
 +    min-width: 0;
 +    max-width: 42rem;
-+    padding: 0.375rem 0.375rem 0.375rem 1rem;
++    padding: 0.375rem 0.5rem 0.375rem 1.25rem;
 +    border: 1px solid var(--line);
 +    border-radius: 9999px;
 +    background: var(--surface);
++    box-shadow: var(--shadow-card);
 +    color: var(--ink-2);
 +    font-size: 1rem;
++  }
++  @media (min-width: 80rem) {
++    .zjs-boot-q {
++      max-width: 48rem;
++    }
++  }
++  @media (min-width: 96rem) {
++    .zjs-boot-q {
++      max-width: 56rem;
++    }
 +  }
 +  .zjs-boot-q-text {
 +    flex: 1 1 auto;
@@ -17776,56 +17798,102 @@ index 0000000..3cb9852
 +    background: var(--accent-strong);
 +    color: var(--accent-contrast);
 +  }
++  /* ghost HeaderActions: the 36px ghost circles of the real icon buttons */
++  .zjs-boot-actions {
++    flex: none;
++    display: flex;
++    align-items: center;
++    gap: 0.25rem;
++    margin-inline-start: auto;
++  }
++  .zjs-boot-action {
++    width: 2.25rem;
++    height: 2.25rem;
++    border-radius: 9999px;
++  }
 +  .zjs-boot-body {
 +    display: flex;
 +    gap: 2rem;
-+    margin-top: 1.5rem;
++    margin-top: 1rem;
 +  }
 +  .zjs-boot-main {
 +    flex: 1 1 0;
 +    min-width: 0;
 +  }
++  /* ghost category tabs (text + amber underline; first one selected) and
++     filter row (h-9 rounded-xl dropdown triggers) of the real page */
++  .zjs-boot-tabs {
++    display: flex;
++    align-items: center;
++    gap: 0.25rem;
++    overflow: hidden;
++    padding-block: 0.25rem;
++  }
++  .zjs-boot-tab {
++    flex: none;
++    width: 5rem;
++    height: 2.25rem;
++    border-radius: 0.5rem;
++  }
++  .zjs-boot-tab.is-selected {
++    width: 6rem;
++    box-shadow: inset 0 -2px 0 var(--accent-strong);
++  }
++  .zjs-boot-filters {
++    display: flex;
++    align-items: center;
++    gap: 0.25rem;
++    margin-top: 0.25rem;
++    overflow: hidden;
++  }
++  .zjs-boot-filter {
++    flex: none;
++    width: 7rem;
++    height: 2.25rem;
++    border-radius: 0.75rem;
++  }
++  /* card stack mirrors ResultSkeleton + the real list's space-y-1 */
++  .zjs-boot-cards {
++    display: flex;
++    flex-direction: column;
++    gap: 0.25rem;
++    margin-top: 0.5rem;
++  }
 +  .zjs-boot-card {
 +    border-radius: 1rem;
 +    padding: 1rem;
 +  }
-+  .zjs-boot-side {
-+    display: none;
-+  }
++  /* bars follow the real card rhythm: url / mt-1 title / mt-1.5 snippet ×2
++     / mt-2 engines pill — same values as ResultSkeleton in cardParts.tsx */
 +  .zjs-boot-w40 {
-+    height: 12px;
++    height: 16px;
 +    width: 160px;
 +  }
 +  .zjs-boot-title {
-+    height: 20px;
++    height: 24px;
 +    width: 75%;
-+    margin-top: 12px;
++    margin-top: 4px;
 +  }
 +  .zjs-boot-line {
-+    height: 12px;
++    height: 22px;
 +    width: 100%;
-+    margin-top: 12px;
++    margin-top: 6px;
 +  }
 +  .zjs-boot-line2 {
-+    height: 12px;
++    height: 22px;
 +    width: 83%;
-+    margin-top: 8px;
-+  }
-+  .zjs-boot-meta {
-+    height: 12px;
-+    width: 96px;
-+    margin-top: 16px;
++    margin-top: 6px;
 +  }
 +  .zjs-boot-pill {
-+    height: 14px;
++    height: 22px;
 +    width: 112px;
 +    margin-top: 8px;
 +    border-radius: 9999px;
 +  }
-+  .zjs-boot-side-card {
-+    height: 320px;
-+    width: 100%;
-+    border-radius: 1rem;
++  /* width-only reservation of the results right rail (lg:w-80 xl:w-96),
++      which the real page keeps even while it is empty */
++  .zjs-boot-side {
++    display: none;
 +  }
 +  @media (min-width: 30rem) {
 +    .zjs-boot-brand {
@@ -17836,6 +17904,11 @@ index 0000000..3cb9852
 +    .zjs-boot-side {
 +      display: block;
 +      flex: 0 0 20rem;
++    }
++  }
++  @media (min-width: 80rem) {
++    .zjs-boot-side {
++      flex-basis: 24rem;
 +    }
 +  }
 +
@@ -21371,14 +21444,18 @@ index 0000000..1750253
 +</xsl:stylesheet>
 diff --git a/searx/templates/zjsearch/skeleton.html b/searx/templates/zjsearch/skeleton.html
 new file mode 100644
-index 0000000..51e5cb6
+index 0000000..68c301a
 --- /dev/null
 +++ b/searx/templates/zjsearch/skeleton.html
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,60 @@
 +{#- zjsearch: static boot skeleton, streamed by the server before the search
 +    finishes (see zjsearch_search_stream).  It is wiped when React boots with
 +    the pending page payload and hidden entirely when JavaScript is disabled
-+    (the noscript results replace it). -#}
++    (the noscript results replace it).  Geometry mirrors the real results page
++    chrome — header row (brand, query box, action buttons), category tabs,
++    filter row, text-card list, reserved-empty right rail — so the swap to the
++    React pending state does not shift the layout.  Keep in sync with
++    ResultsPage / ResultSkeleton. -#}
 +<div aria-busy="true" class="zjs-boot">
 +  <div class="zjs-boot-top">
 +    <div class="zjs-boot-brand">{{ instance_name }}<span>.</span></div>
@@ -21391,23 +21468,41 @@ index 0000000..51e5cb6
 +        </svg>
 +      </span>
 +    </div>
++    <div aria-hidden="true" class="zjs-boot-actions">
++      <span class="zjs-skeleton zjs-boot-action"></span>
++      <span class="zjs-skeleton zjs-boot-action"></span>
++      <span class="zjs-skeleton zjs-boot-action"></span>
++    </div>
 +  </div>
 +  <div class="zjs-boot-body">
 +    <div class="zjs-boot-main">
-+      {%- for _ in range(5) -%}
-+      <div class="zjs-boot-card">
-+        <div class="zjs-skeleton zjs-boot-w40"></div>
-+        <div class="zjs-skeleton zjs-boot-title"></div>
-+        <div class="zjs-skeleton zjs-boot-line"></div>
-+        <div class="zjs-skeleton zjs-boot-line2"></div>
-+        <div class="zjs-skeleton zjs-boot-meta"></div>
-+        <div class="zjs-skeleton zjs-boot-pill"></div>
++      <div aria-hidden="true" class="zjs-boot-tabs">
++        <span class="zjs-skeleton zjs-boot-tab is-selected"></span>
++        <span class="zjs-skeleton zjs-boot-tab"></span>
++        <span class="zjs-skeleton zjs-boot-tab"></span>
++        <span class="zjs-skeleton zjs-boot-tab"></span>
++        <span class="zjs-skeleton zjs-boot-tab"></span>
 +      </div>
-+      {%- endfor -%}
++      <div aria-hidden="true" class="zjs-boot-filters">
++        <span class="zjs-skeleton zjs-boot-filter"></span>
++        <span class="zjs-skeleton zjs-boot-filter"></span>
++        <span class="zjs-skeleton zjs-boot-filter"></span>
++      </div>
++      <div aria-hidden="true" class="zjs-boot-cards">
++        {%- for _ in range(5) -%}
++        <div class="zjs-boot-card">
++          <div class="zjs-skeleton zjs-boot-w40"></div>
++          <div class="zjs-skeleton zjs-boot-title"></div>
++          <div class="zjs-skeleton zjs-boot-line"></div>
++          <div class="zjs-skeleton zjs-boot-line2"></div>
++          <div class="zjs-skeleton zjs-boot-pill"></div>
++        </div>
++        {%- endfor -%}
++      </div>
 +    </div>
-+    <div class="zjs-boot-side">
-+      <div class="zjs-skeleton zjs-boot-side-card"></div>
-+    </div>
++    {#- the real page reserves the right rail even when it stays empty
++        (ResultsPage renders it for the infobox) — reserve the width only -#}
++    <div aria-hidden="true" class="zjs-boot-side"></div>
 +  </div>
 +  <noscript>
 +    <style>.zjs-boot { display: none !important; }</style>
