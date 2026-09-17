@@ -6153,10 +6153,10 @@ index 0000000..a55dbf5
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 0000000..8eca575
+index 0000000..74e2d7e
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,247 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -6181,8 +6181,11 @@ index 0000000..8eca575
 +import { useState } from "react";
 +import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
 +import { useCopyToast } from "@/lib/clipboard.ts";
++import { downloadResults } from "@/lib/exporters.ts";
 +import { useT } from "@/lib/i18n.ts";
-+import type { SearchPageData } from "@/lib/types.ts";
++import { isModifiedClick } from "@/lib/link.ts";
++import { flashToast } from "@/lib/toast.ts";
++import type { ResultItem, SearchPageData } from "@/lib/types.ts";
 +
 +/** per-format icons for the download strip; unknown configured formats fall
 +    back to the code-file icon */
@@ -6208,14 +6211,15 @@ index 0000000..8eca575
 +
 +export function DebugPanels({
 +  data,
-+  resultCount,
++  results,
 +  searchUrl,
 +}: {
 +  data: SearchPageData;
-+  /** number of rendered results (payload + appended infinite-scroll pages) */
-+  resultCount: number;
++  /** results currently on screen (payload + appended infinite-scroll pages):
++      the download formats export this list client-side */
++  results: ResultItem[];
 +  /** shareable search URL: enables the copy action and the download formats
-+      (GET /search?format=…, machine-readable results) */
++      (its format= URLs stay the fallback for modified clicks / feed readers) */
 +  searchUrl?: string;
 +}) {
 +  const t = useT();
@@ -6244,7 +6248,7 @@ index 0000000..8eca575
 +          type="button"
 +        >
 +          <List className="size-3 shrink-0" />
-+          {t("meta_found")} {resultCount} {t("meta_results")}
++          {t("meta_found")} {results.length} {t("meta_results")}
 +          <ChevronDown className={`size-3.5 transition-transform ${openPanel === "results" ? "rotate-180" : ""}`} />
 +        </button>
 +        {hasEnginesPanel ? (
@@ -6303,6 +6307,19 @@ index 0000000..8eca575
 +                        className={stripChip}
 +                        href={`${searchUrl}&format=${format}`}
 +                        key={format}
++                        onClick={(event) => {
++                          // a plain click exports what is on screen (the
++                          // merged list lives only here, the server cannot
++                          // rebuild it); modified clicks keep the server
++                          // format= URL for feed readers / API consumers
++                          if (isModifiedClick(event)) {
++                            return;
++                          }
++                          event.preventDefault();
++                          if (downloadResults(format, data, results, window.location.origin)) {
++                            flashToast(`${t("exported")} ${results.length} ${t("meta_results")}`, { tone: "ok" });
++                          }
++                        }}
 +                        rel="noreferrer"
 +                        target="_blank"
 +                      >
@@ -12074,6 +12091,380 @@ index 0000000..e37e881
 +  }
 +  return inflight;
 +}
+diff --git a/client/zjsearch/src/lib/exporters.ts b/client/zjsearch/src/lib/exporters.ts
+new file mode 100644
+index 0000000..2d9be8a
+--- /dev/null
++++ b/client/zjsearch/src/lib/exporters.ts
+@@ -0,0 +1,368 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/** Client-side export of the results currently on screen (the payload page
++    plus every appended infinite-scroll page).  That merged list only exists
++    in the browser — the server cannot reconstruct it — so the download
++    formats are generated here instead of re-running the search; the plain
++    GET /search?format=… URLs stay untouched for feed readers and no-JS
++    clients (the format chips keep their href for modified clicks).
++
++    The emitted structures mirror the upstream serializers field by field so
++    a download and a curl of the same query are interchangeable:
++      JSON — webutils.get_json_response: {query, results, answers,
++            corrections, infoboxes, suggestions, unresponsive_engines}, with
++            results in the upstream result-dict shape (url, template, engine,
++            engines, parsed_url as the 6-element ParseResult array, title,
++            content, …, publishedDate as an ISO string — the payload's
++            title_html/pretty_url/… theme fields are dropped),
++            answers as {url, engine, parsed_url, template, …} (msgspec
++            to_builtins shape), compact encoding.
++      CSV  — webutils.write_csv_response: title,url,content,host,engine,
++            score,type rows for results, answers, suggestions, corrections
++            (the server crashes on answers — parsed_url is null there — this
++            export fills the columns gracefully instead).
++      RSS  — zjsearch/opensearch_response_rss.xml: instance_name channel,
++            xml-stylesheet, opensearch elements, per-item description extras
++            (torrent health, video length, author, image resolution),
++            enclosure from thumbnail_src/img_src, RFC-822 pubDate. */
++
++import type { AnswerData, ResultItem, SearchPageData } from "@/lib/types.ts";
++
++const EXPORT_MIME: Record<string, string> = {
++  csv: "application/csv",
++  json: "application/json",
++  rss: "text/xml",
++  xml: "text/xml",
++};
++
++/** ResultItem fields that exist upstream under the same name; everything
++    theme-only (title_html, pretty_url, favicon, …) is dropped from exports. */
++const PASSTHROUGH_KEYS: Array<keyof ResultItem> = [
++  "filesize",
++  "seed",
++  "leech",
++  "files",
++  "magnetlink",
++  "torrentfile",
++  "resolution",
++  "img_format",
++  "source",
++  "author",
++  "views",
++  "length_seconds",
++  "metadata",
++  "comments",
++  "tags",
++  "authors",
++  "editor",
++  "publisher",
++  "journal",
++  "volume",
++  "number",
++  "pages",
++  "doi",
++  "issn",
++  "isbn",
++  "pdf_url",
++  "html_url",
++  "package_name",
++  "version",
++  "maintainer",
++  "popularity",
++  "license_name",
++  "license_url",
++  "homepage",
++  "source_code_url",
++  "repository",
++  "filename",
++  "size",
++  "time",
++  "mimetype",
++  "embedded",
++  "mtype",
++  "subtype",
++  "address",
++  "map_links",
++  "longitude",
++  "latitude",
++  "geojson",
++  "boundingbox",
++  "price",
++  "shipping",
++  "source_country",
++];
++
++function xmlEscape(text: string): string {
++  return text
++    .replaceAll("&", "&amp;")
++    .replaceAll("<", "&lt;")
++    .replaceAll(">", "&gt;")
++    .replaceAll('"', "&quot;")
++    .replaceAll("'", "&#39;");
++}
++
++/** jinja's urlencode (= quote_plus): spaces become "+" */
++function urlencode(text: string): string {
++  return encodeURIComponent(text).replaceAll("%20", "+");
++}
++
++function csvCell(value: unknown): string {
++  const text = value === undefined || value === null ? "" : String(value);
++  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
++}
++
++/** The upstream `parsed_url`: urllib's ParseResult namedtuple serializes to
++    a 6-element array [scheme, netloc, path, params, query, fragment]; unset
++    URLs stay null. */
++function parsedUrl(url: string): [string, string, string, string, string, string] | null {
++  try {
++    const parsed = new URL(url);
++    return [
++      parsed.protocol.replace(/:$/, ""),
++      parsed.host,
++      parsed.pathname,
++      "",
++      parsed.search.replace(/^\?/, ""),
++      parsed.hash.replace(/^#/, ""),
++    ];
++  } catch {
++    return null;
++  }
++}
++
++/** The upstream result-dict shape (LegacyResult.as_dict): base keys are
++    always present, type-specific extras only when set.  `publishedDate`
++    carries the payload's ISO instant, matching the upstream JSONEncoder's
++    datetime.isoformat(). */
++function upstreamResult(result: ResultItem): Record<string, unknown> {
++  const mapped: Record<string, unknown> = {
++    template: result.template,
++    url: result.url,
++    parsed_url: parsedUrl(result.url),
++    engine: result.engines[0] ?? "",
++    engines: result.engines,
++    title: result.title_text,
++    content: result.content_text,
++    img_src: result.img_src ?? "",
++    thumbnail: result.thumbnail ?? "",
++    priority: result.priority ?? "",
++    positions: "",
++    score: result.score ?? 0,
++    category: result.category ?? "",
++    publishedDate: result.published_date ?? null,
++    pubdate: "",
++    iframe_src: result.iframe_src ?? null,
++  };
++  for (const key of PASSTHROUGH_KEYS) {
++    const value = result[key];
++    if (value !== undefined && value !== null && value !== "") {
++      mapped[key] = value;
++    }
++  }
++  // upstream videos carry `length` (the label), renamed to length_display in
++  // the page payload
++  if (result.length_display) {
++    mapped.length = result.length_display;
++  }
++  return mapped;
++}
++
++/** The upstream answer shape (msgspec to_builtins of the BaseAnswer
++    subclasses): {url, engine, parsed_url, template, <answer fields>}. */
++function upstreamAnswer(answer: AnswerData): Record<string, unknown> {
++  // the payload stores "" for unset strings; upstream answers emit null
++  const base = {
++    url: answer.url || null,
++    engine: answer.engine || null,
++    parsed_url: null,
++    template: answer.template,
++  };
++  if (answer.template === "answer/legacy.html" || answer.template === "answer/stock.html") {
++    return { ...base, answer: answer.answer, data: answer.data ?? null };
++  }
++  // translations / weather: their payload fields ride along after the base
++  const payload: Record<string, unknown> = { ...answer };
++  delete payload.template;
++  delete payload.url;
++  delete payload.engine;
++  return { ...base, ...payload };
++}
++
++function buildResultsJson(data: SearchPageData, results: ResultItem[]): string {
++  return JSON.stringify({
++    query: data.q,
++    results: results.map(upstreamResult),
++    answers: data.answers.map(upstreamAnswer),
++    corrections: data.corrections.map((correction) => correction.title),
++    infoboxes: data.infoboxes,
++    suggestions: data.suggestions.map((suggestion) => suggestion.title),
++    unresponsive_engines: data.unresponsive_engines,
++  });
++}
++
++function buildResultsCsv(data: SearchPageData, results: ResultItem[]): string {
++  const keys = ["title", "url", "content", "host", "engine", "score", "type"];
++  const rows: string[][] = [keys];
++  for (const result of results) {
++    rows.push([
++      result.title_text,
++      result.url,
++      result.content_text,
++      parsedUrl(result.url)?.[1] ?? "",
++      result.engines[0] ?? "",
++      result.score !== undefined ? String(result.score) : "",
++      "result",
++    ]);
++  }
++  for (const answer of data.answers) {
++    // the upstream CSV crashes on answers (parsed_url is null there); the
++    // client fills the columns gracefully, the answer text lands in `title`
++    rows.push([
++      "answer" in answer ? answer.answer : answer.template,
++      answer.url ?? "",
++      "",
++      "",
++      "engine" in answer ? answer.engine : "",
++      "",
++      "answer",
++    ]);
++  }
++  for (const suggestion of data.suggestions) {
++    rows.push([suggestion.title, "", "", "", "", "", "suggestion"]);
++  }
++  for (const correction of data.corrections) {
++    rows.push([correction.title, "", "", "", "", "", "correction"]);
++  }
++  // CRLF rows like the upstream csv writer; BOM so Excel reads the UTF-8
++  return `\uFEFF${rows.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
++}
++
++/** RFC-822 pubDate of the upstream template: `strftime('%a, %d %b %Y
++    %H:%M:%S') + ' ' + (%z or '+0000')` — rendered for the UTC instant. */
++function rssDate(iso: string | undefined): string | null {
++  if (!iso) {
++    return null;
++  }
++  const date = new Date(iso);
++  if (Number.isNaN(date.getTime())) {
++    return null;
++  }
++  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
++  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
++  const pad = (value: number) => String(value).padStart(2, "0");
++  return (
++    `${days[date.getUTCDay()]}, ${pad(date.getUTCDate())} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()} ` +
++    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} +0000`
++  );
++}
++
++/** The <description> extras of the upstream RSS template: torrent health,
++    video length, author and image resolution ride along after the content. */
++function rssDescription(result: ResultItem): string {
++  const parts = [result.content_text || ""];
++  if (result.template === "torrent.html") {
++    if (result.filesize) {
++      parts.push(` [${result.filesize}]`);
++    }
++    if (result.seed) {
++      parts.push(` seeds ${result.seed}, leech ${result.leech}`);
++    }
++    if (result.files) {
++      parts.push(`, ${result.files} files`);
++    }
++    if (result.magnetlink) {
++      parts.push(` | magnet: ${result.magnetlink}`);
++    }
++  } else {
++    if (result.template === "videos.html" && result.length_display) {
++      parts.push(` [${result.length_display}]`);
++    }
++    if (result.author) {
++      parts.push(` — ${result.author}`);
++    }
++    if (result.template === "images.html" && result.resolution) {
++      parts.push(` [${result.resolution}]`);
++    }
++  }
++  return parts.join("");
++}
++
++function rssItem(result: ResultItem): string {
++  const lines = [
++    "    <item>",
++    `      <title>${xmlEscape(result.title_text)}</title>`,
++    "      <type>result</type>",
++    `      <link>${xmlEscape(result.url)}</link>`,
++    `      <description>${xmlEscape(rssDescription(result))}</description>`,
++  ];
++  // the upstream template encloses thumbnail_src / img_src only — `thumbnail`
++  // (the proxified general-thumbnail) never produces one
++  const media = result.thumbnail_src || result.img_src;
++  if (media) {
++    const extension = (media.split("?", 1)[0] ?? media).split(".").pop()?.toLowerCase();
++    const type = extension === "png" ? "png" : extension === "webp" ? "webp" : extension === "gif" ? "gif" : "jpeg";
++    lines.push(`      <enclosure length="0" type="image/${type}" url="${xmlEscape(media)}"/>`);
++  }
++  const pubDate = rssDate(result.published_date);
++  if (pubDate) {
++    lines.push(`      <pubDate>${pubDate}</pubDate>`);
++  }
++  lines.push("    </item>");
++  return lines.join("\n");
++}
++
++function buildResultsRss(data: SearchPageData, results: ResultItem[], origin: string): string {
++  const q = xmlEscape(data.q);
++  const instance = xmlEscape(data.globals.instance_name);
++  return [
++    '<?xml version="1.0" encoding="UTF-8"?>',
++    `<?xml-stylesheet href="${origin}/rss.xsl" type="text/xsl"?>`,
++    '<rss version="2.0"',
++    '     xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"',
++    '     xmlns:atom="http://www.w3.org/2005/Atom">',
++    "  <channel>",
++    `    <instance_name>${instance}</instance_name>`,
++    `    <title>${instance} search: ${q}</title>`,
++    `    <link>${origin}/search?q=${urlencode(data.q)}</link>`,
++    `    <description>Search results for "${q}" - ${instance}</description>`,
++    "    <opensearch:startIndex>1</opensearch:startIndex>",
++    `    <atom:link rel="search" type="application/opensearchdescription+xml" href="${origin}/opensearch.xml"/>`,
++    `    <opensearch:Query role="request" searchTerms="${q}" startPage="1" />`,
++    ...results.map(rssItem),
++    "  </channel>",
++    "</rss>",
++  ].join("\n");
++}
++
++/** Build and download the current results as `format` (csv/json/rss; xml is
++    an alias of rss) in the same structure as the server's format endpoints.
++    Returns false when the format has no client-side builder — the caller
++    then leaves the server URL link untouched. */
++export function downloadResults(format: string, data: SearchPageData, results: ResultItem[], origin: string): boolean {
++  const mime = EXPORT_MIME[format];
++  if (!mime) {
++    return false;
++  }
++  const text =
++    format === "csv"
++      ? buildResultsCsv(data, results)
++      : format === "json"
++        ? buildResultsJson(data, results)
++        : buildResultsRss(data, results, origin);
++  const safeQuery =
++    data.q
++      .replace(/[/\\:*?"<>|]+/g, "_")
++      .trim()
++      .slice(0, 64) || "results";
++  const extension = format === "rss" || format === "xml" ? "xml" : format;
++  const blob = new Blob([text], { type: `${mime};charset=utf-8` });
++  const url = URL.createObjectURL(blob);
++  const anchor = document.createElement("a");
++  anchor.href = url;
++  anchor.download = `searx_-_${safeQuery}.${extension}`;
++  document.body.append(anchor);
++  anchor.click();
++  anchor.remove();
++  URL.revokeObjectURL(url);
++  return true;
++}
 diff --git a/client/zjsearch/src/lib/format.ts b/client/zjsearch/src/lib/format.ts
 new file mode 100644
 index 0000000..4b37d4e
@@ -12253,10 +12644,10 @@ index 0000000..9e3d246
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..afeeb21
+index 0000000..3799604
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,368 @@
+@@ -0,0 +1,369 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -12592,6 +12983,7 @@ index 0000000..afeeb21
 +  page_about_searxng: "About SearXNG",
 +  cached: "Cached",
 +  export_formats: "Export formats",
++  exported: "Exported",
 +  // misc chrome
 +  save_failed: "Saving failed — check your connection; changing a setting retries.",
 +  embedded_content: "Embedded content",
@@ -12627,10 +13019,10 @@ index 0000000..afeeb21
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..b645a1d
+index 0000000..b6e1075
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,361 @@
+@@ -0,0 +1,362 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -12961,6 +13353,7 @@ index 0000000..b645a1d
 +  page_about_searxng: "关于 SearXNG",
 +  cached: "缓存页",
 +  export_formats: "导出格式",
++  exported: "已导出",
 +  // misc chrome
 +  save_failed: "保存失败——请检查网络连接；更改任意设置会自动重试。",
 +  embedded_content: "嵌入式内容",
@@ -13784,10 +14177,10 @@ index 0000000..b8935db
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..3401dc7
+index 0000000..c796acb
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,541 @@
+@@ -0,0 +1,546 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -14036,6 +14429,9 @@ index 0000000..3401dc7
 +  | {
 +      template: "answer/legacy.html";
 +      answer: string;
++      /** upstream answer engine tag ("plugin: self_info" …); empty when the
++          answer has no engine */
++      engine: string;
 +      url: string;
 +      /** structured payload emitted by the special-query plugins (hash,
 +          statistics, time zone, self-info, random); themes render from this
@@ -14050,6 +14446,7 @@ index 0000000..3401dc7
 +    }
 +  | {
 +      template: "answer/weather.html";
++      engine: string;
 +      service: string;
 +      url: string;
 +      current: WeatherItem;
@@ -14058,6 +14455,7 @@ index 0000000..3401dc7
 +  | {
 +      template: "answer/stock.html";
 +      answer: string;
++      engine: string;
 +      url: string;
 +      /** quote payload from the stock_quote plugin (eastmoney): the sparkline
 +          series is intraday 5-minute closes, newest last */
@@ -14902,7 +15300,7 @@ index 0000000..90cac15
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..4ccdfad
+index 0000000..5704ed8
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
 @@ -0,0 +1,369 @@
@@ -15186,7 +15584,7 @@ index 0000000..4ccdfad
 +            {!showSkeletons && !error ? (
 +              <>
 +                <div className="mt-2">
-+                  <DebugPanels data={data} resultCount={allResults.length} searchUrl={shareableSearchUrl(data)} />
++                  <DebugPanels data={data} results={allResults} searchUrl={shareableSearchUrl(data)} />
 +                </div>
 +                <div className="mt-3.5">
 +                  <SuggestionsBox data={data} onSearch={submitQuery} />
@@ -20365,10 +20763,10 @@ index 0000000..0ebb604
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..8f8f667
+index 0000000..02cc22c
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,573 @@
+@@ -0,0 +1,575 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -20631,6 +21029,7 @@ index 0000000..8f8f667
 +    {%- endfor -%}
 +  ]
 +  {%- elif answer.template == 'answer/weather.html' %}
++  , "engine": {{ (answer.engine or '')|tojson }}
 +  , "service": {{ (answer.service or '')|tojson }}
 +  , "url": {{ (answer.url or '')|tojson }}
 +  , "current": {{ _weather_item(answer.current, answer) }}
@@ -20641,6 +21040,7 @@ index 0000000..8f8f667
 +  ]
 +{%- else %}
 +, "answer": {{ (answer.answer or '')|tojson }}
++, "engine": {{ (answer.engine or '')|tojson }}
 +, "url": {{ (answer.url or '')|tojson }}
 +{%- if answer.data %}
 +, "data": { {%- for key, value in answer.data.items() %}{{ key|tojson }}: {{ value|tojson }}{{ ", " if not loop.last }}{%- endfor -%} }{% endif %}
