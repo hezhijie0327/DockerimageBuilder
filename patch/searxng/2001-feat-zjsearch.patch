@@ -8687,22 +8687,23 @@ index 0000000..ec20b40
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Stock.tsx b/client/zjsearch/src/features/results/answers/Stock.tsx
 new file mode 100644
-index 0000000..26cc2b0
+index 0000000..7780ea2
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Stock.tsx
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,352 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Stock quote card (stock_quote plugin, eastmoney data), DDG/Yahoo style:
 +    name + exchange:ticker header, price hero, range pills (1D..MAX), a chart
-+    with y labels / prev-close reference / last-price tag, and a statistics
-+    grid.  Red/green follows the locale convention: zh-CN reads red = up /
-+    green = down, international markets read the opposite. */
++    with y/x axes, a hover crosshair with a data tooltip (date/OHLC/volume),
++    prev-close reference and a last-price tag, plus a statistics grid.
++    Red/green follows the locale convention: zh-CN reads red = up / green =
++    down, international markets read the opposite. */
 +
 +import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 +import { useContext, useState } from "react";
 +import { I18nContext, useT } from "@/lib/i18n.ts";
-+import type { AnswerData, StockAnswerPayload } from "@/lib/types.ts";
++import type { AnswerData, StockAnswerPayload, StockSeries } from "@/lib/types.ts";
 +
 +type RangeKey = "1D" | "5D" | "1M" | "YTD" | "1Y" | "5Y" | "MAX";
 +
@@ -8731,8 +8732,7 @@ index 0000000..26cc2b0
 +
 +/** Intraday line colored per segment against the previous close (Yahoo
 +    style): runs above the reference stroke in the bullish color, below in
-+    the bearish one.  Points live in a 0..100 normalized viewBox; the
-+    non-scaling stroke keeps the line 1.25px at any card width. */
++    the bearish one. */
 +function SegmentLine({
 +  bearStroke,
 +  bullStroke,
@@ -8804,6 +8804,14 @@ index 0000000..26cc2b0
 +  );
 +}
 +
++function xAxisLabels(labels: string[]): string[] {
++  const n = labels.length;
++  if (n <= 5) {
++    return labels;
++  }
++  return [0, 1, 2, 3, 4].map((k) => labels[Math.round((k / 4) * (n - 1))] ?? "");
++}
++
 +export function StockAnswer({ answer }: { answer: Extract<AnswerData, { template: "answer/stock.html" }> }) {
 +  const t = useT();
 +  const locale = useContext(I18nContext);
@@ -8814,14 +8822,15 @@ index 0000000..26cc2b0
 +  const bearText = redUp ? "text-ok" : "text-danger";
 +  const bullStroke = redUp ? "stroke-danger" : "stroke-ok";
 +  const bearStroke = redUp ? "stroke-ok" : "stroke-danger";
-+  const bullArea = redUp ? "fill-danger/15" : "fill-ok/15";
-+  const bearArea = redUp ? "fill-ok/15" : "fill-danger/15";
 +  const tone = up ? bullText : bearText;
 +  const sign = up ? "+" : "";
 +
 +  const [range, setRange] = useState<RangeKey>("1D");
-+  const series = d.ranges[range] ?? d.ranges["1D"] ?? [];
-+  const bounds = d.range_bounds[range] ?? ["", ""];
++  const [hover, setHover] = useState<number | null>(null);
++  const active: StockSeries = d.ranges[range] ?? d.ranges["1D"] ?? { labels: [], candles: [] };
++  const candles = active.candles;
++  const closes = candles.map((c) => c[3]);
++  const hoverClose = hover !== null ? closes[hover] : undefined;
 +
 +  const stats: Array<[string, string]> = (
 +    [
@@ -8869,77 +8878,138 @@ index 0000000..26cc2b0
 +      </div>
 +
 +      {/* range pills */}
-+      <div className="mt-3 flex flex-wrap gap-1.5">
-+        {RANGES.filter((key) => (d.ranges[key] ?? []).length > 1).map((key) => (
-+          <button
-+            className={`rounded-full px-3 py-1 text-[13px] transition-colors ${
-+              key === range
-+                ? "bg-accent-strong font-medium text-accent-contrast"
-+                : "bg-surface-2 text-ink-2 hover:text-ink"
-+            }`}
-+            key={key}
-+            onClick={() => {
-+              setRange(key);
-+            }}
-+            type="button"
-+          >
-+            {rangeLabel(key, t)}
-+          </button>
-+        ))}
-+      </div>
++      {Object.keys(d.ranges).length > 0 ? (
++        <div className="mt-3 flex flex-wrap gap-1.5">
++          {RANGES.filter((key) => (d.ranges[key]?.candles.length ?? 0) > 1).map((key) => (
++            <button
++              className={`rounded-full px-3 py-1 text-[13px] transition-colors ${
++                key === range
++                  ? "bg-accent-strong font-medium text-accent-contrast"
++                  : "bg-surface-2 text-ink-2 hover:text-ink"
++              }`}
++              key={key}
++              onClick={() => {
++                setRange(key);
++                setHover(null);
++              }}
++              type="button"
++            >
++              {rangeLabel(key, t)}
++            </button>
++          ))}
++        </div>
++      ) : null}
 +
-+      {/* chart: 1D shows the per-segment prev-close coloring */}
-+      <div className="mt-3">
-+        <div className="relative h-52">
-+          <div aria-hidden="true" className="absolute inset-0 flex flex-col justify-between">
-+            {[0, 1, 2].map((row) => (
-+              <div aria-hidden="true" className="border-t border-line/40" key={row} />
++      {/* chart with hover crosshair (skipped entirely when the kline fetch
++          failed but the quote succeeded -- the price hero above still works) */}
++      {candles.length > 0 ? (
++        <div className="mt-3">
++          <div
++            className="relative h-52"
++            onPointerLeave={() => {
++              setHover(null);
++            }}
++            onPointerMove={(e) => {
++              const rect = e.currentTarget.getBoundingClientRect();
++              const ratio = (e.clientX - rect.left) / rect.width;
++              setHover(Math.max(0, Math.min(candles.length - 1, Math.round(ratio * (candles.length - 1)))));
++            }}
++          >
++            <div aria-hidden="true" className="absolute inset-0 flex flex-col justify-between">
++              {[0, 1, 2].map((row) => (
++                <div aria-hidden="true" className="border-t border-line/40" key={row} />
++              ))}
++            </div>
++            {range === "1D" ? (
++              <div
++                aria-hidden="true"
++                className="absolute inset-x-0 border-t border-dashed border-danger/60"
++                style={{ top: `${yPctOf(closes, d.previous_close)}%` }}
++              />
++            ) : null}
++            {range === "1D" ? (
++              <SegmentLine
++                bearStroke={bearStroke}
++                bullStroke={bullStroke}
++                prevClose={d.previous_close}
++                series={closes}
++              />
++            ) : (
++              <RangeLine
++                areaClass={up ? "fill-ok/15" : "fill-danger/15"}
++                series={closes}
++                strokeClass={up ? bullStroke : bearStroke}
++              />
++            )}
++            {/* hover crosshair + marker dot */}
++            {hover !== null && hoverClose !== undefined ? (
++              <>
++                <div
++                  aria-hidden="true"
++                  className="absolute inset-y-0 border-l border-dashed border-ink-3/60"
++                  style={{ left: `${xPctOf(closes, hover)}%` }}
++                />
++                <div
++                  aria-hidden="true"
++                  className={`absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-line bg-surface ${tone}`}
++                  style={{ left: `${xPctOf(closes, hover)}%`, top: `${yPctOf(closes, hoverClose)}%` }}
++                />
++              </>
++            ) : null}
++            {/* y labels */}
++            {closes.length > 1 ? (
++              <>
++                <span
++                  aria-hidden="true"
++                  className="absolute right-0 top-0 -translate-y-1/2 rounded bg-surface px-1 text-[10px] text-ink-3"
++                >
++                  {fmtNum(Math.max(...closes), "en")}
++                </span>
++                <span
++                  aria-hidden="true"
++                  className="absolute bottom-0 right-0 translate-y-1/2 rounded bg-surface px-1 text-[10px] text-ink-3"
++                >
++                  {fmtNum(Math.min(...closes), "en")}
++                </span>
++              </>
++            ) : null}
++            {/* price tag: hovered close, else the last one */}
++            <div
++              className="absolute right-0 -translate-y-1/2"
++              style={{ top: `${yPctOf(closes, hoverClose ?? d.price)}%` }}
++            >
++              <span
++                className={`rounded border border-line bg-surface px-1 py-0.5 text-[10px] font-medium tabular-nums ${
++                  hover !== null && hoverClose !== undefined ? tone : "text-ink"
++                }`}
++              >
++                {fmtNum(hoverClose ?? d.price, "en")}
++              </span>
++            </div>
++            {/* hover tooltip */}
++            {hover !== null && candles[hover] ? (
++              <div
++                className={`pointer-events-none absolute top-1 z-10 w-44 rounded-lg border border-line bg-surface p-2 text-xs shadow-pop ${
++                  xPctOf(closes, hover) > 55 ? "right-1/2 mr-3" : "left-1/2 ml-3"
++                }`}
++              >
++                <div className="mb-1 font-medium text-ink">{active.labels[hover]}</div>
++                <TooltipRow label={t("tip_close")} value={fmtNum(candles[hover][3], locale)} />
++                <TooltipRow label={t("tip_open")} value={fmtNum(candles[hover][0], locale)} />
++                <TooltipRow label={t("tip_high")} value={fmtNum(candles[hover][1], locale)} />
++                <TooltipRow label={t("tip_low")} value={fmtNum(candles[hover][2], locale)} />
++                <TooltipRow label={t("tip_volume")} value={fmtCompact(candles[hover][4], locale)} />
++              </div>
++            ) : null}
++          </div>
++          {/* x axis labels: five evenly spaced bars */}
++          <div aria-hidden="true" className="mt-1 flex justify-between text-[10px] text-ink-3">
++            {xAxisLabels(active.labels).map((label, index) => (
++              <span key={index}>{label}</span>
 +            ))}
 +          </div>
-+          {range === "1D" ? (
-+            <div
-+              aria-hidden="true"
-+              className="absolute inset-x-0 border-t border-dashed border-danger/60"
-+              style={{ top: `${yPctOf(series, d.previous_close)}%` }}
-+            />
-+          ) : null}
-+          {range === "1D" ? (
-+            <SegmentLine bearStroke={bearStroke} bullStroke={bullStroke} prevClose={d.previous_close} series={series} />
-+          ) : (
-+            <RangeLine
-+              areaClass={up ? bullArea : bearArea}
-+              series={series}
-+              strokeClass={up ? bullStroke : bearStroke}
-+            />
-+          )}
-+          <span
-+            aria-hidden="true"
-+            className="absolute right-0 top-0 -translate-y-1/2 rounded bg-surface px-1 text-[10px] text-ink-3"
-+          >
-+            {fmtNum(Math.max(...series), "en")}
-+          </span>
-+          <span
-+            aria-hidden="true"
-+            className="absolute bottom-0 right-0 translate-y-1/2 rounded bg-surface px-1 text-[10px] text-ink-3"
-+          >
-+            {fmtNum(Math.min(...series), "en")}
-+          </span>
-+          <div
-+            className="absolute right-0 -translate-y-1/2"
-+            style={{ top: `${yPctOf(series, series[series.length - 1] ?? 0)}%` }}
-+          >
-+            <span
-+              className={`rounded border border-line bg-surface px-1 py-0.5 text-[10px] font-medium tabular-nums ${tone}`}
-+            >
-+              {fmtNum(series[series.length - 1] ?? 0, "en")}
-+            </span>
-+          </div>
 +        </div>
-+        <div aria-hidden="true" className="mt-1 flex justify-between text-[10px] text-ink-3">
-+          <span>{bounds[0]}</span>
-+          <span>{bounds[1]}</span>
-+        </div>
-+      </div>
++      ) : null}
 +
 +      {/* statistics grid */}
 +      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
@@ -8954,11 +9024,24 @@ index 0000000..26cc2b0
 +  );
 +}
 +
-+function yPctOf(series: number[], value: number): number {
-+  const min = Math.min(...series);
-+  const max = Math.max(...series);
++function xPctOf(closes: number[], idx: number): number {
++  return closes.length < 2 ? 0 : (idx / (closes.length - 1)) * 100;
++}
++
++function yPctOf(closes: number[], value: number): number {
++  const min = Math.min(...closes);
++  const max = Math.max(...closes);
 +  const span = max - min || 1;
 +  return ((max + span * 0.08 - value) / (span * 1.16)) * 100;
++}
++
++function TooltipRow({ label, value }: { label: string; value: string }) {
++  return (
++    <div className="flex items-baseline justify-between gap-3">
++      <span className="text-ink-3">{label}</span>
++      <span className="tabular-nums text-ink">{value}</span>
++    </div>
++  );
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Translations.tsx b/client/zjsearch/src/features/results/answers/Translations.tsx
 new file mode 100644
@@ -12164,10 +12247,10 @@ index 0000000..9e3d246
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..023ef0f
+index 0000000..0c8409d
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,359 @@
+@@ -0,0 +1,365 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -12524,15 +12607,21 @@ index 0000000..023ef0f
 +  stat_mcap: "Market cap",
 +  stat_avg_volume: "Avg. volume",
 +  stock_asof: "As of",
++  tip_date: "Date",
++  tip_close: "Close",
++  tip_open: "Open",
++  tip_high: "High",
++  tip_low: "Low",
++  tip_volume: "Volume",
 +};
 +
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..fa875e7
+index 0000000..900299c
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,352 @@
+@@ -0,0 +1,358 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -12884,6 +12973,12 @@ index 0000000..fa875e7
 +  stat_mcap: "总市值",
 +  stat_avg_volume: "平均成交量",
 +  stock_asof: "截至",
++  tip_date: "日期",
++  tip_close: "收盘",
++  tip_open: "开盘",
++  tip_high: "最高",
++  tip_low: "最低",
++  tip_volume: "成交量",
 +};
 diff --git a/client/zjsearch/src/lib/link.ts b/client/zjsearch/src/lib/link.ts
 new file mode 100644
@@ -13677,10 +13772,10 @@ index 0000000..b8935db
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..f447bec
+index 0000000..3401dc7
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,534 @@
+@@ -0,0 +1,541 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -13983,9 +14078,16 @@ index 0000000..f447bec
 +  as_of_date: string;
 +  as_of_time: string;
 +  /** close series per range key (1D/5D/1M/YTD/1Y/5Y/MAX), oldest first */
-+  ranges: Record<string, number[]>;
++  ranges: Record<string, StockSeries>;
 +  /** first/last bar labels per range key, for the chart x axis */
 +  range_bounds: Record<string, [string, string]>;
++}
++
++export interface StockSeries {
++  /** raw bar labels from the source ("2026-09-16 09:35" / "2026-09-16") */
++  labels: string[];
++  /** per bar: [open, high, low, close, volume] */
++  candles: Array<[number, number, number, number, number]>;
 +}
 +
 +export interface InfoboxData {
@@ -19254,10 +19356,10 @@ index 314cc85..c59c9d7 100644
          return results
 diff --git a/searx/plugins/stock_quote.py b/searx/plugins/stock_quote.py
 new file mode 100644
-index 0000000..972c650
+index 0000000..aa4d944
 --- /dev/null
 +++ b/searx/plugins/stock_quote.py
-@@ -0,0 +1,297 @@
+@@ -0,0 +1,510 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +# pylint: disable=missing-module-docstring
 +
@@ -19285,23 +19387,11 @@ index 0000000..972c650
 +
 +logger = logging.getLogger("searx.plugins.stock_quote")
 +
-+SUGGEST_URL = "https://searchapi.eastmoney.com/api/suggest/get?input={input}&type=14"
-+QUOTE_URL = (
-+    "https://push2.eastmoney.com/api/qt/stock/get?secid={secid}"
-+    "&fields=f43,f44,f45,f46,f57,f58,f59,f60,f116,f162,f169,f170"
-+)
-+KLINE_URL = (
-+    "https://push2his.eastmoney.com/api/qt/stock/kline/get"
-+    "?secid={secid}&fields1=f1,f2,f3&fields2={fields2}&klt={klt}&fqt=1&end=20500101&lmt={lmt}"
-+)
-+FIELDS_LEAN = "f51,f53"  # date,close
-+FIELDS_FULL = "f51,f52,f53,f54,f55,f56"  # date,open,close,high,low,volume
-+
-+QUOTE_CACHE: dict[str, tuple[float, dict[str, t.Any] | None]] = {}
-+"""user symbol -> (fetch time, payload or None while the resolve failed)."""
-+
 +CACHE_TTL = 60.0
 +"""Quotes move by the minute; repeated searches inside a minute reuse one fetch."""
++
++QUOTE_CACHE: dict[str, tuple[float, dict[str, t.Any] | None]] = {}
++"""``{source}:{symbol}`` -> (fetch time, payload or None while the resolve failed)."""
 +
 +SUFFIX_RE = re.compile(r"^(.*\S)\s+(?:stock|quote)$", re.IGNORECASE)
 +PREFIX_DOLLAR_RE = re.compile(r"^\$([A-Za-z0-9.\-]{1,16})$")
@@ -19353,31 +19443,38 @@ index 0000000..972c650
 +    return out
 +
 +
-+def _resolve(symbol: str) -> dict[str, t.Any] | None:
-+    """Resolve a user symbol or company name to an eastmoney quote id
-+    (``1.600519``, ``105.AAPL``, ...).  Returns the first suggestion."""
-+    table = _fetch_json(SUGGEST_URL.format(input=symbol)).get("QuotationCodeTable") or {}
++# ----------------------------------------------------------------- eastmoney
++
++EM_SUGGEST_URL = "https://searchapi.eastmoney.com/api/suggest/get?input={input}&type=14"
++EM_QUOTE_URL = (
++    "https://push2.eastmoney.com/api/qt/stock/get?secid={secid}"
++    "&fields=f43,f44,f45,f46,f57,f58,f59,f60,f116,f162,f169,f170"
++)
++EM_KLINE_URL = (
++    "https://push2his.eastmoney.com/api/qt/stock/kline/get"
++    "?secid={secid}&fields1=f1,f2,f3&fields2={fields2}&klt={klt}&fqt=1&end=20500101&lmt={lmt}"
++)
++EM_FIELDS_FULL = "f51,f52,f53,f54,f55,f56"  # date,open,close,high,low,volume
++
++
++def _eastmoney_resolve(symbol: str) -> dict[str, t.Any] | None:
++    table = _fetch_json(EM_SUGGEST_URL.format(input=symbol)).get("QuotationCodeTable") or {}
 +    data = table.get("Data")
 +    if not data:
 +        return None
 +    return data[0]
 +
 +
-+def _closes_lean(klines: list[str]) -> list[float]:
-+    """Closes of lean klines (``fields2=f51,f53`` -> ``date,close``)."""
-+    return [float(k.split(",")[1]) for k in klines]
++def _eastmoney_series(klines: list[str]) -> dict[str, t.Any]:
++    """Full klines (``date,open,close,high,low,volume``) -> labels + candles."""
++    return {
++        "labels": [k.split(",")[0] for k in klines],
++        "candles": [[float(k.split(",")[i]) for i in (1, 3, 4, 2, 5)] for k in klines],
++    }
 +
 +
-+def _closes_full(klines: list[str]) -> list[float]:
-+    """Closes of full klines (``date,open,close,high,low,volume``)."""
-+    return [float(k.split(",")[2]) for k in klines]
-+
-+
-+def _build_payload(symbol: str) -> dict[str, t.Any] | None:
-+    """Resolve ``symbol`` and fetch the quote plus all chart series in one
-+    parallel round.  Returns the answer ``data`` payload or ``None`` when the
-+    symbol does not resolve."""
-+    suggestion = _resolve(symbol)
++def _eastmoney_fetch(symbol: str) -> dict[str, t.Any] | None:
++    suggestion = _eastmoney_resolve(symbol)
 +    if not suggestion:
 +        return None
 +
@@ -19391,12 +19488,12 @@ index 0000000..972c650
 +    # 1M/YTD derive from the 1Y daily bars, so six requests cover all ranges
 +    quote_j, k1d, k5d, k1y_j, k5y_j, kmax_j = _fetch_json_multi(
 +        [
-+            QUOTE_URL.format(secid=secid),
-+            KLINE_URL.format(secid=secid, fields2=FIELDS_LEAN, klt=5, lmt=80),
-+            KLINE_URL.format(secid=secid, fields2=FIELDS_LEAN, klt=15, lmt=130),
-+            KLINE_URL.format(secid=secid, fields2=FIELDS_FULL, klt=101, lmt=250),
-+            KLINE_URL.format(secid=secid, fields2=FIELDS_LEAN, klt=102, lmt=270),
-+            KLINE_URL.format(secid=secid, fields2=FIELDS_LEAN, klt=103, lmt=400),
++            EM_QUOTE_URL.format(secid=secid),
++            EM_KLINE_URL.format(secid=secid, fields2=EM_FIELDS_FULL, klt=5, lmt=80),
++            EM_KLINE_URL.format(secid=secid, fields2=EM_FIELDS_FULL, klt=15, lmt=130),
++            EM_KLINE_URL.format(secid=secid, fields2=EM_FIELDS_FULL, klt=101, lmt=250),
++            EM_KLINE_URL.format(secid=secid, fields2=EM_FIELDS_FULL, klt=102, lmt=270),
++            EM_KLINE_URL.format(secid=secid, fields2=EM_FIELDS_FULL, klt=103, lmt=400),
 +        ]
 +    )
 +
@@ -19424,7 +19521,7 @@ index 0000000..972c650
 +
 +    daily_full = (k1y_j or {}).get("data") or {}
 +    daily_klines: list[str] = daily_full.get("klines") or []
-+    daily_closes = _closes_full(daily_klines)
++    daily_closes = [float(k.split(",")[2]) for k in daily_klines]
 +    daily_highs = [float(k.split(",")[3]) for k in daily_klines]
 +    daily_lows = [float(k.split(",")[4]) for k in daily_klines]
 +    daily_volumes = [float(k.split(",")[5]) for k in daily_klines]
@@ -19442,13 +19539,13 @@ index 0000000..972c650
 +        as_of_date = daily_klines[-1].split(",")[0]
 +
 +    ranges = {
-+        "1D": _closes_lean(((k1d or {}).get("data") or {}).get("klines") or []),
-+        "5D": _closes_lean(((k5d or {}).get("data") or {}).get("klines") or []),
-+        "1M": daily_closes[-23:],
-+        "YTD": _closes_full(ytd_klines),
-+        "1Y": daily_closes,
-+        "5Y": _closes_lean(((k5y_j or {}).get("data") or {}).get("klines") or []),
-+        "MAX": _closes_lean(((kmax_j or {}).get("data") or {}).get("klines") or []),
++        "1D": _eastmoney_series(intraday),
++        "5D": _eastmoney_series(((k5d or {}).get("data") or {}).get("klines") or []),
++        "1M": _eastmoney_series(daily_klines[-23:]),
++        "YTD": _eastmoney_series(ytd_klines),
++        "1Y": _eastmoney_series(daily_klines),
++        "5Y": _eastmoney_series(((k5y_j or {}).get("data") or {}).get("klines") or []),
++        "MAX": _eastmoney_series(((kmax_j or {}).get("data") or {}).get("klines") or []),
 +    }
 +    range_bounds = {
 +        "1D": bounds(intraday),
@@ -19460,7 +19557,7 @@ index 0000000..972c650
 +        "MAX": bounds(((kmax_j or {}).get("data") or {}).get("klines") or []),
 +    }
 +    # drop empty series so the client only offers ranges that carry data
-+    ranges = {key: value for key, value in ranges.items() if value}
++    ranges = {key: value for key, value in ranges.items() if value["candles"]}
 +    range_bounds = {key: value for key, value in range_bounds.items() if key in ranges}
 +
 +    avg_volume = round(sum(daily_volumes) / len(daily_volumes)) if daily_volumes else None
@@ -19481,6 +19578,7 @@ index 0000000..972c650
 +        "open": scaled("f46"),
 +        "high": scaled("f44"),
 +        "low": scaled("f45"),
++        # eastmoney does not compute a P/E for US listings
 +        "pe": scaled("f162"),
 +        "market_cap": q.get("f116"),
 +        "week52_high": max(daily_highs) if daily_highs else None,
@@ -19493,18 +19591,235 @@ index 0000000..972c650
 +    }
 +
 +
++
++def _avg_volume(day_candles: list[list[float]]) -> float | None:
++    volumes = [c[4] for c in day_candles[-250:]]
++    return round(sum(volumes) / len(volumes)) if volumes else None
++
++
++# ------------------------------------------------------------------- tencent
++
++TX_BASE = "https://web.ifzq.gtimg.cn"
++TX_KLINE_URL = TX_BASE + "/appstock/app/fqkline/get?param={symbol},{granularity},{start},{end},{count},qfq"
++TX_MKLINE_URL = TX_BASE + "/appstock/app/kline/mkline?param={symbol},{granularity},,{count}"
++# tencent bar rows: [date, open, close, high, low, volume(, extra ...)]
++TX_ROW_CANDLE = (1, 3, 4, 2, 5)  # open, high, low, close, volume
++
++
++def _tencent_symbol(symbol: str) -> str:
++    """Normalize a user symbol to a tencent one (``sh600519``, ``hk00700``,
++    ``usAAPL``).  Already-prefixed symbols pass through unchanged."""
++    s = symbol.strip().lower()
++    if re.fullmatch(r"(sh|sz|bj|hk|us)[0-9a-z.]{2,12}", s):
++        return s
++    if re.fullmatch(r"[0-9]{6}", s):
++        if s[0] == "6":
++            return "sh" + s
++        if s[0] in "48":
++            return "bj" + s
++        return "sz" + s
++    hk = re.fullmatch(r"([0-9]{1,5})\.?hk", s)
++    if hk:
++        return "hk" + hk.group(1).zfill(5)
++    if re.fullmatch(r"[a-z]{1,6}", s):
++        return "us" + s
++    return s
++
++
++def _tx_label(raw: str) -> str:
++    digits = raw.replace("-", "").replace(":", "").replace(" ", "")
++    if len(digits) >= 12:
++        return f"{digits[0:4]}-{digits[4:6]}-{digits[6:8]} {digits[8:10]}:{digits[10:12]}"
++    if len(digits) == 8:
++        return f"{digits[0:4]}-{digits[4:6]}-{digits[6:8]}"
++    return raw
++
++
++def _candles(rows: list[list], o: int, h: int, low: int, c: int, v: int) -> list[list[float]]:
++    out = []
++    for row in rows:
++        try:
++            out.append([float(row[i]) for i in (o, h, low, c, v)])
++        except (ValueError, IndexError):
++            continue
++    return out
++
++
++def _tx_qt(payload: t.Any, symbol: str) -> list[str]:
++    data = (payload or {}).get("data") or {}
++    node = data.get(symbol) or {}
++    qt = node.get("qt") or {}
++    return qt.get(symbol) or []
++
++
++def _qt_float(qt: list[str], index: int) -> float | None:
++    if index >= len(qt) or qt[index] in ("", None):
++        return None
++    try:
++        return float(qt[index])
++    except ValueError:
++        return None
++
++
++def _tencent_fetch(symbol: str) -> dict[str, t.Any] | None:
++    tx_symbol = _tencent_symbol(symbol)
++
++    today = datetime.date.today()
++    day_start = (today - datetime.timedelta(days=730)).isoformat()
++    week_start = (today - datetime.timedelta(days=2100)).isoformat()
++    tomorrow = (today + datetime.timedelta(days=1)).isoformat()
++
++    day_j, week_j, m5_j, m15_j = _fetch_json_multi(
++        [
++            TX_KLINE_URL.format(symbol=tx_symbol, granularity="day", start=day_start, end=tomorrow, count=280),
++            TX_KLINE_URL.format(symbol=tx_symbol, granularity="week", start=week_start, end=tomorrow, count=320),
++            TX_MKLINE_URL.format(symbol=tx_symbol, granularity="m5", count=80),
++            TX_MKLINE_URL.format(symbol=tx_symbol, granularity="m15", count=130),
++        ]
++    )
++
++    def rows_of(payload: t.Any, *keys: str) -> list[list]:
++        data = (payload or {}).get("data") or {}
++        node = data.get(tx_symbol) or {}
++        rows: list[list] = []
++        for key in keys:
++            rows = rows or node.get(key) or []
++        return rows
++
++    day_rows = rows_of(day_j, "qfqday", "day")
++    week_rows = rows_of(week_j, "qfqweek", "week")
++    m5_rows = rows_of(m5_j, "m5")
++    m15_rows = rows_of(m15_j, "m15")
++    if not day_rows:
++        return None
++
++    day_candles = _candles(day_rows, *TX_ROW_CANDLE)
++    week_candles = _candles(week_rows, *TX_ROW_CANDLE)
++
++    qt = _tx_qt(day_j, tx_symbol)
++    qt_float = lambda index: _qt_float(qt, index)  # noqa: E731
++
++    # the qt layout differs per market: CN/HK report the P/E at index 52 and
++    # 52-week extremes at 47/48; US listings carry the P/E at index 39 and
++    # no 52-week extremes at all
++    is_us = tx_symbol.startswith("us")
++
++    price = qt_float(3)
++    previous_close = qt_float(4)
++    if price is None or previous_close is None:
++        return None
++    change = qt_float(31)
++    if change is None:
++        change = round(price - previous_close, 2)
++    change_percent = qt_float(32)
++    if change_percent is None:
++        change_percent = round(change / previous_close * 100, 2) if previous_close else 0.0
++
++    market_cap = qt_float(45)
++    market_cap = market_cap * 1e8 if market_cap is not None else None
++
++    def rows_series(rows: list[list]) -> dict[str, t.Any]:
++        return {
++            "labels": [_tx_label(str(row[0])) for row in rows],
++            "candles": _candles(rows, *TX_ROW_CANDLE),
++        }
++
++    ranges = {
++        "1D": rows_series(m5_rows) if m5_rows else None,
++        "5D": rows_series(m15_rows) if m15_rows else None,
++        "1M": rows_series(day_rows[-23:]),
++        "YTD": rows_series([r for r in day_rows if str(r[0]) >= year_start]),
++        "1Y": rows_series(day_rows[-250:]),
++        "5Y": rows_series(week_rows[-260:]),
++        "MAX": rows_series(week_rows),
++    }
++    ranges = {key: value for key, value in ranges.items() if value and value["candles"]}
++    range_bounds = {
++        key: [value["labels"][0], value["labels"][-1]] if value["labels"] else ["", ""]
++        for key, value in ranges.items()
++    }
++
++    as_of_date, as_of_time = _tencent_as_of(qt)
++
++    return {
++        "kind": "stock",
++        "symbol": code,
++        "name": name,
++        "market": _tx_market_label(tx_symbol),
++        "exchange": exchange_of(tx_symbol),
++        "currency": "USD" if tx_symbol.startswith("us") else ("HKD" if tx_symbol.startswith("hk") else "CNY"),
++        "price": price,
++        "previous_close": previous_close,
++        "change": change,
++        "change_percent": change_percent,
++        "open": qt_float(5),
++        "high": qt_float(33),
++        "low": qt_float(34),
++        "pe": qt_float(39 if is_us else 52),
++        "market_cap": market_cap,
++        "week52_high": None if is_us else qt_float(47),
++        "week52_low": None if is_us else qt_float(48),
++        "avg_volume": _avg_volume(day_candles),
++        "as_of_date": as_of_date,
++        "as_of_time": as_of_time,
++        "ranges": ranges,
++        "range_bounds": range_bounds,
++    }
++
++
++def _tencent_as_of(qt: list[str]) -> tuple[str, str]:
++    raw = str(qt[30]) if len(qt) > 30 else ""
++    if len(raw) >= 12:
++        return (
++            f"{raw[0:4]}-{raw[4:6]}-{raw[6:8]}",
++            f"{raw[8:10]}:{raw[10:12]}",
++        )
++    return raw, ""
++
++
++def _tx_market_label(tx_symbol: str) -> str:
++    if tx_symbol.startswith("sh"):
++        return "沪A"
++    if tx_symbol.startswith("sz"):
++        return "深A"
++    if tx_symbol.startswith("bj"):
++        return "北A"
++    if tx_symbol.startswith("hk"):
++        return "港股"
++    return "美股"
++
++
++def exchange_of(tx_symbol: str) -> str:
++    if tx_symbol.startswith("sh"):
++        return "SH"
++    if tx_symbol.startswith("sz"):
++        return "SZ"
++    if tx_symbol.startswith("bj"):
++        return "BJ"
++    if tx_symbol.startswith("hk"):
++        return "HK"
++    return "US"
++
++
++# ------------------------------------------------------------------ dispatch
++
 +def _lookup(symbol: str) -> dict[str, t.Any] | None:
-+    """Cached ``symbol -> payload``; only successful lookups are cached so a
-+    transient network hiccup is retried on the next search."""
++    """Cached ``symbol -> payload``.  Eastmoney is the primary source; when
++    it fails -- or does not know the listing -- the same symbol is tried on
++    tencent.  A total failure is cached for one TTL so a downed source is
++    not hammered on every search."""
 +    cached = QUOTE_CACHE.get(symbol)
 +    if cached and time.monotonic() - cached[0] < CACHE_TTL:
 +        return cached[1]
-+    try:
-+        payload = _build_payload(symbol)
-+    except Exception:  # pylint: disable=broad-except
-+        # a miss means no answer, not an error (like the time zone plugin)
-+        logger.warning("stock quote fetch failed for %r", symbol, exc_info=True)
-+        return None
++    payload = None
++    for fetch in (_eastmoney_fetch, _tencent_fetch):
++        try:
++            payload = fetch(symbol)
++        except Exception as exc:  # pylint: disable=broad-except
++            logger.warning("stock quote fetch failed via %s for %r: %r", fetch.__name__, symbol, exc)
++            continue
++        if payload:
++            break
 +    QUOTE_CACHE[symbol] = (time.monotonic(), payload)
 +    return payload
 +
@@ -19513,9 +19828,9 @@ index 0000000..972c650
 +class SXNGPlugin(Plugin):
 +    """Stock quote answer: ``$AAPL``, ``AAPL stock`` render a quote card with
 +    price, change, range-switchable chart (1D/5D/1M/YTD/1Y/5Y/MAX) and a
-+    statistics grid, built from eastmoney's public quote APIs -- reachable
-+    without an API key and without leaving the region where the instance
-+    runs."""
++    statistics grid.  The data source is configurable via the dedicated
++    ``stock_quote.source`` setting (``eastmoney`` -- the default -- or
++    ``tencent``); see ``settings.yml``."""
 +
 +    id: str = "stock_quote"
 +
@@ -19785,6 +20100,20 @@ index eba07bb..b1c184e 100644
      def __hash__(self):
          """The hash value of field *answer* is the hash value of the
          :py:obj:`Answer` object.  :py:obj:`Answer <Result.__eq__>` objects are
+diff --git a/searx/settings.yml b/searx/settings.yml
+index f447cd9..38cecb3 100644
+--- a/searx/settings.yml
++++ b/searx/settings.yml
+@@ -228,6 +228,9 @@ plugins:
+   searx.plugins.self_info.SXNGPlugin:
+     active: true
+ 
++  searx.plugins.stock_quote.SXNGPlugin:
++    active: true
++
+   searx.plugins.unit_converter.SXNGPlugin:
+     active: true
+ 
 diff --git a/searx/templates/zjsearch/404.html b/searx/templates/zjsearch/404.html
 new file mode 100644
 index 0000000..902020e
