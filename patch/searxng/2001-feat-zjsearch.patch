@@ -229,10 +229,10 @@ index 0000000..2d3b19b
 +Licensor: Zhijie He
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 0000000..46b2967
+index 0000000..e817cb0
 --- /dev/null
 +++ b/client/zjsearch/README.rst
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,293 @@
 +=====
 +zjsearch
 +=====
@@ -395,25 +395,33 @@ index 0000000..46b2967
 +Lighthouse audit
 +================
 +
-+``npm run audit`` is the theme's quality gate: it boots a throwaway
-+instance on ``127.0.0.1:8907`` with ``audit-settings.yml`` (identical to
-+the dev settings, but the instance presents an indexable
-+``X-Robots-Tag`` — the upstream default ``noindex`` would cap the SEO
-+category no matter what the theme does), runs Lighthouse over ``/`` and
-+``/search?q=searxng`` and fails when a category drops below the
-+thresholds in ``scripts/audit.mjs``.
++``npm run audit`` is the theme's quality gate — **fully offline**.  It
++boots a throwaway instance on ``127.0.0.1:8907`` whose engine list is
++reduced to ``zjaudit`` (``searx/engines/zjsearch_fixtures.py``): a
++deterministic offline engine serving fixed result sets keyed by the query
++token (``zjaudit general|images|videos|music|files|science|apps``).
++Remote engines would make the audited pages variance-sensitive —
++timeouts, captchas and dead image URLs change the page between runs.
++
++The gate then runs Lighthouse over the home page plus one page per result
++presentation (general list, image masonry, video/music/apps grids,
++torrent grid, science papers, IT packages) and fails when a category
++drops below the thresholds in ``scripts/audit.mjs``.  Raw reports and a
++``scores.json`` summary are archived under
++``client/zjsearch/.lighthouse-archive/<run>/`` (git-ignored); compare two
++runs with ``npm run audit:diff -- <runA> <runB>``.
 +
 +Notes:
 +
 +* Desktop is the default profile (``LH_FORM_FACTOR=mobile`` opts into the
-+  harsher mobile throttling with its own, lower floors — live-engine
-+  latency on ``/search`` makes mobile numbers variance-sensitive).
-+* The search page's SEO category is *exempt* on purpose: upstream's
++  harsher mobile throttling with its own floors).
++* Search pages' SEO category is *exempt* on purpose: upstream's
 +  ``robots.txt`` disallows ``/*?*q=*`` — search pages are meant to stay
-+  unindexed.
++  unindexed.  The audit instance presents an indexable ``X-Robots-Tag``
++  (the upstream default ``noindex`` would otherwise cap the home page's
++  SEO category too).
 +* Needs the venv (``local/py3``) and a Chromium; set ``CHROME_PATH`` when
-+  chrome-launcher does not autodetect yours, and export ``HTTP(S)_PROXY``
-+  on networks where the engines need it.
++  chrome-launcher does not autodetect yours.
 +* The results feature tree ships as a **stable-named** chunk
 +  (``chunk/zjs-results.min.js``, see ``manualChunks`` in vite.config) so
 +  the streamed results shell can pre-warm it with an inline ``import()``
@@ -520,16 +528,25 @@ index 0000000..46b2967
 +
 diff --git a/client/zjsearch/audit-settings.yml b/client/zjsearch/audit-settings.yml
 new file mode 100644
-index 0000000..41ee5af
+index 0000000..bf131a1
 --- /dev/null
 +++ b/client/zjsearch/audit-settings.yml
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,64 @@
 +# zjsearch Lighthouse audit instance settings — used by `npm run audit`
 +# (scripts/audit.mjs boots a throwaway granian on :8907 with this file).
-+# Same shape as dev-settings.yml, but the instance presents itself as
-+# public: the upstream default X-Robots-Tag: noindex header would cap the
-+# Lighthouse SEO category regardless of theme quality.
-+use_default_settings: true
++#
++# Fully OFFLINE on purpose: remote engines make the audited pages
++# variance-sensitive (timeouts, captchas, dead image URLs change the page
++# between runs).  The engine list is reduced to `zjsearch_fixtures`, a
++# deterministic offline engine that answers instantly with fixed result
++# sets — one fixture kind per query token (zjaudit general/images/videos/
++# music/files/science/apps, see searx/engines/zjsearch_fixtures.py).
++# The instance also presents an indexable X-Robots-Tag: the upstream
++# default noindex would cap the SEO category no matter what the theme does.
++use_default_settings:
++  engines:
++    keep_only:
++      - zjaudit
 +
 +general:
 +  instance_name: ZJSearch
@@ -541,9 +558,9 @@ index 0000000..41ee5af
 +search:
 +  formats:
 +    - html
-+    - csv
 +    - json
-+    - rss
++  # no remote autocompleter calls during audits
++  autocomplete: ""
 +
 +ui:
 +  default_theme: zjsearch
@@ -561,7 +578,8 @@ index 0000000..41ee5af
 +server:
 +  secret_key: "zjsearch-local-dev-secret-key"
 +  limiter: false
-+  image_proxy: true
++  # raw local fixture image URLs (no image-proxy round trip)
++  image_proxy: false
 +  default_http_headers:
 +    X-Content-Type-Options: nosniff
 +    X-Download-Options: noopen
@@ -572,49 +590,11 @@ index 0000000..41ee5af
 +    X-Robots-Tag: "index, follow"
 +    Referrer-Policy: no-referrer
 +
-+# proxy so region-blocked engines are reachable from this network
-+# (LAN-specific: uncomment and set your own proxy when needed; the gate
-+# script also inherits HTTP(S)_PROXY from its environment)
-+outgoing:
-+  request_timeout: 5.0
-+  # proxies:
-+  #   all://:
-+  #     - http://192.168.20.23:7890
-+
-+plugins:
-+  searx.plugins.advanced_search_syntax.SXNGPlugin:
-+    active: true
-+  searx.plugins.ahmia_filter.SXNGPlugin:
-+    active: true
-+  searx.plugins.calculator.SXNGPlugin:
-+    active: true
-+  searx.plugins.currency_convert.SXNGPlugin:
-+    active: true
-+  searx.plugins.hash_plugin.SXNGPlugin:
-+    active: true
-+  searx.plugins.hostnames.SXNGPlugin:
-+    active: true
-+  searx.plugins.infinite_scroll.SXNGPlugin:
-+    active: true
-+  searx.plugins.oa_doi_rewrite.SXNGPlugin:
-+    active: true
-+  searx.plugins.self_info.SXNGPlugin:
-+    active: true
-+  searx.plugins.stock_quote.SXNGPlugin:
-+    active: true
-+  searx.plugins.time_zone.SXNGPlugin:
-+    active: true
-+  searx.plugins.tor_check.SXNGPlugin:
-+    active: true
-+  searx.plugins.tracker_url_remover.SXNGPlugin:
-+    active: true
-+  searx.plugins.unit_converter.SXNGPlugin:
-+    active: true
-+
++# offline fixture engine only — one engine, every result presentation
 +engines:
-+  - name: tmdb
-+    disabled: false
-+  - name: imdb
++  - name: zjaudit
++    engine: zjsearch_fixtures
++    shortcut: zja
 +    disabled: false
 diff --git a/client/zjsearch/biome.json b/client/zjsearch/biome.json
 new file mode 100644
@@ -5208,10 +5188,10 @@ index 0000000..e88df6f
 +}
 diff --git a/client/zjsearch/package.json b/client/zjsearch/package.json
 new file mode 100644
-index 0000000..8c5547b
+index 0000000..6d518b9
 --- /dev/null
 +++ b/client/zjsearch/package.json
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,54 @@
 +{
 +  "$schema": "https://json.schemastore.org/package.json",
 +  "name": "@hezhijie0327/zjsearch",
@@ -5229,7 +5209,8 @@ index 0000000..8c5547b
 +    "fix": "biome check --write",
 +    "lint": "npm run lint:biome && npm run lint:tsc",
 +    "lint:biome": "biome check",
-+    "lint:tsc": "tsc --noEmit"
++    "lint:tsc": "tsc --noEmit",
++    "audit:diff": "node scripts/audit-diff.mjs"
 +  },
 +  "browserslist": [
 +    "baseline 2022",
@@ -5265,30 +5246,109 @@ index 0000000..8c5547b
 +    ]
 +  }
 +}
+diff --git a/client/zjsearch/scripts/audit-diff.mjs b/client/zjsearch/scripts/audit-diff.mjs
+new file mode 100644
+index 0000000..ae5aab5
+--- /dev/null
++++ b/client/zjsearch/scripts/audit-diff.mjs
+@@ -0,0 +1,64 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/**
++ * Compare two Lighthouse gate archives — `npm run audit:diff -- <runA> <runB>`.
++ *
++ * Each run directory (`.lighthouse-archive/<timestamp>/`) holds a
++ * `scores.json` plus the raw `*.lhr.json` reports written by audit.mjs.
++ * The diff prints per-page, per-category score deltas so a commit's impact
++ * is visible at a glance.
++ */
++
++import { readdirSync, readFileSync } from "node:fs";
++import { join, resolve } from "node:path";
++
++const [runA, runB] = process.argv.slice(2);
++if (!runA || !runB) {
++  console.error("usage: node scripts/audit-diff.mjs <archiveDirA> <archiveDirB>");
++  process.exit(2);
++}
++
++function loadScores(dir) {
++  return JSON.parse(readFileSync(join(resolve(dir), "scores.json"), "utf8"));
++}
++
++const a = loadScores(runA);
++const b = loadScores(runB);
++
++const label = (run) => `${run.git?.rev ?? "?"}${run.git?.dirty ? " (dirty)" : ""} · ${run.form_factor}`;
++console.log(`A: ${runA}  [${label(a)}]`);
++console.log(`B: ${runB}  [${label(b)}]`);
++
++const categories = new Set();
++for (const run of [a, b]) {
++  for (const page of Object.values(run.pages)) {
++    for (const cat of Object.keys(page)) {
++      categories.add(cat);
++    }
++  }
++}
++
++let regressions = 0;
++for (const page of new Set([...Object.keys(a.pages), ...Object.keys(b.pages)])) {
++  const pa = a.pages[page];
++  const pb = b.pages[page];
++  if (!pa || !pb) {
++    console.log(`\n${page}: only in ${pa ? "A" : "B"}`);
++    continue;
++  }
++  console.log(`\n${page}`);
++  for (const cat of [...categories].sort()) {
++    if (pa[cat] === undefined || pb[cat] === undefined) {
++      continue;
++    }
++    const delta = pb[cat] - pa[cat];
++    const mark = delta < 0 ? "  ↓" : delta > 0 ? "  ↑" : "";
++    if (delta !== 0) {
++      regressions += delta < 0 ? 1 : 0;
++    }
++    console.log(`  ${cat.padEnd(16)} ${String(pa[cat]).padStart(3)} → ${String(pb[cat]).padStart(3)} (${delta >= 0 ? "+" : ""}${delta})${mark}`);
++  }
++}
++
++console.log(regressions > 0 ? `\n${regressions} score drop(s)` : "\nno score drops");
++process.exit(regressions > 0 ? 1 : 0);
 diff --git a/client/zjsearch/scripts/audit.mjs b/client/zjsearch/scripts/audit.mjs
 new file mode 100644
-index 0000000..53d8d83
+index 0000000..225fc10
 --- /dev/null
 +++ b/client/zjsearch/scripts/audit.mjs
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,277 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
 + * zjsearch Lighthouse gate — `npm run audit`.
 + *
-+ * Boots a throwaway granian on :8907 with audit-settings.yml (a public
-+ * instance, so the SEO category is not capped by the upstream noindex
-+ * default header), runs mobile Lighthouse over the theme's key faces and
-+ * fails when a category score drops below THRESHOLDS.
++ * Boots a throwaway granian on :8907 with audit-settings.yml and runs
++ * Lighthouse over the home page plus one page per result presentation
++ * (offline fixture engine, see below), then fails when a category drops
++ * below the thresholds.
 + *
-+ * Needs the venv (local/py3) and a Chromium: set CHROME_PATH if
-+ * chrome-launcher does not autodetect yours.  Engines need the usual
-+ * network — export HTTP(S)_PROXY before running when this LAN requires it.
-+ * Build the theme first (`npm run build`): the gate serves the committed
-+ * static folder like a deployment would.
++ * The gate is fully OFFLINE: audit-settings.yml reduces the engine list to
++ * `zjaudit` (searx/engines/zjsearch_fixtures.py), a deterministic offline
++ * engine whose fixture sets are keyed by the query token (zjaudit
++ * general/images/videos/music/files/science/apps).  Remote engines would
++ * make the audited pages variance-sensitive — timeouts, captchas and dead
++ * image URLs change the page between runs.
++ *
++ * Raw LHR reports are archived under `.lighthouse-archive/<run>/` together
++ * with a scores.json (git rev included); compare two runs with
++ * scripts/audit-diff.mjs.
++ *
++ * Needs the venv (local/py3) and a Chromium: set CHROME_PATH when
++ * chrome-launcher does not autodetect yours.
 + */
 +
 +import { spawn } from "node:child_process";
++import { execSync } from "node:child_process";
 +import { existsSync } from "node:fs";
 +import { mkdir, writeFile } from "node:fs/promises";
 +import { dirname, join, resolve } from "node:path";
@@ -5299,30 +5359,45 @@ index 0000000..53d8d83
 +const ROOT = resolve(CLIENT, "../..");
 +const PORT = 8907;
 +const BASE = `http://127.0.0.1:${PORT}`;
++const ARCHIVE_ROOT = process.env.LH_ARCHIVE_DIR ?? join(CLIENT, ".lighthouse-archive");
 +
-+/** Desktop is the default gate: stable numbers (no engine-latency-sensitive
-+    mobile throttling on top of live search variance).  LH_FORM_FACTOR=mobile
-+    opts into the harsher mobile profile. */
++/** Desktop is the default gate; LH_FORM_FACTOR=mobile opts into the harsher
++    mobile throttling profile. */
 +const MOBILE = process.env.LH_FORM_FACTOR === "mobile";
-+/** Per-path floors.  The search page's SEO category is EXEMPT (null):
-+    upstream robots.txt disallows `/*?*q=*` and upstream wants search pages
-+    unindexed — that is correct behaviour, not a theme defect.  Performance
-+    floors leave headroom for live-engine latency on /search (its LCP waits
-+    for the engines). */
-+const PATHS = [
-+  {
-+    path: "/",
-+    thresholds: MOBILE
-+      ? { performance: 75, accessibility: 100, "best-practices": 100, seo: 95 }
-+      : { performance: 90, accessibility: 100, "best-practices": 100, seo: 95 },
-+  },
-+  {
-+    path: "/search?q=searxng",
-+    thresholds: MOBILE
-+      ? { performance: 65, accessibility: 100, "best-practices": 100, seo: null }
-+      : { performance: 90, accessibility: 100, "best-practices": 100, seo: null },
-+  },
++
++/** One gate page per result presentation: the general list (infobox +
++    suggestions) and the dedicated category layouts — image masonry,
++    video/music/apps grids, torrent grid, science papers, IT packages.
++    The `zjaudit <kind>` token picks the fixture set (see
++    searx/engines/zjsearch_fixtures.py). */
++const SEARCH_PATHS = [
++  "/search?q=zjaudit+general",
++  "/search?q=zjaudit+images&categories=images",
++  "/search?q=zjaudit+videos&categories=videos",
++  "/search?q=zjaudit+music&categories=music",
++  "/search?q=zjaudit+files&categories=files",
++  "/search?q=zjaudit+science&categories=science",
++  "/search?q=zjaudit+packages&categories=it",
++  "/search?q=zjaudit+apps&categories=apps",
 +];
++
++/** Floors.  Every search page's SEO category is EXEMPT (null): upstream
++    robots.txt disallows `/*?*q=*` and upstream wants search pages
++    unindexed — correct behaviour, not a theme defect.  The fixture engine
++    makes the pages deterministic, so the floors are enforceable without
++    live-engine variance. */
++function thresholdsFor(path) {
++  if (path === "/") {
++    return MOBILE
++      ? { performance: 85, accessibility: 100, "best-practices": 100, seo: 95, "agentic-browsing": 100 }
++      : { performance: 90, accessibility: 100, "best-practices": 100, seo: 95, "agentic-browsing": 100 };
++  }
++  return MOBILE
++    ? { performance: 80, accessibility: 100, "best-practices": 100, seo: null, "agentic-browsing": 100 }
++    : { performance: 90, accessibility: 100, "best-practices": 100, seo: null, "agentic-browsing": 100 };
++}
++
++const PATHS = ["/", ...SEARCH_PATHS].map((path) => ({ path, thresholds: thresholdsFor(path) }));
 +
 +/** granian executable of the repo venv (Windows and POSIX venv layouts). */
 +function venvBin(name) {
@@ -5331,6 +5406,18 @@ index 0000000..53d8d83
 +      ? [join(ROOT, "local", "py3", "Scripts", `${name}.exe`), join(ROOT, "local", "py3", "Scripts", name)]
 +      : [join(ROOT, "local", "py3", "bin", name)];
 +  return candidates.find((p) => existsSync(p));
++}
++
++/** Short git identity embedded into the archive summary. */
++function gitInfo() {
++  const run = (args) => {
++    try {
++      return execSync(`git ${args}`, { cwd: ROOT }).toString().trim();
++    } catch {
++      return "unknown";
++    }
++  };
++  return { rev: run("rev-parse --short HEAD"), dirty: run("status --porcelain").length > 0 };
 +}
 +
 +async function waitFor(url, timeoutMs = 45000) {
@@ -5369,9 +5456,8 @@ index 0000000..53d8d83
 +  // Windows: searx.valkeydb imports the POSIX-only pwd module; the shim also
 +  // normalizes backslash static paths (see AGENTS.md).  A private copy keeps
 +  // the gate self-contained instead of leaning on a machine-specific shim.
-+  let shimDir;
 +  if (process.platform === "win32") {
-+    shimDir = join(process.env.TEMP ?? HERE, "zjs-audit-shim");
++    const shimDir = join(process.env.TEMP ?? HERE, "zjs-audit-shim");
 +    await mkdir(shimDir, { recursive: true });
 +    await writeFile(
 +      join(shimDir, "pwd.py"),
@@ -5405,7 +5491,13 @@ index 0000000..53d8d83
 +    env.PYTHONPATH = env.PYTHONPATH ? `${shimDir};${env.PYTHONPATH}` : shimDir;
 +  }
 +
-+  console.log(`booting audit instance on :${PORT} …`);
++  const runDir = join(
++    ARCHIVE_ROOT,
++    `${new Date().toISOString().replace(/[:.]/g, "-")}${MOBILE ? "-mobile" : "-desktop"}`,
++  );
++  const scores = { form_factor: MOBILE ? "mobile" : "desktop", git: gitInfo(), pages: {} };
++
++  console.log(`booting offline audit instance on :${PORT} …`);
 +  // granian's stderr surfaces (boot errors would otherwise die silently
 +  // behind the waitFor timeout)
 +  const server = spawn(granian, ["searx.webapp:app"], { cwd: ROOT, env, stdio: ["ignore", "ignore", "inherit"] });
@@ -5420,19 +5512,56 @@ index 0000000..53d8d83
 +    // emulation and the (mild) desktop throttling in one go
 +    const config = MOBILE ? undefined : (await import("lighthouse/core/config/desktop-config.js")).default;
 +
++    /** One Lighthouse run.  Headless Chrome occasionally aborts a trace
++        (Lantern "missing metric scores" / interstitial errors) — those come
++        back as all-zero categories and are retried once. */
++    async function runPage(url) {
++      let lastError;
++      for (let attempt = 1; attempt <= 2; attempt++) {
++        try {
++          const result = await lighthouse(url, { port: chrome.port, output: "json" }, config);
++          const lhr = result.lhr;
++          const allZero = Object.values(lhr.categories).every((c) => (c.score ?? 0) === 0);
++          if (!allZero) {
++            return lhr;
++          }
++          lastError = new Error(lhr.runtimeError?.message ?? "all categories scored 0 (load error)");
++        } catch (error) {
++          lastError = error;
++        }
++        if (attempt === 1) {
++          console.log("  … lighthouse trace failed, retrying once");
++          await new Promise((resolve) => setTimeout(resolve, 2000));
++        }
++      }
++      throw lastError;
++    }
++
 +    for (const { path, thresholds } of PATHS) {
-+      const result = await lighthouse(`${BASE}${path}`, { port: chrome.port, output: "json" }, config);
-+      const lhr = result.lhr;
 +      console.log(`\n${path}${MOBILE ? "  (mobile)" : ""}`);
++      let lhr;
++      try {
++        lhr = await runPage(`${BASE}${path}`);
++      } catch (error) {
++        failed = true;
++        console.log(`  ERROR: ${String(error.message ?? error).slice(0, 160)}`);
++        continue;
++      }
++      await mkdir(runDir, { recursive: true });
++      const slug = path.replace(/^\/+/, "").replace(/[?&=]+/g, "_") || "home";
++      await writeFile(join(runDir, `${slug}.lhr.json`), JSON.stringify(lhr));
++      const pageScores = {};
 +      for (const [cat, threshold] of Object.entries(thresholds)) {
 +        const score = Math.round((lhr.categories[cat]?.score ?? 0) * 100);
 +        const gated = threshold !== null;
 +        const ok = !gated || score >= threshold;
 +        failed = failed || !ok;
++        pageScores[cat] = score;
 +        console.log(
-+          `  ${cat.padEnd(15)} ${String(score).padStart(3)}  (${gated ? `min ${threshold}` : "exempt"})${ok ? "" : "  FAIL"}`,
++          `  ${cat.padEnd(16)} ${String(score).padStart(3)}  (${gated ? `min ${threshold}` : "exempt"})${ok ? "" : "  FAIL"}`,
 +        );
 +      }
++      scores.pages[path] = pageScores;
 +      for (const category of Object.values(lhr.categories)) {
 +        for (const ref of category.auditRefs) {
 +          const audit = lhr.audits[ref.id];
@@ -5448,6 +5577,9 @@ index 0000000..53d8d83
 +        }
 +      }
 +    }
++    await mkdir(runDir, { recursive: true });
++    await writeFile(join(runDir, "scores.json"), JSON.stringify(scores, null, 2));
++    console.log(`\narchived: ${runDir}`);
 +  } finally {
 +    if (chrome) {
 +      // chrome-launcher's Windows profile cleanup can throw after the
@@ -7637,11 +7769,12 @@ index 0000000..741dbaa
 +}
 diff --git a/client/zjsearch/src/features/results/AppsGrid.tsx b/client/zjsearch/src/features/results/AppsGrid.tsx
 new file mode 100644
-index 0000000..e7b500a
+index 0000000..d5763a0
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/AppsGrid.tsx
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,58 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++import { imageAlt } from "@/lib/format.ts";
 +
 +/** App-store tiles for the apps category (google play, fdroid, apk mirror):
 +    square store icon beside the app name, short description below. */
@@ -7668,7 +7801,7 @@ index 0000000..e7b500a
 +      <div className="flex items-center gap-3">
 +        <ResultLink className="relative block shrink-0" globals={globals} result={result}>
 +          <TileThumb
-+            alt={result.title_text}
++            alt={imageAlt(result)}
 +            imgClassName="size-14 rounded-xl border border-line object-cover"
 +            placeholder={
 +              <span className="grid size-14 place-items-center rounded-xl border border-line bg-surface-2 text-ink-3">
@@ -8499,7 +8632,7 @@ index 0000000..11e73ad
 +}
 diff --git a/client/zjsearch/src/features/results/Infobox.tsx b/client/zjsearch/src/features/results/Infobox.tsx
 new file mode 100644
-index 0000000..4f91dcc
+index 0000000..a36ff6c
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Infobox.tsx
 @@ -0,0 +1,193 @@
@@ -8562,9 +8695,9 @@ index 0000000..4f91dcc
 +            src={infobox.img_src}
 +          />
 +        ) : null}
-+        <h3 className="min-w-0 text-xl font-semibold leading-tight tracking-tight text-ink" dir="auto">
++        <h2 className="min-w-0 text-xl font-semibold leading-tight tracking-tight text-ink" dir="auto">
 +          {infobox.title}
-+        </h3>
++        </h2>
 +      </div>
 +
 +      {/* animated disclosure: overflow-hidden stays on in both states (without
@@ -8964,7 +9097,7 @@ index 0000000..beeb2c5
 +}
 diff --git a/client/zjsearch/src/features/results/MusicGrid.tsx b/client/zjsearch/src/features/results/MusicGrid.tsx
 new file mode 100644
-index 0000000..5bbb51b
+index 0000000..204a036
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/MusicGrid.tsx
 @@ -0,0 +1,221 @@
@@ -8991,7 +9124,7 @@ index 0000000..5bbb51b
 +  TileThumb,
 +  TileTitle,
 +} from "@/features/results/Tile.tsx";
-+import { formatClock, formatDate, formatLength } from "@/lib/format.ts";
++import { formatClock, formatDate, formatLength, imageAlt } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { DISABLED } from "@/lib/styles.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
@@ -9123,7 +9256,7 @@ index 0000000..5bbb51b
 +            result={result}
 +          >
 +            <TileThumb
-+              alt={result.title_text}
++              alt={imageAlt(result)}
 +              eager={indexOffset + index < 4}
 +              placeholder={
 +                <span className="grid size-full place-items-center bg-gradient-to-br from-surface-2 to-surface text-ink-3">
@@ -9383,11 +9516,12 @@ index 0000000..a041b2a
 +}
 diff --git a/client/zjsearch/src/features/results/PosterGrid.tsx b/client/zjsearch/src/features/results/PosterGrid.tsx
 new file mode 100644
-index 0000000..67d96ac
+index 0000000..f3e7c4a
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/PosterGrid.tsx
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,61 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++import { imageAlt } from "@/lib/format.ts";
 +
 +/** Poster wall for the movies category (`!movies`, tmdb / imdb): portrait
 +    posters in a denser grid, mirroring the video grid's tile language. */
@@ -9417,7 +9551,7 @@ index 0000000..67d96ac
 +        result={result}
 +      >
 +        <TileThumb
-+          alt={result.title_text}
++          alt={imageAlt(result)}
 +          eager={indexOffset + index < 4}
 +          placeholder={
 +            <span className="grid size-full place-items-center text-ink-3">
@@ -9449,15 +9583,16 @@ index 0000000..67d96ac
 +}
 diff --git a/client/zjsearch/src/features/results/ProductGrid.tsx b/client/zjsearch/src/features/results/ProductGrid.tsx
 new file mode 100644
-index 0000000..183f859
+index 0000000..11ac8bb
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/ProductGrid.tsx
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,69 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Globe, Package, Tag, Truck } from "lucide-react";
 +import { ResultLink } from "@/features/results/cardParts.tsx";
 +import { TileCell, TileEngines, TileThumb, TileTitle } from "@/features/results/Tile.tsx";
++import { imageAlt } from "@/lib/format.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
 +export function ProductGrid({
@@ -9480,7 +9615,7 @@ index 0000000..183f859
 +        result={result}
 +      >
 +        <TileThumb
-+          alt={result.title_text}
++          alt={imageAlt(result)}
 +          placeholder={
 +            <span className="grid size-full place-items-center text-ink-3">
 +              <Package className="size-8" />
@@ -9877,7 +10012,7 @@ index 0000000..c0c53af
 +}
 diff --git a/client/zjsearch/src/features/results/Tile.tsx b/client/zjsearch/src/features/results/Tile.tsx
 new file mode 100644
-index 0000000..15f5fda
+index 0000000..98cd0a1
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Tile.tsx
 @@ -0,0 +1,247 @@
@@ -10078,7 +10213,7 @@ index 0000000..15f5fda
 +  className?: string;
 +}) {
 +  return (
-+    <h3 className={`line-clamp-2 text-base font-medium leading-snug ${className}`}>
++    <h2 className={`line-clamp-2 text-base font-medium leading-snug ${className}`}>
 +      <ResultLink
 +        className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +        globals={globals}
@@ -10086,7 +10221,7 @@ index 0000000..15f5fda
 +      >
 +        <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
 +      </ResultLink>
-+    </h3>
++    </h2>
 +  );
 +}
 +
@@ -10130,7 +10265,7 @@ index 0000000..15f5fda
 +}
 diff --git a/client/zjsearch/src/features/results/VideoGrid.tsx b/client/zjsearch/src/features/results/VideoGrid.tsx
 new file mode 100644
-index 0000000..9cb42e7
+index 0000000..21e2aab
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/VideoGrid.tsx
 @@ -0,0 +1,109 @@
@@ -10153,7 +10288,7 @@ index 0000000..9cb42e7
 +  TileThumb,
 +  TileTitle,
 +} from "@/features/results/Tile.tsx";
-+import { formatDate, formatLength } from "@/lib/format.ts";
++import { formatDate, formatLength, imageAlt } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
@@ -10183,7 +10318,7 @@ index 0000000..9cb42e7
 +            result={result}
 +          >
 +            <TileThumb
-+              alt={result.title_text}
++              alt={imageAlt(result)}
 +              eager={indexOffset + index < 4}
 +              placeholder={null}
 +              src={result.thumbnail}
@@ -11684,7 +11819,7 @@ index 0000000..22a2c98
 +}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 0000000..dbfe626
+index 0000000..524198c
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
 @@ -0,0 +1,400 @@
@@ -11774,7 +11909,7 @@ index 0000000..dbfe626
 +
 +export function Title({ result, globals }: { result: ResultItem; globals: GlobalData }) {
 +  return (
-+    <h3 className="line-clamp-1 text-base font-medium leading-6">
++    <h2 className="line-clamp-1 text-base font-medium leading-6">
 +      <ResultLink
 +        className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +        globals={globals}
@@ -11782,7 +11917,7 @@ index 0000000..dbfe626
 +      >
 +        <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
 +      </ResultLink>
-+    </h3>
++    </h2>
 +  );
 +}
 +
@@ -12143,7 +12278,7 @@ index 0000000..96e2285
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DefaultCard.tsx b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 new file mode 100644
-index 0000000..6b23596
+index 0000000..47b46f7
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 @@ -0,0 +1,73 @@
@@ -12162,7 +12297,7 @@ index 0000000..6b23596
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
-+import { formatLength } from "@/lib/format.ts";
++import { formatLength, imageAlt } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +
 +/** News results share the DefaultCard anatomy (thumbnail on the right, same
@@ -12207,7 +12342,7 @@ index 0000000..6b23596
 +        {result.thumbnail ? (
 +          <ResultLink className="ms-auto shrink-0 self-start" globals={globals} result={result}>
 +            <Thumb
-+              alt={result.title_text}
++              alt={imageAlt(result)}
 +              className="h-24 w-28 sm:w-40"
 +              eager={eager}
 +              lengthDisplay={formatLength(result.length_display, result.length_seconds)}
@@ -12668,7 +12803,7 @@ index 0000000..5ccd754
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PaperCard.tsx b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 new file mode 100644
-index 0000000..596efc9
+index 0000000..49ff33e
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 @@ -0,0 +1,192 @@
@@ -12685,7 +12820,7 @@ index 0000000..596efc9
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
-+import { formatDate } from "@/lib/format.ts";
++import { formatDate, imageAlt } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { CHIP, CHIP_HOVER, META_ROW, MONO_CHIP } from "@/lib/styles.ts";
 +import { useCapExpand } from "@/lib/useCapExpand.ts";
@@ -12856,7 +12991,7 @@ index 0000000..596efc9
 +        </div>
 +        {result.thumbnail ? (
 +          <ResultLink className="ms-auto shrink-0 self-start" globals={globals} result={result}>
-+            <Thumb alt={result.title_text} className="h-28 w-28" src={result.thumbnail} />
++            <Thumb alt={imageAlt(result)} className="h-28 w-28" src={result.thumbnail} />
 +          </ResultLink>
 +        ) : null}
 +      </div>
@@ -12866,10 +13001,10 @@ index 0000000..596efc9
 +}
 diff --git a/client/zjsearch/src/features/results/cards/ProductCard.tsx b/client/zjsearch/src/features/results/cards/ProductCard.tsx
 new file mode 100644
-index 0000000..29d6333
+index 0000000..ea14f53
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/ProductCard.tsx
-@@ -0,0 +1,65 @@
+@@ -0,0 +1,66 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Globe, Tag, Truck } from "lucide-react";
@@ -12883,6 +13018,7 @@ index 0000000..29d6333
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
++import { imageAlt } from "@/lib/format.ts";
 +import { META_ROW } from "@/lib/styles.ts";
 +
 +export function ProductCard({ result, globals }: CardProps) {
@@ -12927,7 +13063,7 @@ index 0000000..29d6333
 +        </div>
 +        {result.thumbnail ? (
 +          <ResultLink className="ms-auto shrink-0 self-start" globals={globals} result={result}>
-+            <Thumb alt={result.title_text} className="h-28 w-28" src={result.thumbnail} />
++            <Thumb alt={imageAlt(result)} className="h-28 w-28" src={result.thumbnail} />
 +          </ResultLink>
 +        ) : null}
 +      </div>
@@ -13087,7 +13223,7 @@ index 0000000..6c85097
 +}
 diff --git a/client/zjsearch/src/features/results/cards/VideoCard.tsx b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 new file mode 100644
-index 0000000..fe2ba63
+index 0000000..b5bdd77
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 @@ -0,0 +1,99 @@
@@ -13107,7 +13243,7 @@ index 0000000..fe2ba63
 +  Title,
 +} from "@/features/results/cardParts.tsx";
 +import { TileCloseAction } from "@/features/results/Tile.tsx";
-+import { formatLength } from "@/lib/format.ts";
++import { formatLength, imageAlt } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +
 +export function VideoCard({ eager, result, globals }: CardProps) {
@@ -13144,7 +13280,7 @@ index 0000000..fe2ba63
 +            <div className="relative aspect-video overflow-hidden rounded-xl bg-surface-2">
 +              <ResultLink className="block size-full" globals={globals} result={result}>
 +                <Thumb
-+                  alt={result.title_text}
++                  alt={imageAlt(result)}
 +                  className="size-full"
 +                  eager={eager}
 +                  lengthDisplay={formatLength(result.length_display, result.length_seconds)}
@@ -13192,11 +13328,12 @@ index 0000000..fe2ba63
 +}
 diff --git a/client/zjsearch/src/features/results/image/ImageGrid.tsx b/client/zjsearch/src/features/results/image/ImageGrid.tsx
 new file mode 100644
-index 0000000..02a1dc3
+index 0000000..eeeb9ff
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/ImageGrid.tsx
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,118 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++import { imageAlt } from "@/lib/format.ts";
 +
 +/** Image results: borderless masonry grid; the lightbox opens through a portal. */
 +
@@ -13228,7 +13365,7 @@ index 0000000..02a1dc3
 +  if (failed) {
 +    return (
 +      <button
-+        aria-label={result.title_text}
++        aria-label={imageAlt(result)}
 +        className="flex h-44 w-full items-center justify-center rounded-xl bg-surface-2 text-ink-3"
 +        onClick={() => {
 +          onOpen(index);
@@ -13241,6 +13378,7 @@ index 0000000..02a1dc3
 +  }
 +  return (
 +    <button
++      aria-label={imageAlt(result)}
 +      className={`group relative block w-full break-inside-avoid overflow-hidden rounded-xl bg-surface-2 transition-opacity ${
 +        loaded ? "opacity-100" : "min-h-44 opacity-70 animate-pulse-soft"
 +      }`}
@@ -13250,7 +13388,7 @@ index 0000000..02a1dc3
 +      type="button"
 +    >
 +      <img
-+        alt={result.title_text}
++        alt={imageAlt(result)}
 +        className={`w-full object-cover transition-all duration-300 group-hover:scale-[1.02] ${
 +          loaded ? "opacity-100" : "h-44 opacity-0"
 +        }`}
@@ -13314,11 +13452,12 @@ index 0000000..02a1dc3
 +}
 diff --git a/client/zjsearch/src/features/results/image/Lightbox.tsx b/client/zjsearch/src/features/results/image/Lightbox.tsx
 new file mode 100644
-index 0000000..8352084
+index 0000000..f1a3551
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/Lightbox.tsx
-@@ -0,0 +1,375 @@
+@@ -0,0 +1,376 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++import { imageAlt } from "@/lib/format.ts";
 +
 +/**
 + * Kagi-style image lightbox: image centered, prev/next round buttons, bottom
@@ -13597,7 +13736,7 @@ index 0000000..8352084
 +            cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
 +          }}
 +        >
-+          <ProgressiveImage alt={result.title_text} full={result.img_src ?? ""} thumbnail={thumbSrc} />
++          <ProgressiveImage alt={imageAlt(result)} full={result.img_src ?? ""} thumbnail={thumbSrc} />
 +        </div>
 +        <div className="absolute bottom-2 right-5 flex gap-2">
 +          <button
@@ -14379,10 +14518,10 @@ index 0000000..d562a20
 +}
 diff --git a/client/zjsearch/src/lib/format.ts b/client/zjsearch/src/lib/format.ts
 new file mode 100644
-index 0000000..dac1818
+index 0000000..05a50f4
 --- /dev/null
 +++ b/client/zjsearch/src/lib/format.ts
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,93 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Client side formatting helpers (dates, durations, response times). */
@@ -14455,6 +14594,26 @@ index 0000000..dac1818
 +/** Capitalise the first letter (option labels, condition names). */
 +export function cap(value: string): string {
 +  return value.charAt(0).toUpperCase() + value.slice(1);
++}
++
++/** Accessible alt text for a result thumbnail: the engine-provided title
++    when it is non-empty, else a decoded URL filename — image results often
++    carry an empty title and an empty alt leaves the wrapping button/link
++    without an accessible name (Lighthouse button-name / link-name). */
++export function imageAlt(result: { title_text: string; url: string }): string {
++  const title = result.title_text.trim();
++  if (title) {
++    return title;
++  }
++  try {
++    const file = decodeURIComponent(new URL(result.url).pathname.split("/").pop() ?? "");
++    if (file) {
++      return file;
++    }
++  } catch {
++    // malformed result URL — fall through to the URL itself
++  }
++  return result.url;
 +}
 diff --git a/client/zjsearch/src/lib/http.ts b/client/zjsearch/src/lib/http.ts
 new file mode 100644
@@ -17318,10 +17477,10 @@ index 0000000..972648e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..9efc934
+index 0000000..34445aa
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,388 @@
+@@ -0,0 +1,391 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -17577,6 +17736,9 @@ index 0000000..9efc934
 +  return (
 +    <Shell globals={globals} hideTopNav>
 +      <header>
++        {/* the query is the page's heading — visually carried by the query
++            pill, kept as an sr-only h1 for document outline / SEO */}
++        <h1 className="sr-only">{data.q}</h1>
 +        <div className="zjs-results-header-row mx-auto flex w-full items-center gap-4 px-4 pt-3 sm:px-6">
 +          {/* brand links back to the home page (SPA navigation);
 +              hidden on small screens so the query box keeps enough width */}
@@ -23277,6 +23439,219 @@ index d98920f..81c60d6 100644
      url = eval_xpath_getindex(doc, "//script[contains(@src, 'PageApp')]/@src", index=0)
  
      resp = get("https:" + extract_text(url), headers=headers, timeout=5)
+diff --git a/searx/engines/zjsearch_fixtures.py b/searx/engines/zjsearch_fixtures.py
+new file mode 100644
+index 0000000..8784160
+--- /dev/null
++++ b/searx/engines/zjsearch_fixtures.py
+@@ -0,0 +1,207 @@
++# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++"""Deterministic offline fixtures for the zjsearch Lighthouse gate
++(``npm run audit``, see ``client/zjsearch/audit-settings.yml``).
++
++Remote engines make performance and accessibility scores variance-sensitive:
++engine timeouts, captchas and dead image URLs change the audited page from
++run to run.  This engine answers instantly from a fixed table so the gate
++measures the *theme*, not the network.
++
++The kind of results is keyed by a token in the query so each gate URL
++deterministically renders one presentation:
++
++====================== =========================================
++query token            presentation (layout.ts)
++====================== =========================================
++``zjaudit general``    general list + infobox rail + suggestions
++``zjaudit images``     image masonry
++``zjaudit videos``     video grid
++``zjaudit music``      music grid
++``zjaudit files``      torrent/file grid
++``zjaudit science``    scholarly paper cards
++``zjaudit it``         software package cards
++``zjaudit apps``       application grid
++====================== =========================================
++
++Register it in ``settings.yml`` with::
++
++  - name: zjaudit
++    engine: zjsearch_fixtures
++    shortcut: zja
++    disabled: false
++
++Implementations
++===============
++
++"""
++
++import datetime
++import typing as t
++
++engine_type = "offline"
++categories = ["general", "images", "videos", "music", "files", "science", "it", "apps"]
++disabled = True
++timeout = 2.0
++
++about = {
++    "wikidata_id": None,
++    "official_api_documentation": None,
++    "use_official_api": False,
++    "require_api_key": False,
++    "results": "JSON",
++}
++
++"""Small local image served by the instance itself — keeps the audited page
++fully offline and its payload deterministic."""
++FIXTURE_IMG = "/static/img/512.png"
++
++_DAYS = datetime.timedelta(days=1)
++_PUBLISHED = datetime.datetime.now() - 30 * _DAYS  # noqa: DTZ005 (audit-only)
++
++
++def _general() -> list[dict[str, t.Any]]:
++    results: list[dict[str, t.Any]] = [
++        {
++            "infobox": "zjsearch audit",
++            "id": "https://example.com/zjsearch-audit",
++            "title": "ZJSearch audit fixture",
++            "content": "Deterministic infobox rendered by the offline fixture engine.",
++            "img_src": FIXTURE_IMG,
++            "urls": [{"title": "Fixture source", "url": "https://example.com/zjsearch-audit"}],
++        }
++    ]
++    for index in range(1, 13):
++        results.append(
++            {
++                "title": f"Audit fixture result #{index} — deterministic title for the general list",
++                "url": f"https://example.com/zjaudit/general/{index}",
++                "content": (
++                    f"Fixture snippet #{index}: offline text so the Lighthouse gate audits the "
++                    "theme instead of a remote engine. Length varies a little to exercise wrapping."
++                ),
++                "publishedDate": _PUBLISHED - index * _DAYS,
++            }
++        )
++    return results
++
++
++def _images() -> list[dict[str, t.Any]]:
++    return [
++        {
++            "template": "images.html",
++            "title": f"Audit fixture image #{index}",
++            "url": f"https://example.com/zjaudit/images/{index}",
++            "img_src": FIXTURE_IMG,
++            "thumbnail_src": FIXTURE_IMG,
++            "content": f"Offline fixture image #{index} for the masonry grid.",
++        }
++        for index in range(1, 31)
++    ]
++
++
++def _videos() -> list[dict[str, t.Any]]:
++    return [
++        {
++            "title": f"Audit fixture video #{index}",
++            "url": f"https://example.com/zjaudit/videos/{index}",
++            "content": f"Offline fixture video #{index} for the video grid.",
++            "img_src": FIXTURE_IMG,
++            "length": 60 * index % 3600,
++        }
++        for index in range(1, 13)
++    ]
++
++
++def _music() -> list[dict[str, t.Any]]:
++    return [
++        {
++            "title": f"Audit fixture track #{index}",
++            "url": f"https://example.com/zjaudit/music/{index}",
++            "content": f"Offline fixture track #{index} for the music grid.",
++            "thumbnail": FIXTURE_IMG,
++            "img_src": FIXTURE_IMG,
++            "author": f"Fixture artist {index}",
++        }
++        for index in range(1, 9)
++    ]
++
++
++def _files() -> list[dict[str, t.Any]]:
++    return [
++        {
++            "template": "torrents.html",
++            "title": f"Audit fixture file #{index}",
++            "url": f"https://example.com/zjaudit/files/{index}",
++            "content": f"Offline fixture file #{index} for the torrent grid.",
++            "magnetlink": f"magnet:?xt=urn:sha1:zjaudit{index}",
++            "filesize": f"{index}.5 MB",
++            "seeds": 8 + index,
++            "leeches": index,
++        }
++        for index in range(1, 9)
++    ]
++
++
++def _science() -> list[dict[str, t.Any]]:
++    return [
++        {
++            "template": "paper.html",
++            "title": f"Audit fixture paper #{index}",
++            "url": f"https://example.com/zjaudit/science/{index}",
++            "content": f"Offline fixture paper #{index} for the scholarly card list.",
++            "authors": [f"Fixture Author {index}a", f"Fixture Author {index}b"],
++            "journal": "Journal of Deterministic Audits",
++            "doi": f"10.1000/zjaudit.{index}",
++            "publishedDate": _PUBLISHED - index * 7 * _DAYS,
++        }
++        for index in range(1, 7)
++    ]
++
++
++def _it() -> list[dict[str, t.Any]]:
++    return [
++        {
++            "title": f"zjaudit-package-{index}",
++            "url": f"https://example.com/zjaudit/it/{index}",
++            "content": f"Offline fixture package #{index} for the software card list.",
++            "package_name": f"zjaudit-package-{index}",
++            "version": f"1.{index}.0",
++            "license": "MIT",
++        }
++        for index in range(1, 9)
++    ]
++
++
++def _apps() -> list[dict[str, t.Any]]:
++    return [
++        {
++            "title": f"Audit fixture app #{index}",
++            "url": f"https://example.com/zjaudit/apps/{index}",
++            "content": f"Offline fixture app #{index} for the application grid.",
++            "thumbnail": FIXTURE_IMG,
++            "img_src": FIXTURE_IMG,
++        }
++        for index in range(1, 13)
++    ]
++
++
++_FIXTURES = {
++    "general": _general,
++    "images": _images,
++    "videos": _videos,
++    "music": _music,
++    "files": _files,
++    "science": _science,
++    "packages": _it,
++    "apps": _apps,
++}
++
++
++def search(query: str, request_params: t.Any) -> list[dict[str, t.Any]]:  # noqa: ARG001
++    """Return the fixture set whose token appears in the query (default:
++    the general set)."""
++    lowered = query.lower()
++    for kind in ("images", "videos", "music", "files", "science", "apps", "packages", "general"):
++        if kind in lowered:
++            return _FIXTURES[kind]()
++    return _FIXTURES["general"]()
 diff --git a/searx/engines/zlibrary.py b/searx/engines/zlibrary.py
 index 0649a30..4b1dac7 100644
 --- a/searx/engines/zlibrary.py
@@ -26083,13 +26458,14 @@ index 0000000..02cc22c
 +{%- endmacro %}
 diff --git a/searx/templates/zjsearch/index.html b/searx/templates/zjsearch/index.html
 new file mode 100644
-index 0000000..876327d
+index 0000000..f64246c
 --- /dev/null
 +++ b/searx/templates/zjsearch/index.html
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,13 @@
 +{% extends "zjsearch/base.html" %}
 +{% from "zjsearch/data/macros.html" import page_index with context %}
 +{% from "zjsearch/noscript.html" import ns_form, ns_links with context %}
++{% block head %}<link rel="canonical" href="{{ url_for('index', _external=True) }}">{% endblock %}
 +{% block title %}{% endblock %}
 +{% block page_data %}{{ page_index(selected_categories) }}{% endblock %}
 +{% block noscript %}
