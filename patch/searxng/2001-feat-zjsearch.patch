@@ -229,10 +229,10 @@ index 0000000..2d3b19b
 +Licensor: Zhijie He
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 0000000..e817cb0
+index 0000000..62056b0
 --- /dev/null
 +++ b/client/zjsearch/README.rst
-@@ -0,0 +1,293 @@
+@@ -0,0 +1,297 @@
 +=====
 +zjsearch
 +=====
@@ -302,7 +302,7 @@ index 0000000..e817cb0
 +  ``text-sm`` ``font-mono`` copyable values) — pick the tier, don't
 +  invent a size.
 +- **Colour tokens** — only the ``--*`` custom properties from
-+  ``styles/global.css`` (``bg``/``surface``/``surface-2``/``line``/
++  ``styles/tokens.css`` (``bg``/``surface``/``surface-2``/``line``/
 +  ``ink``/``ink-2``/``ink-3``/``accent``*``/``danger``/``warning``/
 +  ``ok``). Every ink token keeps ≥4.5:1 against every surface in all
 +  three palettes (light / ``.dark`` / ``.black`` OLED). Rules that keep
@@ -370,7 +370,11 @@ index 0000000..e817cb0
 +   └── src/
 +       ├── main.tsx         # boot: parse page-data + client_settings, mount
 +       ├── app.tsx          # providers + page switch + overlay panel registry
-+       ├── styles/global.css  # Tailwind v4 theme tokens, light/dark, motion
++       ├── styles/            # global.css single entry + partials by consumer:
++       │                      # tokens (palettes/@theme), base (element
++       │                      # defaults + .highlight), noscript + boot
++       │                      # (server-rendered faces), prose, behaviors
++       │                      # (motion/width), map (OpenLayers chrome)
 +       ├── lib/             # app-wide foundations (no UI): types (server
 +       │                    # contract), pageData, searchParams, router,
 +       │                    # i18n/, categories, cookies, settings, theme,
@@ -598,7 +602,7 @@ index 0000000..bf131a1
 +    disabled: false
 diff --git a/client/zjsearch/biome.json b/client/zjsearch/biome.json
 new file mode 100644
-index 0000000..09c2c7f
+index 0000000..48e363e
 --- /dev/null
 +++ b/client/zjsearch/biome.json
 @@ -0,0 +1,51 @@
@@ -618,7 +622,7 @@ index 0000000..09c2c7f
 +  "linter": {
 +    "enabled": true,
 +    "rules": {
-+      "recommended": true,
++      "preset": "recommended",
 +      "complexity": {
 +        "noImportantStyles": "off"
 +      },
@@ -5256,10 +5260,10 @@ index 0000000..6d518b9
 +}
 diff --git a/client/zjsearch/scripts/audit-diff.mjs b/client/zjsearch/scripts/audit-diff.mjs
 new file mode 100644
-index 0000000..ae5aab5
+index 0000000..5b6c3e7
 --- /dev/null
 +++ b/client/zjsearch/scripts/audit-diff.mjs
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,66 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5271,7 +5275,7 @@ index 0000000..ae5aab5
 + * is visible at a glance.
 + */
 +
-+import { readdirSync, readFileSync } from "node:fs";
++import { readFileSync } from "node:fs";
 +import { join, resolve } from "node:path";
 +
 +const [runA, runB] = process.argv.slice(2);
@@ -5318,7 +5322,9 @@ index 0000000..ae5aab5
 +    if (delta !== 0) {
 +      regressions += delta < 0 ? 1 : 0;
 +    }
-+    console.log(`  ${cat.padEnd(16)} ${String(pa[cat]).padStart(3)} → ${String(pb[cat]).padStart(3)} (${delta >= 0 ? "+" : ""}${delta})${mark}`);
++    console.log(
++      `  ${cat.padEnd(16)} ${String(pa[cat]).padStart(3)} → ${String(pb[cat]).padStart(3)} (${delta >= 0 ? "+" : ""}${delta})${mark}`,
++    );
 +  }
 +}
 +
@@ -5326,10 +5332,10 @@ index 0000000..ae5aab5
 +process.exit(regressions > 0 ? 1 : 0);
 diff --git a/client/zjsearch/scripts/audit.mjs b/client/zjsearch/scripts/audit.mjs
 new file mode 100644
-index 0000000..c031cee
+index 0000000..a5d4665
 --- /dev/null
 +++ b/client/zjsearch/scripts/audit.mjs
-@@ -0,0 +1,361 @@
+@@ -0,0 +1,364 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -5630,7 +5636,10 @@ index 0000000..c031cee
 +      console.log(`\n${path}${MOBILE ? "  (mobile)" : ""}`);
 +      let lhr;
 +      try {
-+        lhr = await runPage(path.startsWith("/static/audit-nojs") ? `http://127.0.0.1:8908/nojs.html` : `${BASE}${path}`, ignoreStatusCode);
++        lhr = await runPage(
++          path.startsWith("/static/audit-nojs") ? `http://127.0.0.1:8908/nojs.html` : `${BASE}${path}`,
++          ignoreStatusCode,
++        );
 +      } catch (error) {
 +        failed = true;
 +        console.log(`  ERROR: ${String(error.message ?? error).slice(0, 160)}`);
@@ -19966,19 +19975,879 @@ index 0000000..b717522
 +}
 +
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
-diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
+diff --git a/client/zjsearch/src/styles/base.css b/client/zjsearch/src/styles/base.css
 new file mode 100644
-index 0000000..d768a95
+index 0000000..443672a
 --- /dev/null
-+++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,1028 @@
++++ b/client/zjsearch/src/styles/base.css
+@@ -0,0 +1,57 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
-+/* zjsearch design system: minimal, modern, light & dark. */
++/* Element defaults plus .highlight — the query-highlight span the server-side
++   highlighter injects into result markup, global because any text renderer
++   can receive it. */
 +
++@layer base {
++  html {
++    height: 100%;
++  }
++
++  body {
++    min-height: 100%;
++    background: var(--bg);
++    color: var(--ink);
++    font-family: var(--font-sans);
++    -webkit-font-smoothing: antialiased;
++    text-rendering: optimizeLegibility;
++  }
++
++  ::selection {
++    background: color-mix(in oklab, var(--accent) 26%, transparent);
++  }
++
++  :focus-visible {
++    outline: 2px solid var(--accent);
++    outline-offset: 2px;
++    border-radius: 4px;
++  }
++
++  button,
++  input,
++  select {
++    font: inherit;
++    color: inherit;
++  }
++
++  /* Tailwind v4 preflight no longer gives buttons the pointer cursor */
++  button {
++    cursor: pointer;
++  }
++
++  button:disabled {
++    cursor: default;
++  }
++}
++
++@layer components {
++  /* query highlight spans inserted by the server side highlighter */
++  .highlight {
++    background: var(--highlight-bg);
++    color: var(--ink);
++    border-radius: 3px;
++    padding: 0 1px;
++    box-decoration-break: clone;
++  }
++}
+diff --git a/client/zjsearch/src/styles/behaviors.css b/client/zjsearch/src/styles/behaviors.css
+new file mode 100644
+index 0000000..c378c39
+--- /dev/null
++++ b/client/zjsearch/src/styles/behaviors.css
+@@ -0,0 +1,104 @@
++/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
++
++/* Document-level behaviors: the native details height animation, the global
++   reduced-motion guard, the results-width morph, the palette cross-fade with
++   its stand-down window, and the hero scroll lock.  These rules are
++   unlayered on purpose — keep this file after the layered partials. */
++
++/* Native <details> disclosures (sidebar boxes, dictionary definitions, help
++   sections) get the same height animation as the JS Collapse component where
++   the browser supports it (Chromium 131+; elsewhere the chevron rotation
++   alone marks the toggle — graceful degradation). */
++@supports selector(details::details-content) {
++  /* let block-size interpolate to `auto` (the details-open height) */
++  :root {
++    interpolate-size: allow-keywords;
++  }
++  details::details-content {
++    block-size: 0;
++    overflow: hidden;
++    transition:
++      block-size 0.3s cubic-bezier(0.22, 1, 0.36, 1),
++      content-visibility 0.3s allow-discrete;
++  }
++  details[open]::details-content {
++    block-size: auto;
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  details::details-content {
++    transition-duration: 0.01ms !important;
++  }
++
++  *,
++  *::before,
++  *::after {
++    animation-duration: 0.01ms !important;
++    animation-iteration-count: 1 !important;
++    transition-duration: 0.01ms !important;
++    scroll-behavior: auto !important;
++  }
++}
++
++/* results width: wide by default (capped for readability), narrow + centered
++   when the center_alignment preference is on; the preference toggle morphs
++   the width instead of snapping (the global reduced-motion guard silences
++   the transition) */
++.zjs-results-main,
++.zjs-results-header-row {
++  max-width: var(--results-max, 90rem);
++  transition: max-width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
++}
++
++/* palette cross-fade: the tokens registered above are <color> custom
++   properties, so flipping .dark / .black animates the variables on <html>
++   and the entire page follows with exactly one transition.  (An earlier
++   attempt put a transition window on every element — the per-frame
++   full-document recalc stuttered in patches on heavy pages.)  Browsers
++   without @property snap instantly; the global reduced-motion guard
++   (0.01ms !important on *) collapses the fade. */
++html {
++  transition:
++    --bg 0.3s ease,
++    --surface 0.3s ease,
++    --surface-2 0.3s ease,
++    --line 0.3s ease,
++    --ink 0.3s ease,
++    --ink-2 0.3s ease,
++    --ink-3 0.3s ease,
++    --accent 0.3s ease,
++    --accent-hover 0.3s ease,
++    --accent-strong 0.3s ease,
++    --accent-strong-hover 0.3s ease,
++    --accent-soft 0.3s ease,
++    --accent-contrast 0.3s ease,
++    --highlight-bg 0.3s ease,
++    --danger 0.3s ease,
++    --warning 0.3s ease,
++    --ok 0.3s ease;
++}
++
++/* stand-down window while the flip runs (applyThemeStyle adds the class for
++   ~350ms around a real palette change): elements with their own
++   transition-colors — chips, pills, switches — would chase the interpolating
++   tokens on their private 150ms timer and visibly lag the page (the
++   score/engine pills read out of sync).  With their transitions stood down
++   they track the variables directly, like everything else. */
++html.zjs-palette-anim *:not(html),
++html.zjs-palette-anim :not(html)::before,
++html.zjs-palette-anim :not(html)::after {
++  transition: none !important;
++}
++
++html.centered {
++  --results-max: 72rem;
++}
++
++/* hero shell (home page) owns its scrolling: the document never scrolls or
++   rubber-bands (iOS Safari would otherwise push the whole layout around);
++   all overflow lives in the shell's inner scroll container */
++.zjs-hero-lock {
++  overflow: hidden;
++  overscroll-behavior: none;
++}
+diff --git a/client/zjsearch/src/styles/boot.css b/client/zjsearch/src/styles/boot.css
+new file mode 100644
+index 0000000..1c30d22
+--- /dev/null
++++ b/client/zjsearch/src/styles/boot.css
+@@ -0,0 +1,235 @@
++/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
++
++/* Skeleton family: the .zjs-skeleton shimmer primitive (shared by the
++   server-streamed shell and React's ResultSkeleton in cardParts.tsx) and the
++   .zjs-boot streamed boot skeleton (skeleton.html) with its error screen. */
++
++@layer components {
++  .zjs-skeleton {
++    position: relative;
++    overflow: hidden;
++    background: var(--surface-2);
++    border-radius: 8px;
++  }
++
++  .zjs-skeleton::after {
++    content: "";
++    position: absolute;
++    inset: 0;
++    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--surface) 65%, transparent), transparent);
++    animation: var(--animate-shimmer);
++  }
++
++  /* boot skeleton: streamed by the server before the search finishes
++     (results page shell), wiped by React on boot.  Geometry mirrors the real
++     results page — header row, category tabs, filter row, text cards, an
++     empty right rail — so the boot swap does not shift the layout; hidden
++     for no-JS via the inline <noscript><style> in the skeleton markup. */
++  .zjs-boot {
++    max-width: var(--results-max, 90rem);
++    margin-inline: auto;
++    padding: 0.75rem 1rem 2rem;
++  }
++  @media (min-width: 40rem) {
++    .zjs-boot {
++      padding-inline: 1.5rem;
++    }
++  }
++  .zjs-boot-top {
++    display: flex;
++    align-items: center;
++    gap: 1rem;
++  }
++  .zjs-boot-brand {
++    display: none;
++    flex: none;
++    font-size: 1.25rem;
++    font-weight: 800;
++    letter-spacing: -0.025em;
++    color: var(--ink);
++    white-space: nowrap;
++  }
++  .zjs-boot-brand span {
++    color: var(--accent);
++  }
++  /* stand-in for the real compact SearchBox: h-12 ps-5 pe-2 with the
++     max-w-2xl xl:max-w-3xl 2xl:max-w-4xl column of ResultsPage's header */
++  .zjs-boot-q {
++    flex: 1 1 auto;
++    display: flex;
++    align-items: center;
++    gap: 0.5rem;
++    min-width: 0;
++    max-width: 42rem;
++    padding: 0.375rem 0.5rem 0.375rem 1.25rem;
++    border: 1px solid var(--line);
++    border-radius: 9999px;
++    background: var(--surface);
++    box-shadow: var(--shadow-card);
++    color: var(--ink-2);
++    font-size: 1rem;
++  }
++  @media (min-width: 80rem) {
++    .zjs-boot-q {
++      max-width: 48rem;
++    }
++  }
++  @media (min-width: 96rem) {
++    .zjs-boot-q {
++      max-width: 56rem;
++    }
++  }
++  .zjs-boot-q-text {
++    flex: 1 1 auto;
++    min-width: 0;
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++  }
++  /* static stand-in for the accent submit button of the real search box */
++  .zjs-boot-submit {
++    flex: none;
++    display: grid;
++    place-items: center;
++    width: 2.25rem;
++    height: 2.25rem;
++    border-radius: 9999px;
++    background: var(--accent-strong);
++    color: var(--accent-contrast);
++  }
++  /* ghost HeaderActions: the 36px ghost circles of the real icon buttons */
++  .zjs-boot-actions {
++    flex: none;
++    display: flex;
++    align-items: center;
++    gap: 0.25rem;
++    margin-inline-start: auto;
++  }
++  .zjs-boot-action {
++    width: 2.25rem;
++    height: 2.25rem;
++    border-radius: 9999px;
++  }
++  .zjs-boot-body {
++    display: flex;
++    gap: 2rem;
++    margin-top: 1rem;
++  }
++  .zjs-boot-main {
++    flex: 1 1 0;
++    min-width: 0;
++  }
++  /* ghost category tabs (text + amber underline; first one selected) and
++     filter row (h-9 rounded-xl dropdown triggers) of the real page */
++  .zjs-boot-tabs {
++    display: flex;
++    align-items: center;
++    gap: 0.25rem;
++    overflow: hidden;
++    padding-block: 0.25rem;
++  }
++  .zjs-boot-tab {
++    flex: none;
++    width: 5rem;
++    height: 2.25rem;
++    border-radius: 0.5rem;
++  }
++  .zjs-boot-tab.is-selected {
++    width: 6rem;
++    box-shadow: inset 0 -2px 0 var(--accent-strong);
++  }
++  .zjs-boot-filters {
++    display: flex;
++    align-items: center;
++    gap: 0.25rem;
++    margin-top: 0.25rem;
++    overflow: hidden;
++  }
++  .zjs-boot-filter {
++    flex: none;
++    width: 7rem;
++    height: 2.25rem;
++    border-radius: 0.75rem;
++  }
++  /* card stack mirrors ResultSkeleton + the real list's space-y-1 */
++  .zjs-boot-cards {
++    display: flex;
++    flex-direction: column;
++    gap: 0.25rem;
++    margin-top: 0.5rem;
++  }
++  .zjs-boot-card {
++    border-radius: 1rem;
++    padding: 1rem;
++  }
++  /* bars follow the real card rhythm: url / mt-1 title / mt-1.5 snippet ×2
++     / mt-2 engines pill — same values as ResultSkeleton in cardParts.tsx */
++  .zjs-boot-w40 {
++    height: 16px;
++    width: 160px;
++  }
++  .zjs-boot-title {
++    height: 24px;
++    width: 75%;
++    margin-top: 4px;
++  }
++  .zjs-boot-line {
++    height: 22px;
++    width: 100%;
++    margin-top: 6px;
++  }
++  .zjs-boot-line2 {
++    height: 22px;
++    width: 83%;
++    margin-top: 6px;
++  }
++  .zjs-boot-pill {
++    height: 22px;
++    width: 112px;
++    margin-top: 8px;
++    border-radius: 9999px;
++  }
++  /* width-only reservation of the results right rail (lg:w-80 xl:w-96),
++      which the real page keeps even while it is empty */
++  .zjs-boot-side {
++    display: none;
++  }
++  @media (min-width: 30rem) {
++    .zjs-boot-brand {
++      display: block;
++    }
++  }
++  @media (min-width: 64rem) {
++    .zjs-boot-side {
++      display: block;
++      flex: 0 0 20rem;
++    }
++  }
++  @media (min-width: 80rem) {
++    .zjs-boot-side {
++      flex-basis: 24rem;
++    }
++  }
++
++  /* boot error: replacement screen when the streamed search reports a
++     failure as a boot payload (the app never renders for it) */
++  .zjs-boot-error {
++    display: flex;
++    min-height: 60dvh;
++    flex-direction: column;
++    align-items: center;
++    justify-content: center;
++    gap: 0.75rem;
++    text-align: center;
++  }
++  .zjs-boot-error p {
++    font-size: 0.875rem;
++    color: var(--ink-2);
++  }
++  .zjs-boot-error a {
++    font-size: 0.875rem;
++    color: var(--accent);
++    text-decoration: underline;
++    text-underline-offset: 2px;
++  }
++}
+diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
+new file mode 100644
+index 0000000..dfbcf63
+--- /dev/null
++++ b/client/zjsearch/src/styles/global.css
+@@ -0,0 +1,21 @@
++/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
++
++/* zjsearch design system: minimal, modern, light & dark.
++
++   Single CSS entry — everything ships as one zjsearch.min.css.  The split is
++   by consumer, not by page: component styling is Tailwind utilities in the
++   TSX; these partials hold only what utilities cannot reach (tokens, element
++   defaults, the server-rendered faces, third-party chrome).  Import order
++   mirrors the original cascade order — behaviors.css and map.css stay
++   unlayered on purpose, so they must come last. */
 +@import "tailwindcss";
 +
++@import "./tokens.css";
++@import "./base.css";
++@import "./noscript.css";
++@import "./boot.css";
++@import "./prose.css";
++@import "./behaviors.css";
++@import "./map.css";
++
 +@custom-variant dark (&:where(.dark, .dark *));
+diff --git a/client/zjsearch/src/styles/map.css b/client/zjsearch/src/styles/map.css
+new file mode 100644
+index 0000000..e8002b2
+--- /dev/null
++++ b/client/zjsearch/src/styles/map.css
+@@ -0,0 +1,66 @@
++/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
++
++/* OpenLayers map chrome — third-party widget DOM that utilities cannot
++   reach; scoped under the .zjs-map root the MapCard renders. */
++
++/* OpenLayers map chrome: zoom control themed to the dark map buttons */
++.zjs-map .ol-zoom {
++  top: 0.625rem;
++  left: 0.625rem;
++  /* kill OpenLayers' own container box — only the themed buttons remain */
++  background-color: transparent;
++  padding: 0;
++  border: none;
++  border-radius: 0;
++}
++.zjs-map .ol-zoom button {
++  width: 1.75rem;
++  height: 1.75rem;
++  font-size: 1.125rem;
++  font-weight: 600;
++  line-height: 1;
++  color: var(--ink-2);
++  background-color: var(--surface);
++  border: none;
++  border-radius: 0;
++  cursor: pointer;
++}
++.zjs-map .ol-zoom button:hover,
++.zjs-map .ol-zoom button:focus,
++.zjs-map .ol-zoom button:active {
++  background-color: var(--surface-2);
++  color: var(--accent);
++}
++.zjs-map .ol-zoom .ol-zoom-in {
++  border-radius: 0.5rem 0.5rem 0 0;
++}
++.zjs-map .ol-zoom .ol-zoom-out {
++  border-radius: 0 0 0.5rem 0.5rem;
++  border-top: 1px solid var(--line);
++}
++
++.zjs-map .ol-scale-line {
++  background: transparent;
++  border-radius: 0;
++  padding: 0;
++}
++.zjs-map .ol-scale-line-inner {
++  margin: 1px 0;
++  color: var(--ink-3);
++  border-color: var(--ink-3);
++}
++
++/* attribution rides bare: no chip, just muted text over the tiles */
++.zjs-map .ol-control.ol-attribution,
++.zjs-map .ol-attribution {
++  background: transparent;
++  border-radius: 0;
++}
++.zjs-map .ol-attribution a,
++.zjs-map .ol-attribution button {
++  color: var(--ink-3);
++}
++.zjs-map .ol-attribution a:hover,
++.zjs-map .ol-attribution button:hover {
++  color: var(--ink);
++}
+diff --git a/client/zjsearch/src/styles/noscript.css b/client/zjsearch/src/styles/noscript.css
+new file mode 100644
+index 0000000..97f6bc2
+--- /dev/null
++++ b/client/zjsearch/src/styles/noscript.css
+@@ -0,0 +1,228 @@
++/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
++
++/* Basic no-JS face (noscript.html) — a self-contained document style, see
++   the .zjs-noscript block below. */
++
++@layer components {
++  /* basic no-JS mode (noscript.html): self-contained document styling in the
++     RSS feed's visual language — own palette incl. a prefers-color-scheme
++     dark override, independent of the app's class-based theming (there is no
++     JS to set the theme classes) */
++  .zjs-noscript {
++    --ns-bg: #faf9f6;
++    --ns-surface: #ffffff;
++    --ns-line: #e6e2d7;
++    --ns-ink: #201d17;
++    --ns-ink-2: #6b675c;
++    --ns-ink-3: #716c61;
++    --ns-accent: #8c6800;
++    --ns-accent-strong: #f5c84c;
++    box-sizing: border-box;
++    min-height: 100vh;
++    background: var(--ns-bg);
++    color: var(--ns-ink);
++    font-family: system-ui, -apple-system, sans-serif;
++    font-size: 16px;
++    line-height: 1.6;
++    overflow-wrap: anywhere;
++  }
++
++  @media (prefers-color-scheme: dark) {
++    .zjs-noscript {
++      --ns-bg: #1b1a18;
++      --ns-surface: #232120;
++      --ns-line: #38342f;
++      --ns-ink: #eceae4;
++      --ns-ink-2: #a8a399;
++      --ns-ink-3: #9b958a;
++      --ns-accent: #fec843;
++      --ns-accent-strong: #fec843;
++    }
++  }
++
++  .zjs-ns-wrap {
++    box-sizing: border-box;
++    max-width: 48rem;
++    margin: 0 auto;
++    padding: 0 1rem 3rem;
++  }
++
++  .zjs-ns-brand {
++    padding: 2rem 0 1.5rem;
++    border-bottom: 2px solid var(--ns-accent-strong);
++  }
++
++  .zjs-ns-wordmark {
++    font-size: 1.25rem;
++    font-weight: 800;
++    letter-spacing: -0.01em;
++  }
++
++  .zjs-ns-wordmark .dot {
++    color: var(--ns-accent);
++  }
++
++  /* media extras so the no-JS face carries the same information as the app:
++     image thumbnails, torrent size/health/magnet, video duration/author */
++  .zjs-ns-thumb {
++    display: block;
++    margin: 0.35rem 0;
++  }
++  .zjs-ns-thumb img {
++    display: block;
++    max-width: 100%;
++    max-height: 220px;
++    border-radius: 8px;
++  }
++  .zjs-ns-meta2 {
++    display: flex;
++    flex-wrap: wrap;
++    gap: 0.3rem 0.9rem;
++    margin: 0.4rem 0 0;
++    font-size: 0.75rem;
++    color: var(--ns-ink-3);
++  }
++  .zjs-ns-meta2 a {
++    color: var(--ns-accent);
++  }
++
++  .zjs-noscript h1 {
++    font-size: 1.25rem;
++    font-weight: 600;
++    margin: 1.4rem 0 0.2rem;
++  }
++
++  .zjs-ns-meta {
++    font-size: 0.8rem;
++    color: var(--ns-ink-3);
++    margin-bottom: 1.1rem;
++  }
++
++  .zjs-ns-meta .count {
++    font-weight: 600;
++    color: var(--ns-ink-2);
++  }
++
++  .zjs-ns-form {
++    display: flex;
++    gap: 0.5rem;
++    margin: 1.4rem 0 1.1rem;
++  }
++
++  .zjs-ns-form input[type="text"] {
++    min-width: 0;
++    flex: 1;
++    padding: 0.5rem 0.75rem;
++    border: 1px solid var(--ns-line);
++    border-radius: 0.75rem;
++    background: var(--ns-surface);
++    color: var(--ns-ink);
++    font: inherit;
++  }
++
++  .zjs-ns-form button {
++    padding: 0.5rem 1rem;
++    border: 0;
++    border-radius: 0.75rem;
++    background: var(--ns-accent-strong);
++    color: #241d0e;
++    cursor: pointer;
++    font: inherit;
++  }
++
++  .zjs-ns-answer {
++    background: var(--ns-surface);
++    border: 1px solid var(--ns-line);
++    border-radius: 16px;
++    padding: 0.9rem 1rem;
++    margin: 0 0 0.7rem;
++  }
++
++  .zjs-ns-article {
++    background: var(--ns-surface);
++    border: 1px solid var(--ns-line);
++    border-radius: 16px;
++    padding: 0.9rem 1rem;
++    margin-bottom: 0.7rem;
++    transition: border-color 0.15s ease;
++  }
++
++  .zjs-ns-article:hover {
++    border-color: var(--ns-accent-strong);
++  }
++
++  .zjs-ns-host {
++    font-size: 0.75rem;
++    color: var(--ns-ink-3);
++    margin-bottom: 0.25rem;
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++  }
++
++  .zjs-ns-article h3 {
++    margin: 0 0 0.35rem;
++    font-size: 1rem;
++    font-weight: 500;
++    line-height: 1.35;
++  }
++
++  .zjs-ns-title-link {
++    color: var(--ns-ink);
++    text-decoration: none;
++  }
++
++  .zjs-ns-title-link:hover {
++    color: var(--ns-accent);
++    text-decoration: underline;
++    text-underline-offset: 2px;
++  }
++
++  .zjs-ns-article p {
++    margin: 0 0 0.45rem;
++    font-size: 0.85rem;
++    line-height: 1.5;
++    color: var(--ns-ink-2);
++    display: -webkit-box;
++    -webkit-line-clamp: 2;
++    -webkit-box-orient: vertical;
++    overflow: hidden;
++  }
++
++  .zjs-ns-article time {
++    font-size: 0.75rem;
++    color: var(--ns-ink-3);
++  }
++
++  .zjs-ns-list {
++    list-style: none;
++    margin: 0;
++    padding: 0;
++  }
++
++  .zjs-ns-note {
++    font-size: 0.85rem;
++    color: var(--ns-ink-2);
++  }
++
++  .zjs-ns-note a {
++    color: var(--ns-accent);
++  }
++
++  .zjs-ns-paging a {
++    margin-right: 0.5rem;
++  }
++
++  .zjs-ns-table {
++    border-collapse: collapse;
++    margin: 1rem 0;
++    width: 100%;
++  }
++
++  .zjs-ns-table th,
++  .zjs-ns-table td {
++    border: 1px solid var(--ns-line);
++    padding: 0.4rem 0.6rem;
++    text-align: left;
++  }
++}
+diff --git a/client/zjsearch/src/styles/prose.css b/client/zjsearch/src/styles/prose.css
+new file mode 100644
+index 0000000..2a255ef
+--- /dev/null
++++ b/client/zjsearch/src/styles/prose.css
+@@ -0,0 +1,109 @@
++/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
++
++/* Markdown-rendered long-form content (info/about pages). */
++
++@layer components {
++  /* server-rendered info/about pages (markdown-generated HTML) */
++  .prose-basic {
++    line-height: 1.7;
++    font-size: 0.925rem;
++    color: var(--ink-2);
++  }
++
++  .prose-basic h1,
++  .prose-basic h2,
++  .prose-basic h3 {
++    color: var(--ink);
++    font-weight: 600;
++    margin: 1.6em 0 0.5em;
++    line-height: 1.3;
++  }
++
++  .prose-basic h1 {
++    font-size: 1.5rem;
++    margin-top: 0.2em;
++  }
++
++  .prose-basic h2 {
++    font-size: 1.2rem;
++  }
++
++  .prose-basic a {
++    color: var(--accent);
++    text-decoration: underline;
++    text-underline-offset: 2px;
++  }
++
++  .prose-basic ul,
++  .prose-basic ol {
++    margin: 0.8em 0;
++    padding-inline-start: 1.4em;
++    list-style: disc;
++  }
++
++  .prose-basic ol {
++    list-style: decimal;
++  }
++
++  .prose-basic li {
++    margin: 0.25em 0;
++  }
++
++  .prose-basic code {
++    font-family: var(--font-mono);
++    font-size: 0.85em;
++    background: var(--surface-2);
++    border-radius: 4px;
++    padding: 0.1em 0.35em;
++  }
++
++  .prose-basic pre {
++    background: var(--surface-2);
++    border: 1px solid var(--line);
++    border-radius: 12px;
++    padding: 0.9em 1.1em;
++    overflow-x: auto;
++    margin: 1em 0;
++  }
++
++  .prose-basic pre code {
++    background: none;
++    padding: 0;
++  }
++
++  .prose-basic table {
++    border-collapse: collapse;
++    margin: 1em 0;
++    width: 100%;
++  }
++
++  .prose-basic th,
++  .prose-basic td {
++    border: 1px solid var(--line);
++    padding: 0.4em 0.7em;
++    text-align: start;
++  }
++
++  .prose-basic th {
++    background: var(--surface-2);
++    color: var(--ink);
++  }
++
++  .prose-basic blockquote {
++    border-inline-start: 3px solid var(--accent);
++    padding-inline-start: 1em;
++    margin: 1em 0;
++    color: var(--ink-3);
++  }
++
++  .prose-basic hr {
++    border: none;
++    border-top: 1px solid var(--line);
++    margin: 2em 0;
++  }
++
++  .prose-basic img {
++    max-width: 100%;
++    border-radius: 8px;
++  }
++}
+diff --git a/client/zjsearch/src/styles/tokens.css b/client/zjsearch/src/styles/tokens.css
+new file mode 100644
+index 0000000..d636de8
+--- /dev/null
++++ b/client/zjsearch/src/styles/tokens.css
+@@ -0,0 +1,260 @@
++/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
++
++/* Design tokens: the palette custom properties (light / dark / OLED black),
++   their <color> @property registrations, the Tailwind theme mapping and the
++   named keyframes. */
 +
 +/* Register the theme color tokens as <color> custom properties so a palette
 +   flip (.dark / .black) interpolates the variables themselves on <html>
@@ -20233,772 +21102,6 @@ index 0000000..d768a95
 +    opacity: 0.55;
 +    transform: scale(0.94);
 +  }
-+}
-+
-+@layer base {
-+  html {
-+    height: 100%;
-+  }
-+
-+  body {
-+    min-height: 100%;
-+    background: var(--bg);
-+    color: var(--ink);
-+    font-family: var(--font-sans);
-+    -webkit-font-smoothing: antialiased;
-+    text-rendering: optimizeLegibility;
-+  }
-+
-+  ::selection {
-+    background: color-mix(in oklab, var(--accent) 26%, transparent);
-+  }
-+
-+  :focus-visible {
-+    outline: 2px solid var(--accent);
-+    outline-offset: 2px;
-+    border-radius: 4px;
-+  }
-+
-+  button,
-+  input,
-+  select {
-+    font: inherit;
-+    color: inherit;
-+  }
-+
-+  /* Tailwind v4 preflight no longer gives buttons the pointer cursor */
-+  button {
-+    cursor: pointer;
-+  }
-+
-+  button:disabled {
-+    cursor: default;
-+  }
-+}
-+
-+@layer components {
-+  /* query highlight spans inserted by the server side highlighter */
-+  .highlight {
-+    background: var(--highlight-bg);
-+    color: var(--ink);
-+    border-radius: 3px;
-+    padding: 0 1px;
-+    box-decoration-break: clone;
-+  }
-+
-+  /* basic no-JS mode (noscript.html): self-contained document styling in the
-+     RSS feed's visual language — own palette incl. a prefers-color-scheme
-+     dark override, independent of the app's class-based theming (there is no
-+     JS to set the theme classes) */
-+  .zjs-noscript {
-+    --ns-bg: #faf9f6;
-+    --ns-surface: #ffffff;
-+    --ns-line: #e6e2d7;
-+    --ns-ink: #201d17;
-+    --ns-ink-2: #6b675c;
-+    --ns-ink-3: #716c61;
-+    --ns-accent: #8c6800;
-+    --ns-accent-strong: #f5c84c;
-+    box-sizing: border-box;
-+    min-height: 100vh;
-+    background: var(--ns-bg);
-+    color: var(--ns-ink);
-+    font-family: system-ui, -apple-system, sans-serif;
-+    font-size: 16px;
-+    line-height: 1.6;
-+    overflow-wrap: anywhere;
-+  }
-+
-+  @media (prefers-color-scheme: dark) {
-+    .zjs-noscript {
-+      --ns-bg: #1b1a18;
-+      --ns-surface: #232120;
-+      --ns-line: #38342f;
-+      --ns-ink: #eceae4;
-+      --ns-ink-2: #a8a399;
-+      --ns-ink-3: #9b958a;
-+      --ns-accent: #fec843;
-+      --ns-accent-strong: #fec843;
-+    }
-+  }
-+
-+  .zjs-ns-wrap {
-+    box-sizing: border-box;
-+    max-width: 48rem;
-+    margin: 0 auto;
-+    padding: 0 1rem 3rem;
-+  }
-+
-+  .zjs-ns-brand {
-+    padding: 2rem 0 1.5rem;
-+    border-bottom: 2px solid var(--ns-accent-strong);
-+  }
-+
-+  .zjs-ns-wordmark {
-+    font-size: 1.25rem;
-+    font-weight: 800;
-+    letter-spacing: -0.01em;
-+  }
-+
-+  .zjs-ns-wordmark .dot {
-+    color: var(--ns-accent);
-+  }
-+
-+  /* media extras so the no-JS face carries the same information as the app:
-+     image thumbnails, torrent size/health/magnet, video duration/author */
-+  .zjs-ns-thumb {
-+    display: block;
-+    margin: 0.35rem 0;
-+  }
-+  .zjs-ns-thumb img {
-+    display: block;
-+    max-width: 100%;
-+    max-height: 220px;
-+    border-radius: 8px;
-+  }
-+  .zjs-ns-meta2 {
-+    display: flex;
-+    flex-wrap: wrap;
-+    gap: 0.3rem 0.9rem;
-+    margin: 0.4rem 0 0;
-+    font-size: 0.75rem;
-+    color: var(--ns-ink-3);
-+  }
-+  .zjs-ns-meta2 a {
-+    color: var(--ns-accent);
-+  }
-+
-+  .zjs-noscript h1 {
-+    font-size: 1.25rem;
-+    font-weight: 600;
-+    margin: 1.4rem 0 0.2rem;
-+  }
-+
-+  .zjs-ns-meta {
-+    font-size: 0.8rem;
-+    color: var(--ns-ink-3);
-+    margin-bottom: 1.1rem;
-+  }
-+
-+  .zjs-ns-meta .count {
-+    font-weight: 600;
-+    color: var(--ns-ink-2);
-+  }
-+
-+  .zjs-ns-form {
-+    display: flex;
-+    gap: 0.5rem;
-+    margin: 1.4rem 0 1.1rem;
-+  }
-+
-+  .zjs-ns-form input[type="text"] {
-+    min-width: 0;
-+    flex: 1;
-+    padding: 0.5rem 0.75rem;
-+    border: 1px solid var(--ns-line);
-+    border-radius: 0.75rem;
-+    background: var(--ns-surface);
-+    color: var(--ns-ink);
-+    font: inherit;
-+  }
-+
-+  .zjs-ns-form button {
-+    padding: 0.5rem 1rem;
-+    border: 0;
-+    border-radius: 0.75rem;
-+    background: var(--ns-accent-strong);
-+    color: #241d0e;
-+    cursor: pointer;
-+    font: inherit;
-+  }
-+
-+  .zjs-ns-answer {
-+    background: var(--ns-surface);
-+    border: 1px solid var(--ns-line);
-+    border-radius: 16px;
-+    padding: 0.9rem 1rem;
-+    margin: 0 0 0.7rem;
-+  }
-+
-+  .zjs-ns-article {
-+    background: var(--ns-surface);
-+    border: 1px solid var(--ns-line);
-+    border-radius: 16px;
-+    padding: 0.9rem 1rem;
-+    margin-bottom: 0.7rem;
-+    transition: border-color 0.15s ease;
-+  }
-+
-+  .zjs-ns-article:hover {
-+    border-color: var(--ns-accent-strong);
-+  }
-+
-+  .zjs-ns-host {
-+    font-size: 0.75rem;
-+    color: var(--ns-ink-3);
-+    margin-bottom: 0.25rem;
-+    white-space: nowrap;
-+    overflow: hidden;
-+    text-overflow: ellipsis;
-+  }
-+
-+  .zjs-ns-article h3 {
-+    margin: 0 0 0.35rem;
-+    font-size: 1rem;
-+    font-weight: 500;
-+    line-height: 1.35;
-+  }
-+
-+  .zjs-ns-title-link {
-+    color: var(--ns-ink);
-+    text-decoration: none;
-+  }
-+
-+  .zjs-ns-title-link:hover {
-+    color: var(--ns-accent);
-+    text-decoration: underline;
-+    text-underline-offset: 2px;
-+  }
-+
-+  .zjs-ns-article p {
-+    margin: 0 0 0.45rem;
-+    font-size: 0.85rem;
-+    line-height: 1.5;
-+    color: var(--ns-ink-2);
-+    display: -webkit-box;
-+    -webkit-line-clamp: 2;
-+    -webkit-box-orient: vertical;
-+    overflow: hidden;
-+  }
-+
-+  .zjs-ns-article time {
-+    font-size: 0.75rem;
-+    color: var(--ns-ink-3);
-+  }
-+
-+  .zjs-ns-list {
-+    list-style: none;
-+    margin: 0;
-+    padding: 0;
-+  }
-+
-+  .zjs-ns-note {
-+    font-size: 0.85rem;
-+    color: var(--ns-ink-2);
-+  }
-+
-+  .zjs-ns-note a {
-+    color: var(--ns-accent);
-+  }
-+
-+  .zjs-ns-paging a {
-+    margin-right: 0.5rem;
-+  }
-+
-+  .zjs-ns-table {
-+    border-collapse: collapse;
-+    margin: 1rem 0;
-+    width: 100%;
-+  }
-+
-+  .zjs-ns-table th,
-+  .zjs-ns-table td {
-+    border: 1px solid var(--ns-line);
-+    padding: 0.4rem 0.6rem;
-+    text-align: left;
-+  }
-+
-+  .zjs-skeleton {
-+    position: relative;
-+    overflow: hidden;
-+    background: var(--surface-2);
-+    border-radius: 8px;
-+  }
-+
-+  .zjs-skeleton::after {
-+    content: "";
-+    position: absolute;
-+    inset: 0;
-+    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--surface) 65%, transparent), transparent);
-+    animation: var(--animate-shimmer);
-+  }
-+
-+  /* boot skeleton: streamed by the server before the search finishes
-+     (results page shell), wiped by React on boot.  Geometry mirrors the real
-+     results page — header row, category tabs, filter row, text cards, an
-+     empty right rail — so the boot swap does not shift the layout; hidden
-+     for no-JS via the inline <noscript><style> in the skeleton markup. */
-+  .zjs-boot {
-+    max-width: var(--results-max, 90rem);
-+    margin-inline: auto;
-+    padding: 0.75rem 1rem 2rem;
-+  }
-+  @media (min-width: 40rem) {
-+    .zjs-boot {
-+      padding-inline: 1.5rem;
-+    }
-+  }
-+  .zjs-boot-top {
-+    display: flex;
-+    align-items: center;
-+    gap: 1rem;
-+  }
-+  .zjs-boot-brand {
-+    display: none;
-+    flex: none;
-+    font-size: 1.25rem;
-+    font-weight: 800;
-+    letter-spacing: -0.025em;
-+    color: var(--ink);
-+    white-space: nowrap;
-+  }
-+  .zjs-boot-brand span {
-+    color: var(--accent);
-+  }
-+  /* stand-in for the real compact SearchBox: h-12 ps-5 pe-2 with the
-+     max-w-2xl xl:max-w-3xl 2xl:max-w-4xl column of ResultsPage's header */
-+  .zjs-boot-q {
-+    flex: 1 1 auto;
-+    display: flex;
-+    align-items: center;
-+    gap: 0.5rem;
-+    min-width: 0;
-+    max-width: 42rem;
-+    padding: 0.375rem 0.5rem 0.375rem 1.25rem;
-+    border: 1px solid var(--line);
-+    border-radius: 9999px;
-+    background: var(--surface);
-+    box-shadow: var(--shadow-card);
-+    color: var(--ink-2);
-+    font-size: 1rem;
-+  }
-+  @media (min-width: 80rem) {
-+    .zjs-boot-q {
-+      max-width: 48rem;
-+    }
-+  }
-+  @media (min-width: 96rem) {
-+    .zjs-boot-q {
-+      max-width: 56rem;
-+    }
-+  }
-+  .zjs-boot-q-text {
-+    flex: 1 1 auto;
-+    min-width: 0;
-+    white-space: nowrap;
-+    overflow: hidden;
-+    text-overflow: ellipsis;
-+  }
-+  /* static stand-in for the accent submit button of the real search box */
-+  .zjs-boot-submit {
-+    flex: none;
-+    display: grid;
-+    place-items: center;
-+    width: 2.25rem;
-+    height: 2.25rem;
-+    border-radius: 9999px;
-+    background: var(--accent-strong);
-+    color: var(--accent-contrast);
-+  }
-+  /* ghost HeaderActions: the 36px ghost circles of the real icon buttons */
-+  .zjs-boot-actions {
-+    flex: none;
-+    display: flex;
-+    align-items: center;
-+    gap: 0.25rem;
-+    margin-inline-start: auto;
-+  }
-+  .zjs-boot-action {
-+    width: 2.25rem;
-+    height: 2.25rem;
-+    border-radius: 9999px;
-+  }
-+  .zjs-boot-body {
-+    display: flex;
-+    gap: 2rem;
-+    margin-top: 1rem;
-+  }
-+  .zjs-boot-main {
-+    flex: 1 1 0;
-+    min-width: 0;
-+  }
-+  /* ghost category tabs (text + amber underline; first one selected) and
-+     filter row (h-9 rounded-xl dropdown triggers) of the real page */
-+  .zjs-boot-tabs {
-+    display: flex;
-+    align-items: center;
-+    gap: 0.25rem;
-+    overflow: hidden;
-+    padding-block: 0.25rem;
-+  }
-+  .zjs-boot-tab {
-+    flex: none;
-+    width: 5rem;
-+    height: 2.25rem;
-+    border-radius: 0.5rem;
-+  }
-+  .zjs-boot-tab.is-selected {
-+    width: 6rem;
-+    box-shadow: inset 0 -2px 0 var(--accent-strong);
-+  }
-+  .zjs-boot-filters {
-+    display: flex;
-+    align-items: center;
-+    gap: 0.25rem;
-+    margin-top: 0.25rem;
-+    overflow: hidden;
-+  }
-+  .zjs-boot-filter {
-+    flex: none;
-+    width: 7rem;
-+    height: 2.25rem;
-+    border-radius: 0.75rem;
-+  }
-+  /* card stack mirrors ResultSkeleton + the real list's space-y-1 */
-+  .zjs-boot-cards {
-+    display: flex;
-+    flex-direction: column;
-+    gap: 0.25rem;
-+    margin-top: 0.5rem;
-+  }
-+  .zjs-boot-card {
-+    border-radius: 1rem;
-+    padding: 1rem;
-+  }
-+  /* bars follow the real card rhythm: url / mt-1 title / mt-1.5 snippet ×2
-+     / mt-2 engines pill — same values as ResultSkeleton in cardParts.tsx */
-+  .zjs-boot-w40 {
-+    height: 16px;
-+    width: 160px;
-+  }
-+  .zjs-boot-title {
-+    height: 24px;
-+    width: 75%;
-+    margin-top: 4px;
-+  }
-+  .zjs-boot-line {
-+    height: 22px;
-+    width: 100%;
-+    margin-top: 6px;
-+  }
-+  .zjs-boot-line2 {
-+    height: 22px;
-+    width: 83%;
-+    margin-top: 6px;
-+  }
-+  .zjs-boot-pill {
-+    height: 22px;
-+    width: 112px;
-+    margin-top: 8px;
-+    border-radius: 9999px;
-+  }
-+  /* width-only reservation of the results right rail (lg:w-80 xl:w-96),
-+      which the real page keeps even while it is empty */
-+  .zjs-boot-side {
-+    display: none;
-+  }
-+  @media (min-width: 30rem) {
-+    .zjs-boot-brand {
-+      display: block;
-+    }
-+  }
-+  @media (min-width: 64rem) {
-+    .zjs-boot-side {
-+      display: block;
-+      flex: 0 0 20rem;
-+    }
-+  }
-+  @media (min-width: 80rem) {
-+    .zjs-boot-side {
-+      flex-basis: 24rem;
-+    }
-+  }
-+
-+  /* boot error: replacement screen when the streamed search reports a
-+     failure as a boot payload (the app never renders for it) */
-+  .zjs-boot-error {
-+    display: flex;
-+    min-height: 60dvh;
-+    flex-direction: column;
-+    align-items: center;
-+    justify-content: center;
-+    gap: 0.75rem;
-+    text-align: center;
-+  }
-+  .zjs-boot-error p {
-+    font-size: 0.875rem;
-+    color: var(--ink-2);
-+  }
-+  .zjs-boot-error a {
-+    font-size: 0.875rem;
-+    color: var(--accent);
-+    text-decoration: underline;
-+    text-underline-offset: 2px;
-+  }
-+
-+  /* server-rendered info/about pages (markdown-generated HTML) */
-+  .prose-basic {
-+    line-height: 1.7;
-+    font-size: 0.925rem;
-+    color: var(--ink-2);
-+  }
-+
-+  .prose-basic h1,
-+  .prose-basic h2,
-+  .prose-basic h3 {
-+    color: var(--ink);
-+    font-weight: 600;
-+    margin: 1.6em 0 0.5em;
-+    line-height: 1.3;
-+  }
-+
-+  .prose-basic h1 {
-+    font-size: 1.5rem;
-+    margin-top: 0.2em;
-+  }
-+
-+  .prose-basic h2 {
-+    font-size: 1.2rem;
-+  }
-+
-+  .prose-basic a {
-+    color: var(--accent);
-+    text-decoration: underline;
-+    text-underline-offset: 2px;
-+  }
-+
-+  .prose-basic ul,
-+  .prose-basic ol {
-+    margin: 0.8em 0;
-+    padding-inline-start: 1.4em;
-+    list-style: disc;
-+  }
-+
-+  .prose-basic ol {
-+    list-style: decimal;
-+  }
-+
-+  .prose-basic li {
-+    margin: 0.25em 0;
-+  }
-+
-+  .prose-basic code {
-+    font-family: var(--font-mono);
-+    font-size: 0.85em;
-+    background: var(--surface-2);
-+    border-radius: 4px;
-+    padding: 0.1em 0.35em;
-+  }
-+
-+  .prose-basic pre {
-+    background: var(--surface-2);
-+    border: 1px solid var(--line);
-+    border-radius: 12px;
-+    padding: 0.9em 1.1em;
-+    overflow-x: auto;
-+    margin: 1em 0;
-+  }
-+
-+  .prose-basic pre code {
-+    background: none;
-+    padding: 0;
-+  }
-+
-+  .prose-basic table {
-+    border-collapse: collapse;
-+    margin: 1em 0;
-+    width: 100%;
-+  }
-+
-+  .prose-basic th,
-+  .prose-basic td {
-+    border: 1px solid var(--line);
-+    padding: 0.4em 0.7em;
-+    text-align: start;
-+  }
-+
-+  .prose-basic th {
-+    background: var(--surface-2);
-+    color: var(--ink);
-+  }
-+
-+  .prose-basic blockquote {
-+    border-inline-start: 3px solid var(--accent);
-+    padding-inline-start: 1em;
-+    margin: 1em 0;
-+    color: var(--ink-3);
-+  }
-+
-+  .prose-basic hr {
-+    border: none;
-+    border-top: 1px solid var(--line);
-+    margin: 2em 0;
-+  }
-+
-+  .prose-basic img {
-+    max-width: 100%;
-+    border-radius: 8px;
-+  }
-+}
-+
-+/* Native <details> disclosures (sidebar boxes, dictionary definitions, help
-+   sections) get the same height animation as the JS Collapse component where
-+   the browser supports it (Chromium 131+; elsewhere the chevron rotation
-+   alone marks the toggle — graceful degradation). */
-+@supports selector(details::details-content) {
-+  /* let block-size interpolate to `auto` (the details-open height) */
-+  :root {
-+    interpolate-size: allow-keywords;
-+  }
-+  details::details-content {
-+    block-size: 0;
-+    overflow: hidden;
-+    transition:
-+      block-size 0.3s cubic-bezier(0.22, 1, 0.36, 1),
-+      content-visibility 0.3s allow-discrete;
-+  }
-+  details[open]::details-content {
-+    block-size: auto;
-+  }
-+}
-+
-+@media (prefers-reduced-motion: reduce) {
-+  details::details-content {
-+    transition-duration: 0.01ms !important;
-+  }
-+
-+  *,
-+  *::before,
-+  *::after {
-+    animation-duration: 0.01ms !important;
-+    animation-iteration-count: 1 !important;
-+    transition-duration: 0.01ms !important;
-+    scroll-behavior: auto !important;
-+  }
-+}
-+
-+/* results width: wide by default (capped for readability), narrow + centered
-+   when the center_alignment preference is on; the preference toggle morphs
-+   the width instead of snapping (the global reduced-motion guard silences
-+   the transition) */
-+.zjs-results-main,
-+.zjs-results-header-row {
-+  max-width: var(--results-max, 90rem);
-+  transition: max-width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-+}
-+
-+/* palette cross-fade: the tokens registered above are <color> custom
-+   properties, so flipping .dark / .black animates the variables on <html>
-+   and the entire page follows with exactly one transition.  (An earlier
-+   attempt put a transition window on every element — the per-frame
-+   full-document recalc stuttered in patches on heavy pages.)  Browsers
-+   without @property snap instantly; the global reduced-motion guard
-+   (0.01ms !important on *) collapses the fade. */
-+html {
-+  transition:
-+    --bg 0.3s ease,
-+    --surface 0.3s ease,
-+    --surface-2 0.3s ease,
-+    --line 0.3s ease,
-+    --ink 0.3s ease,
-+    --ink-2 0.3s ease,
-+    --ink-3 0.3s ease,
-+    --accent 0.3s ease,
-+    --accent-hover 0.3s ease,
-+    --accent-strong 0.3s ease,
-+    --accent-strong-hover 0.3s ease,
-+    --accent-soft 0.3s ease,
-+    --accent-contrast 0.3s ease,
-+    --highlight-bg 0.3s ease,
-+    --danger 0.3s ease,
-+    --warning 0.3s ease,
-+    --ok 0.3s ease;
-+}
-+
-+/* stand-down window while the flip runs (applyThemeStyle adds the class for
-+   ~350ms around a real palette change): elements with their own
-+   transition-colors — chips, pills, switches — would chase the interpolating
-+   tokens on their private 150ms timer and visibly lag the page (the
-+   score/engine pills read out of sync).  With their transitions stood down
-+   they track the variables directly, like everything else. */
-+html.zjs-palette-anim *:not(html),
-+html.zjs-palette-anim :not(html)::before,
-+html.zjs-palette-anim :not(html)::after {
-+  transition: none !important;
-+}
-+
-+html.centered {
-+  --results-max: 72rem;
-+}
-+
-+/* hero shell (home page) owns its scrolling: the document never scrolls or
-+   rubber-bands (iOS Safari would otherwise push the whole layout around);
-+   all overflow lives in the shell's inner scroll container */
-+.zjs-hero-lock {
-+  overflow: hidden;
-+  overscroll-behavior: none;
-+}
-+
-+/* OpenLayers map chrome: zoom control themed to the dark map buttons */
-+.zjs-map .ol-zoom {
-+  top: 0.625rem;
-+  left: 0.625rem;
-+  /* kill OpenLayers' own container box — only the themed buttons remain */
-+  background-color: transparent;
-+  padding: 0;
-+  border: none;
-+  border-radius: 0;
-+}
-+.zjs-map .ol-zoom button {
-+  width: 1.75rem;
-+  height: 1.75rem;
-+  font-size: 1.125rem;
-+  font-weight: 600;
-+  line-height: 1;
-+  color: var(--ink-2);
-+  background-color: var(--surface);
-+  border: none;
-+  border-radius: 0;
-+  cursor: pointer;
-+}
-+.zjs-map .ol-zoom button:hover,
-+.zjs-map .ol-zoom button:focus,
-+.zjs-map .ol-zoom button:active {
-+  background-color: var(--surface-2);
-+  color: var(--accent);
-+}
-+.zjs-map .ol-zoom .ol-zoom-in {
-+  border-radius: 0.5rem 0.5rem 0 0;
-+}
-+.zjs-map .ol-zoom .ol-zoom-out {
-+  border-radius: 0 0 0.5rem 0.5rem;
-+  border-top: 1px solid var(--line);
-+}
-+
-+.zjs-map .ol-scale-line {
-+  background: transparent;
-+  border-radius: 0;
-+  padding: 0;
-+}
-+.zjs-map .ol-scale-line-inner {
-+  margin: 1px 0;
-+  color: var(--ink-3);
-+  border-color: var(--ink-3);
-+}
-+
-+/* attribution rides bare: no chip, just muted text over the tiles */
-+.zjs-map .ol-control.ol-attribution,
-+.zjs-map .ol-attribution {
-+  background: transparent;
-+  border-radius: 0;
-+}
-+.zjs-map .ol-attribution a,
-+.zjs-map .ol-attribution button {
-+  color: var(--ink-3);
-+}
-+.zjs-map .ol-attribution a:hover,
-+.zjs-map .ol-attribution button:hover {
-+  color: var(--ink);
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
@@ -24121,7 +24224,7 @@ index 0000000..ab76488
 +}
 diff --git a/searx/templates/zjsearch/noscript.html b/searx/templates/zjsearch/noscript.html
 new file mode 100644
-index 0000000..31a9414
+index 0000000..7419d9e
 --- /dev/null
 +++ b/searx/templates/zjsearch/noscript.html
 @@ -0,0 +1,135 @@
@@ -24136,7 +24239,7 @@ index 0000000..31a9414
 +    adding a UI language touches ONLY client/zjsearch/src/lib/i18n/,
 +    never these templates.  Visual language mirrors rss.xsl: a
 +    self-contained document style with its own light/dark palette
-+    (.zjs-noscript in global.css). -#}
++    (.zjs-noscript in styles/noscript.css). -#}
 +
 +{% macro ns_brand() -%}
 +<div class="zjs-ns-brand"><span class="zjs-ns-wordmark">{{ instance_name }}<span class="dot">.</span></span></div>
