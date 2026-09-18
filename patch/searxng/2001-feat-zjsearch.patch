@@ -229,10 +229,10 @@ index 0000000..2d3b19b
 +Licensor: Zhijie He
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 0000000..ec2bf1b
+index 0000000..46b2967
 --- /dev/null
 +++ b/client/zjsearch/README.rst
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,285 @@
 +=====
 +zjsearch
 +=====
@@ -362,6 +362,9 @@ index 0000000..ec2bf1b
 +
 +   client/zjsearch/
 +   ├── dev-settings.yml     # local instance settings (default_theme: zjsearch)
++   ├── audit-settings.yml   # instance settings for the Lighthouse gate (public headers)
++   ├── scripts/audit.mjs    # `npm run audit`: boots an instance on :8907 and
++   │                        # Lighthouse-gates the key pages per category
 +   ├── vite.config.ts       # build -> searx/static/themes/zjsearch, dev proxy, @ alias
 +   ├── tools/assets.ts      # rasterizes brand SVGs into favicons/PWA icons
 +   └── src/
@@ -388,6 +391,34 @@ index 0000000..ec2bf1b
 +           ├── preferences/ #   PreferencesPage + usePreferencesForm +
 +           │                #   parts + tabs/ (one component per tab)
 +           └── lazyPages.ts #   React.lazy route chunks
++
++Lighthouse audit
++================
++
++``npm run audit`` is the theme's quality gate: it boots a throwaway
++instance on ``127.0.0.1:8907`` with ``audit-settings.yml`` (identical to
++the dev settings, but the instance presents an indexable
++``X-Robots-Tag`` — the upstream default ``noindex`` would cap the SEO
++category no matter what the theme does), runs Lighthouse over ``/`` and
++``/search?q=searxng`` and fails when a category drops below the
++thresholds in ``scripts/audit.mjs``.
++
++Notes:
++
++* Desktop is the default profile (``LH_FORM_FACTOR=mobile`` opts into the
++  harsher mobile throttling with its own, lower floors — live-engine
++  latency on ``/search`` makes mobile numbers variance-sensitive).
++* The search page's SEO category is *exempt* on purpose: upstream's
++  ``robots.txt`` disallows ``/*?*q=*`` — search pages are meant to stay
++  unindexed.
++* Needs the venv (``local/py3``) and a Chromium; set ``CHROME_PATH`` when
++  chrome-launcher does not autodetect yours, and export ``HTTP(S)_PROXY``
++  on networks where the engines need it.
++* The results feature tree ships as a **stable-named** chunk
++  (``chunk/zjs-results.min.js``, see ``manualChunks`` in vite.config) so
++  the streamed results shell can pre-warm it with an inline ``import()``
++  while the engines run. If you rename that chunk, update
++  ``results.html`` in the same change.
 +
 +Code organization & conventions
 +===============================
@@ -487,6 +518,104 @@ index 0000000..ec2bf1b
 +Commons Clause v1.0 — see ``client/zjsearch/LICENSE.txt`` for the full
 +text. The license is also linked from the site footer.
 +
+diff --git a/client/zjsearch/audit-settings.yml b/client/zjsearch/audit-settings.yml
+new file mode 100644
+index 0000000..41ee5af
+--- /dev/null
++++ b/client/zjsearch/audit-settings.yml
+@@ -0,0 +1,92 @@
++# zjsearch Lighthouse audit instance settings — used by `npm run audit`
++# (scripts/audit.mjs boots a throwaway granian on :8907 with this file).
++# Same shape as dev-settings.yml, but the instance presents itself as
++# public: the upstream default X-Robots-Tag: noindex header would cap the
++# Lighthouse SEO category regardless of theme quality.
++use_default_settings: true
++
++general:
++  instance_name: ZJSearch
++  debug: false
++  privacypolicy_url: https://example.com/privacy
++  donation_url: https://example.com/donate
++  contact_url: mailto:contact@example.com
++
++search:
++  formats:
++    - html
++    - csv
++    - json
++    - rss
++
++ui:
++  default_theme: zjsearch
++
++preferences:
++  lock: []
++
++brand:
++  public_instances: https://searx.space
++  custom:
++    links:
++      Uptime: https://uptime.searxng.org/history/darmarit-org
++      Blog: https://example.com/blog
++
++server:
++  secret_key: "zjsearch-local-dev-secret-key"
++  limiter: false
++  image_proxy: true
++  default_http_headers:
++    X-Content-Type-Options: nosniff
++    X-Download-Options: noopen
++    # the upstream default is "noindex, nofollow" — an audit instance wants
++    # to be indexable or the SEO category can never reach its threshold.
++    # (public_instance: true would force the Valkey-backed limiter on, so we
++    # override just the header instead.)
++    X-Robots-Tag: "index, follow"
++    Referrer-Policy: no-referrer
++
++# proxy so region-blocked engines are reachable from this network
++# (LAN-specific: uncomment and set your own proxy when needed; the gate
++# script also inherits HTTP(S)_PROXY from its environment)
++outgoing:
++  request_timeout: 5.0
++  # proxies:
++  #   all://:
++  #     - http://192.168.20.23:7890
++
++plugins:
++  searx.plugins.advanced_search_syntax.SXNGPlugin:
++    active: true
++  searx.plugins.ahmia_filter.SXNGPlugin:
++    active: true
++  searx.plugins.calculator.SXNGPlugin:
++    active: true
++  searx.plugins.currency_convert.SXNGPlugin:
++    active: true
++  searx.plugins.hash_plugin.SXNGPlugin:
++    active: true
++  searx.plugins.hostnames.SXNGPlugin:
++    active: true
++  searx.plugins.infinite_scroll.SXNGPlugin:
++    active: true
++  searx.plugins.oa_doi_rewrite.SXNGPlugin:
++    active: true
++  searx.plugins.self_info.SXNGPlugin:
++    active: true
++  searx.plugins.stock_quote.SXNGPlugin:
++    active: true
++  searx.plugins.time_zone.SXNGPlugin:
++    active: true
++  searx.plugins.tor_check.SXNGPlugin:
++    active: true
++  searx.plugins.tracker_url_remover.SXNGPlugin:
++    active: true
++  searx.plugins.unit_converter.SXNGPlugin:
++    active: true
++
++engines:
++  - name: tmdb
++    disabled: false
++  - name: imdb
++    disabled: false
 diff --git a/client/zjsearch/biome.json b/client/zjsearch/biome.json
 new file mode 100644
 index 0000000..09c2c7f
@@ -803,10 +932,10 @@ index 0000000..8a0c669
 +grep '^diff --git' "$out" | sed 's/^diff --git a\///; s/ b\/.*//; s/^/  /'
 diff --git a/client/zjsearch/package-lock.json b/client/zjsearch/package-lock.json
 new file mode 100644
-index 0000000..bf1b90a
+index 0000000..e88df6f
 --- /dev/null
 +++ b/client/zjsearch/package-lock.json
-@@ -0,0 +1,2958 @@
+@@ -0,0 +1,4270 @@
 +{
 +  "name": "@hezhijie0327/zjsearch",
 +  "version": "0.1.0",
@@ -832,7 +961,9 @@ index 0000000..bf1b90a
 +        "@types/react-dom": "^19.2.3",
 +        "browserslist": "^4.28.8",
 +        "browserslist-to-esbuild": "^2.1.1",
++        "chrome-launcher": "^1.2.1",
 +        "husky": "^9.1.7",
++        "lighthouse": "^13.4.1",
 +        "lint-staged": "^17.5.1",
 +        "sharp": "~0.35.4",
 +        "tailwindcss": "^4.1.18",
@@ -1024,6 +1155,62 @@ index 0000000..bf1b90a
 +      "optional": true,
 +      "dependencies": {
 +        "tslib": "^2.4.0"
++      }
++    },
++    "node_modules/@formatjs/ecma402-abstract": {
++      "version": "2.3.6",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@formatjs/ecma402-abstract/-/ecma402-abstract-2.3.6.tgz",
++      "integrity": "sha512-HJnTFeRM2kVFVr5gr5kH1XP6K0JcJtE7Lzvtr3FS/so5f1kpsqqqxy5JF+FRaO6H2qmcMfAUIox7AJteieRtVw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@formatjs/fast-memoize": "2.2.7",
++        "@formatjs/intl-localematcher": "0.6.2",
++        "decimal.js": "^10.4.3",
++        "tslib": "^2.8.0"
++      }
++    },
++    "node_modules/@formatjs/fast-memoize": {
++      "version": "2.2.7",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@formatjs/fast-memoize/-/fast-memoize-2.2.7.tgz",
++      "integrity": "sha512-Yabmi9nSvyOMrlSeGGWDiH7rf3a7sIwplbvo/dlz9WCIjzIQAfy1RMf4S0X3yG724n5Ghu2GmEl5NJIV6O9sZQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "^2.8.0"
++      }
++    },
++    "node_modules/@formatjs/icu-messageformat-parser": {
++      "version": "2.11.4",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@formatjs/icu-messageformat-parser/-/icu-messageformat-parser-2.11.4.tgz",
++      "integrity": "sha512-7kR78cRrPNB4fjGFZg3Rmj5aah8rQj9KPzuLsmcSn4ipLXQvC04keycTI1F7kJYDwIXtT2+7IDEto842CfZBtw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@formatjs/ecma402-abstract": "2.3.6",
++        "@formatjs/icu-skeleton-parser": "1.8.16",
++        "tslib": "^2.8.0"
++      }
++    },
++    "node_modules/@formatjs/icu-skeleton-parser": {
++      "version": "1.8.16",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@formatjs/icu-skeleton-parser/-/icu-skeleton-parser-1.8.16.tgz",
++      "integrity": "sha512-H13E9Xl+PxBd8D5/6TVUluSpxGNvFSlN/b3coUp0e0JpuWXXnQDiavIpY3NnvSp4xhEMoXyyBvVfdFX8jglOHQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@formatjs/ecma402-abstract": "2.3.6",
++        "tslib": "^2.8.0"
++      }
++    },
++    "node_modules/@formatjs/intl-localematcher": {
++      "version": "0.6.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@formatjs/intl-localematcher/-/intl-localematcher-0.6.2.tgz",
++      "integrity": "sha512-XOMO2Hupl0wdd172Y06h6kLpBz6Dv+J4okPLl4LPtzbr8f66WbIoy4ev98EBuZ6ZK4h5ydTN6XneT4QVpD7cdA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "^2.8.0"
 +      }
 +    },
 +    "node_modules/@img/colour": {
@@ -1651,6 +1838,126 @@ index 0000000..bf1b90a
 +        "@jridgewell/sourcemap-codec": "^1.4.14"
 +      }
 +    },
++    "node_modules/@opentelemetry/api": {
++      "version": "1.9.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@opentelemetry/api/-/api-1.9.1.tgz",
++      "integrity": "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=8.0.0"
++      }
++    },
++    "node_modules/@opentelemetry/api-logs": {
++      "version": "0.220.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@opentelemetry/api-logs/-/api-logs-0.220.0.tgz",
++      "integrity": "sha512-CmVa4ImJ+ynfrPMNaAXHET6Bhb44SwzmfyVJFq9ni2jgXJR/l7C6gfVFddNmHP+ZOkP9cf4f9DBe68qVLTHc9w==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@opentelemetry/api": "^1.3.0"
++      },
++      "engines": {
++        "node": ">=8.0.0"
++      }
++    },
++    "node_modules/@opentelemetry/core": {
++      "version": "2.11.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@opentelemetry/core/-/core-2.11.0.tgz",
++      "integrity": "sha512-7YP44XH0tV6+Mb54x2YGf84i7yi+31MBZlE8JwvozkxyTvXbSp10X7cI7YE49ChJ3shMJoBmCJF3+1QFBJctGA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@opentelemetry/semantic-conventions": "^1.29.0"
++      },
++      "engines": {
++        "node": "^18.19.0 || >=20.6.0"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": ">=1.0.0 <1.10.0"
++      }
++    },
++    "node_modules/@opentelemetry/instrumentation": {
++      "version": "0.220.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@opentelemetry/instrumentation/-/instrumentation-0.220.0.tgz",
++      "integrity": "sha512-xQx3E2WxP1mDvKzxLxX+CTCtNLa560YJZ3087qYHerl2YmiKpv7AH+dAy7vmx+eVrZ5BwhfWUAVoKOoxCNHcpw==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@opentelemetry/api-logs": "0.220.0",
++        "import-in-the-middle": "^3.0.0",
++        "require-in-the-middle": "^8.0.0"
++      },
++      "engines": {
++        "node": "^18.19.0 || >=20.6.0"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": "^1.3.0"
++      }
++    },
++    "node_modules/@opentelemetry/resources": {
++      "version": "2.11.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@opentelemetry/resources/-/resources-2.11.0.tgz",
++      "integrity": "sha512-Ie7+8q8MDF4FAEQCKVMTx3ReUvxiIAgIiiW3c9JdmP8+HMcDy20puT+AHjexnExgnbvBxjQ9fjkFDWrikJ2jQA==",
++      "dev": true,
++      "dependencies": {
++        "@opentelemetry/core": "2.11.0",
++        "@opentelemetry/semantic-conventions": "^1.29.0"
++      },
++      "engines": {
++        "node": "^18.19.0 || >=20.6.0"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": ">=1.3.0 <1.10.0"
++      }
++    },
++    "node_modules/@opentelemetry/sdk-trace": {
++      "version": "2.11.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@opentelemetry/sdk-trace/-/sdk-trace-2.11.0.tgz",
++      "integrity": "sha512-fFnTqGm8/G73GQVnxYi7LXa1ZVYEUvgL6XI1LpvV0bPC7WQ/ZGgKxCSl8FnlZBKto9JHHEFTO6s6CUpvvtwFrA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@opentelemetry/core": "2.11.0",
++        "@opentelemetry/resources": "2.11.0",
++        "@opentelemetry/semantic-conventions": "^1.29.0"
++      },
++      "engines": {
++        "node": "^18.19.0 || >=20.6.0"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": ">=1.3.0 <1.10.0"
++      }
++    },
++    "node_modules/@opentelemetry/sdk-trace-base": {
++      "version": "2.11.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@opentelemetry/sdk-trace-base/-/sdk-trace-base-2.11.0.tgz",
++      "integrity": "sha512-H19x/TX/LZdqiYOjM7fqtSxwlplC5pgelavqbQdHbhdq0q/AI/TGkM2dfGuuynTXmJPeF2HoZVoPDu+TGoW78A==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@opentelemetry/core": "2.11.0",
++        "@opentelemetry/resources": "2.11.0",
++        "@opentelemetry/sdk-trace": "2.11.0",
++        "@opentelemetry/semantic-conventions": "^1.29.0"
++      },
++      "engines": {
++        "node": "^18.19.0 || >=20.6.0"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": ">=1.3.0 <1.10.0"
++      }
++    },
++    "node_modules/@opentelemetry/semantic-conventions": {
++      "version": "1.43.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@opentelemetry/semantic-conventions/-/semantic-conventions-1.43.0.tgz",
++      "integrity": "sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=14"
++      }
++    },
 +    "node_modules/@oxc-project/types": {
 +      "version": "0.149.0",
 +      "resolved": "https://registry.npmmirror.com/@oxc-project/types/-/types-0.149.0.tgz",
@@ -1661,11 +1968,209 @@ index 0000000..bf1b90a
 +        "url": "https://github.com/sponsors/oxc-project"
 +      }
 +    },
++    "node_modules/@paulirish/trace_engine": {
++      "version": "0.0.65",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@paulirish/trace_engine/-/trace_engine-0.0.65.tgz",
++      "integrity": "sha512-Qsm6F5C8xf6ZzQXbQc2+wcpe6sggfs/gvc/ytqSurdvYg3kyW0ECHCqE0CWBKZpqgjVfPNX9c7SCS3r2nEIRGg==",
++      "dev": true,
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "legacy-javascript": "latest",
++        "third-party-web": "latest"
++      }
++    },
 +    "node_modules/@petamoriken/float16": {
 +      "version": "3.9.3",
 +      "resolved": "https://registry.npmmirror.com/@petamoriken/float16/-/float16-3.9.3.tgz",
 +      "integrity": "sha512-8awtpHXCx/bNpFt4mt2xdkgtgVvKqty8VbjHI/WWWQuEw+KLzFot3f4+LkQY9YmOtq7A5GdOnqoIC8Pdygjk2g==",
 +      "license": "MIT"
++    },
++    "node_modules/@puppeteer/browsers": {
++      "version": "3.2.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@puppeteer/browsers/-/browsers-3.2.2.tgz",
++      "integrity": "sha512-q2BU4YfO9h/Wt7IcWPcggpOOqLk2Tbs1hDwolvKZrweRjy751OJBKMN9zO5bfD0pzU7X/tvKw/exQds4pM/LOg==",
++      "dev": true,
++      "dependencies": {
++        "modern-tar": "^0.8.4",
++        "yargs": "^18.0.0"
++      },
++      "bin": {
++        "browsers": "lib/main-cli.js"
++      },
++      "engines": {
++        "node": ">=22.12.0"
++      },
++      "peerDependencies": {
++        "proxy-agent": ">=8.0.1",
++        "yauzl": "^2.10.0 || ^3.4.0"
++      },
++      "peerDependenciesMeta": {
++        "proxy-agent": {
++          "optional": true
++        },
++        "yauzl": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/ansi-regex": {
++      "version": "6.3.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/ansi-regex/-/ansi-regex-6.3.0.tgz",
++      "integrity": "sha512-WpDfL7NO6j7tH88IDBNVdUJxDh9nmCteAVW9dsep846XdwF4naCBK+/tGLX3KJgcpgMRXCFlTM2hKGoK9FsdrQ==",
++      "dev": true,
++      "engines": {
++        "node": ">=12"
++      },
++      "funding": {
++        "url": "https://github.com/chalk/ansi-regex?sponsor=1"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/ansi-styles": {
++      "version": "6.2.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/ansi-styles/-/ansi-styles-6.2.3.tgz",
++      "integrity": "sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      },
++      "funding": {
++        "url": "https://github.com/chalk/ansi-styles?sponsor=1"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/cliui": {
++      "version": "9.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/cliui/-/cliui-9.0.1.tgz",
++      "integrity": "sha512-k7ndgKhwoQveBL+/1tqGJYNz097I7WOvwbmmU2AR5+magtbjPWQTS1C5vzGkBC8Ym8UWRzfKUzUUqFLypY4Q+w==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "string-width": "^7.2.0",
++        "strip-ansi": "^7.1.0",
++        "wrap-ansi": "^9.0.0"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/cliui/node_modules/string-width": {
++      "version": "7.2.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/string-width/-/string-width-7.2.0.tgz",
++      "integrity": "sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "emoji-regex": "^10.3.0",
++        "get-east-asian-width": "^1.0.0",
++        "strip-ansi": "^7.1.0"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/emoji-regex": {
++      "version": "10.6.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/emoji-regex/-/emoji-regex-10.6.0.tgz",
++      "integrity": "sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@puppeteer/browsers/node_modules/string-width": {
++      "version": "8.2.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/string-width/-/string-width-8.2.2.tgz",
++      "integrity": "sha512-GaPUh5gfdrYzqeVNZvUfT23vYYxXzKYidUcnMtJg/3rxRV63EFZy3k6xfKlmfeJD0176lnUV/Usr3XcwSvFzpg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "get-east-asian-width": "^1.5.0",
++        "strip-ansi": "^7.1.2"
++      },
++      "engines": {
++        "node": ">=20"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/strip-ansi": {
++      "version": "7.2.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/strip-ansi/-/strip-ansi-7.2.0.tgz",
++      "integrity": "sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w==",
++      "dev": true,
++      "dependencies": {
++        "ansi-regex": "^6.2.2"
++      },
++      "engines": {
++        "node": ">=12"
++      },
++      "funding": {
++        "url": "https://github.com/chalk/strip-ansi?sponsor=1"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/wrap-ansi": {
++      "version": "9.0.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/wrap-ansi/-/wrap-ansi-9.0.2.tgz",
++      "integrity": "sha512-42AtmgqjV+X1VpdOfyTGOYRi0/zsoLqtXQckTmqTeybT+BDIbM/Guxo7x3pE2vtpr1ok6xRqM9OpBe+Jyoqyww==",
++      "dev": true,
++      "dependencies": {
++        "ansi-styles": "^6.2.1",
++        "string-width": "^7.0.0",
++        "strip-ansi": "^7.1.0"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "url": "https://github.com/chalk/wrap-ansi?sponsor=1"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/wrap-ansi/node_modules/string-width": {
++      "version": "7.2.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/string-width/-/string-width-7.2.0.tgz",
++      "integrity": "sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "emoji-regex": "^10.3.0",
++        "get-east-asian-width": "^1.0.0",
++        "strip-ansi": "^7.1.0"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/yargs": {
++      "version": "18.1.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/yargs/-/yargs-18.1.0.tgz",
++      "integrity": "sha512-2rAgRKu54VsHkqI0/tYkmluGXHD4KW7yZoycuqDQ15QOTnc2VVfy0nN/1eMhnQLO00A+dwtK20xuCnc1YGeUyg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "cliui": "^9.0.1",
++        "escalade": "^3.1.1",
++        "get-caller-file": "^2.0.5",
++        "string-width": "^8.2.1",
++        "y18n": "^5.0.5",
++        "yargs-parser": "^22.0.0"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=23"
++      }
++    },
++    "node_modules/@puppeteer/browsers/node_modules/yargs-parser": {
++      "version": "22.0.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/yargs-parser/-/yargs-parser-22.0.0.tgz",
++      "integrity": "sha512-rwu/ClNdSMpkSrUb+d6BRsSkLUq1fmfsY6TOpYzTwvwkg1/NRG85KBy3kq++A8LKQwX6lsu+aWad+2khvuXrqw==",
++      "dev": true,
++      "engines": {
++        "node": "^20.19.0 || ^22.12.0 || >=23"
++      }
 +    },
 +    "node_modules/@rolldown/binding-android-arm-eabi": {
 +      "version": "1.2.8",
@@ -1946,6 +2451,123 @@ index 0000000..bf1b90a
 +      "integrity": "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==",
 +      "dev": true,
 +      "license": "MIT"
++    },
++    "node_modules/@sentry/conventions": {
++      "version": "0.16.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@sentry/conventions/-/conventions-0.16.0.tgz",
++      "integrity": "sha512-fO9PLmHdVURcSPUpWCItWAtgKiMwGdJHbovoSEyLplX5sxs2ugvI4CBPTrkkgqhObnZOD0CnWBKDzSVQYBKEyQ==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=14"
++      }
++    },
++    "node_modules/@sentry/core": {
++      "version": "10.75.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@sentry/core/-/core-10.75.0.tgz",
++      "integrity": "sha512-5wDQpQqjJ6RHdPR+z6Q+47XlwoxRKBv0yyB0LKHqL/1azPOQbR+nllyLmmQDcoJpaksuLSmLA1q6hFX7gjDT2w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@sentry/conventions": "^0.16.0"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@sentry/node": {
++      "version": "10.75.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@sentry/node/-/node-10.75.0.tgz",
++      "integrity": "sha512-XdYW+SEiscQnuugh1hMldfnHurmleKSTSDqgfro6Y1yd7s0r2csnZ5/SEYxIeL4lSl1QXg1lIA1pBmAXjcdnKA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@opentelemetry/api": "^1.9.1",
++        "@opentelemetry/instrumentation": "^0.220.0",
++        "@opentelemetry/sdk-trace-base": "^2.9.0",
++        "@sentry/conventions": "^0.16.0",
++        "@sentry/core": "10.75.0",
++        "@sentry/node-core": "10.75.0",
++        "@sentry/opentelemetry": "10.75.0",
++        "@sentry/server-utils": "10.75.0",
++        "import-in-the-middle": "^3.0.0"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@sentry/node-core": {
++      "version": "10.75.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@sentry/node-core/-/node-core-10.75.0.tgz",
++      "integrity": "sha512-+E3KSX1oMqhpWQ23hj6NblIVUzLy3T2oceU7DfMX1s1ar+npaQZxR5K0/cMGcQgS1LLm8Jqwqo/lrZlKTCDm5A==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@sentry/conventions": "^0.16.0",
++        "@sentry/core": "10.75.0",
++        "@sentry/opentelemetry": "10.75.0",
++        "import-in-the-middle": "^3.0.0"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": "^1.9.0",
++        "@opentelemetry/core": "^1.30.1 || ^2.1.0",
++        "@opentelemetry/exporter-trace-otlp-http": ">=0.57.0 <1",
++        "@opentelemetry/instrumentation": ">=0.57.1 <1",
++        "@opentelemetry/sdk-trace-base": "^1.30.1 || ^2.1.0"
++      },
++      "peerDependenciesMeta": {
++        "@opentelemetry/api": {
++          "optional": true
++        },
++        "@opentelemetry/core": {
++          "optional": true
++        },
++        "@opentelemetry/exporter-trace-otlp-http": {
++          "optional": true
++        },
++        "@opentelemetry/instrumentation": {
++          "optional": true
++        },
++        "@opentelemetry/sdk-trace-base": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@sentry/opentelemetry": {
++      "version": "10.75.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@sentry/opentelemetry/-/opentelemetry-10.75.0.tgz",
++      "integrity": "sha512-reJoMtuHMuaiztoDVoaeitc22eHlTAvz2qpFhibWyzukJlF8oXB+o8EvDN9mmDDMedU89c//cXRcnPBlJvUxcw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@sentry/conventions": "^0.16.0",
++        "@sentry/core": "10.75.0"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": "^1.9.0",
++        "@opentelemetry/core": "^1.30.1 || ^2.1.0",
++        "@opentelemetry/sdk-trace-base": "^1.30.1 || ^2.1.0"
++      }
++    },
++    "node_modules/@sentry/server-utils": {
++      "version": "10.75.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/@sentry/server-utils/-/server-utils-10.75.0.tgz",
++      "integrity": "sha512-7fIa9vFGNzB13hmxl8Sip3xImSkqpc4wETzuQ7CLzVOwPvwI6y/gVEm0pxRhtJSq8SzfOp26eJWl80u8v78Osg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@sentry/conventions": "^0.16.0",
++        "@sentry/core": "10.75.0"
++      },
++      "engines": {
++        "node": ">=18"
++      }
 +    },
 +    "node_modules/@tailwindcss/node": {
 +      "version": "4.3.3",
@@ -2343,6 +2965,62 @@ index 0000000..bf1b90a
 +        "unzipit": "2.0.0"
 +      }
 +    },
++    "node_modules/ansi-colors": {
++      "version": "4.1.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/ansi-colors/-/ansi-colors-4.1.3.tgz",
++      "integrity": "sha512-/6w/C21Pm1A7aZitlI5Ni/2J6FFQN8i1Cvz3kHABAAbw93v/NlvKdVOqz7CCWz/3iv/JplRSEEZ83XION15ovw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=6"
++      }
++    },
++    "node_modules/ansi-regex": {
++      "version": "5.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/ansi-regex/-/ansi-regex-5.0.1.tgz",
++      "integrity": "sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==",
++      "dev": true,
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/ansi-styles": {
++      "version": "4.3.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/ansi-styles/-/ansi-styles-4.3.0.tgz",
++      "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "color-convert": "^2.0.1"
++      },
++      "engines": {
++        "node": ">=8"
++      },
++      "funding": {
++        "url": "https://github.com/chalk/ansi-styles?sponsor=1"
++      }
++    },
++    "node_modules/atomically": {
++      "version": "2.1.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/atomically/-/atomically-2.1.1.tgz",
++      "integrity": "sha512-P4w9o2dqARji6P7MHprklbfiArZAWvo07yW7qs3pdljb3BWr12FIB7W+p0zJiuiVsUpRO0iZn1kFFcpPegg0tQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "stubborn-fs": "^2.0.0",
++        "when-exit": "^2.1.4"
++      }
++    },
++    "node_modules/axe-core": {
++      "version": "4.13.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/axe-core/-/axe-core-4.13.0.tgz",
++      "integrity": "sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==",
++      "dev": true,
++      "license": "MPL-2.0",
++      "engines": {
++        "node": ">=4"
++      }
++    },
 +    "node_modules/baseline-browser-mapping": {
 +      "version": "2.11.21",
 +      "resolved": "https://registry.npmmirror.com/baseline-browser-mapping/-/baseline-browser-mapping-2.11.21.tgz",
@@ -2430,6 +3108,64 @@ index 0000000..bf1b90a
 +      ],
 +      "license": "CC-BY-4.0"
 +    },
++    "node_modules/chrome-launcher": {
++      "version": "1.2.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/chrome-launcher/-/chrome-launcher-1.2.1.tgz",
++      "integrity": "sha512-qmFR5PLMzHyuNJHwOloHPAHhbaNglkfeV/xDtt5b7xiFFyU1I+AZZX0PYseMuhenJSSirgxELYIbswcoc+5H4A==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@types/node": "*",
++        "escape-string-regexp": "^4.0.0",
++        "is-wsl": "^2.2.0",
++        "lighthouse-logger": "^2.0.1"
++      },
++      "bin": {
++        "print-chrome-path": "bin/print-chrome-path.cjs"
++      },
++      "engines": {
++        "node": ">=12.13.0"
++      }
++    },
++    "node_modules/chromium-bidi": {
++      "version": "17.0.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/chromium-bidi/-/chromium-bidi-17.0.2.tgz",
++      "integrity": "sha512-5v9GQFhTktFvotn/OFNJBmKLKRAb6n9r0bVCwf7sHgWc3/JryK0bj1nn93L3pHFrfgcsu6Be6EWsDi+1XHTGDg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "mitt": "^3.0.1",
++        "zod": "^3.24.1"
++      },
++      "engines": {
++        "node": ">=20.19.0 <22.0.0 || >=22.12.0"
++      },
++      "peerDependencies": {
++        "devtools-protocol": "*"
++      }
++    },
++    "node_modules/cjs-module-lexer": {
++      "version": "2.2.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/cjs-module-lexer/-/cjs-module-lexer-2.2.1.tgz",
++      "integrity": "sha512-Ca8swihM+/4yKecYHY52kgJd300hi2lADU/a1RxNTRe+RJ9jvqQlESpbz9DnG9mowez8qwXHB8qYdIUw9e+F5Q==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/cliui": {
++      "version": "8.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/cliui/-/cliui-8.0.1.tgz",
++      "integrity": "sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "string-width": "^4.2.0",
++        "strip-ansi": "^6.0.1",
++        "wrap-ansi": "^7.0.0"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
 +    "node_modules/clsx": {
 +      "version": "2.1.1",
 +      "resolved": "https://registry.npmmirror.com/clsx/-/clsx-2.1.1.tgz",
@@ -2439,12 +3175,92 @@ index 0000000..bf1b90a
 +        "node": ">=6"
 +      }
 +    },
++    "node_modules/color-convert": {
++      "version": "2.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/color-convert/-/color-convert-2.0.1.tgz",
++      "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "color-name": "~1.1.4"
++      },
++      "engines": {
++        "node": ">=7.0.0"
++      }
++    },
++    "node_modules/color-name": {
++      "version": "1.1.4",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/color-name/-/color-name-1.1.4.tgz",
++      "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/configstore": {
++      "version": "7.1.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/configstore/-/configstore-7.1.0.tgz",
++      "integrity": "sha512-N4oog6YJWbR9kGyXvS7jEykLDXIE2C0ILYqNBZBp9iwiJpoCBWYsuAdW6PPFn6w06jjnC+3JstVvWHO4cZqvRg==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "dependencies": {
++        "atomically": "^2.0.3",
++        "dot-prop": "^9.0.0",
++        "graceful-fs": "^4.2.11",
++        "xdg-basedir": "^5.1.0"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/csp_evaluator": {
++      "version": "1.1.8",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/csp_evaluator/-/csp_evaluator-1.1.8.tgz",
++      "integrity": "sha512-EwOnfYuNbTytvbMKsLixTrRgnjOa0WZCxGy8A9nnSYAicrdwn+T/epU/yjgymmOxlgKnvH+8wXt+7p/8ak5Feg==",
++      "dev": true,
++      "license": "Apache-2.0"
++    },
 +    "node_modules/csstype": {
 +      "version": "3.2.3",
 +      "resolved": "https://registry.npmmirror.com/csstype/-/csstype-3.2.3.tgz",
 +      "integrity": "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==",
 +      "dev": true,
 +      "license": "MIT"
++    },
++    "node_modules/debug": {
++      "version": "4.4.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/debug/-/debug-4.4.3.tgz",
++      "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
++      "dev": true,
++      "dependencies": {
++        "ms": "^2.1.3"
++      },
++      "engines": {
++        "node": ">=6.0"
++      },
++      "peerDependenciesMeta": {
++        "supports-color": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/decimal.js": {
++      "version": "10.6.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/decimal.js/-/decimal.js-10.6.0.tgz",
++      "integrity": "sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/define-lazy-prop": {
++      "version": "2.0.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/define-lazy-prop/-/define-lazy-prop-2.0.0.tgz",
++      "integrity": "sha512-Ds09qNh8yw3khSjiJjiUInaGX9xlqZDY7JVryGxdxV7NPeuqQfplOpQ66yJFZut3jLa5zOwkXw1g9EI2uKh4Og==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=8"
++      }
 +    },
 +    "node_modules/detect-libc": {
 +      "version": "2.1.2",
@@ -2454,6 +3270,29 @@ index 0000000..bf1b90a
 +      "license": "Apache-2.0",
 +      "engines": {
 +        "node": ">=8"
++      }
++    },
++    "node_modules/devtools-protocol": {
++      "version": "0.0.1663043",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/devtools-protocol/-/devtools-protocol-0.0.1663043.tgz",
++      "integrity": "sha512-33aOY3ZnBP1dgZsshgaL+/XlsQleiFZgyUaDtdZkEa1nbZhVY1MoDeWjk+wxg25fU924l1ZJfoGNmjjeA/5s1w==",
++      "dev": true,
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/dot-prop": {
++      "version": "9.0.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/dot-prop/-/dot-prop-9.0.0.tgz",
++      "integrity": "sha512-1gxPBJpI/pcjQhKgIU91II6Wkay+dLcN3M6rf2uwP8hRur3HtQXjVrdAK3sjC0piaEuxzMwjXChcETiJl47lAQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "type-fest": "^4.18.2"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
 +      }
 +    },
 +    "node_modules/earcut": {
@@ -2469,6 +3308,13 @@ index 0000000..bf1b90a
 +      "dev": true,
 +      "license": "ISC"
 +    },
++    "node_modules/emoji-regex": {
++      "version": "8.0.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/emoji-regex/-/emoji-regex-8.0.0.tgz",
++      "integrity": "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==",
++      "dev": true,
++      "license": "MIT"
++    },
 +    "node_modules/enhanced-resolve": {
 +      "version": "5.24.5",
 +      "resolved": "https://registry.npmmirror.com/enhanced-resolve/-/enhanced-resolve-5.24.5.tgz",
@@ -2483,6 +3329,27 @@ index 0000000..bf1b90a
 +        "node": ">=10.13.0"
 +      }
 +    },
++    "node_modules/enquirer": {
++      "version": "2.4.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/enquirer/-/enquirer-2.4.1.tgz",
++      "integrity": "sha512-rRqJg/6gd538VHvR3PSrdRBb/1Vy2YfzHqzvbhGIQpDRKIa4FgV/54b5Q1xYSxOOwKvjXweS26E0Q+nAMwp2pQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "ansi-colors": "^4.1.1",
++        "strip-ansi": "^6.0.1"
++      },
++      "engines": {
++        "node": ">=8.6"
++      }
++    },
++    "node_modules/es-module-lexer": {
++      "version": "3.0.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/es-module-lexer/-/es-module-lexer-3.0.2.tgz",
++      "integrity": "sha512-BuIB67FngDSyQ/dpQNOZybwdEBDUGJQvOqwWr4ha/ufYiqzuEwPkKO2zLhRAgay28tStRIHUeWmszZAJo3GCOg==",
++      "dev": true,
++      "license": "MIT"
++    },
 +    "node_modules/escalade": {
 +      "version": "3.2.0",
 +      "resolved": "https://registry.npmmirror.com/escalade/-/escalade-3.2.0.tgz",
@@ -2491,6 +3358,19 @@ index 0000000..bf1b90a
 +      "license": "MIT",
 +      "engines": {
 +        "node": ">=6"
++      }
++    },
++    "node_modules/escape-string-regexp": {
++      "version": "4.0.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/escape-string-regexp/-/escape-string-regexp-4.0.0.tgz",
++      "integrity": "sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
 +      }
 +    },
 +    "node_modules/fdir": {
@@ -2551,12 +3431,45 @@ index 0000000..bf1b90a
 +        "node": ">=10.19"
 +      }
 +    },
++    "node_modules/get-caller-file": {
++      "version": "2.0.5",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/get-caller-file/-/get-caller-file-2.0.5.tgz",
++      "integrity": "sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==",
++      "dev": true,
++      "license": "ISC",
++      "engines": {
++        "node": "6.* || 8.* || >= 10.*"
++      }
++    },
++    "node_modules/get-east-asian-width": {
++      "version": "1.7.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/get-east-asian-width/-/get-east-asian-width-1.7.0.tgz",
++      "integrity": "sha512-XjH1AECxf0giL2V1aU8vKyRR2ppRUb5c0EvT7zuJTokQ74bNo52zOtghqdWIqrhUD79fo3x0WfKZdOqxF6LG1Q==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
 +    "node_modules/graceful-fs": {
 +      "version": "4.2.11",
 +      "resolved": "https://registry.npmmirror.com/graceful-fs/-/graceful-fs-4.2.11.tgz",
 +      "integrity": "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==",
 +      "dev": true,
 +      "license": "ISC"
++    },
++    "node_modules/http-link-header": {
++      "version": "1.1.4",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/http-link-header/-/http-link-header-1.1.4.tgz",
++      "integrity": "sha512-xT3GPW6/ZbGuw4UvwHqErSCEjNUlwbQJuZn9/q5U4WEKfp2kENVCAlousG1zLxHeaQ/ffOHUNpWamvkbBW0eNw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=6.0.0"
++      }
 +    },
 +    "node_modules/husky": {
 +      "version": "9.1.7",
@@ -2574,6 +3487,79 @@ index 0000000..bf1b90a
 +        "url": "https://github.com/sponsors/typicode"
 +      }
 +    },
++    "node_modules/image-ssim": {
++      "version": "0.2.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/image-ssim/-/image-ssim-0.2.0.tgz",
++      "integrity": "sha512-W7+sO6/yhxy83L0G7xR8YAc5Z5QFtYEXXRV6EaE8tuYBZJnA3gVgp3q7X7muhLZVodeb9UfvjSbwt9VJwjIYAg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/import-in-the-middle": {
++      "version": "3.5.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/import-in-the-middle/-/import-in-the-middle-3.5.1.tgz",
++      "integrity": "sha512-mPKuL8bPQzecui2KK6Gb+M8JvJoHnhS1FeYGa22QopBmlevF5F0FE6ued/B5EgHDeIoMTONIpDWWFKUPOG0DBQ==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "cjs-module-lexer": "^2.2.0",
++        "es-module-lexer": "^3.0.2",
++        "module-details-from-path": "^1.0.4"
++      },
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/intl-messageformat": {
++      "version": "10.7.18",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/intl-messageformat/-/intl-messageformat-10.7.18.tgz",
++      "integrity": "sha512-m3Ofv/X/tV8Y3tHXLohcuVuhWKo7BBq62cqY15etqmLxg2DZ34AGGgQDeR+SCta2+zICb1NX83af0GJmbQ1++g==",
++      "dev": true,
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "@formatjs/ecma402-abstract": "2.3.6",
++        "@formatjs/fast-memoize": "2.2.7",
++        "@formatjs/icu-messageformat-parser": "2.11.4",
++        "tslib": "^2.8.0"
++      }
++    },
++    "node_modules/is-docker": {
++      "version": "2.2.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/is-docker/-/is-docker-2.2.1.tgz",
++      "integrity": "sha512-F+i2BKsFrH66iaUFc0woD8sLy8getkwTwtOBjvs56Cx4CgJDeKQeqfz8wAYiSb8JOprWhHH5p77PbmYCvvUuXQ==",
++      "dev": true,
++      "license": "MIT",
++      "bin": {
++        "is-docker": "cli.js"
++      },
++      "engines": {
++        "node": ">=8"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/is-fullwidth-code-point": {
++      "version": "3.0.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/is-fullwidth-code-point/-/is-fullwidth-code-point-3.0.0.tgz",
++      "integrity": "sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg==",
++      "dev": true,
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/is-wsl": {
++      "version": "2.2.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/is-wsl/-/is-wsl-2.2.0.tgz",
++      "integrity": "sha512-fKzAra0rGJUUBwGBgNkHZuToZcn+TtXHpeCgmkMJMMYx1sQDYaCSyjJBSCa2nH1DGm7s3n1oBnohoVTBaN7Lww==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "is-docker": "^2.0.0"
++      },
++      "engines": {
++        "node": ">=8"
++      }
++    },
 +    "node_modules/jiti": {
 +      "version": "2.7.0",
 +      "resolved": "https://registry.npmmirror.com/jiti/-/jiti-2.7.0.tgz",
@@ -2584,10 +3570,95 @@ index 0000000..bf1b90a
 +        "jiti": "lib/jiti-cli.mjs"
 +      }
 +    },
++    "node_modules/jpeg-js": {
++      "version": "0.4.4",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/jpeg-js/-/jpeg-js-0.4.4.tgz",
++      "integrity": "sha512-WZzeDOEtTOBK4Mdsar0IqEU5sMr3vSV2RqkAIzUEV2BHnUfKGyswWFPFwK5EeDo93K3FohSHbLAjj0s1Wzd+dg==",
++      "dev": true,
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/js-library-detector": {
++      "version": "6.7.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/js-library-detector/-/js-library-detector-6.7.0.tgz",
++      "integrity": "sha512-c80Qupofp43y4cJ7+8TTDN/AsDwLi5oOm/plBrWI+iQt485vKXCco+yVmOwEgdo9VOdsYTuV0UlTeetVPTriXA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/legacy-javascript": {
++      "version": "0.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/legacy-javascript/-/legacy-javascript-0.0.1.tgz",
++      "integrity": "sha512-lPyntS4/aS7jpuvOlitZDFifBCb4W8L/3QU0PLbUTUj+zYah8rfVjYic88yG7ZKTxhS5h9iz7duT8oUXKszLhg==",
++      "dev": true,
++      "license": "Apache-2.0"
++    },
 +    "node_modules/lerc": {
 +      "version": "3.0.0",
 +      "resolved": "https://registry.npmmirror.com/lerc/-/lerc-3.0.0.tgz",
 +      "integrity": "sha512-Rm4J/WaHhRa93nCN2mwWDZFoRVF18G1f47C+kvQWyHGEZxFpTUi73p7lMVSAndyxGt6lJ2/CFbOcf9ra5p8aww==",
++      "license": "Apache-2.0"
++    },
++    "node_modules/lighthouse": {
++      "version": "13.4.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/lighthouse/-/lighthouse-13.4.1.tgz",
++      "integrity": "sha512-fDu8lt3QLK/lTqIxtp1HkzQNJ32rsFHhbadYOepcMZFLgA8oINhxutMbMv8XXnpTOvZ0TXCo4JCk1LDTWaRLnA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@paulirish/trace_engine": "0.0.65",
++        "@sentry/node": "^10.0.0",
++        "axe-core": "^4.12.1",
++        "chrome-launcher": "^1.2.1",
++        "configstore": "^7.0.0",
++        "csp_evaluator": "1.1.8",
++        "devtools-protocol": "0.0.1663043",
++        "enquirer": "^2.3.6",
++        "http-link-header": "^1.1.1",
++        "intl-messageformat": "^10.5.3",
++        "jpeg-js": "^0.4.4",
++        "js-library-detector": "^6.7.0",
++        "lighthouse-logger": "^2.0.2",
++        "lighthouse-stack-packs": "1.12.3",
++        "lodash-es": "^4.17.21",
++        "lookup-closest-locale": "6.2.0",
++        "open": "^8.4.0",
++        "puppeteer-core": "^25.3.0",
++        "robots-parser": "^3.0.1",
++        "speedline-core": "^1.4.3",
++        "third-party-web": "^0.29.2",
++        "tldts-icann": "^7.4.9",
++        "web-features": "^3.34.0",
++        "ws": "^7.0.0",
++        "yargs": "^17.3.1",
++        "yargs-parser": "^21.0.0"
++      },
++      "bin": {
++        "chrome-debug": "core/scripts/manual-chrome-launcher.js",
++        "lighthouse": "cli/index.js",
++        "smokehouse": "cli/test/smokehouse/frontends/smokehouse-bin.js"
++      },
++      "engines": {
++        "node": ">=22.19"
++      }
++    },
++    "node_modules/lighthouse-logger": {
++      "version": "2.0.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/lighthouse-logger/-/lighthouse-logger-2.0.2.tgz",
++      "integrity": "sha512-vWl2+u5jgOQuZR55Z1WM0XDdrJT6mzMP8zHUct7xTlWhuQs+eV0g+QL0RQdFjT54zVmbhLCP8vIVpy1wGn/gCg==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "debug": "^4.4.1",
++        "marky": "^1.2.2"
++      }
++    },
++    "node_modules/lighthouse-stack-packs": {
++      "version": "1.12.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/lighthouse-stack-packs/-/lighthouse-stack-packs-1.12.3.tgz",
++      "integrity": "sha512-d8IsOpE83kbANgnM+Tp8+x6HcMpX9o2ITBiUERssgzAIFdZCQzs/f4k6D0DLQTE59enml9mbAOU52Wu35exWtg==",
++      "dev": true,
 +      "license": "Apache-2.0"
 +    },
 +    "node_modules/lightningcss": {
@@ -2887,6 +3958,20 @@ index 0000000..bf1b90a
 +        "yaml": "^2.9.0"
 +      }
 +    },
++    "node_modules/lodash-es": {
++      "version": "4.18.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/lodash-es/-/lodash-es-4.18.1.tgz",
++      "integrity": "sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/lookup-closest-locale": {
++      "version": "6.2.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/lookup-closest-locale/-/lookup-closest-locale-6.2.0.tgz",
++      "integrity": "sha512-/c2kL+Vnp1jnV6K6RpDTHK3dgg0Tu2VVp+elEiJpjfS1UyY7AjOYHohRug6wT0OpoX2qFgNORndE9RqesfVxWQ==",
++      "dev": true,
++      "license": "MIT"
++    },
 +    "node_modules/lucide-react": {
 +      "version": "1.45.0",
 +      "resolved": "https://registry.npmmirror.com/lucide-react/-/lucide-react-1.45.0.tgz",
@@ -2906,6 +3991,13 @@ index 0000000..bf1b90a
 +        "@jridgewell/sourcemap-codec": "^1.5.5"
 +      }
 +    },
++    "node_modules/marky": {
++      "version": "1.3.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/marky/-/marky-1.3.0.tgz",
++      "integrity": "sha512-ocnPZQLNpvbedwTy9kNrQEsknEfgvcLMvOtz3sFeWApDq1MXH1TqkCIx58xlpESsfwQOnuBO9beyQuNGzVvuhQ==",
++      "dev": true,
++      "license": "Apache-2.0"
++    },
 +    "node_modules/meow": {
 +      "version": "13.2.0",
 +      "resolved": "https://registry.npmmirror.com/meow/-/meow-13.2.0.tgz",
@@ -2918,6 +4010,37 @@ index 0000000..bf1b90a
 +      "funding": {
 +        "url": "https://github.com/sponsors/sindresorhus"
 +      }
++    },
++    "node_modules/mitt": {
++      "version": "3.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/mitt/-/mitt-3.0.1.tgz",
++      "integrity": "sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/modern-tar": {
++      "version": "0.8.5",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/modern-tar/-/modern-tar-0.8.5.tgz",
++      "integrity": "sha512-snEhs+6G5Tjd4I7tLCDOaoln2RgE0bD19RzEKgvgK2hZ5VKy3MpLhLTZ2fWpXSTg4K2cyPwp+VHATFJhxfnOeA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18.0.0"
++      }
++    },
++    "node_modules/module-details-from-path": {
++      "version": "1.0.4",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/module-details-from-path/-/module-details-from-path-1.0.4.tgz",
++      "integrity": "sha512-EGWKgxALGMgzvxYF1UyGTy0HXX/2vHLkw6+NvDKW2jypWbHpjQuj4UMcqQWXHERJhVGKikolT06G3bcKe4fi7w==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/ms": {
++      "version": "2.1.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/ms/-/ms-2.1.3.tgz",
++      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
++      "dev": true,
++      "license": "MIT"
 +    },
 +    "node_modules/nanoid": {
 +      "version": "3.3.18",
@@ -2973,6 +4096,23 @@ index 0000000..bf1b90a
 +      "funding": {
 +        "type": "opencollective",
 +        "url": "https://opencollective.com/openlayers"
++      }
++    },
++    "node_modules/open": {
++      "version": "8.4.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/open/-/open-8.4.2.tgz",
++      "integrity": "sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ==",
++      "dev": true,
++      "dependencies": {
++        "define-lazy-prop": "^2.0.0",
++        "is-docker": "^2.1.1",
++        "is-wsl": "^2.2.0"
++      },
++      "engines": {
++        "node": ">=12"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
 +      }
 +    },
 +    "node_modules/pako": {
@@ -3064,6 +4204,52 @@ index 0000000..bf1b90a
 +      "integrity": "sha512-VG2K63Igkiv9p76tk1lilczEK1cT+kCjKtkdhw1dQZV3k3IXJbd3o6Ho8b9zJZaHSnT2hKe4I+ObmX9w6m5SmQ==",
 +      "license": "MIT"
 +    },
++    "node_modules/puppeteer-core": {
++      "version": "25.11.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/puppeteer-core/-/puppeteer-core-25.11.0.tgz",
++      "integrity": "sha512-Ujym7JbxoAqanaxGcHgmTomfhC01HfDCSuGZ8Hs9boHrDjzbNVMnFRJo2KtbDT9LCRgeJoFnkn9JQZ41eEUrLw==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@puppeteer/browsers": "3.2.2",
++        "chromium-bidi": "17.0.2",
++        "devtools-protocol": "0.0.1680125",
++        "typed-query-selector": "^2.12.2",
++        "webdriver-bidi-protocol": "0.4.3",
++        "ws": "^8.21.3"
++      },
++      "engines": {
++        "node": ">=22.12.0"
++      }
++    },
++    "node_modules/puppeteer-core/node_modules/devtools-protocol": {
++      "version": "0.0.1680125",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/devtools-protocol/-/devtools-protocol-0.0.1680125.tgz",
++      "integrity": "sha512-rVARKAvOFJCFkvgX01VLvYqKIvt+cRCqvUxIhB2oAqVGPalxk3w3sb5TUGDagpow/EFblBpm/Zl/29QA2dd+jA==",
++      "dev": true,
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/puppeteer-core/node_modules/ws": {
++      "version": "8.21.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/ws/-/ws-8.21.3.tgz",
++      "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==",
++      "dev": true,
++      "engines": {
++        "node": ">=10.0.0"
++      },
++      "peerDependencies": {
++        "bufferutil": "^4.0.1",
++        "utf-8-validate": ">=5.0.2"
++      },
++      "peerDependenciesMeta": {
++        "bufferutil": {
++          "optional": true
++        },
++        "utf-8-validate": {
++          "optional": true
++        }
++      }
++    },
 +    "node_modules/quick-lru": {
 +      "version": "6.1.2",
 +      "resolved": "https://registry.npmmirror.com/quick-lru/-/quick-lru-6.1.2.tgz",
@@ -3118,6 +4304,30 @@ index 0000000..bf1b90a
 +      "integrity": "sha512-q0mfCi5yZSSHXpCyxjgQeaORq3tvDsxDyzaadA/5+AbAUwRyRuuTh0aRQuE/vAOt/qzzxidJ5iDeu1cLHaNBlQ==",
 +      "license": "MIT"
 +    },
++    "node_modules/require-directory": {
++      "version": "2.1.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/require-directory/-/require-directory-2.1.1.tgz",
++      "integrity": "sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/require-in-the-middle": {
++      "version": "8.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/require-in-the-middle/-/require-in-the-middle-8.0.1.tgz",
++      "integrity": "sha512-QT7FVMXfWOYFbeRBF6nu+I6tr2Tf3u0q8RIEjNob/heKY/nh7drD/k7eeMFmSQgnTtCzLDcCu/XEnpW2wk4xCQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "debug": "^4.3.5",
++        "module-details-from-path": "^1.0.3"
++      },
++      "engines": {
++        "node": ">=9.3.0 || >=8.10.0 <9.0.0"
++      }
++    },
 +    "node_modules/resolve-protobuf-schema": {
 +      "version": "2.1.0",
 +      "resolved": "https://registry.npmmirror.com/resolve-protobuf-schema/-/resolve-protobuf-schema-2.1.0.tgz",
@@ -3125,6 +4335,16 @@ index 0000000..bf1b90a
 +      "license": "MIT",
 +      "dependencies": {
 +        "protocol-buffers-schema": "^3.3.1"
++      }
++    },
++    "node_modules/robots-parser": {
++      "version": "3.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/robots-parser/-/robots-parser-3.0.1.tgz",
++      "integrity": "sha512-s+pyvQeIKIZ0dx5iJiQk1tPLJAWln39+MI5jtM8wnyws+G5azk+dMnMX0qfbqNetKKNgcWWOdi0sfm+FbQbgdQ==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10.0.0"
 +      }
 +    },
 +    "node_modules/rolldown": {
@@ -3240,6 +4460,21 @@ index 0000000..bf1b90a
 +        "node": ">=0.10.0"
 +      }
 +    },
++    "node_modules/speedline-core": {
++      "version": "1.4.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/speedline-core/-/speedline-core-1.4.3.tgz",
++      "integrity": "sha512-DI7/OuAUD+GMpR6dmu8lliO2Wg5zfeh+/xsdyJZCzd8o5JgFUjCeLsBDuZjIQJdwXS3J0L/uZYrELKYqx+PXog==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/node": "*",
++        "image-ssim": "^0.2.0",
++        "jpeg-js": "^0.4.1"
++      },
++      "engines": {
++        "node": ">=8.0"
++      }
++    },
 +    "node_modules/string-argv": {
 +      "version": "0.3.2",
 +      "resolved": "https://registry.npmmirror.com/string-argv/-/string-argv-0.3.2.tgz",
@@ -3249,6 +4484,50 @@ index 0000000..bf1b90a
 +      "engines": {
 +        "node": ">=0.6.19"
 +      }
++    },
++    "node_modules/string-width": {
++      "version": "4.2.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/string-width/-/string-width-4.2.3.tgz",
++      "integrity": "sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "emoji-regex": "^8.0.0",
++        "is-fullwidth-code-point": "^3.0.0",
++        "strip-ansi": "^6.0.1"
++      },
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/strip-ansi": {
++      "version": "6.0.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/strip-ansi/-/strip-ansi-6.0.1.tgz",
++      "integrity": "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==",
++      "dev": true,
++      "dependencies": {
++        "ansi-regex": "^5.0.1"
++      },
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/stubborn-fs": {
++      "version": "2.0.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/stubborn-fs/-/stubborn-fs-2.0.0.tgz",
++      "integrity": "sha512-Y0AvSwDw8y+nlSNFXMm2g6L51rBGdAQT20J3YSOqxC53Lo3bjWRtr2BKcfYoAf352WYpsZSTURrA0tqhfgudPA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "stubborn-utils": "^1.0.1"
++      }
++    },
++    "node_modules/stubborn-utils": {
++      "version": "1.0.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/stubborn-utils/-/stubborn-utils-1.0.2.tgz",
++      "integrity": "sha512-zOh9jPYI+xrNOyisSelgym4tolKTJCQd5GBhK0+0xJvcYDcwlOoxF/rnFKQ2KRZknXSG9jWAp66fwP6AxN9STg==",
++      "dev": true,
++      "license": "MIT"
 +    },
 +    "node_modules/tailwindcss": {
 +      "version": "4.3.3",
@@ -3270,6 +4549,13 @@ index 0000000..bf1b90a
 +        "type": "opencollective",
 +        "url": "https://opencollective.com/webpack"
 +      }
++    },
++    "node_modules/third-party-web": {
++      "version": "0.29.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/third-party-web/-/third-party-web-0.29.2.tgz",
++      "integrity": "sha512-fegtha91tq2DHphyoiBXVHjVi2YG9zFaRnboT9C28tO1en9Y3wJsfspuy40F+u5wl3hHVbw7cnd1b67kEGHb8g==",
++      "dev": true,
++      "license": "MIT"
 +    },
 +    "node_modules/tinyexec": {
 +      "version": "1.3.1",
@@ -3298,13 +4584,49 @@ index 0000000..bf1b90a
 +        "url": "https://github.com/sponsors/SuperchupuDev"
 +      }
 +    },
++    "node_modules/tldts-core": {
++      "version": "7.4.13",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/tldts-core/-/tldts-core-7.4.13.tgz",
++      "integrity": "sha512-mbYsrih5FRtGxs3Usvl/PqwJsNpp+jsmrdFviiK02teHDG0/HebBG/pqCylje3kzgXYzuLoHJF/0mz9W53t8Xg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/tldts-icann": {
++      "version": "7.4.13",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/tldts-icann/-/tldts-icann-7.4.13.tgz",
++      "integrity": "sha512-UTJXb538oP4wCyAcAE4RawUjw87qZFJ8BEob++0goalyg40zX5iP7L0mbXx3EnG1jrAsz+WDUAK613MtF0nUPA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "tldts-core": "^7.4.13"
++      }
++    },
 +    "node_modules/tslib": {
 +      "version": "2.8.1",
 +      "resolved": "https://registry.npmmirror.com/tslib/-/tslib-2.8.1.tgz",
 +      "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==",
 +      "dev": true,
-+      "license": "0BSD",
-+      "optional": true
++      "license": "0BSD"
++    },
++    "node_modules/type-fest": {
++      "version": "4.41.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/type-fest/-/type-fest-4.41.0.tgz",
++      "integrity": "sha512-TeTSQ6H5YHvpqVwBRcnLDCBnDOHWYu7IvGbHT6N8AOymcr9PJGjc1GTtiWZTYg0NCgYwvnYWEkVChQAr9bjfwA==",
++      "dev": true,
++      "license": "(MIT OR CC0-1.0)",
++      "engines": {
++        "node": ">=16"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/typed-query-selector": {
++      "version": "2.12.2",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/typed-query-selector/-/typed-query-selector-2.12.2.tgz",
++      "integrity": "sha512-EOPFbyIub4ngnEdqi2yOcNeDLaX/0jcE1JoAXQDDMIthap7FoN795lc/SHfIq2d416VufXpM8z/lD+WRm2gfOQ==",
++      "dev": true,
++      "license": "MIT"
 +    },
 +    "node_modules/typescript": {
 +      "version": "5.9.3",
@@ -3718,17 +5040,99 @@ index 0000000..bf1b90a
 +        "url": "https://opencollective.com/parcel"
 +      }
 +    },
++    "node_modules/web-features": {
++      "version": "3.39.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/web-features/-/web-features-3.39.0.tgz",
++      "integrity": "sha512-4DgSV2sNjlLMZg1XqaKceUhbKfdUPOXQ63v9XdKOv0EOB4zBIfNh16tvrxlTFAL21HIOxtk2/e+49uBK9WF+xg==",
++      "dev": true,
++      "license": "Apache-2.0"
++    },
 +    "node_modules/web-worker": {
 +      "version": "1.5.0",
 +      "resolved": "https://registry.npmmirror.com/web-worker/-/web-worker-1.5.0.tgz",
 +      "integrity": "sha512-RiMReJrTAiA+mBjGONMnjVDP2u3p9R1vkcGz6gDIrOMT3oGuYwX2WRMYI9ipkphSuE5XKEhydbhNEJh4NY9mlw==",
 +      "license": "Apache-2.0"
 +    },
++    "node_modules/webdriver-bidi-protocol": {
++      "version": "0.4.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/webdriver-bidi-protocol/-/webdriver-bidi-protocol-0.4.3.tgz",
++      "integrity": "sha512-uuN0goWfxP22B7J/uAgBpOYNPttC+XVseYE+rSY5+rQ+YBeVz/VORw8WbmLVcqW78zNg5A4qnjNXYUWR3il2ig==",
++      "dev": true,
++      "license": "Apache-2.0"
++    },
++    "node_modules/when-exit": {
++      "version": "2.1.5",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/when-exit/-/when-exit-2.1.5.tgz",
++      "integrity": "sha512-VGkKJ564kzt6Ms1dbgPP/yuIoQCrsFAnRbptpC5wOEsDaNsbCB2bnfnaA8i/vRs5tjUSEOtIuvl9/MyVsvQZCg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/wrap-ansi": {
++      "version": "7.0.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/wrap-ansi/-/wrap-ansi-7.0.0.tgz",
++      "integrity": "sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==",
++      "dev": true,
++      "dependencies": {
++        "ansi-styles": "^4.0.0",
++        "string-width": "^4.1.0",
++        "strip-ansi": "^6.0.0"
++      },
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/chalk/wrap-ansi?sponsor=1"
++      }
++    },
++    "node_modules/ws": {
++      "version": "7.5.13",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/ws/-/ws-7.5.13.tgz",
++      "integrity": "sha512-rsKI6xDBFVf4r/x8XyChGK04QR/XHroxs/jUcoWvtEZM8TPU/X/uIY9B1CsSzYws9ZJb/6bbBu7dPhFW00CAoA==",
++      "dev": true,
++      "engines": {
++        "node": ">=8.3.0"
++      },
++      "peerDependencies": {
++        "bufferutil": "^4.0.1",
++        "utf-8-validate": "^5.0.2"
++      },
++      "peerDependenciesMeta": {
++        "bufferutil": {
++          "optional": true
++        },
++        "utf-8-validate": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/xdg-basedir": {
++      "version": "5.1.0",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/xdg-basedir/-/xdg-basedir-5.1.0.tgz",
++      "integrity": "sha512-GCPAHLvrIH13+c0SuacwvRYj2SxJXQ4kaVTT5xgL3kPrz56XxkF21IGhjSE1+W0aw7gpBWRGXLCPnPby6lSpmQ==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=12"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
 +    "node_modules/xml-utils": {
 +      "version": "1.10.2",
 +      "resolved": "https://registry.npmmirror.com/xml-utils/-/xml-utils-1.10.2.tgz",
 +      "integrity": "sha512-RqM+2o1RYs6T8+3DzDSoTRAUfrvaejbVHcp3+thnAtDKo8LskR+HomLajEy5UjTz24rpka7AxVBRR3g2wTUkJA==",
 +      "license": "CC0-1.0"
++    },
++    "node_modules/y18n": {
++      "version": "5.0.8",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/y18n/-/y18n-5.0.8.tgz",
++      "integrity": "sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==",
++      "dev": true,
++      "license": "ISC",
++      "engines": {
++        "node": ">=10"
++      }
 +    },
 +    "node_modules/yaml": {
 +      "version": "2.9.1",
@@ -3747,6 +5151,34 @@ index 0000000..bf1b90a
 +        "url": "https://github.com/sponsors/eemeli"
 +      }
 +    },
++    "node_modules/yargs": {
++      "version": "17.7.3",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/yargs/-/yargs-17.7.3.tgz",
++      "integrity": "sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "cliui": "^8.0.1",
++        "escalade": "^3.1.1",
++        "get-caller-file": "^2.0.5",
++        "require-directory": "^2.1.1",
++        "string-width": "^4.2.3",
++        "y18n": "^5.0.5",
++        "yargs-parser": "^21.1.1"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/yargs-parser": {
++      "version": "21.1.1",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/yargs-parser/-/yargs-parser-21.1.1.tgz",
++      "integrity": "sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw==",
++      "dev": true,
++      "engines": {
++        "node": ">=12"
++      }
++    },
 +    "node_modules/zarrita": {
 +      "version": "0.7.5",
 +      "resolved": "https://registry.npmmirror.com/zarrita/-/zarrita-0.7.5.tgz",
@@ -3755,6 +5187,15 @@ index 0000000..bf1b90a
 +      "dependencies": {
 +        "@zarrita/storage": "^0.2.0",
 +        "numcodecs": "^0.3.2"
++      }
++    },
++    "node_modules/zod": {
++      "version": "3.25.76",
++      "resolved": "https://mirrors.cloud.tencent.com/npm/zod/-/zod-3.25.76.tgz",
++      "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==",
++      "dev": true,
++      "funding": {
++        "url": "https://github.com/sponsors/colinhacks"
 +      }
 +    },
 +    "node_modules/zstddec": {
@@ -3767,10 +5208,10 @@ index 0000000..bf1b90a
 +}
 diff --git a/client/zjsearch/package.json b/client/zjsearch/package.json
 new file mode 100644
-index 0000000..1ab9e71
+index 0000000..8c5547b
 --- /dev/null
 +++ b/client/zjsearch/package.json
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,53 @@
 +{
 +  "$schema": "https://json.schemastore.org/package.json",
 +  "name": "@hezhijie0327/zjsearch",
@@ -3782,6 +5223,7 @@ index 0000000..1ab9e71
 +    "build": "vite build",
 +    "dev": "vite",
 +    "prepare": "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath client/zjsearch/.husky || true",
++    "audit": "node scripts/audit.mjs",
 +    "ci": "npm run lint && npm run build",
 +    "clean": "rm -Rf node_modules",
 +    "fix": "biome check --write",
@@ -3808,7 +5250,9 @@ index 0000000..1ab9e71
 +    "@types/react-dom": "^19.2.3",
 +    "browserslist": "^4.28.8",
 +    "browserslist-to-esbuild": "^2.1.1",
++    "chrome-launcher": "^1.2.1",
 +    "husky": "^9.1.7",
++    "lighthouse": "^13.4.1",
 +    "lint-staged": "^17.5.1",
 +    "sharp": "~0.35.4",
 +    "tailwindcss": "^4.1.18",
@@ -3821,12 +5265,214 @@ index 0000000..1ab9e71
 +    ]
 +  }
 +}
+diff --git a/client/zjsearch/scripts/audit.mjs b/client/zjsearch/scripts/audit.mjs
+new file mode 100644
+index 0000000..53d8d83
+--- /dev/null
++++ b/client/zjsearch/scripts/audit.mjs
+@@ -0,0 +1,196 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/**
++ * zjsearch Lighthouse gate — `npm run audit`.
++ *
++ * Boots a throwaway granian on :8907 with audit-settings.yml (a public
++ * instance, so the SEO category is not capped by the upstream noindex
++ * default header), runs mobile Lighthouse over the theme's key faces and
++ * fails when a category score drops below THRESHOLDS.
++ *
++ * Needs the venv (local/py3) and a Chromium: set CHROME_PATH if
++ * chrome-launcher does not autodetect yours.  Engines need the usual
++ * network — export HTTP(S)_PROXY before running when this LAN requires it.
++ * Build the theme first (`npm run build`): the gate serves the committed
++ * static folder like a deployment would.
++ */
++
++import { spawn } from "node:child_process";
++import { existsSync } from "node:fs";
++import { mkdir, writeFile } from "node:fs/promises";
++import { dirname, join, resolve } from "node:path";
++import { fileURLToPath } from "node:url";
++
++const HERE = dirname(fileURLToPath(import.meta.url));
++const CLIENT = resolve(HERE, "..");
++const ROOT = resolve(CLIENT, "../..");
++const PORT = 8907;
++const BASE = `http://127.0.0.1:${PORT}`;
++
++/** Desktop is the default gate: stable numbers (no engine-latency-sensitive
++    mobile throttling on top of live search variance).  LH_FORM_FACTOR=mobile
++    opts into the harsher mobile profile. */
++const MOBILE = process.env.LH_FORM_FACTOR === "mobile";
++/** Per-path floors.  The search page's SEO category is EXEMPT (null):
++    upstream robots.txt disallows `/*?*q=*` and upstream wants search pages
++    unindexed — that is correct behaviour, not a theme defect.  Performance
++    floors leave headroom for live-engine latency on /search (its LCP waits
++    for the engines). */
++const PATHS = [
++  {
++    path: "/",
++    thresholds: MOBILE
++      ? { performance: 75, accessibility: 100, "best-practices": 100, seo: 95 }
++      : { performance: 90, accessibility: 100, "best-practices": 100, seo: 95 },
++  },
++  {
++    path: "/search?q=searxng",
++    thresholds: MOBILE
++      ? { performance: 65, accessibility: 100, "best-practices": 100, seo: null }
++      : { performance: 90, accessibility: 100, "best-practices": 100, seo: null },
++  },
++];
++
++/** granian executable of the repo venv (Windows and POSIX venv layouts). */
++function venvBin(name) {
++  const candidates =
++    process.platform === "win32"
++      ? [join(ROOT, "local", "py3", "Scripts", `${name}.exe`), join(ROOT, "local", "py3", "Scripts", name)]
++      : [join(ROOT, "local", "py3", "bin", name)];
++  return candidates.find((p) => existsSync(p));
++}
++
++async function waitFor(url, timeoutMs = 45000) {
++  const deadline = Date.now() + timeoutMs;
++  while (Date.now() < deadline) {
++    try {
++      const resp = await fetch(url);
++      if (resp.ok) {
++        return;
++      }
++    } catch {
++      // not up yet
++    }
++    await new Promise((resolve) => setTimeout(resolve, 300));
++  }
++  throw new Error(`audit server did not come up at ${url}`);
++}
++
++async function main() {
++  const built = join(ROOT, "searx", "static", "zjsearch.min.js");
++  if (!existsSync(built)) {
++    throw new Error("zjsearch.min.js is not synced into searx/static — run the theme build first");
++  }
++  const granian = venvBin("granian");
++  if (!granian) {
++    throw new Error("granian not found in local/py3 — run the venv bootstrap first (see AGENTS.md)");
++  }
++
++  const env = {
++    ...process.env,
++    SEARXNG_SETTINGS_PATH: join(CLIENT, "audit-settings.yml"),
++    GRANIAN_INTERFACE: "wsgi",
++    GRANIAN_HOST: "127.0.0.1",
++    GRANIAN_PORT: String(PORT),
++  };
++  // Windows: searx.valkeydb imports the POSIX-only pwd module; the shim also
++  // normalizes backslash static paths (see AGENTS.md).  A private copy keeps
++  // the gate self-contained instead of leaning on a machine-specific shim.
++  let shimDir;
++  if (process.platform === "win32") {
++    shimDir = join(process.env.TEMP ?? HERE, "zjs-audit-shim");
++    await mkdir(shimDir, { recursive: true });
++    await writeFile(
++      join(shimDir, "pwd.py"),
++      [
++        "import os",
++        "from collections import namedtuple",
++        "Passwd = namedtuple('Passwd', ['pw_name', 'pw_uid', 'pw_gid', 'pw_gecos', 'pw_dir', 'pw_shell'])",
++        "",
++        "",
++        "def getpwuid(uid):",
++        "    return Passwd('unknown', uid, 0, '', '', '')",
++        "",
++        "",
++        "# Windows dev shim: get_static_file_list returns os.sep paths while",
++        "# webapp.custom_url_for compares with forward slashes.",
++        "try:",
++        "    import searx.webutils as _wu",
++        "",
++        "    _orig = _wu.get_static_file_list",
++        "",
++        "",
++        "    def _posix_file_list():",
++        "        return [f.replace('\\\\', '/') for f in _orig()]",
++        "",
++        "    _wu.get_static_file_list = _posix_file_list",
++        "except Exception:",
++        "    pass",
++        "",
++      ].join("\n"),
++    );
++    env.PYTHONPATH = env.PYTHONPATH ? `${shimDir};${env.PYTHONPATH}` : shimDir;
++  }
++
++  console.log(`booting audit instance on :${PORT} …`);
++  // granian's stderr surfaces (boot errors would otherwise die silently
++  // behind the waitFor timeout)
++  const server = spawn(granian, ["searx.webapp:app"], { cwd: ROOT, env, stdio: ["ignore", "ignore", "inherit"] });
++  let chrome;
++  let failed = false;
++  try {
++    await waitFor(`${BASE}/`);
++    const { launch } = await import("chrome-launcher");
++    chrome = await launch({ chromeFlags: ["--headless=new"] });
++    const lighthouse = (await import("lighthouse")).default;
++    // desktop preset: the desktop-config preset wires form factor, screen
++    // emulation and the (mild) desktop throttling in one go
++    const config = MOBILE ? undefined : (await import("lighthouse/core/config/desktop-config.js")).default;
++
++    for (const { path, thresholds } of PATHS) {
++      const result = await lighthouse(`${BASE}${path}`, { port: chrome.port, output: "json" }, config);
++      const lhr = result.lhr;
++      console.log(`\n${path}${MOBILE ? "  (mobile)" : ""}`);
++      for (const [cat, threshold] of Object.entries(thresholds)) {
++        const score = Math.round((lhr.categories[cat]?.score ?? 0) * 100);
++        const gated = threshold !== null;
++        const ok = !gated || score >= threshold;
++        failed = failed || !ok;
++        console.log(
++          `  ${cat.padEnd(15)} ${String(score).padStart(3)}  (${gated ? `min ${threshold}` : "exempt"})${ok ? "" : "  FAIL"}`,
++        );
++      }
++      for (const category of Object.values(lhr.categories)) {
++        for (const ref of category.auditRefs) {
++          const audit = lhr.audits[ref.id];
++          if (
++            audit &&
++            audit.score !== null &&
++            audit.score !== undefined &&
++            audit.score < 1 &&
++            !["manual", "notApplicable"].includes(audit.scoreDisplayMode)
++          ) {
++            console.log(`    ! ${audit.id}${audit.displayValue ? ` (${audit.displayValue})` : ""}`);
++          }
++        }
++      }
++    }
++  } finally {
++    if (chrome) {
++      // chrome-launcher's Windows profile cleanup can throw after the
++      // browser is already gone — the audit result is unaffected
++      try {
++        await chrome.kill();
++      } catch {}
++    }
++    server.kill();
++  }
++
++  console.log(failed ? "\naudit FAILED" : "\naudit passed");
++  process.exitCode = failed ? 1 : 0;
++}
++
++main().catch((error) => {
++  console.error(error);
++  process.exit(1);
++});
 diff --git a/client/zjsearch/src/app.tsx b/client/zjsearch/src/app.tsx
 new file mode 100644
-index 0000000..dd517b0
+index 0000000..4185c20
 --- /dev/null
 +++ b/client/zjsearch/src/app.tsx
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,126 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Compass, LoaderCircle } from "lucide-react";
@@ -3840,8 +5486,7 @@ index 0000000..dd517b0
 +import type { AnyPageData } from "@/lib/types.ts";
 +import { isInfoPageData, isPreferencesPageData, isSearchPageData, isStatsPageData } from "@/lib/types.ts";
 +import { IndexPage } from "@/pages/IndexPage.tsx";
-+import { InfoPage, PreferencesPage, StatsPage } from "@/pages/lazyPages.ts";
-+import { ResultsPage } from "@/pages/ResultsPage.tsx";
++import { InfoPage, PreferencesPage, ResultsPage, StatsPage } from "@/pages/lazyPages.ts";
 +
 +function Pages() {
 +  const { data, error } = useRouter();
@@ -3858,7 +5503,13 @@ index 0000000..dd517b0
 +  const globals = data.globals;
 +
 +  if (isSearchPageData(data)) {
-+    return <ResultsPage data={data} />;
++    // the chunk is pre-warmed on results boots (streamed shell inline import)
++    // and by hero-search intent; the fallback only shows on a cold SPA nav
++    return (
++      <Suspense fallback={<PageFallback />}>
++        <ResultsPage data={data} />
++      </Suspense>
++    );
 +  }
 +
 +  if (isPreferencesPageData(data)) {
@@ -6271,7 +7922,7 @@ index 0000000..6d0036b
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 0000000..24f5057
+index 0000000..aad9427
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
 @@ -0,0 +1,251 @@
@@ -6327,7 +7978,7 @@ index 0000000..24f5057
 +  return index === -1 ? FORMAT_ORDER.length : index;
 +}
 +
-+const metaToggle = "inline-flex items-center gap-1 transition-colors hover:text-ink";
++const metaToggle = "inline-flex min-h-6 items-center gap-1 transition-colors hover:text-ink";
 +const stripChip =
 +  "inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:text-ink";
 +
@@ -6848,7 +8499,7 @@ index 0000000..11e73ad
 +}
 diff --git a/client/zjsearch/src/features/results/Infobox.tsx b/client/zjsearch/src/features/results/Infobox.tsx
 new file mode 100644
-index 0000000..23d04f4
+index 0000000..4f91dcc
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Infobox.tsx
 @@ -0,0 +1,193 @@
@@ -6982,7 +8633,7 @@ index 0000000..23d04f4
 +              {infobox.urls.map((url) => (
 +                <li className="min-w-0" key={url.url}>
 +                  <a
-+                    className="flex min-w-0 max-w-full items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
++                    className="flex min-h-6 min-w-0 max-w-full items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
 +                    {...newTabLinkProps(globals.results_on_new_tab)}
 +                    href={url.url}
 +                  >
@@ -7872,15 +9523,17 @@ index 0000000..183f859
 +}
 diff --git a/client/zjsearch/src/features/results/ResultRow.tsx b/client/zjsearch/src/features/results/ResultRow.tsx
 new file mode 100644
-index 0000000..a2d5bcc
+index 0000000..7921c2d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/ResultRow.tsx
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,27 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import type { ReactNode } from "react";
 +
-+/** First N rows play the entrance animation, with a per-row stagger. */
++/** First N rows play the entrance animation with a per-row stagger; rows
++    appended by infinite scroll (index ≥ N) get a plain fade-in instead of
++    popping into the bottom of the list. */
 +const FADE_UP_SLOTS = 12;
 +const MAX_STAGGER_MS = 300;
 +
@@ -7888,14 +9541,14 @@ index 0000000..a2d5bcc
 +    hotkey-selection ring and the entrance stagger — the scaffold shared by
 +    every list view (grids mark their own cells instead). */
 +export function ResultRow({ index, selected, children }: { index: number; selected: boolean; children: ReactNode }) {
-+  const animate = index < FADE_UP_SLOTS;
++  const fadeUp = index < FADE_UP_SLOTS;
 +  return (
 +    <div
 +      className={`rounded-2xl ${selected ? "bg-surface ring-1 ring-accent-strong" : ""} ${
-+        animate ? "animate-fade-up" : ""
++        fadeUp ? "animate-fade-up" : "animate-fade-in"
 +      }`}
 +      data-hotkey-index={index}
-+      style={animate ? { animationDelay: `${Math.min(index * 30, MAX_STAGGER_MS)}ms` } : undefined}
++      style={fadeUp ? { animationDelay: `${Math.min(index * 30, MAX_STAGGER_MS)}ms` } : undefined}
 +    >
 +      {children}
 +    </div>
@@ -8224,10 +9877,10 @@ index 0000000..c0c53af
 +}
 diff --git a/client/zjsearch/src/features/results/Tile.tsx b/client/zjsearch/src/features/results/Tile.tsx
 new file mode 100644
-index 0000000..7411898
+index 0000000..15f5fda
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Tile.tsx
-@@ -0,0 +1,245 @@
+@@ -0,0 +1,247 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Calendar, Eye, Globe, User, X } from "lucide-react";
@@ -8296,7 +9949,7 @@ index 0000000..7411898
 +  alt,
 +  placeholder,
 +  eager = false,
-+  imgClassName = "size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]",
++  imgClassName = "size-full object-cover group-hover:scale-[1.03]",
 +}: {
 +  src?: string;
 +  alt: string;
@@ -8304,14 +9957,16 @@ index 0000000..7411898
 +  eager?: boolean;
 +  imgClassName?: string;
 +}) {
-+  const { failed, setFailed, setLoaded } = useGraceThumb(src);
++  const { failed, loaded, setFailed, setLoaded } = useGraceThumb(src);
 +  if (failed) {
 +    return <>{placeholder}</>;
 +  }
 +  return (
 +    <img
 +      alt={alt}
-+      className={imgClassName}
++      /* lazy images fade in on load, eager ones paint immediately (LCP);
++         the transition lives here so custom imgClassName keep it too */
++      className={`transition-[transform,opacity] duration-300 ${eager || loaded ? "opacity-100" : "opacity-0"} ${imgClassName}`}
 +      decoding="async"
 +      fetchPriority={eager ? "high" : undefined}
 +      loading={eager ? "eager" : "lazy"}
@@ -10029,10 +11684,10 @@ index 0000000..22a2c98
 +}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 0000000..f103502
+index 0000000..dbfe626
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
-@@ -0,0 +1,394 @@
+@@ -0,0 +1,400 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -10119,7 +11774,7 @@ index 0000000..f103502
 +
 +export function Title({ result, globals }: { result: ResultItem; globals: GlobalData }) {
 +  return (
-+    <h3 className="line-clamp-1 text-base font-medium leading-snug">
++    <h3 className="line-clamp-1 text-base font-medium leading-6">
 +      <ResultLink
 +        className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
 +        globals={globals}
@@ -10291,6 +11946,7 @@ index 0000000..f103502
 +  eager?: boolean;
 +}) {
 +  const [failed, setFailed] = useState(!src);
++  const [loaded, setLoaded] = useState(false);
 +  if (failed) {
 +    return (
 +      <span className={`flex items-center justify-center rounded-xl bg-surface-2 text-ink-3 ${className ?? ""}`}>
@@ -10302,11 +11958,16 @@ index 0000000..f103502
 +    <div className={`relative shrink-0 overflow-hidden rounded-xl bg-surface-2 ${className ?? ""}`}>
 +      <img
 +        alt={alt}
-+        className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
++        /* lazy images fade in on load (bg-surface-2 shows through), eager
++           ones paint immediately (LCP) */
++        className={`size-full object-cover transition-[transform,opacity] duration-300 group-hover:scale-[1.04] ${eager || loaded ? "opacity-100" : "opacity-0"}`}
 +        decoding="async"
 +        loading={eager ? "eager" : "lazy"}
 +        onError={() => {
 +          setFailed(true);
++        }}
++        onLoad={() => {
++          setLoaded(true);
 +        }}
 +        src={src}
 +      />
@@ -10482,7 +12143,7 @@ index 0000000..96e2285
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DefaultCard.tsx b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 new file mode 100644
-index 0000000..d2898a3
+index 0000000..6b23596
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 @@ -0,0 +1,73 @@
@@ -10513,7 +12174,7 @@ index 0000000..d2898a3
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
-+        <div className="min-w-0 w-full max-w-prose">
++        <div className="min-w-0 w-full max-w-2xl">
 +          <PrettyUrl globals={globals} result={result} />
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
@@ -10533,7 +12194,7 @@ index 0000000..d2898a3
 +            </div>
 +          ) : null}
 +          <p
-+            className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{
 +              __html: result.content_html || t("no_description"),
 +            }}
@@ -10544,7 +12205,7 @@ index 0000000..d2898a3
 +          ) : null}
 +        </div>
 +        {result.thumbnail ? (
-+          <ResultLink className="shrink-0 self-start" globals={globals} result={result}>
++          <ResultLink className="ms-auto shrink-0 self-start" globals={globals} result={result}>
 +            <Thumb
 +              alt={result.title_text}
 +              className="h-24 w-28 sm:w-40"
@@ -11007,7 +12668,7 @@ index 0000000..5ccd754
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PaperCard.tsx b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 new file mode 100644
-index 0000000..fa06139
+index 0000000..596efc9
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 @@ -0,0 +1,192 @@
@@ -11095,7 +12756,7 @@ index 0000000..fa06139
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
-+        <div className="min-w-0 w-full max-w-prose">
++        <div className="min-w-0 w-full max-w-2xl">
 +          <PrettyUrl globals={globals} result={result} />
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
@@ -11115,7 +12776,7 @@ index 0000000..fa06139
 +          ) : null}
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -11194,7 +12855,7 @@ index 0000000..fa06139
 +          ) : null}
 +        </div>
 +        {result.thumbnail ? (
-+          <ResultLink className="shrink-0 self-start" globals={globals} result={result}>
++          <ResultLink className="ms-auto shrink-0 self-start" globals={globals} result={result}>
 +            <Thumb alt={result.title_text} className="h-28 w-28" src={result.thumbnail} />
 +          </ResultLink>
 +        ) : null}
@@ -11205,7 +12866,7 @@ index 0000000..fa06139
 +}
 diff --git a/client/zjsearch/src/features/results/cards/ProductCard.tsx b/client/zjsearch/src/features/results/cards/ProductCard.tsx
 new file mode 100644
-index 0000000..3fa6dcc
+index 0000000..29d6333
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/ProductCard.tsx
 @@ -0,0 +1,65 @@
@@ -11228,7 +12889,7 @@ index 0000000..3fa6dcc
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
-+        <div className="min-w-0 flex-1">
++        <div className="min-w-0 w-full max-w-2xl">
 +          <PrettyUrl globals={globals} result={result} />
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
@@ -11258,14 +12919,14 @@ index 0000000..3fa6dcc
 +          </div>
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
 +          ) : null}
 +        </div>
 +        {result.thumbnail ? (
-+          <ResultLink className="shrink-0 self-start" globals={globals} result={result}>
++          <ResultLink className="ms-auto shrink-0 self-start" globals={globals} result={result}>
 +            <Thumb alt={result.title_text} className="h-28 w-28" src={result.thumbnail} />
 +          </ResultLink>
 +        ) : null}
@@ -11426,7 +13087,7 @@ index 0000000..6c85097
 +}
 diff --git a/client/zjsearch/src/features/results/cards/VideoCard.tsx b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 new file mode 100644
-index 0000000..08f9f1d
+index 0000000..fe2ba63
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 @@ -0,0 +1,99 @@
@@ -11456,7 +13117,7 @@ index 0000000..08f9f1d
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
-+        <div className="min-w-0 w-full max-w-prose">
++        <div className="min-w-0 w-full max-w-2xl">
 +          <PrettyUrl globals={globals} result={result} />
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
@@ -11470,7 +13131,7 @@ index 0000000..08f9f1d
 +            </div>
 +          ) : null}
 +          <p
-+            className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{ __html: result.content_html || t("no_description") }}
 +            dir="auto"
 +          />
@@ -11479,7 +13140,7 @@ index 0000000..08f9f1d
 +          // the player replaces the thumbnail in place - same behaviour as
 +          // the video grid, never expanding below the text; on phones the
 +          // wide size would eat the whole text column, so it stays w-40
-+          <div className={`relative shrink-0 transition-all ${previewOpen && hasMedia ? "sm:w-72" : "w-40"}`}>
++          <div className={`relative ms-auto shrink-0 transition-all ${previewOpen && hasMedia ? "sm:w-72" : "w-40"}`}>
 +            <div className="relative aspect-video overflow-hidden rounded-xl bg-surface-2">
 +              <ResultLink className="block size-full" globals={globals} result={result}>
 +                <Thumb
@@ -14246,10 +15907,10 @@ index 0000000..e63d8cb
 +}
 diff --git a/client/zjsearch/src/lib/styles.ts b/client/zjsearch/src/lib/styles.ts
 new file mode 100644
-index 0000000..6b2abee
+index 0000000..913d826
 --- /dev/null
 +++ b/client/zjsearch/src/lib/styles.ts
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,77 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -14277,8 +15938,10 @@ index 0000000..6b2abee
 +  "grid size-9 place-items-center rounded-full text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink";
 +
 +/** Tiny meta chip (engine pills, mono tokens, tag pills): callers add their
-+    own text colour / font / hover on top of the shape. */
-+export const CHIP = "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 transition-colors";
++    own text colour / font / hover on top of the shape.  min-h-6 keeps every
++    chip a 24px touch target (Lighthouse target-size / WCAG 2.5.8) without
++    changing the 12px type tier. */
++export const CHIP = "inline-flex min-h-6 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 transition-colors";
 +
 +/** Mono-token variant of CHIP (IPs, digests, language pairs, algo names):
 +    same shape, monospace ink-2 text — the 12px meta tier for unbreakable
@@ -14357,10 +16020,10 @@ index 0000000..d0d4b1d
 +}
 diff --git a/client/zjsearch/src/lib/theme.ts b/client/zjsearch/src/lib/theme.ts
 new file mode 100644
-index 0000000..1fab9a1
+index 0000000..cc5990f
 --- /dev/null
 +++ b/client/zjsearch/src/lib/theme.ts
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,54 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Light/dark theme handling shared by the quick toggle and the preferences UI. */
@@ -14383,9 +16046,25 @@ index 0000000..1fab9a1
 +    style === "black" ||
 +    (style === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 +  const root = document.documentElement;
++  /* the palette cross-fade itself lives in CSS: the color tokens are
++     registered <color> custom properties with a transition on <html>, so
++     flipping the classes here animates every var() consumer.  A real
++     change also opens the `.zjs-palette-anim` stand-down window (~350ms):
++     elements with their own transition-colors (chips, pills, switches)
++     would otherwise chase the interpolating tokens on their private 150ms
++     timer and visibly lag the rest of the page.  Boot calls whose classes
++     already match never open the window; reduced-motion users get none. */
++  const changing = root.classList.contains("dark") !== dark || root.classList.contains("black") !== (style === "black");
++  if (changing && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
++    root.classList.add("zjs-palette-anim");
++    window.clearTimeout(paletteAnimTimer);
++    paletteAnimTimer = window.setTimeout(() => root.classList.remove("zjs-palette-anim"), 350);
++  }
 +  root.classList.toggle("dark", dark);
 +  root.classList.toggle("black", style === "black");
 +}
++
++let paletteAnimTimer: number | undefined;
 +
 +export function applyCenterAlignment(on: boolean) {
 +  document.documentElement.classList.toggle("centered", on);
@@ -15055,10 +16734,10 @@ index 0000000..a10c481
 +}
 diff --git a/client/zjsearch/src/main.tsx b/client/zjsearch/src/main.tsx
 new file mode 100644
-index 0000000..0dd7e03
+index 0000000..6745380
 --- /dev/null
 +++ b/client/zjsearch/src/main.tsx
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,75 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { createRoot } from "react-dom/client";
@@ -15122,6 +16801,13 @@ index 0000000..0dd7e03
 +    renderBootError(container, initialData.message, initialData.globals.instance_name);
 +    return;
 +  }
++  // results boot: pull the (stream-pre-warmed) results chunk before React
++  // takes over — the static boot skeleton stays on screen and the first
++  // commit already renders the real pending state, keeping the three-way
++  // swap static → pending → results gapless
++  if (initialData?.globals.page === "results") {
++    await import("@/pages/ResultsPage.tsx");
++  }
 +  const settings = parseClientSettings();
 +  createRoot(container).render(<App initialData={initialData} settings={settings} />);
 +}
@@ -15129,10 +16815,10 @@ index 0000000..0dd7e03
 +void bootstrap();
 diff --git a/client/zjsearch/src/pages/IndexPage.tsx b/client/zjsearch/src/pages/IndexPage.tsx
 new file mode 100644
-index 0000000..704ffc8
+index 0000000..9c14469
 --- /dev/null
 +++ b/client/zjsearch/src/pages/IndexPage.tsx
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,163 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Lightbulb, SlidersHorizontal, X } from "lucide-react";
@@ -15146,6 +16832,7 @@ index 0000000..704ffc8
 +import { useRouter } from "@/lib/router.tsx";
 +import { useSettings } from "@/lib/settings.ts";
 +import type { BasicPageData } from "@/lib/types.ts";
++import { preloadResultsPage } from "@/pages/lazyPages.ts";
 +
 +interface IndexData extends BasicPageData {
 +  selected_categories?: string[];
@@ -15206,7 +16893,10 @@ index 0000000..704ffc8
 +        {/* raised stacking level: fade-up leaves a residual transform (a
 +            stacking context) on every animated sibling, which would let the
 +            category tabs paint over the z-30 dropdown */}
-+        <div className="relative z-10 mt-12 w-full animate-fade-up [animation-delay:60ms]">
++        <div
++          className="relative z-10 mt-12 w-full animate-fade-up [animation-delay:60ms]"
++          onFocusCapture={preloadResultsPage}
++        >
 +          <SearchBox
 +            initialQuery=""
 +            onQueryChange={setQuery}
@@ -16277,10 +17967,10 @@ index 0000000..7485c7e
 +}
 diff --git a/client/zjsearch/src/pages/lazyPages.ts b/client/zjsearch/src/pages/lazyPages.ts
 new file mode 100644
-index 0000000..ddc8ad1
+index 0000000..51027b9
 --- /dev/null
 +++ b/client/zjsearch/src/pages/lazyPages.ts
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,29 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Secondary pages load on demand: the entry bundle stays lean and these
@@ -16291,6 +17981,20 @@ index 0000000..ddc8ad1
 +
 +export const InfoPage = lazy(() => import("@/pages/InfoPage.tsx").then((m) => ({ default: m.InfoPage })));
 +
++/** The results feature tree (cards, grids, answers, infobox …) is the heavy
++    half of the bundle; the home page must never download it.  The streamed
++    results shell pre-warms the chunk with an inline import() (stable chunk
++    name, see vite.config), so by the time the app boots on a search page the
++    module is usually already in the module map and `ResultsPage` resolves
++    without a paint gap. */
++export const ResultsPage = lazy(() => import("@/pages/ResultsPage.tsx").then((m) => ({ default: m.ResultsPage })));
++
++/** Fire-and-forget preloader for search intent: the hero search box calls it
++    on focus so an on-the-spot query never waits for the chunk. */
++export function preloadResultsPage(): void {
++  void import("@/pages/ResultsPage.tsx");
++}
++
 +export const PreferencesPage = lazy(() =>
 +  import("@/pages/preferences/PreferencesPage.tsx").then((m) => ({ default: m.PreferencesPage })),
 +);
@@ -16298,10 +18002,10 @@ index 0000000..ddc8ad1
 +export const StatsPage = lazy(() => import("@/pages/StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
 diff --git a/client/zjsearch/src/pages/preferences/PreferencesPage.tsx b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
 new file mode 100644
-index 0000000..62139e3
+index 0000000..c9fb91e
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,112 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, Cookie, LayoutGrid, Palette, Puzzle, SlidersHorizontal } from "lucide-react";
@@ -16395,7 +18099,13 @@ index 0000000..62139e3
 +          ))}
 +        </div>
 +
-+        <div aria-labelledby={`prefs-tab-${tab}`} id={`prefs-panel-${tab}`} key={tab} role="tabpanel">
++        <div
++          aria-labelledby={`prefs-tab-${tab}`}
++          className="animate-fade-in"
++          id={`prefs-panel-${tab}`}
++          key={tab}
++          role="tabpanel"
++        >
 +          {tab === "general" ? <GeneralTab data={data} form={form} locked={locked} /> : null}
 +          {tab === "ui" ? <UiTab data={data} form={form} locked={locked} /> : null}
 +          {tab === "engines" ? (
@@ -18004,10 +19714,10 @@ index 0000000..b717522
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..7d2ef25
+index 0000000..d768a95
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,893 @@
+@@ -0,0 +1,1028 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -18015,6 +19725,98 @@ index 0000000..7d2ef25
 +@import "tailwindcss";
 +
 +@custom-variant dark (&:where(.dark, .dark *));
++
++/* Register the theme color tokens as <color> custom properties so a palette
++   flip (.dark / .black) interpolates the variables themselves on <html>
++   (see the html transition rule next to the results-width rule): one
++   transition drives the whole-page cross-fade, every var() consumer follows
++   frame by frame.  Browsers without @property fall back to an instant
++   snap.  initial-value mirrors the light palette. */
++@property --bg {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #faf9f6;
++}
++@property --surface {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #ffffff;
++}
++@property --surface-2 {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #f1efe8;
++}
++@property --line {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #e6e2d7;
++}
++@property --ink {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #201d17;
++}
++@property --ink-2 {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #6b675c;
++}
++@property --ink-3 {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #716c61;
++}
++@property --accent {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #8c6800;
++}
++@property --accent-hover {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #7a5c00;
++}
++@property --accent-strong {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #f5c84c;
++}
++@property --accent-strong-hover {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #eebd35;
++}
++@property --accent-soft {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #faf0cf;
++}
++@property --accent-contrast {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #241d0e;
++}
++@property --highlight-bg {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #fde68a;
++}
++@property --danger {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #dc2626;
++}
++@property --warning {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #b45309;
++}
++@property --ok {
++  syntax: "<color>";
++  inherits: true;
++  initial-value: #15803d;
++}
 +
 +/* Kagi-inspired warm palette: warm neutrals + amber accent. */
 +:root {
@@ -18822,10 +20624,53 @@ index 0000000..7d2ef25
 +}
 +
 +/* results width: wide by default (capped for readability), narrow + centered
-+   when the center_alignment preference is on */
++   when the center_alignment preference is on; the preference toggle morphs
++   the width instead of snapping (the global reduced-motion guard silences
++   the transition) */
 +.zjs-results-main,
 +.zjs-results-header-row {
 +  max-width: var(--results-max, 90rem);
++  transition: max-width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
++}
++
++/* palette cross-fade: the tokens registered above are <color> custom
++   properties, so flipping .dark / .black animates the variables on <html>
++   and the entire page follows with exactly one transition.  (An earlier
++   attempt put a transition window on every element — the per-frame
++   full-document recalc stuttered in patches on heavy pages.)  Browsers
++   without @property snap instantly; the global reduced-motion guard
++   (0.01ms !important on *) collapses the fade. */
++html {
++  transition:
++    --bg 0.3s ease,
++    --surface 0.3s ease,
++    --surface-2 0.3s ease,
++    --line 0.3s ease,
++    --ink 0.3s ease,
++    --ink-2 0.3s ease,
++    --ink-3 0.3s ease,
++    --accent 0.3s ease,
++    --accent-hover 0.3s ease,
++    --accent-strong 0.3s ease,
++    --accent-strong-hover 0.3s ease,
++    --accent-soft 0.3s ease,
++    --accent-contrast 0.3s ease,
++    --highlight-bg 0.3s ease,
++    --danger 0.3s ease,
++    --warning 0.3s ease,
++    --ok 0.3s ease;
++}
++
++/* stand-down window while the flip runs (applyThemeStyle adds the class for
++   ~350ms around a real palette change): elements with their own
++   transition-colors — chips, pills, switches — would chase the interpolating
++   tokens on their private 150ms timer and visibly lag the page (the
++   score/engine pills read out of sync).  With their transitions stood down
++   they track the variables directly, like everything else. */
++html.zjs-palette-anim *:not(html),
++html.zjs-palette-anim :not(html)::before,
++html.zjs-palette-anim :not(html)::after {
++  transition: none !important;
 +}
 +
 +html.centered {
@@ -18985,10 +20830,10 @@ index 0000000..6e8b063
 +}
 diff --git a/client/zjsearch/vite.config.ts b/client/zjsearch/vite.config.ts
 new file mode 100644
-index 0000000..88dbb9c
+index 0000000..42fc66d
 --- /dev/null
 +++ b/client/zjsearch/vite.config.ts
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,105 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -19070,7 +20915,17 @@ index 0000000..88dbb9c
 +      },
 +      output: {
 +        entryFileNames: "zjsearch.min.js",
-+        chunkFileNames: "chunk/[hash].min.js",
++        // the results feature tree gets a STABLE chunk name so the streamed
++        // results shell can pre-warm it with an inline import() while the
++        // engines run (see results.html) — the home page never pays for it
++        manualChunks: (id) => {
++          if (id.includes("/src/features/results/") || id.includes("/src/pages/ResultsPage")) {
++            return "zjs-results";
++          }
++          return undefined;
++        },
++        chunkFileNames: (chunkInfo) =>
++          chunkInfo.name === "zjs-results" ? "chunk/zjs-results.min.js" : "chunk/[hash].min.js",
 +        assetFileNames: (asset) => {
 +          const [name] = asset.names;
 +          if (name?.endsWith(".css")) {
@@ -19122,6 +20977,2441 @@ index 40a4c80..b17570a 100644
                  break
  
          return results
+diff --git a/searx/engines/1337x.py b/searx/engines/1337x.py
+index 08a487a..d6f515d 100644
+--- a/searx/engines/1337x.py
++++ b/searx/engines/1337x.py
+@@ -3,6 +3,7 @@
+ """1337x"""
+ 
+ from urllib.parse import quote, urljoin
++from lxml import html
+ from searx.utils import extract_text, eval_xpath, eval_xpath_list, eval_xpath_getindex
+ 
+ # about
+@@ -30,7 +31,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, '//table[contains(@class, "table-list")]/tbody//tr'):
+         href = urljoin(url, eval_xpath_getindex(result, './td[contains(@class, "name")]/a[2]/@href', 0))
+diff --git a/searx/engines/360search.py b/searx/engines/360search.py
+index bb12a64..bf1ba98 100644
+--- a/searx/engines/360search.py
++++ b/searx/engines/360search.py
+@@ -5,6 +5,7 @@
+ import typing as t
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ 
+ from searx import logger
+ from searx.enginelib import EngineCache
+@@ -87,7 +88,7 @@ def response(resp):
+     if not resp.text or not resp.text.strip():
+         return []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     results = []
+ 
+     for item in dom.xpath('//li[contains(@class, "res-list")]'):
+diff --git a/searx/engines/alpinelinux.py b/searx/engines/alpinelinux.py
+index af26903..e5dcefe 100644
+--- a/searx/engines/alpinelinux.py
++++ b/searx/engines/alpinelinux.py
+@@ -12,6 +12,7 @@ servers and for Docker images.
+ import re
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ from dateutil import parser
+ 
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+@@ -56,7 +57,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     for result in eval_xpath_list(doc, "//table/tbody/tr"):
+ 
+         if len(result.xpath("./td")) < 9:
+diff --git a/searx/engines/annas_archive.py b/searx/engines/annas_archive.py
+index 4c547f4..c4676cc 100644
+--- a/searx/engines/annas_archive.py
++++ b/searx/engines/annas_archive.py
+@@ -39,6 +39,7 @@ import random
+ import typing as t
+ from urllib.parse import urlencode
+ 
++from lxml import html
+ from lxml.etree import ElementBase
+ 
+ from searx.data import ENGINE_TRAITS
+@@ -142,7 +143,7 @@ def request(query: str, params: "OnlineParams") -> None:
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+     res = EngineResults()
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     # Each result is a div with class "flex" inside "js-aarecord-list-outer"
+     # container.  The "flex" filter excludes non-result div such as section
+@@ -254,7 +255,7 @@ def fetch_traits(engine_traits: EngineTraits) -> None:
+     if not resp.ok:
+         raise RuntimeError("Response from Anna's Archive is not OK.")
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     # supported language codes
+     lang_map: dict[str, str] = {}
+diff --git a/searx/engines/ansa.py b/searx/engines/ansa.py
+index a26b9d4..21afed9 100644
+--- a/searx/engines/ansa.py
++++ b/searx/engines/ansa.py
+@@ -14,6 +14,7 @@ list in ``settings.yml``:
+ """
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ from searx.result_types import EngineResults, MainResult
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+@@ -61,7 +62,7 @@ def request(query, params):
+ 
+ def response(resp) -> EngineResults:
+     res = EngineResults()
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(doc, "//div[@class='article']"):
+ 
+diff --git a/searx/engines/apkmirror.py b/searx/engines/apkmirror.py
+index 48604f8..4dc5be8 100644
+--- a/searx/engines/apkmirror.py
++++ b/searx/engines/apkmirror.py
+@@ -4,6 +4,7 @@
+ # pylint: disable=invalid-name
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ 
+ from searx.utils import (
+     eval_xpath_list,
+@@ -42,7 +43,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     # parse results
+     for result in eval_xpath_list(dom, "//div[@id='content']//div[@class='listWidget']/div/div[@class='appRow']"):
+diff --git a/searx/engines/archlinux.py b/searx/engines/archlinux.py
+index acf31c7..04787b5 100644
+--- a/searx/engines/archlinux.py
++++ b/searx/engines/archlinux.py
+@@ -11,6 +11,7 @@ Arch Wiki blocks access to it.
+ from urllib.parse import urlencode, urljoin, urlparse
+ 
+ import babel
++import lxml
+ 
+ from searx.enginelib.traits import EngineTraits
+ from searx.locales import language_tag
+@@ -69,7 +70,7 @@ def request(query, params):
+ def response(resp):
+ 
+     results = []
+-    dom = resp.html()  # type: ignore
++    dom = lxml.html.fromstring(resp.text)  # type: ignore
+ 
+     # get the base URL for the language in which request was made
+     sxng_lang = resp.search_params["searxng_locale"].split("-")[0]
+@@ -130,7 +131,7 @@ def fetch_traits(engine_traits: EngineTraits):
+     if not resp.ok:
+         raise RuntimeError("Response from Arch Linux Wiki is not OK.")
+ 
+-    dom = resp.html()  # type: ignore
++    dom = lxml.html.fromstring(resp.text)  # type: ignore
+     for a in eval_xpath_list(dom, "//a[@class='interlanguage-link-target']"):
+         sxng_tag = language_tag(babel.Locale.parse(a.get("lang"), sep="-"))
+         # zh_Hans --> zh
+diff --git a/searx/engines/bandcamp.py b/searx/engines/bandcamp.py
+index d0212b4..590d206 100644
+--- a/searx/engines/bandcamp.py
++++ b/searx/engines/bandcamp.py
+@@ -10,6 +10,7 @@
+ 
+ from urllib.parse import urlencode, urlparse, parse_qs
+ from dateutil.parser import parse as dateparse
++from lxml import html
+ 
+ from searx.utils import (
+     eval_xpath_getindex,
+@@ -45,7 +46,7 @@ def request(query, params):
+ def response(resp):
+ 
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, '//li[contains(@class, "searchresult")]'):
+ 
+diff --git a/searx/engines/bing.py b/searx/engines/bing.py
+index b9534b9..955e5c4 100644
+--- a/searx/engines/bing.py
++++ b/searx/engines/bing.py
+@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
+ 
+ import babel
+ import babel.languages
++from lxml import html
+ 
+ from searx.enginelib.traits import EngineTraits
+ from searx.locales import region_tag
+@@ -95,7 +96,7 @@ def response(resp: "SXNG_Response") -> list[dict[str, t.Any]]:
+ 
+     results: list[dict[str, t.Any]] = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for item in eval_xpath_list(dom, '//ol[@id="b_results"]/li[contains(@class, "b_algo")]'):
+         link = eval_xpath_getindex(item, ".//h2/a", 0, None)
+@@ -155,7 +156,7 @@ def fetch_traits(engine_traits: EngineTraits) -> None:
+     if not resp.ok:
+         raise RuntimeError("Response from Bing is not OK.")
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     map_market_codes: dict[str, str] = {
+         "zh-hk": "en-hk",  # not sure why, but at Microslop this is the market code for Hongkong
+diff --git a/searx/engines/bing_images.py b/searx/engines/bing_images.py
+index c6d25bb..989adba 100644
+--- a/searx/engines/bing_images.py
++++ b/searx/engines/bing_images.py
+@@ -5,6 +5,8 @@ import typing as t
+ import json
+ from urllib.parse import urlencode
+ 
++from lxml import html
++
+ from searx.engines.bing import fetch_traits  # pylint: disable=unused-import
+ from searx.result_types import EngineResults
+ 
+@@ -73,7 +75,7 @@ def response(resp: "SXNG_Response") -> EngineResults:
+ 
+     res = EngineResults()
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in dom.xpath('//ul[contains(@class, "dgControl_list")]/li'):
+         metadata = result.xpath('.//a[@class="iusc"]/@m')
+diff --git a/searx/engines/bing_news.py b/searx/engines/bing_news.py
+index 112c87b..6a9df33 100644
+--- a/searx/engines/bing_news.py
++++ b/searx/engines/bing_news.py
+@@ -9,6 +9,8 @@
+ 
+ from urllib.parse import urlencode
+ 
++from lxml import html
++
+ from searx.enginelib.traits import EngineTraits
+ from searx.engines.bing import get_locale_params
+ from searx.utils import eval_xpath, eval_xpath_getindex, eval_xpath_list, extract_text
+@@ -76,7 +78,7 @@ def response(resp):
+ 
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for newsitem in eval_xpath_list(dom, '//div[contains(@class, "newsitem")]'):
+         link = eval_xpath_getindex(newsitem, './/a[@class="title"]', 0, None)
+diff --git a/searx/engines/bing_videos.py b/searx/engines/bing_videos.py
+index d78b012..8b857af 100644
+--- a/searx/engines/bing_videos.py
++++ b/searx/engines/bing_videos.py
+@@ -4,6 +4,8 @@
+ import json
+ from urllib.parse import urlencode
+ 
++from lxml import html
++
+ from searx.engines.bing import (  # pylint: disable=unused-import
+     fetch_traits,
+     get_locale_params,
+@@ -66,7 +68,7 @@ def response(resp):
+ 
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in dom.xpath('//div[contains(@id, "mc_vtvc_video")]'):
+         metadata = json.loads(eval_xpath_getindex(result, './/div[@class="vrhdata"]/@vrhm', index=0))
+diff --git a/searx/engines/brave.py b/searx/engines/brave.py
+index 31e9d82..8d09942 100644
+--- a/searx/engines/brave.py
++++ b/searx/engines/brave.py
+@@ -125,6 +125,7 @@ from urllib.parse import (
+ )
+ 
+ from dateutil import parser
++from lxml import html
+ 
+ from searx import locales
+ from searx.enginelib.traits import EngineTraits
+@@ -288,7 +289,7 @@ def response(resp: SXNG_Response) -> EngineResults:
+ 
+ def _parse_search(resp: SXNG_Response) -> EngineResults:
+     res = EngineResults()
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, "//div[contains(@class, 'snippet ')]"):
+         url: str | None = eval_xpath_getindex(result, ".//a/@href", 0, default=None)
+@@ -351,7 +352,7 @@ def _parse_search(resp: SXNG_Response) -> EngineResults:
+ 
+ def _parse_news(resp: SXNG_Response) -> EngineResults:
+     res = EngineResults()
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, "//div[@data-type='news']"):
+         url = eval_xpath_getindex(result, ".//a/@href", 0, default=None)
+@@ -433,7 +434,7 @@ def fetch_traits(engine_traits: EngineTraits):
+     if not resp.ok:
+         raise RuntimeError("Response from Brave languages is not OK.")
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for option in dom.xpath("//section//option[@value='en-us']/../option"):
+         ui_lang = option.get("value")
+diff --git a/searx/engines/btdigg.py b/searx/engines/btdigg.py
+index 67bc32e..c5254fc 100644
+--- a/searx/engines/btdigg.py
++++ b/searx/engines/btdigg.py
+@@ -38,7 +38,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     search_res = dom.xpath('//div[@class="one_result"]')
+ 
+diff --git a/searx/engines/destatis.py b/searx/engines/destatis.py
+index 05b09d3..3622cd1 100644
+--- a/searx/engines/destatis.py
++++ b/searx/engines/destatis.py
+@@ -2,6 +2,7 @@
+ """DeStatis"""
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+ about = {
+@@ -41,7 +42,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     # filter out suggested results on further page because they're the same on each page
+     extra_xpath = results_xpath_filter_recommended if resp.search_params['pageno'] > 1 else ''
+diff --git a/searx/engines/deviantart.py b/searx/engines/deviantart.py
+index f3b5991..776a3ee 100644
+--- a/searx/engines/deviantart.py
++++ b/searx/engines/deviantart.py
+@@ -4,6 +4,7 @@
+ import typing as t
+ 
+ import urllib.parse
++from lxml import html
+ 
+ from searx.result_types import EngineResults
+ from searx.utils import extract_text, eval_xpath, eval_xpath_list
+@@ -51,7 +52,7 @@ def request(query: str, params: "OnlineParams"):
+ def response(resp: "SXNG_Response") -> EngineResults:
+ 
+     res = EngineResults()
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, results_xpath):
+         thumbnail_src = extract_text(eval_xpath(result, thumbnail_src_xpath))
+diff --git a/searx/engines/dictzone.py b/searx/engines/dictzone.py
+index c9355bb..aa6c480 100644
+--- a/searx/engines/dictzone.py
++++ b/searx/engines/dictzone.py
+@@ -4,6 +4,7 @@ Dictzone
+ """
+ 
+ import urllib.parse
++from lxml import html
+ 
+ from searx.utils import eval_xpath, extract_text
+ from searx.result_types import EngineResults
+@@ -49,7 +50,7 @@ def response(resp) -> EngineResults:
+     if not resp.ok:
+         return results
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath(dom, ".//table[@id='r']//tr"):
+ 
+diff --git a/searx/engines/digbt.py b/searx/engines/digbt.py
+index 4a23c4f..cbe2e17 100644
+--- a/searx/engines/digbt.py
++++ b/searx/engines/digbt.py
+@@ -4,6 +4,7 @@ DigBT (Videos, Music, Files)
+ """
+ 
+ from urllib.parse import urljoin
++from lxml import html
+ from searx.utils import extract_text
+ 
+ # about
+@@ -32,7 +33,7 @@ def request(query, params):
+ 
+ 
+ def response(resp):
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     search_res = dom.xpath('.//td[@class="x-item"]')
+ 
+     if not search_res:
+diff --git a/searx/engines/duckduckgo.py b/searx/engines/duckduckgo.py
+index 0533b39..b32e0ed 100644
+--- a/searx/engines/duckduckgo.py
++++ b/searx/engines/duckduckgo.py
+@@ -172,6 +172,7 @@ import re
+ import typing as t
+ 
+ import babel
++import lxml.html
+ 
+ from searx import locales
+ from searx.enginelib import EngineCache
+@@ -469,7 +470,7 @@ def response(resp: "SXNG_Response") -> EngineResults:
+     if resp.status_code == 303:
+         return res
+ 
+-    doc = resp.html()
++    doc = lxml.html.fromstring(resp.text)
+     params = resp.search_params
+ 
+     if is_ddg_captcha(doc):
+diff --git a/searx/engines/duckduckgo_web.py b/searx/engines/duckduckgo_web.py
+index de8960a..1ac1742 100644
+--- a/searx/engines/duckduckgo_web.py
++++ b/searx/engines/duckduckgo_web.py
+@@ -17,6 +17,7 @@ import typing as t
+ import re
+ 
+ from urllib.parse import quote_plus, urljoin
++from lxml import html
+ 
+ from searx.utils import html_to_text, extract_text, eval_xpath
+ from searx.result_types import EngineResults
+@@ -80,7 +81,7 @@ def _fetch_first_page_link(
+     if resp.status_code != 200:
+         logger.error("vqd: got HTTP %s from duckduckgo.com", resp.status_code)
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     first_page_link = extract_text(eval_xpath(dom, "//link[@id='deep_preload_link']/@href"))
+ 
+     if not first_page_link:
+diff --git a/searx/engines/duden.py b/searx/engines/duden.py
+index 8aa67bf..77664f8 100644
+--- a/searx/engines/duden.py
++++ b/searx/engines/duden.py
+@@ -2,6 +2,7 @@
+ """Duden"""
+ 
+ from urllib.parse import quote, urljoin
++from lxml import html
+ from searx.utils import extract_text, eval_xpath, eval_xpath_list, eval_xpath_getindex
+ from searx.network import raise_for_httperror
+ 
+@@ -47,7 +48,7 @@ def response(resp):
+ 
+     raise_for_httperror(resp)
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, '//section[not(contains(@class, "essay"))]'):
+         url = eval_xpath_getindex(result, './/h2/a', 0).get('href')
+diff --git a/searx/engines/ebay.py b/searx/engines/ebay.py
+index 658810c..365c5b5 100644
+--- a/searx/engines/ebay.py
++++ b/searx/engines/ebay.py
+@@ -5,6 +5,7 @@ Ebay (Videos, Music, Files)
+ 
+ from urllib.parse import quote
+ 
++from lxml import html
+ from searx.engines.xpath import extract_text
+ 
+ # about
+@@ -43,7 +44,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     results_dom = dom.xpath(results_xpath)
+     if not results_dom:
+         return []
+diff --git a/searx/engines/emojipedia.py b/searx/engines/emojipedia.py
+index b6d4efd..9bda212 100644
+--- a/searx/engines/emojipedia.py
++++ b/searx/engines/emojipedia.py
+@@ -9,6 +9,7 @@ since 2021. Emojipedia is a voting member of The Unicode Consortium.[1]
+ """
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ 
+ from searx.utils import (
+     eval_xpath_list,
+@@ -40,7 +41,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, '//div[starts-with(@class, "EmojisList")]/a'):
+ 
+diff --git a/searx/engines/fdroid.py b/searx/engines/fdroid.py
+index 0de834c..144a470 100644
+--- a/searx/engines/fdroid.py
++++ b/searx/engines/fdroid.py
+@@ -4,6 +4,7 @@ F-Droid (a repository of FOSS applications for Android)
+ """
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ from searx.utils import extract_text
+ 
+ # about
+@@ -36,7 +37,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for app in dom.xpath('//a[@class="package-header"]'):
+         app_url = app.xpath('./@href')[0]
+diff --git a/searx/engines/findfiles.py b/searx/engines/findfiles.py
+index a00ce63..2ce7d8e 100644
+--- a/searx/engines/findfiles.py
++++ b/searx/engines/findfiles.py
+@@ -13,6 +13,8 @@ from os.path import basename
+ from urllib.parse import urlencode
+ import typing as t
+ 
++from lxml import html
++
+ from searx.result_types import EngineResults
+ from searx.utils import extract_text, eval_xpath, eval_xpath_list
+ 
+@@ -74,7 +76,7 @@ def request(query: str, params: "OnlineParams") -> None:
+ def response(resp: "SXNG_Response") -> EngineResults:
+     res = EngineResults()
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     if findfiles_categ == "image":
+         for result in eval_xpath_list(
+             dom, "//div[contains(@class, 'image-mosaic')]/div[contains(@class, 'image-item')]"
+diff --git a/searx/engines/geizhals.py b/searx/engines/geizhals.py
+index df92894..6b8511f 100644
+--- a/searx/engines/geizhals.py
++++ b/searx/engines/geizhals.py
+@@ -16,6 +16,7 @@ to the search term:
+ import re
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ 
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+@@ -66,7 +67,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     for result in eval_xpath_list(dom, "//article[contains(@class, 'listview__item')]"):
+         content = []
+         for spec in eval_xpath_list(result, ".//div[contains(@class, 'specs-grid__item')]"):
+diff --git a/searx/engines/giphy.py b/searx/engines/giphy.py
+index 1e3ec84..e50922c 100644
+--- a/searx/engines/giphy.py
++++ b/searx/engines/giphy.py
+@@ -7,6 +7,8 @@ import re
+ 
+ import typing as t
+ 
++from lxml import html
++
+ from searx.enginelib import EngineCache
+ from searx.exceptions import SearxEngineAPIException
+ from searx.network import get
+@@ -65,7 +67,8 @@ def _get_api_key() -> str:
+     if cached:
+         return cached
+ 
+-    homepage_doc = get(base_url).html()
++    homepage_resp = get(base_url)
++    homepage_doc = html.fromstring(homepage_resp.text)
+ 
+     for script_src in eval_xpath_list(homepage_doc, "//script[contains(@src, 'layout')]/@src"):
+         script_resp = get(base_url + script_src)
+diff --git a/searx/engines/gmx.py b/searx/engines/gmx.py
+index b462723..434d212 100644
+--- a/searx/engines/gmx.py
++++ b/searx/engines/gmx.py
+@@ -10,6 +10,7 @@ import time
+ import typing as t
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ 
+ from searx.result_types import EngineResults
+ from searx.exceptions import SearxEngineCaptchaException
+@@ -42,7 +43,7 @@ def _get_page_hash(query: str, page: int, headers: dict[str, str]) -> str:
+     resp = get(f"{base_url}/web/result?q={query}&page={page}", headers=headers)
+ 
+     # detect captcha (if any)
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     if eval_xpath(doc, "//*[@id='spam-messages']"):
+         raise SearxEngineCaptchaException()
+ 
+diff --git a/searx/engines/goodreads.py b/searx/engines/goodreads.py
+index 2fc600c..c1d19ee 100644
+--- a/searx/engines/goodreads.py
++++ b/searx/engines/goodreads.py
+@@ -3,6 +3,7 @@
+ 
+ from urllib.parse import urlencode
+ 
++from lxml import html
+ from searx.utils import extract_text, eval_xpath, eval_xpath_list
+ 
+ about = {
+@@ -39,7 +40,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, results_xpath):
+         results.append(
+diff --git a/searx/engines/google_play.py b/searx/engines/google_play.py
+index f46a53f..53712b3 100644
+--- a/searx/engines/google_play.py
++++ b/searx/engines/google_play.py
+@@ -2,6 +2,7 @@
+ """Google Play Apps & Google Play Movies"""
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ from searx.utils import (
+     eval_xpath,
+     extract_url,
+@@ -51,7 +52,7 @@ def response(resp):
+ def response_movies(resp):
+ 
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for section in eval_xpath(dom, '//c-wiz/section/header/..'):
+         sec_name = extract_text(eval_xpath(section, './header'))
+@@ -78,7 +79,7 @@ def response_movies(resp):
+ def response_apps(resp):
+ 
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     if eval_xpath(dom, '//div[@class="v6DsQb"]'):
+         return []
+diff --git a/searx/engines/google_scholar.py b/searx/engines/google_scholar.py
+index cf314e1..3563656 100644
+--- a/searx/engines/google_scholar.py
++++ b/searx/engines/google_scholar.py
+@@ -26,6 +26,7 @@ import typing as t
+ 
+ from urllib.parse import urlencode
+ from datetime import datetime
++from lxml import html
+ from curl_cffi.requests.exceptions import TooManyRedirects
+ 
+ from searx.utils import (
+@@ -105,7 +106,7 @@ def response(resp: "SXNG_Response") -> EngineResults:  # pylint: disable=too-man
+         raise TooManyRedirects(f"location {resp.headers['Location'].split('?')[0]}")
+ 
+     res = EngineResults()
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     detect_google_captcha(dom)
+ 
+     # parse results
+diff --git a/searx/engines/imgur.py b/searx/engines/imgur.py
+index 9a54b2f..ff7bdff 100644
+--- a/searx/engines/imgur.py
++++ b/searx/engines/imgur.py
+@@ -2,6 +2,7 @@
+ """Imgur (images)"""
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ from searx.utils import extract_text, eval_xpath, eval_xpath_list
+ 
+ about = {
+@@ -39,7 +40,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, results_xpath):
+         thumbnail_src = extract_text(eval_xpath(result, thumbnail_xpath))
+diff --git a/searx/engines/ina.py b/searx/engines/ina.py
+index 8e7b1a2..bebd380 100644
+--- a/searx/engines/ina.py
++++ b/searx/engines/ina.py
+@@ -5,6 +5,7 @@ INA (Videos)
+ 
+ from html import unescape
+ from urllib.parse import urlencode
++from lxml import html
+ from searx.utils import extract_text, eval_xpath, eval_xpath_list, eval_xpath_getindex
+ 
+ # about
+@@ -47,7 +48,7 @@ def response(resp):
+     results = []
+ 
+     # we get html in a JSON container...
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     # parse results
+     for result in eval_xpath_list(dom, results_xpath):
+diff --git a/searx/engines/ipernity.py b/searx/engines/ipernity.py
+index 430da6b..6e5eb78 100644
+--- a/searx/engines/ipernity.py
++++ b/searx/engines/ipernity.py
+@@ -5,6 +5,7 @@ from datetime import datetime
+ from json import loads, JSONDecodeError
+ 
+ from urllib.parse import quote_plus
++from lxml import html
+ 
+ from searx.utils import extr, extract_text, eval_xpath, eval_xpath_list
+ 
+@@ -32,7 +33,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     images = eval_xpath_list(doc, '//a[starts-with(@href, "/doc")]//img')
+ 
+diff --git a/searx/engines/kagi.py b/searx/engines/kagi.py
+index 205e2c4..7189b5e 100644
+--- a/searx/engines/kagi.py
++++ b/searx/engines/kagi.py
+@@ -47,7 +47,6 @@ from datetime import datetime, timedelta
+ import typing as t
+ 
+ 
+-from searx.search.processors.abstract import TimeRangeType
+ from searx.extended_types import SXNG_Response
+ from searx.result_types import EngineResults
+ from searx.utils import html_to_text, parse_duration_string
+@@ -55,6 +54,7 @@ from searx.utils import html_to_text, parse_duration_string
+ if t.TYPE_CHECKING:
+     from searx.search.processors import OnlineParams
+ 
++TimeRangeType = t.Literal["day", "week", "month", "year"]
+ about = {
+     "website": "https://kagi.com",
+     "wikidata_id": "Q26000117",
+diff --git a/searx/engines/kickass.py b/searx/engines/kickass.py
+index 849d61f..311c288 100644
+--- a/searx/engines/kickass.py
++++ b/searx/engines/kickass.py
+@@ -5,6 +5,7 @@ import random
+ from operator import itemgetter
+ from urllib.parse import quote
+ 
++from lxml import html
+ from searx.utils import (
+     eval_xpath,
+     eval_xpath_getindex,
+@@ -38,7 +39,7 @@ def request(query, params):
+ 
+ def response(resp):
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     search_res = eval_xpath_list(dom, '//table[contains(@class, "data")]//tr[descendant::a]', None)
+     if search_res is None:
+diff --git a/searx/engines/lib_rs.py b/searx/engines/lib_rs.py
+index 600dfe9..79a69d1 100644
+--- a/searx/engines/lib_rs.py
++++ b/searx/engines/lib_rs.py
+@@ -2,6 +2,7 @@
+ """lib.rs (packages)"""
+ 
+ from urllib.parse import quote_plus
++from lxml import html
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+ about = {
+@@ -34,7 +35,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(doc, results_xpath):
+         package_name = extract_text(eval_xpath(result, title_xpath))
+diff --git a/searx/engines/luxxle.py b/searx/engines/luxxle.py
+index a496b7a..37da21d 100644
+--- a/searx/engines/luxxle.py
++++ b/searx/engines/luxxle.py
+@@ -9,6 +9,7 @@ from json import dumps
+ from urllib.parse import quote_plus, unquote_plus
+ 
+ import typing as t
++from lxml import html
+ 
+ from searx.result_types import EngineResults
+ from searx.network import get
+@@ -187,7 +188,7 @@ def _image_results(doc: ElementType, res: EngineResults):
+ 
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     res = EngineResults()
+ 
+     match luxxle_categ:
+diff --git a/searx/engines/mediathekviewweb.py b/searx/engines/mediathekviewweb.py
+index 93373b3..70afc40 100644
+--- a/searx/engines/mediathekviewweb.py
++++ b/searx/engines/mediathekviewweb.py
+@@ -1,80 +1,73 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """MediathekViewWeb (API)"""
+ 
+-import typing as t
+ import datetime
+-
+-from searx.result_types import EngineResults
+-
+-if t.TYPE_CHECKING:
+-    from searx.extended_types import SXNG_Response
+-    from searx.search.processors import OnlineParams
++from json import loads, dumps
+ 
+ about = {
+-    "website": "https://mediathekviewweb.de/",
+-    "wikidata_id": "Q27877380",
+-    "official_api_documentation": "https://gist.github.com/bagbag/a2888478d27de0e989cf777f81fb33de",
++    "website": 'https://mediathekviewweb.de/',
++    "wikidata_id": 'Q27877380',
++    "official_api_documentation": 'https://gist.github.com/bagbag/a2888478d27de0e989cf777f81fb33de',
+     "use_official_api": True,
+     "require_api_key": False,
+-    "results": "JSON",
++    "results": 'JSON',
+ }
+ 
+ language = "de"
+-categories = ["videos"]
++categories = ['videos']
+ paging = True
+ time_range_support = False
+ safesearch = False
+ 
+ 
+-def request(query: str, params: "OnlineParams"):
++def request(query, params):
+ 
+-    params["url"] = "https://mediathekviewweb.de/api/query"
+-    params["method"] = "POST"
+-    params["headers"]["Content-type"] = "text/plain"
+-    params["json"] = {
+-        "queries": [
+-            {
+-                "fields": [
+-                    "title",
+-                    "topic",
+-                    "description",
+-                ],
+-                "query": query,
+-            },
+-        ],
+-        "sortBy": "timestamp",
+-        "sortOrder": "desc",
+-        "future": True,
+-        "offset": (params["pageno"] - 1) * 10,
+-        "size": 10,
+-    }
++    params['url'] = 'https://mediathekviewweb.de/api/query'
++    params['method'] = 'POST'
++    params['headers']['Content-type'] = 'text/plain'
++    params['data'] = dumps(
++        {
++            'queries': [
++                {
++                    'fields': [
++                        'title',
++                        'topic',
++                    ],
++                    'query': query,
++                },
++            ],
++            'sortBy': 'timestamp',
++            'sortOrder': 'desc',
++            'future': True,
++            'offset': (params['pageno'] - 1) * 10,
++            'size': 10,
++        }
++    )
++    return params
+ 
+ 
+-def response(resp: "SXNG_Response") -> EngineResults:
++def response(resp):
+ 
+-    json_resp: dict[str, t.Any] = resp.json()
++    resp = loads(resp.text)
+ 
+-    mwv_result = json_resp["result"]
+-    mwv_result_list = mwv_result["results"]
++    mwv_result = resp['result']
++    mwv_result_list = mwv_result['results']
+ 
+-    res = EngineResults()
++    results = []
+ 
+     for item in mwv_result_list:
+-        item["hms"] = str(datetime.timedelta(seconds=item["duration"]))
+ 
+-        video_url = item["url_video_hd"] or item["url_video"] or item["url_video_low"] or item["url_video"]
+-        if not video_url:
+-            continue
++        item['hms'] = str(datetime.timedelta(seconds=item['duration']))
+ 
+-        res.add(
+-            res.types.LegacyResult(
+-                url=video_url,
+-                title="%(channel)s: %(title)s (%(hms)s)" % item,
+-                length=item["hms"],
+-                content="%(description)s" % item,
+-                iframe_src=video_url,
+-                template="videos.html",
+-            )
++        results.append(
++            {
++                'url': item['url_video_hd'].replace("http://", "https://"),
++                'title': "%(channel)s: %(title)s (%(hms)s)" % item,
++                'length': item['hms'],
++                'content': "%(description)s" % item,
++                'iframe_src': item['url_video_hd'].replace("http://", "https://"),
++                'template': 'videos.html',
++            }
+         )
+ 
+-    return res
++    return results
+diff --git a/searx/engines/mojeek.py b/searx/engines/mojeek.py
+index 73ef2eb..3dfbf00 100644
+--- a/searx/engines/mojeek.py
++++ b/searx/engines/mojeek.py
+@@ -1,26 +1,15 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Mojeek (general, images, news)"""
+ 
+-import base64
+-import json
+-import random
+ import typing as t
+ from datetime import datetime
+ from urllib.parse import urlencode
+ 
+-import curl_cffi
+ from dateutil.relativedelta import relativedelta
++from lxml import html
+ 
+-from searx.exceptions import SearxEngineAPIException
+-from searx.enginelib import EngineCache
+-from searx.network import get, post
+-from searx.result_types import EngineResults
+ from searx.enginelib.traits import EngineTraits
+-from searx.utils import eval_xpath, eval_xpath_list, extract_text, solve_altcha
+-
+-if t.TYPE_CHECKING:
+-    from searx.extended_types import SXNG_Response
+-    from searx.search.processors import OnlineParams
++from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+ about = {
+     "website": "https://mojeek.com",
+@@ -62,44 +51,13 @@ region_param = "arc"
+ 
+ _delta_kwargs = {"day": "days", "week": "weeks", "month": "months", "year": "years"}
+ 
+-CACHE: EngineCache
+-"""Cache for storing the auth cookie after solving the CAPTCHA."""
+-
+ 
+-def setup(engine_settings: dict[str, t.Any]) -> bool | None:
++def setup(_: dict[str, t.Any]) -> bool | None:
+     if search_type not in ("", "images", "news"):
+         raise ValueError(f"Invalid search type {search_type}")
+ 
+-    global CACHE  # pylint: disable=global-statement
+-    CACHE = EngineCache(engine_settings["engine"])
+-
+-
+-def _captcha_token() -> str:
+-    if token := CACHE.get("chllg"):
+-        return token
+-
+-    challenge = get(f"{base_url}/captcha/challenge").json()
+-
+-    solution = solve_altcha(challenge["parameters"])
+-    if not solution:
+-        raise SearxEngineAPIException("failed to solve CAPTCHA")
+-    key, counter = solution
+ 
+-    solution = {
+-        "challenge": challenge,
+-        "solution": {"counter": counter, "derivedKey": key, "time": random.randint(100, 200)},
+-    }
+-    solution_encoded = base64.b64encode(json.dumps(solution).encode())
+-    mp = curl_cffi.CurlMime()
+-    mp.addpart(name="altcha", data=solution_encoded)
+-    resp = post(f"{base_url}/captcha/verify", multipart=mp)
+-
+-    token = resp.cookies["chllg"]
+-    CACHE.set("chllg", token)
+-    return token
+-
+-
+-def request(query: str, params: "OnlineParams"):
++def request(query, params):
+     args = {
+         "q": query,
+         "safe": min(params["safesearch"], 1),
+@@ -121,62 +79,63 @@ def request(query: str, params: "OnlineParams"):
+     params["cookies"] = {
+         language_param: traits.get_language(params["searxng_locale"], traits.custom["language_all"]),
+         region_param: traits.get_region(params["searxng_locale"], traits.custom["region_all"]),
+-        "chllg": _captcha_token(),
+     }
+ 
++    return params
++
+ 
+-def _general_results(dom) -> EngineResults:
+-    res = EngineResults()
++def _general_results(dom):
++    results = []
+ 
+     for result in eval_xpath_list(dom, results_xpath):
+-        res.add(
+-            res.types.MainResult(
+-                url=extract_text(eval_xpath(result, url_xpath)),
+-                title=extract_text(eval_xpath(result, title_xpath)) or "",
+-                content=extract_text(eval_xpath(result, content_xpath)) or "",
+-            )
++        results.append(
++            {
++                "url": extract_text(eval_xpath(result, url_xpath)),
++                "title": extract_text(eval_xpath(result, title_xpath)),
++                "content": extract_text(eval_xpath(result, content_xpath)),
++            }
+         )
+ 
+     for suggestion in eval_xpath(dom, suggestion_xpath):
+-        res.add(res.types.LegacyResult(suggestion=extract_text(suggestion)))
++        results.append({"suggestion": extract_text(suggestion)})
+ 
+-    return res
++    return results
+ 
+ 
+-def _image_results(dom) -> EngineResults:
+-    res = EngineResults()
++def _image_results(dom):
++    results = []
+ 
+     for result in eval_xpath_list(dom, image_results_xpath):
+-        res.add(
+-            res.types.Image(
+-                template="images.html",
+-                url=extract_text(eval_xpath(result, image_url_xpath)),
+-                title=extract_text(eval_xpath(result, image_title_xpath)) or "",
+-                img_src=base_url + extract_text(eval_xpath(result, image_img_src_xpath)),  # type: ignore
+-                content="",
+-            )
++        results.append(
++            {
++                "template": "images.html",
++                "url": extract_text(eval_xpath(result, image_url_xpath)),
++                "title": extract_text(eval_xpath(result, image_title_xpath)),
++                "img_src": base_url + extract_text(eval_xpath(result, image_img_src_xpath)),  # type: ignore
++                "content": "",
++            }
+         )
+ 
+-    return res
++    return results
+ 
+ 
+-def _news_results(dom) -> EngineResults:
+-    res = EngineResults()
++def _news_results(dom):
++    results = []
+ 
+     for result in eval_xpath_list(dom, news_results_xpath):
+-        res.add(
+-            res.types.MainResult(
+-                url=extract_text(eval_xpath(result, news_url_xpath)),
+-                title=extract_text(eval_xpath(result, news_title_xpath)) or "",
+-                content=extract_text(eval_xpath(result, news_content_xpath)) or "",
+-            )
++        results.append(
++            {
++                "url": extract_text(eval_xpath(result, news_url_xpath)),
++                "title": extract_text(eval_xpath(result, news_title_xpath)),
++                "content": extract_text(eval_xpath(result, news_content_xpath)),
++            }
+         )
+ 
+-    return res
++    return results
+ 
+ 
+-def response(resp: "SXNG_Response") -> EngineResults:
+-    dom = resp.html()
++def response(resp):
++    dom = html.fromstring(resp.text)
+ 
+     if search_type == "":
+         return _general_results(dom)
+@@ -197,6 +156,7 @@ def fetch_traits(engine_traits: EngineTraits):
+     from babel import Locale, UnknownLocaleError
+ 
+     from searx.locales import get_official_locales, region_tag
++    from searx.network import get  # see https://github.com/searxng/searxng/issues/762
+ 
+     resp = get(
+         base_url + "/preferences",
+@@ -206,7 +166,7 @@ def fetch_traits(engine_traits: EngineTraits):
+     if not resp.ok:
+         raise RuntimeError("Response from Mojeek is not OK.")
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     languages = eval_xpath_list(dom, f'//select[@name="{language_param}"]/option/@value')
+ 
+diff --git a/searx/engines/neocities.py b/searx/engines/neocities.py
+index 8fd5bbc..0e0fcb3 100644
+--- a/searx/engines/neocities.py
++++ b/searx/engines/neocities.py
+@@ -7,6 +7,8 @@
+ from urllib.parse import urlencode
+ import typing as t
+ 
++from lxml import html
++
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ from searx.result_types import EngineResults
+ 
+@@ -49,7 +51,7 @@ def request(query: str, params: "OnlineParams") -> None:
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+     results = EngineResults()
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, results_xpath):
+         results.add(
+diff --git a/searx/engines/neosearch.py b/searx/engines/neosearch.py
+index 24a75ab..8489bc2 100644
+--- a/searx/engines/neosearch.py
++++ b/searx/engines/neosearch.py
+@@ -7,6 +7,8 @@
+ from json import loads
+ import typing as t
+ 
++from lxml import html
++
+ from searx.exceptions import SearxEngineAPIException
+ from searx.extended_types import SXNG_Response
+ from searx.network import get
+@@ -36,7 +38,7 @@ categories = ["general"]
+ 
+ def _obtain_xsrf_token() -> str:
+     resp = get(base_url)
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     xsrf_token = extract_text(eval_xpath(doc, "//meta[@name='xsrf-token']/@content"))
+     if not xsrf_token:
+diff --git a/searx/engines/niconico.py b/searx/engines/niconico.py
+index 4184570..8a94317 100644
+--- a/searx/engines/niconico.py
++++ b/searx/engines/niconico.py
+@@ -3,6 +3,7 @@
+ 
+ from urllib.parse import urlencode
+ from datetime import datetime, timedelta
++from lxml import html
+ 
+ from searx.utils import eval_xpath_getindex, eval_xpath_list, eval_xpath, extract_text
+ 
+@@ -47,7 +48,7 @@ def request(query, params):
+ 
+ def response(resp):
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for item in eval_xpath_list(dom, results_xpath):
+         relative_url = eval_xpath_getindex(item, url_xpath, 0)
+diff --git a/searx/engines/nyaa.py b/searx/engines/nyaa.py
+index 0046634..47c172a 100644
+--- a/searx/engines/nyaa.py
++++ b/searx/engines/nyaa.py
+@@ -3,6 +3,7 @@
+ 
+ from urllib.parse import urlencode
+ 
++from lxml import html
+ from searx.utils import (
+     eval_xpath_getindex,
+     extract_text,
+@@ -54,7 +55,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in dom.xpath(xpath_results):
+         # defaults
+diff --git a/searx/engines/ollama.py b/searx/engines/ollama.py
+index aafcc7a..532e107 100644
+--- a/searx/engines/ollama.py
++++ b/searx/engines/ollama.py
+@@ -3,6 +3,7 @@
+ 
+ from urllib.parse import urlencode
+ from datetime import datetime
++from lxml import html
+ 
+ from searx.utils import eval_xpath_list, eval_xpath_getindex, eval_xpath, extract_text
+ from searx.result_types import EngineResults
+@@ -36,7 +37,7 @@ def request(query, params):
+ def response(resp) -> EngineResults:
+     res = EngineResults()
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for item in eval_xpath_list(dom, results_xpath):
+         published_date = None
+diff --git a/searx/engines/openclipart.py b/searx/engines/openclipart.py
+index 6b4df60..3468fcd 100644
+--- a/searx/engines/openclipart.py
++++ b/searx/engines/openclipart.py
+@@ -2,6 +2,7 @@
+ """OpenClipArt (images)"""
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ from searx.utils import extract_text, eval_xpath, eval_xpath_list
+ 
+ about = {
+@@ -31,7 +32,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, "//div[contains(@class, 'gallery')]/div[contains(@class, 'artwork')]"):
+         results.append(
+diff --git a/searx/engines/pexels.py b/searx/engines/pexels.py
+index 8a6ce2c..51af574 100644
+--- a/searx/engines/pexels.py
++++ b/searx/engines/pexels.py
+@@ -5,6 +5,7 @@ import re
+ import typing as t
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ 
+ from searx.result_types import EngineResults
+ from searx.utils import eval_xpath_list
+@@ -12,21 +13,18 @@ from searx.enginelib import EngineCache
+ from searx.exceptions import SearxEngineAPIException, SearxEngineAccessDeniedException
+ from searx.network import get
+ 
+-if t.TYPE_CHECKING:
+-    from extended_types import SXNG_Response
+-    from search.processors.online import OnlineParams
+-
++# about
+ about = {
+-    "website": "https://www.pexels.com",
+-    "wikidata_id": "Q101240504",
+-    "official_api_documentation": "https://www.pexels.com/api/",
++    "website": 'https://www.pexels.com',
++    "wikidata_id": 'Q101240504',
++    "official_api_documentation": 'https://www.pexels.com/api/',
+     "use_official_api": False,
+     "require_api_key": False,
+-    "results": "JSON",
++    "results": 'JSON',
+ }
+ 
+-base_url = "https://www.pexels.com"
+-categories = ["images"]
++base_url = 'https://www.pexels.com'
++categories = ['images']
+ 
+ api_key = "H2jk9uKnhRmL6WPwh89zBezWvr"
+ """
+@@ -36,7 +34,7 @@ results_per_page = 20
+ 
+ paging = True
+ time_range_support = True
+-time_range_map = {"day": "last_24_hours", "week": "last_week", "month": "last_month", "year": "last_year"}
++time_range_map = {'day': 'last_24_hours', 'week': 'last_week', 'month': 'last_month', 'year': 'last_year'}
+ 
+ SECRET_KEY_RE = re.compile('"secret-key":\b*"(.*?)"')
+ SECRET_KEY_DB_KEY = "secret-key"
+@@ -61,7 +59,7 @@ def _get_secret_key():
+     if resp.status_code != 200:
+         raise SearxEngineAPIException("failed to obtain secret key")
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     for script_src in eval_xpath_list(doc, "//script/@src"):
+         script = get(script_src)
+         if script.status_code != 200:
+@@ -75,14 +73,14 @@ def _get_secret_key():
+     raise SearxEngineAPIException("failed to obtain secret key")
+ 
+ 
+-def request(query: str, params: "OnlineParams"):
++def request(query, params):
+     args = {
+-        "query": query,
+-        "page": params["pageno"],
+-        "per_page": results_per_page,
++        'query': query,
++        'page': params['pageno'],
++        'per_page': results_per_page,
+     }
+-    if params["time_range"]:
+-        args["date_from"] = time_range_map[params["time_range"]]
++    if params['time_range']:
++        args['date_from'] = time_range_map[params['time_range']]
+ 
+     params["url"] = f"{base_url}/en-us/api/v3/search/photos?{urlencode(args)}"
+ 
+@@ -99,21 +97,24 @@ def request(query: str, params: "OnlineParams"):
+     params["headers"]["secret-key"] = secret_key
+ 
+ 
+-def response(resp: "SXNG_Response") -> EngineResults:
++def response(resp):
+     res = EngineResults()
+     json_data = resp.json()
+ 
+-    for result in json_data.get("data", []):
++    for result in json_data.get('data', []):
+         attrs = result["attributes"]
+         res.add(
+-            res.types.Image(
+-                url=f"{base_url}/photo/{attrs['slug']}-{attrs['id']}/",
+-                title=attrs["title"],
+-                content=attrs["description"],
+-                thumbnail_src=attrs["image"]["small"],
+-                img_src=attrs["image"]["download_link"],
+-                resolution=f"{attrs['width']}x{attrs['height']}",
+-                author=f"{attrs['user']['username']}",
++            res.types.LegacyResult(
++                {
++                    'template': 'images.html',
++                    'url': f"{base_url}/photo/{attrs['slug']}-{attrs['id']}/",
++                    'title': attrs["title"],
++                    'content': attrs["description"],
++                    'thumbnail_src': attrs["image"]["small"],
++                    'img_src': attrs["image"]["download_link"],
++                    'resolution': f"{attrs['width']}x{attrs['height']}",
++                    'author': f"{attrs['user']['username']}",
++                }
+             )
+         )
+ 
+diff --git a/searx/engines/picjumbo.py b/searx/engines/picjumbo.py
+index 12a8b36..d5a95bd 100644
+--- a/searx/engines/picjumbo.py
++++ b/searx/engines/picjumbo.py
+@@ -7,6 +7,8 @@
+ from urllib.parse import urlparse, urlunparse
+ import typing as t
+ 
++from lxml import html
++
+ from searx.result_types import EngineResults
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+@@ -44,7 +46,7 @@ def _get_max_res_url(url: str) -> str:
+ def response(resp: "SXNG_Response"):
+     res = EngineResults()
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(doc, "//div[contains(@class, 'photo_query')]/div[contains(@class, 'photo_item')]"):
+         thumbnail = extract_text(eval_xpath(result, ".//img[contains(@class, 'image')]/@src")) or ""
+diff --git a/searx/engines/pkg_go_dev.py b/searx/engines/pkg_go_dev.py
+index a8209ae..60d65fd 100644
+--- a/searx/engines/pkg_go_dev.py
++++ b/searx/engines/pkg_go_dev.py
+@@ -7,6 +7,7 @@ from dateutil import parser
+ 
+ import babel
+ import flask_babel
++from lxml import html
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+ about = {
+@@ -50,7 +51,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(doc, results_xpath):
+         publishedDate = extract_text(eval_xpath(result, updated_xpath))
+diff --git a/searx/engines/privacywall.py b/searx/engines/privacywall.py
+index 51995cf..e108fd5 100644
+--- a/searx/engines/privacywall.py
++++ b/searx/engines/privacywall.py
+@@ -10,6 +10,7 @@ user information with Microsoft and Amazon.
+ import typing as t
+ from urllib.parse import urlencode, unquote_plus
+ 
++from lxml import html
+ import babel
+ 
+ from searx.enginelib.traits import EngineTraits
+@@ -159,7 +160,7 @@ def _video_results(doc: "ElementBase") -> EngineResults:
+ 
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     match privacywall_category:
+         case "general":
+             return _general_results(doc)
+@@ -186,7 +187,7 @@ def fetch_traits(engine_traits: EngineTraits) -> None:
+     if not resp.ok:
+         raise RuntimeError("Response from Privacywall is not OK.")
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     # <div class="dropdown-option" onclick="changeMenuLanguage(&quot;CZ&quot;)"></div>
+     for onclick_listener in eval_xpath(
+diff --git a/searx/engines/pypi.py b/searx/engines/pypi.py
+index a97d994..f206912 100644
+--- a/searx/engines/pypi.py
++++ b/searx/engines/pypi.py
+@@ -4,6 +4,7 @@
+ from urllib.parse import urlencode
+ from dateutil import parser
+ 
++from lxml import html
+ from searx.utils import (
+     eval_xpath_getindex,
+     eval_xpath_list,
+@@ -40,7 +41,7 @@ def request(query, params):
+ 
+ def response(resp):
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     for entry in eval_xpath_list(dom, '/html/body/main/div/div/div/form/div/ul/li/a[@class="package-snippet"]'):
+         url = base_url + extract_text(eval_xpath_getindex(entry, './@href', 0))  # type: ignore
+         title = extract_text(eval_xpath_getindex(entry, './h3/span[@class="package-snippet__name"]', 0))
+diff --git a/searx/engines/resulthunter.py b/searx/engines/resulthunter.py
+index b87013a..ee0384b 100644
+--- a/searx/engines/resulthunter.py
++++ b/searx/engines/resulthunter.py
+@@ -7,6 +7,8 @@
+ import typing as t
+ from urllib.parse import urlencode
+ 
++from lxml import html
++
+ from searx import locales
+ from searx.exceptions import SearxEngineResponseException
+ from searx.result_types import EngineResults
+@@ -109,7 +111,7 @@ def _image_results(doc: "ElementBase") -> EngineResults:
+ 
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     # if the request was wrong (e.g. missing params), the site doesn't contain a result container
+     # and instead shows an "Installation required" page to download the resulthunter browser extension
+diff --git a/searx/engines/rottentomatoes.py b/searx/engines/rottentomatoes.py
+index 2c7589e..d07504b 100644
+--- a/searx/engines/rottentomatoes.py
++++ b/searx/engines/rottentomatoes.py
+@@ -2,6 +2,7 @@
+ """RottenTomatoes (movies)"""
+ 
+ from urllib.parse import quote_plus
++from lxml import html
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+ # about
+@@ -34,7 +35,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, results_xpath):
+         content = []
+diff --git a/searx/engines/rumble.py b/searx/engines/rumble.py
+index f6b9d93..3215c13 100644
+--- a/searx/engines/rumble.py
++++ b/searx/engines/rumble.py
+@@ -4,6 +4,7 @@
+ from datetime import datetime
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ 
+ # about
+ from searx.utils import extract_text
+@@ -45,7 +46,7 @@ def request(query, params):
+ 
+ def response(resp):
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     results_dom = dom.xpath('//li[contains(@class, "video-listing-entry")]')
+ 
+     if not results_dom:
+diff --git a/searx/engines/s1search.py b/searx/engines/s1search.py
+index 221c505..87caeff 100644
+--- a/searx/engines/s1search.py
++++ b/searx/engines/s1search.py
+@@ -11,6 +11,8 @@ Some of the engines get their results from Google, others get them from Yahoo.
+ import typing as t
+ from urllib.parse import urlencode, urlparse, parse_qs
+ 
++from lxml import html
++
+ from searx.result_types import EngineResults
+ from searx.enginelib import EngineCache
+ from searx.utils import eval_xpath_list, eval_xpath, extract_text
+@@ -66,7 +68,7 @@ def request(query: str, params: "OnlineParams"):
+ def response(resp: "SXNG_Response") -> EngineResults:
+     res = EngineResults()
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     for suggestion in eval_xpath_list(doc, "//div[@class='aylf-yahoo-bottom' or @class='aylf-yahoo-sidebar']/div"):
+         res.add(res.types.LegacyResult({"suggestion": extract_text(suggestion)}))
+diff --git a/searx/engines/searchrockit.py b/searx/engines/searchrockit.py
+index 5ec4127..90858ee 100644
+--- a/searx/engines/searchrockit.py
++++ b/searx/engines/searchrockit.py
+@@ -4,6 +4,7 @@ but the results seem to come from Google."""
+ 
+ import typing as t
+ from urllib.parse import urlencode
++from lxml import html
+ from dateutil import parser
+ 
+ from searx.result_types import EngineResults
+@@ -45,7 +46,7 @@ def request(query: str, params: "OnlineParams") -> None:
+ 
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     res = EngineResults()
+ 
+     match searchrockit_categ:
+diff --git a/searx/engines/semantic_scholar.py b/searx/engines/semantic_scholar.py
+index 42dce98..473b6d0 100644
+--- a/searx/engines/semantic_scholar.py
++++ b/searx/engines/semantic_scholar.py
+@@ -26,6 +26,7 @@ Implementations
+ import typing as t
+ 
+ from datetime import datetime
++from lxml import html
+ from flask_babel import gettext  # pyright: ignore[reportUnknownVariableType]
+ 
+ from searx.network import get
+@@ -69,7 +70,7 @@ def get_ui_version() -> str:
+         if not resp.ok:
+             raise RuntimeError("Can't determine Semantic Scholar UI version")
+ 
+-        doc = resp.html()
++        doc = html.fromstring(resp.text)
+         ret_val = eval_xpath_getindex(doc, "//meta[@name='s2-ui-version']/@content", 0)
+         if not ret_val:
+             raise RuntimeError("Can't determine Semantic Scholar UI version")
+diff --git a/searx/engines/seznam.py b/searx/engines/seznam.py
+index 104ce31..bc24748 100644
+--- a/searx/engines/seznam.py
++++ b/searx/engines/seznam.py
+@@ -2,6 +2,7 @@
+ """Seznam"""
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ from searx.network import get
+ from searx.exceptions import SearxEngineAccessDeniedException
+ from searx.utils import (
+@@ -27,7 +28,7 @@ base_url = 'https://search.seznam.cz/'
+ 
+ def request(query, params):
+     response_index = get(base_url, headers=params['headers'], raise_for_httperror=True, timeout=3)
+-    dom = response_index.html()
++    dom = html.fromstring(response_index.text)
+ 
+     url_params = {
+         'q': query,
+@@ -49,7 +50,7 @@ def response(resp):
+ 
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.content.decode())
+     for result_element in eval_xpath_list(
+         dom, '//div[@id="searchpage-root"]//div[@class="Layout--left"]/div[@class="f2c528"]'
+     ):
+diff --git a/searx/engines/shopify_stock.py b/searx/engines/shopify_stock.py
+index e66d858..a511d92 100644
+--- a/searx/engines/shopify_stock.py
++++ b/searx/engines/shopify_stock.py
+@@ -6,6 +6,8 @@ Shopify.
+ import typing as t
+ from urllib.parse import urlencode
+ 
++from lxml import html
++
+ from searx.result_types import EngineResults
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+@@ -43,7 +45,7 @@ def _get_download_url(url: str) -> str:
+ def response(resp: "SXNG_Response"):
+     res = EngineResults()
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(doc, "//div[contains(@class, 'js-masonry-grid')]/div"):
+         url = base_url + (extract_text(eval_xpath(result, ".//a[contains(@class, 'photo-tile')]/@href")) or "")
+diff --git a/searx/engines/sogou.py b/searx/engines/sogou.py
+index b572b15..026f3de 100644
+--- a/searx/engines/sogou.py
++++ b/searx/engines/sogou.py
+@@ -58,7 +58,7 @@ def response(resp):
+     ):
+         raise SearxEngineCaptchaException()
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     results = []
+ 
+     # pylint: disable=line-too-long
+diff --git a/searx/engines/sogou_wechat.py b/searx/engines/sogou_wechat.py
+index 0de4da7..c7e2b87 100644
+--- a/searx/engines/sogou_wechat.py
++++ b/searx/engines/sogou_wechat.py
+@@ -4,6 +4,7 @@
+ from urllib.parse import urlencode
+ from datetime import datetime
+ import re
++from lxml import html
+ 
+ from searx.utils import extract_text
+ 
+@@ -36,7 +37,7 @@ def request(query, params):
+ 
+ 
+ def response(resp):
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     results = []
+ 
+     for item in dom.xpath('//li[contains(@id, "sogou_vr_")]'):
+diff --git a/searx/engines/solidtorrents.py b/searx/engines/solidtorrents.py
+index 622f172..9a3608a 100644
+--- a/searx/engines/solidtorrents.py
++++ b/searx/engines/solidtorrents.py
+@@ -5,6 +5,8 @@ from datetime import datetime
+ from urllib.parse import urlencode
+ import random
+ 
++from lxml import html
++
+ from searx.utils import (
+     extract_text,
+     eval_xpath,
+@@ -41,7 +43,7 @@ def request(query, params):
+ 
+ def response(resp):
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath(dom, '//li[contains(@class, "search-result")]'):
+         torrentfile = eval_xpath_getindex(result, './/a[contains(@class, "dl-torrent")]/@href', 0, None)
+diff --git a/searx/engines/sourcehut.py b/searx/engines/sourcehut.py
+index 9d22d05..fa3df8b 100644
+--- a/searx/engines/sourcehut.py
++++ b/searx/engines/sourcehut.py
+@@ -25,6 +25,7 @@ Implementations
+ import typing as t
+ 
+ from urllib.parse import urlencode
++from lxml import html
+ 
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text, searxng_useragent
+ from searx.result_types import EngineResults
+@@ -70,7 +71,7 @@ def request(query: str, params: "OnlineParams") -> None:
+ def response(resp: "SXNG_Response") -> EngineResults:
+ 
+     res = EngineResults()
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     for item in eval_xpath_list(doc, "(//div[@class='event-list'])[1]/div[contains(@class, 'event')]"):
+         res.add(
+diff --git a/searx/engines/startpage.py b/searx/engines/startpage.py
+index adb2b11..7c910ef 100644
+--- a/searx/engines/startpage.py
++++ b/searx/engines/startpage.py
+@@ -98,6 +98,7 @@ from unicodedata import combining, normalize
+ 
+ import babel.localedata
+ import dateutil.parser
++import lxml.html
+ 
+ from searx.enginelib import EngineCache
+ from searx.enginelib.traits import EngineTraits
+@@ -256,7 +257,7 @@ def get_sc_code(params):
+             message="get_sc_code: got redirected to https://www.startpage.com/sp/captcha",
+         )
+ 
+-    dom = resp.html()
++    dom = lxml.html.fromstring(resp.text)
+ 
+     try:
+         sc_code = eval_xpath(dom, search_form_xpath + '//input[@name="sc"]/@value')[0]
+@@ -502,7 +503,7 @@ def fetch_traits(engine_traits: EngineTraits):
+     if not resp.ok:
+         raise RuntimeError("Response from Startpage is not OK.")
+ 
+-    dom = resp.html()
++    dom = lxml.html.fromstring(resp.text)
+ 
+     # regions
+ 
+diff --git a/searx/engines/tiger.py b/searx/engines/tiger.py
+index 4f0c12d..a7b429a 100644
+--- a/searx/engines/tiger.py
++++ b/searx/engines/tiger.py
+@@ -11,6 +11,7 @@ from urllib.parse import urlencode
+ import typing as t
+ 
+ from dateutil import parser
++from lxml import html
+ 
+ from searx.exceptions import SearxEngineAPIException
+ from searx.extended_types import SXNG_Response
+@@ -71,7 +72,7 @@ def _obtain_session_code() -> str:
+         return cached_session
+ 
+     results_page = get(f"{base_url}/checkCode.aspx")
+-    doc = results_page.html()
++    doc = html.fromstring(results_page.text)
+ 
+     extra_data: dict[str, str] = {}
+     for extra_param in ("__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION"):
+@@ -129,7 +130,7 @@ def request(query: str, params: "OnlineParams"):
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+     res = EngineResults()
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+ 
+     if tiger_category == "Websuche":
+         for result in eval_xpath_list(doc, "//div[@id='mainContainer']//table/tr"):
+diff --git a/searx/engines/tokyotoshokan.py b/searx/engines/tokyotoshokan.py
+index d43cba9..b53d78e 100644
+--- a/searx/engines/tokyotoshokan.py
++++ b/searx/engines/tokyotoshokan.py
+@@ -5,6 +5,7 @@ import re
+ from datetime import datetime
+ from urllib.parse import urlencode
+ 
++from lxml import html
+ from searx.utils import extract_text, int_or_zero
+ 
+ # about
+@@ -37,7 +38,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     rows = dom.xpath('//table[@class="listing"]//tr[contains(@class, "category_0")]')
+ 
+     # check if there are no results or page layout was changed so we cannot parse it
+diff --git a/searx/engines/tonline.py b/searx/engines/tonline.py
+index 96e2f88..4edf5e3 100644
+--- a/searx/engines/tonline.py
++++ b/searx/engines/tonline.py
+@@ -12,6 +12,8 @@ results from YouTube.
+ import typing as t
+ from urllib.parse import urlencode
+ 
++from lxml import html
++
+ from searx.utils import eval_xpath_list, eval_xpath, extract_text, ElementType
+ from searx.result_types import EngineResults
+ from searx.enginelib import EngineAbout
+@@ -129,7 +131,7 @@ def _video_results(doc: ElementType, res: EngineResults):
+ 
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     res = EngineResults()
+     match tonline_categ:
+         case "web":
+diff --git a/searx/engines/uxwing.py b/searx/engines/uxwing.py
+index 21f62ae..fd845f9 100644
+--- a/searx/engines/uxwing.py
++++ b/searx/engines/uxwing.py
+@@ -2,6 +2,7 @@
+ """UXwing (images)"""
+ 
+ from urllib.parse import quote_plus
++from lxml import html
+ 
+ from searx.utils import eval_xpath, eval_xpath_list, extract_text
+ 
+@@ -25,7 +26,7 @@ def request(query, params):
+ def response(resp):
+     results = []
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     for result in eval_xpath_list(doc, "//article[starts-with(@id, 'post')]"):
+         classes = extract_text(eval_xpath(result, "./@class")).split(" ")
+         tags = []
+diff --git a/searx/engines/vuhuv.py b/searx/engines/vuhuv.py
+index 586edfe..08a8d79 100644
+--- a/searx/engines/vuhuv.py
++++ b/searx/engines/vuhuv.py
+@@ -7,6 +7,8 @@
+ import typing as t
+ from urllib.parse import urlencode
+ 
++from lxml import html
++
+ from searx.result_types import EngineResults
+ from searx.utils import eval_xpath_list, eval_xpath, extract_text
+ 
+@@ -99,7 +101,7 @@ def _video_results(doc: "ElementBase") -> EngineResults:
+ 
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     match vuhuv_category:
+         case "general":
+             return _general_results(doc)
+diff --git a/searx/engines/wikipedia.py b/searx/engines/wikipedia.py
+index f2a6457..1b41240 100644
+--- a/searx/engines/wikipedia.py
++++ b/searx/engines/wikipedia.py
+@@ -57,6 +57,7 @@ options:
+ import urllib.parse
+ 
+ import babel
++from lxml import html
+ 
+ from searx import locales, utils
+ from searx import network as _network
+@@ -284,7 +285,7 @@ def fetch_wikimedia_traits(engine_traits: EngineTraits):
+     if not resp.ok:
+         raise RuntimeError("Response from Wikipedia is not OK.")
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     for row in dom.xpath('//table[contains(@class,"sortable")]//tbody/tr'):
+         cols = row.xpath("./td")
+         if not cols:
+diff --git a/searx/engines/xpath.py b/searx/engines/xpath.py
+index 014a672..428cadd 100644
+--- a/searx/engines/xpath.py
++++ b/searx/engines/xpath.py
+@@ -72,6 +72,7 @@ Implementations
+ 
+ from urllib.parse import urlencode
+ 
++from lxml import html
+ from searx.utils import extract_text, extract_url, eval_xpath, eval_xpath_list
+ from searx.network import raise_for_httperror
+ from searx.result_types import EngineResults
+@@ -286,7 +287,7 @@ def response(resp) -> EngineResults:  # pylint: disable=too-many-branches
+     if not resp.text:
+         return results
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+     is_onion = 'onions' in categories
+ 
+     if results_xpath:
+diff --git a/searx/engines/yahoo.py b/searx/engines/yahoo.py
+index def776c..dffc176 100644
+--- a/searx/engines/yahoo.py
++++ b/searx/engines/yahoo.py
+@@ -9,6 +9,8 @@ named `YBV`, which is cached for 24h before expiring.
+ import typing as t
+ from urllib.parse import unquote, urlencode, urljoin
+ 
++from lxml import html
++
+ from searx.enginelib import EngineCache
+ from searx.network import get  # see https://github.com/searxng/searxng/issues/762
+ from searx.result_types import EngineResults
+@@ -182,6 +184,7 @@ def parse_url(url_string: str) -> str:
+ def _yahoo_html(resp: "SXNG_Response") -> "SXNG_Response":
+     cookies = dict(resp.search_params["cookies"])
+     params = resp.search_params
++
+     for _ in range(_YBV_HOPS):
+         if ybv := resp.cookies.get("YBV"):
+             cookies["YBV"] = ybv
+@@ -212,7 +215,7 @@ def response(resp: "SXNG_Response") -> EngineResults:
+     results = EngineResults()
+     if resp.status_code != 200:
+         resp.raise_for_status()
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     for result in eval_xpath_list(dom, '//div[contains(@class,"algo-sr")]'):
+         url = eval_xpath_getindex(result, './/div[contains(@class,"compTitle")]//a/@href', 0, default=None)
+diff --git a/searx/engines/yahoo_news.py b/searx/engines/yahoo_news.py
+index 074531c..f9a5fee 100644
+--- a/searx/engines/yahoo_news.py
++++ b/searx/engines/yahoo_news.py
+@@ -11,6 +11,7 @@ import re
+ from urllib.parse import urlencode
+ from datetime import datetime, timedelta
+ from dateutil import parser
++from lxml import html
+ 
+ from searx.utils import (
+     eval_xpath_list,
+@@ -65,7 +66,7 @@ def request(query, params):
+ 
+ def response(resp):
+     results = []
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     # parse results
+     for result in eval_xpath_list(dom, '//ol[contains(@class,"searchCenterMiddle")]//li'):
+diff --git a/searx/engines/yandex.py b/searx/engines/yandex.py
+index 0bc6ec9..4324854 100644
+--- a/searx/engines/yandex.py
++++ b/searx/engines/yandex.py
+@@ -1,43 +1,32 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Yandex (Web, images)"""
+ 
+-from datetime import datetime, timedelta
+-import typing as t
+-from json import JSONDecodeError, loads
++from json import loads
+ from urllib.parse import urlencode
++from html import unescape
+ from lxml import html
+-
+-from searx.search.processors.abstract import TimeRangeType
+-from searx.exceptions import SearxEngineCaptchaException, SearxEngineResponseException
+-from searx.result_types import EngineResults
+-from searx.utils import humanize_bytes, eval_xpath, eval_xpath_list, extract_text, html_to_text
+-
+-if t.TYPE_CHECKING:
+-    from searx import logger  # logger is injected by searx.engines.set_loggers()
+-    from searx.extended_types import SXNG_Response
+-    from searx.search.processors import OnlineParams
++from searx.exceptions import SearxEngineCaptchaException
++from searx.utils import humanize_bytes, eval_xpath, eval_xpath_list, extract_text, extr
+ 
+ # Engine metadata
+ about = {
+-    "website": "https://yandex.com/",
+-    "wikidata_id": "Q5281",
++    "website": 'https://yandex.com/',
++    "wikidata_id": 'Q5281',
+     "official_api_documentation": "?",
+     "use_official_api": False,
+     "require_api_key": False,
+-    "results": "HTML",
++    "results": 'HTML',
+ }
+ 
+ # Engine configuration
+ categories = []
+-time_range_support = True
+ paging = True
+ enable_http3 = True
+-
+ search_type = ""
+ 
+ # Search URL
+-base_url_web = "https://yandex.com/search/site/"
+-base_url_images = "https://yandex.com/images/search"
++base_url_web = 'https://yandex.com/search/site/'
++base_url_images = 'https://yandex.com/images/search'
+ 
+ # Supported languages
+ yandex_supported_langs = [
+@@ -57,128 +46,107 @@ results_xpath = '//li[contains(@class, "serp-item")]'
+ url_xpath = './/a[@class="b-serp-item__title-link"]/@href'
+ title_xpath = './/h3[@class="b-serp-item__title"]/a[@class="b-serp-item__title-link"]/span'
+ content_xpath = './/div[@class="b-serp-item__content"]//div[@class="b-serp-item__text"]'
+-date_xpath = './/span[@data-mtime]/@data-mtime'
+ 
+ 
+-def catch_bad_response(resp: "SXNG_Response") -> None:
+-    if resp.headers.get("x-yandex-captcha") == "captcha":
++def catch_bad_response(resp):
++    if resp.headers.get('x-yandex-captcha') == 'captcha':
+         raise SearxEngineCaptchaException()
+ 
+ 
+-time_range_to_days_map: dict[TimeRangeType, int] = {
+-    "day": 1,
+-    "week": 7,
+-    "month": 30,
+-    "year": 365,
+-}
+-
+-
+-def _time_range_to_start_date(time_range: TimeRangeType) -> datetime:
+-    diff = timedelta(days=time_range_to_days_map[time_range])
+-    return datetime.now() - diff
++def request(query, params):
++    query_params_web = {
++        "tmpl_version": "releases",
++        "text": query,
++        "web": "1",
++        "frame": "1",
++        "searchid": "3131712",
++    }
+ 
++    lang = params["language"].split("-")[0]
++    if lang in yandex_supported_langs:
++        query_params_web["lang"] = lang
+ 
+-def request(query: str, params: "OnlineParams") -> None:
+-    args: dict[str, t.Any] = {
++    query_params_images = {
+         "text": query,
++        "uinfo": "sw-1920-sh-1080-ww-1125-wh-999",
+     }
++
+     if params['pageno'] > 1:
+-        args["p"] = params["pageno"] - 1
++        query_params_web.update({"p": params["pageno"] - 1})
++        query_params_images.update({"p": params["pageno"] - 1})
+ 
++    params["cookies"] = {'cookie': "yp=1716337604.sp.family%3A0#1685406411.szm.1:1920x1080:1920x999"}
++
++    if search_type == 'web':
++        params['url'] = f"{base_url_web}?{urlencode(query_params_web)}"
++    elif search_type == 'images':
++        params['url'] = f"{base_url_images}?{urlencode(query_params_images)}"
++
++    return params
++
++
++def response(resp):
+     if search_type == 'web':
+-        lang = params["searxng_locale"].split("-")[0]
+-        if lang in yandex_supported_langs:
+-            args["lang"] = lang
+-
+-        if time_range := params["time_range"]:
+-            start_date = _time_range_to_start_date(time_range)
+-            end_date = datetime.now()
+-            args.update(
++        catch_bad_response(resp)
++
++        dom = html.fromstring(resp.text)
++
++        results = []
++
++        for result in eval_xpath_list(dom, results_xpath):
++            results.append(
+                 {
+-                    "within": 777,  # must be set for time range search, meaning unclear
+-                    "from_day": start_date.day,
+-                    "from_month": start_date.month,
+-                    "from_year": start_date.year,
+-                    "to_day": end_date.day,
+-                    "to_month": end_date.month,
+-                    "to_year": end_date.year,
++                    'url': extract_text(eval_xpath(result, url_xpath)),
++                    'title': extract_text(eval_xpath(result, title_xpath)),
++                    'content': extract_text(eval_xpath(result, content_xpath)),
+                 }
+             )
+ 
+-        args.update(
+-            {
+-                "tmpl_version": "releases",
+-                "web": "1",
+-                "frame": "1",
+-                "searchid": "3131712",
+-            }
++        return results
++
++    if search_type == 'images':
++        catch_bad_response(resp)
++
++        html_data = html.fromstring(resp.text)
++        html_sample = unescape(html.tostring(html_data, encoding='unicode'))
++
++        content_between_tags = extr(
++            html_sample, '{"location":"/images/search/', 'advRsyaSearchColumn":null}}', default="fail"
+         )
+-        params['url'] = f"{base_url_web}?{urlencode(args)}"
+-    elif search_type == 'images':
+-        params['url'] = f"{base_url_images}?{urlencode(args)}"
+-
+-
+-def _parse_json_results(dom: html.HtmlElement) -> dict[str, t.Any]:
+-    # attempt to parse using xpath - finding element with "data-state" attribute
+-    data_elements = dom.xpath("//*[@data-state]/@data-state")
+-    for json_data in data_elements:
+-        try:
+-            json_resp = loads(json_data)
+-            if json_resp.get("location") == "/images/search/":
+-                return json_resp
+-        except JSONDecodeError:
+-            logger.debug("failed parsing data-state json")
+-
+-    raise SearxEngineResponseException("failed to parse JSON data")
+-
+-
+-def response(resp: "SXNG_Response") -> EngineResults:
+-    catch_bad_response(resp)
+-    results = EngineResults()
+-    dom = resp.html()
+-
+-    match search_type:
+-        case "web":
+-            for result in eval_xpath_list(dom, results_xpath):
+-                url = extract_text(eval_xpath(result, url_xpath))
+-                title = extract_text(eval_xpath(result, title_xpath))
+-                content = extract_text(eval_xpath(result, content_xpath))
+-
+-                # published date is only shown if time range search is used
+-                publishedDate = None
+-                if publishedDateMillis := extract_text(eval_xpath(result, date_xpath)):
+-                    publishedDate = datetime.utcfromtimestamp(int(publishedDateMillis))
+-                results.add(
+-                    results.types.MainResult(
+-                        url=url, title=str(title), content=str(content), publishedDate=publishedDate
+-                    )
+-                )
+-        case "images":
+-            json_resp = _parse_json_results(dom)
+-
+-            # build results from loaded json values
+-            for item_data in json_resp["initialState"]["serpList"]["items"]["entities"].values():
+-                viewerData: dict[str, t.Any] = item_data["viewerData"]
+-                snippet: dict[str, str] = viewerData.get("snippet", {})
+-
+-                # return the image with largest dimensions
+-                image_sources = viewerData.get("dups", []) + viewerData.get("preview", [])
+-                image_source = max(image_sources, key=lambda x: x["h"] * x["w"])
+-
+-                humanized_filesize = None
+-                if image_source.get("fileSizeInBytes"):
+-                    humanized_filesize = humanize_bytes(image_source["fileSizeInBytes"])
+-
+-                results.add(
+-                    results.types.Image(
+-                        title=snippet.get("title"),  # type: ignore
+-                        content=html_to_text(snippet.get("text")),  # type: ignore
+-                        url=snippet.get("url"),
+-                        img_src=image_source["url"],
+-                        filesize=humanized_filesize,  # type: ignore
+-                        thumbnail_src=item_data["image"],
+-                        resolution=f"{image_source['w']} x {image_source['h']}",
+-                    )
+-                )
+-
+-    return results
++        json_data = '{"location":"/images/search/' + content_between_tags + 'advRsyaSearchColumn":null}}'
++
++        if content_between_tags == "fail":
++            content_between_tags = extr(html_sample, '{"location":"/images/search/', 'false}}}')
++            json_data = '{"location":"/images/search/' + content_between_tags + 'false}}}'
++
++        json_resp = loads(json_data)
++
++        results = []
++        for _, item_data in json_resp['initialState']['serpList']['items']['entities'].items():
++            title = item_data['snippet']['title']
++            source = item_data['snippet']['url']
++
++            image_source = item_data["viewerData"]["thumb"]
++            for i in item_data['viewerData']['dups'] + item_data['viewerData']['preview']:
++                if i["h"] > image_source["h"]:
++                    image_source = i
++
++            humanized_filesize = None
++            if image_source.get("fileSizeInBytes"):
++                humanized_filesize = humanize_bytes(image_source["fileSizeInBytes"])
++
++            results.append(
++                {
++                    'title': title,
++                    'url': source,
++                    'img_src': image_source["url"],
++                    'filesize': humanized_filesize,
++                    'thumbnail_src': item_data["image"],
++                    'template': 'images.html',
++                    'resolution': f'{image_source["w"]} x {image_source["h"]}',
++                }
++            )
++
++        return results
++
++    return []
+diff --git a/searx/engines/yep.py b/searx/engines/yep.py
+index d98920f..81c60d6 100644
+--- a/searx/engines/yep.py
++++ b/searx/engines/yep.py
+@@ -80,6 +80,7 @@ def fetch_traits(engine_traits: "EngineTraits"):
+ 
+     # pylint: disable=import-outside-toplevel, too-many-branches
+ 
++    from lxml import html
+     import babel
+ 
+     from searx.locales import language_tag
+@@ -99,7 +100,7 @@ def fetch_traits(engine_traits: "EngineTraits"):
+     if not resp.ok:
+         raise RuntimeError("Response from Yep languages is not OK.")
+ 
+-    doc = resp.html()
++    doc = html.fromstring(resp.text)
+     url = eval_xpath_getindex(doc, "//script[contains(@src, 'PageApp')]/@src", index=0)
+ 
+     resp = get("https:" + extract_text(url), headers=headers, timeout=5)
+diff --git a/searx/engines/zlibrary.py b/searx/engines/zlibrary.py
+index 0649a30..4b1dac7 100644
+--- a/searx/engines/zlibrary.py
++++ b/searx/engines/zlibrary.py
+@@ -38,6 +38,7 @@ from datetime import datetime
+ from urllib.parse import quote
+ 
+ from flask_babel import gettext  # pyright: ignore[reportUnknownVariableType]
++from lxml import html
+ 
+ from searx.data import ENGINE_TRAITS
+ from searx.enginelib.traits import EngineTraits
+@@ -117,7 +118,7 @@ def request(query: str, params: "OnlineParams") -> None:
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+     res = EngineResults()
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     if domain_is_seized(dom):
+         raise SearxException(f"zlibrary domain is seized: {base_url}")
+@@ -195,7 +196,7 @@ def fetch_traits(engine_traits: EngineTraits) -> None:
+     if not resp.ok:
+         raise RuntimeError("Response from zlibrary is not OK.")
+ 
+-    dom = resp.html()
++    dom = html.fromstring(resp.text)
+ 
+     if domain_is_seized(dom):
+         raise RuntimeError(f"Response from zlibrary is not OK. ({base_url} seized)")
+diff --git a/searx/extended_types.py b/searx/extended_types.py
+index dc883b9..445ff04 100644
+--- a/searx/extended_types.py
++++ b/searx/extended_types.py
+@@ -29,7 +29,6 @@ from urllib.parse import urlsplit
+ 
+ import flask
+ from curl_cffi.requests import Response as CurlResponse
+-from lxml import html
+ 
+ if typing.TYPE_CHECKING:
+     import searx.preferences
+@@ -101,14 +100,9 @@ class SXNG_Response(CurlResponse):
+     _url: str = ""
+ 
+     @property
+-    def url(self) -> SXNG_URL:
++    def url(self) -> SXNG_URL:  # type: ignore[override]
+         return SXNG_URL(self._url)
+ 
+     @url.setter
+     def url(self, value: str) -> None:
+         self._url = str(value or "")
+-
+-    def html(self) -> html.HtmlElement:
+-        """Parses the result into a HTML document via :py:obj:`lxml.html`."""
+-
+-        return html.fromstring(self.text)
+diff --git a/searx/network/__init__.py b/searx/network/__init__.py
+index 243d746..2257bcd 100644
+--- a/searx/network/__init__.py
++++ b/searx/network/__init__.py
+@@ -201,8 +201,6 @@ def delete(url: str, **kwargs: t.Any) -> SXNG_Response:
+ 
+ async def stream_chunk_to_queue(network, queue, method: str, url: str, **kwargs: t.Any):
+     try:
+-        # prevent curl from decompressing the response https://github.com/searxng/searxng/pull/6730
+-        kwargs.setdefault('accept_encoding', None)
+         async with await network.stream(method, url, **kwargs) as response:
+             queue.put(response)
+             async for chunk in response.aiter_content():
+diff --git a/searx/network/client.py b/searx/network/client.py
+index 984daea..9e6d213 100644
+--- a/searx/network/client.py
++++ b/searx/network/client.py
+@@ -9,7 +9,7 @@ import os
+ import threading
+ 
+ from curl_cffi import AsyncSession, CurlHttpVersion, CurlOpt
+-from curl_cffi.requests.exceptions import RequestException
++from curl_cffi.requests.exceptions import InvalidSchema, RequestException
+ 
+ from searx.extended_types import SXNG_Response
+ 
+@@ -23,7 +23,8 @@ NO_IMPERSONATE = "none"
+ class AsyncClient(AsyncSession):
+     """:class:`curl_cffi.AsyncSession` with ``aclose`` / ``is_closed``."""
+ 
+-    def __init__(self, **kwargs: t.Any):
++    def __init__(self, enable_http: bool, **kwargs: t.Any):
++        self.enable_http = enable_http
+         self._closed = False
+         super().__init__(**kwargs)
+ 
+@@ -31,6 +32,10 @@ class AsyncClient(AsyncSession):
+     def is_closed(self) -> bool:
+         return self._closed
+ 
++    def check_url(self, url: str) -> None:
++        if not self.enable_http and str(url).startswith("http://"):
++            raise InvalidSchema("HTTP protocol is disabled")
++
+     async def aclose(self) -> None:
+         if self._closed:
+             return
+@@ -75,9 +80,6 @@ def new_client(
+     curl_options: dict[int, t.Any] | None = None,
+ ) -> AsyncClient:
+     extra_curl = dict(curl_options or {})
+-    if not enable_http:
+-        extra_curl.setdefault(CurlOpt.PROTOCOLS_STR, "https")
+-        extra_curl.setdefault(CurlOpt.REDIR_PROTOCOLS_STR, "https")
+     cert_file = os.environ.get("SSL_CERT_FILE")
+     if cert_file:
+         extra_curl.setdefault(CurlOpt.CAINFO, cert_file)
+@@ -86,6 +88,7 @@ def new_client(
+         extra_curl.setdefault(CurlOpt.CAPATH, cert_dir)
+     use_impersonate = impersonate not in ("", NO_IMPERSONATE)
+     kwargs: dict[str, t.Any] = {
++        "enable_http": enable_http,
+         "verify": verify,
+         "max_redirects": max_redirects,
+         "max_clients": max_connections or 10,
+diff --git a/searx/network/network.py b/searx/network/network.py
+index f28f601..db1ee7f 100644
+--- a/searx/network/network.py
++++ b/searx/network/network.py
+@@ -277,6 +277,7 @@ class Network:
+             client = await self.get_client(**kwargs_clients)
+             try:
+                 method = method.upper()
++                client.check_url(url)
+                 if stream:
+                     return client.stream(method, url, **kwargs)
+ 
 diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
 new file mode 100644
 index 0000000..b027aeb
@@ -21055,8 +25345,36 @@ index eba07bb..b1c184e 100644
      def __hash__(self):
          """The hash value of field *answer* is the hash value of the
          :py:obj:`Answer` object.  :py:obj:`Answer <Result.__eq__>` objects are
+diff --git a/searx/search/processors/abstract.py b/searx/search/processors/abstract.py
+index 921587f..8c8bc5f 100644
+--- a/searx/search/processors/abstract.py
++++ b/searx/search/processors/abstract.py
+@@ -29,10 +29,6 @@ logger = logger.getChild("searx.search.processor")
+ SUSPENDED_STATUS: dict[int | str, "SuspendedStatus"] = {}
+ 
+ 
+-TimeRangeType = t.Literal["day", "week", "month", "year"]
+-SafesearchType = t.Literal[0, 1, 2]
+-
+-
+ class RequestParams(t.TypedDict):
+     """Basic quantity of the Request parameters of all engine types."""
+ 
+@@ -55,10 +51,10 @@ class RequestParams(t.TypedDict):
+     pageno: int
+     """Current page number, where the first page is ``1``."""
+ 
+-    safesearch: SafesearchType
++    safesearch: t.Literal[0, 1, 2]
+     """Safe-Search filter (0:normal, 1:moderate, 2:strict)."""
+ 
+-    time_range: TimeRangeType | None
++    time_range: t.Literal["day", "week", "month", "year"] | None
+     """Time-range filter."""
+ 
+     engine_data: dict[str, str]
 diff --git a/searx/settings.yml b/searx/settings.yml
-index f447cd9..38cecb3 100644
+index 1720b19..38cecb3 100644
 --- a/searx/settings.yml
 +++ b/searx/settings.yml
 @@ -228,6 +228,9 @@ plugins:
@@ -21069,6 +25387,38 @@ index f447cd9..38cecb3 100644
    searx.plugins.unit_converter.SXNGPlugin:
      active: true
  
+@@ -2805,28 +2808,23 @@ engines:
+     shortcut: mjk
+     engine: mojeek
+     categories: [general, web]
+-    # uses a Proof of Work CAPTCHA that requires much computer power to solve
+-    inactive: true
++    disabled: true
+ 
+   - name: mojeek images
+     shortcut: mjkimg
+     engine: mojeek
+-    network: mojeek
+     categories: [images, web]
+     search_type: images
+     paging: false
+-    # uses a Proof of Work CAPTCHA that requires much computer power to solve
+-    inactive: true
++    disabled: true
+ 
+   - name: mojeek news
+     shortcut: mjknews
+     engine: mojeek
+-    network: mojeek
+     categories: [news, web]
+     search_type: news
+     paging: false
+-    # uses a Proof of Work CAPTCHA that requires much computer power to solve
+-    inactive: true
++    disabled: true
+ 
+   - name: moviepilot
+     engine: moviepilot
 diff --git a/searx/templates/zjsearch/404.html b/searx/templates/zjsearch/404.html
 new file mode 100644
 index 0000000..902020e
@@ -22027,10 +26377,10 @@ index 0000000..f900ce7
 +{%- endblock %}
 diff --git a/searx/templates/zjsearch/results.html b/searx/templates/zjsearch/results.html
 new file mode 100644
-index 0000000..e2a6bf6
+index 0000000..7699532
 --- /dev/null
 +++ b/searx/templates/zjsearch/results.html
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,65 @@
 +{#- zjsearch: search results page, always rendered as a streaming response
 +    (zjsearch_search_stream): the early chunk (head, boot skeleton, boot-data
 +    payload, dynamic import of the app bundle) flushes immediately and the app
@@ -22046,11 +26396,14 @@ index 0000000..e2a6bf6
 +{% block body_tail %}
 +<script id="boot-data" type="application/json" client_settings="{{ client_settings }}">{{- page_boot(q, selected_categories, pageno, time_range, current_language) -}}</script>
 +{#- the app must not wait for the document to finish parsing: dynamic
-+    import() evaluates the module as soon as it is fetched -#}
++    import() evaluates the module as soon as it is fetched.  The results
++    feature chunk (stable name, see vite.config) is pre-warmed alongside so
++    the app boot never waits for it — the home page never downloads it. -#}
 +<script>
 +  import("{{ url_for('static', filename='zjsearch.min.js') }}").catch(function () {
 +    window.location.reload();
 +  });
++  import("{{ url_for('static', filename='chunk/zjs-results.min.js') }}").catch(function () {});
 +</script>
 +<!--zjs-shell-->
 +{#- everything below blocks on the streamed search -#}
@@ -22309,6 +26662,53 @@ index 0000000..97e507b
 +{% block title %}Engine stats - {% endblock %}
 +{% block page_data %}{{ page_stats(sort_order, selected_engine_name, engine_stats, engine_reliabilities) }}{% endblock %}
 +{% block noscript %}{{ ns_stats(engine_stats, engine_reliabilities) }}{% endblock %}
+diff --git a/searx/utils.py b/searx/utils.py
+index 44e0229..b03f8f0 100644
+--- a/searx/utils.py
++++ b/searx/utils.py
+@@ -1,7 +1,6 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Utility functions for the engines"""
+ 
+-from hashlib import pbkdf2_hmac
+ import time
+ 
+ import re
+@@ -812,34 +811,3 @@ def format_duration(duration: str | int) -> str:
+     if length.tm_hour:
+         return time.strftime("%H:%M:%S", length)
+     return time.strftime("%M:%S", length)
+-
+-
+-def _array_startswith(arr: bytes, prefix: bytes) -> bool:
+-    return arr[: len(prefix)] == prefix
+-
+-
+-def solve_altcha(parameters: dict[str, t.Any], maxCounter: int = 1000) -> tuple[str, int] | None:
+-    """Solves Altcha CAPTCHAs. It derives keys using PBKDF2 until the derived
+-    key starts with the ``keyPrefix``` from the challenge. If the solver does not
+-    finish after ``maxCounter`` iterations, returns ``None``."""
+-
+-    nonce = bytes.fromhex(parameters["nonce"])
+-    salt = bytes.fromhex(parameters["salt"])
+-    keyPrefix = bytes.fromhex(parameters["keyPrefix"])
+-    cost = parameters["cost"]
+-    keyLength = parameters["keyLength"]
+-    # e.g. "PBKDF2/SHA-256" -> "sha256"
+-    hashAlgorithm = parameters["algorithm"].split("/")[-1].replace("-", "").lower()
+-
+-    counter = 0
+-    while counter < maxCounter:
+-        # Appends the counter to the nonce, i.e. writes the counter as a big-endian 32-bit integer.
+-        secret = nonce + counter.to_bytes(length=4)
+-
+-        key = pbkdf2_hmac(hash_name=hashAlgorithm, password=secret, salt=salt, iterations=cost, dklen=keyLength)
+-        if _array_startswith(key, keyPrefix):
+-            return key.hex(), counter
+-
+-        counter += 1
+-
+-    return None
 diff --git a/searx/webapp.py b/searx/webapp.py
 index da87340..4de1df3 100755
 --- a/searx/webapp.py
