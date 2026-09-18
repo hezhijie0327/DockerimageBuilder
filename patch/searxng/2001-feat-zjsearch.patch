@@ -3823,13 +3823,13 @@ index 0000000..1ab9e71
 +}
 diff --git a/client/zjsearch/src/app.tsx b/client/zjsearch/src/app.tsx
 new file mode 100644
-index 0000000..0cd8e11
+index 0000000..dd517b0
 --- /dev/null
 +++ b/client/zjsearch/src/app.tsx
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,121 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { LoaderCircle } from "lucide-react";
++import { Compass, LoaderCircle } from "lucide-react";
 +import { Suspense } from "react";
 +import { Link, Shell } from "@/components/Shell.tsx";
 +import { OverlayProvider } from "@/features/overlay/OverlayProvider.tsx";
@@ -3890,14 +3890,20 @@ index 0000000..0cd8e11
 +      // URLs) are instance details a prober shouldn't get served for free
 +      return (
 +        <Shell globals={globals} hideTopNav>
-+          <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center gap-4 px-4 pb-24 text-center animate-fade-up">
-+            <h1 className="text-2xl font-semibold tracking-tight text-ink">404</h1>
-+            <p className="text-sm text-ink-2">{t("page_not_found")}</p>
-+            <p className="text-sm">
-+              <Link className="text-accent hover:underline" href="/">
-+                {t("back_to_search")}
-+              </Link>
-+            </p>
++          <main className="mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center px-4 pb-24 text-center animate-fade-up">
++            {/* same composition as the results empty state: icon disc,
++                heading, muted line, one pill action */}
++            <span className="grid size-14 place-items-center rounded-full bg-accent-soft text-accent">
++              <Compass aria-hidden="true" className="size-7" />
++            </span>
++            <h1 className="mt-4 text-2xl font-semibold tracking-tight text-ink">404</h1>
++            <p className="mt-1.5 text-sm text-ink-2">{t("page_not_found")}</p>
++            <Link
++              className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-accent-strong px-4 py-2 text-[13px] font-medium text-accent-contrast transition-colors hover:bg-accent-strong-hover"
++              href="/"
++            >
++              {t("back_to_search")}
++            </Link>
 +          </main>
 +        </Shell>
 +      );
@@ -4113,6 +4119,90 @@ index 0000000..3d1eaff
 +        }`}
 +      />
 +    </button>
++  );
++}
+diff --git a/client/zjsearch/src/components/Collapse.tsx b/client/zjsearch/src/components/Collapse.tsx
+new file mode 100644
+index 0000000..23af86a
+--- /dev/null
++++ b/client/zjsearch/src/components/Collapse.tsx
+@@ -0,0 +1,78 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { type ReactNode, useEffect, useState } from "react";
++
++/**
++ * The app-wide animated disclosure (results meta strips, category blocks,
++ * media embeds): children fold via a grid-template-rows 0fr → 1fr transition
++ * — smooth in BOTH directions, no max-height guessing. The global
++ * prefers-reduced-motion guard clips the transition automatically.
++ *
++ * Folded content is inert + aria-hidden (focus cannot land inside), and with
++ * `unmountAfterHide` it unmounts after the close animation finishes — use
++ * that mode when children must not stay alive folded (iframes keep playing,
++ * hotkey targets poll the DOM); leave it off when the folded tree is cheap
++ * and staying mounted avoids re-render churn.
++ */
++export function Collapse({
++  open,
++  unmountAfterHide = false,
++  className = "",
++  innerClassName = "",
++  id,
++  children,
++}: {
++  open: boolean;
++  /** unmount the children once the closing transition has finished */
++  unmountAfterHide?: boolean;
++  /** spacing etc. on the animating wrapper (apply margins conditionally:
++      a static margin under a folded panel reads as a stray gap) */
++  className?: string;
++  innerClassName?: string;
++  id?: string;
++  children: ReactNode;
++}) {
++  const [present, setPresent] = useState(open);
++  const [expanded, setExpanded] = useState(open);
++
++  useEffect(() => {
++    if (open) {
++      if (!present) {
++        setPresent(true);
++      }
++      // mount at 0fr first, then let the transition play on the next frames
++      const frame = requestAnimationFrame(() => {
++        requestAnimationFrame(() => {
++          setExpanded(true);
++        });
++      });
++      return () => {
++        cancelAnimationFrame(frame);
++      };
++    }
++    setExpanded(false);
++    if (unmountAfterHide) {
++      const timer = window.setTimeout(() => {
++        setPresent(false);
++      }, 340);
++      return () => {
++        window.clearTimeout(timer);
++      };
++    }
++  }, [open, present, unmountAfterHide]);
++
++  if (!present) {
++    return null;
++  }
++  return (
++    <div
++      aria-hidden={!expanded}
++      className={`grid transition-[grid-template-rows] duration-300 ease-out ${className}`}
++      id={id}
++      inert={!expanded}
++      style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
++    >
++      <div className={`min-h-0 overflow-hidden ${innerClassName}`}>{children}</div>
++    </div>
 +  );
 +}
 diff --git a/client/zjsearch/src/components/CopyButton.tsx b/client/zjsearch/src/components/CopyButton.tsx
@@ -4609,6 +4699,44 @@ index 0000000..e16040b
 +    </div>
 +  );
 +}
+diff --git a/client/zjsearch/src/components/Meter.tsx b/client/zjsearch/src/components/Meter.tsx
+new file mode 100644
+index 0000000..2e5f361
+--- /dev/null
++++ b/client/zjsearch/src/components/Meter.tsx
+@@ -0,0 +1,32 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++/**
++ * Proportion bar on a surface-2 track — result counts (stats page), engine
++ * timings (meta-line engine strip, engine tables). The track's size and the
++ * fill colour come from the caller so tables and tiles keep their rhythm;
++ * a non-positive max renders nothing (no data to proportion against).
++ */
++export function Meter({
++  value,
++  max,
++  trackClassName = "h-1.5 w-24",
++  fillClassName = "bg-accent",
++}: {
++  value: number;
++  max: number;
++  /** Tailwind classes for the track: height + width (fixed or flex-1) */
++  trackClassName?: string;
++  fillClassName?: string;
++}) {
++  if (max <= 0) {
++    return null;
++  }
++  return (
++    <span className={`${trackClassName} overflow-hidden rounded-full bg-surface-2`}>
++      <span
++        className={`block h-full rounded-full ${fillClassName}`}
++        style={{ width: `${Math.max(2, Math.min(100, (value / max) * 100))}%` }}
++      />
++    </span>
++  );
++}
 diff --git a/client/zjsearch/src/components/OnionIcon.tsx b/client/zjsearch/src/components/OnionIcon.tsx
 new file mode 100644
 index 0000000..e950b62
@@ -4908,10 +5036,10 @@ index 0000000..7d8a1eb
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 0000000..75fb7da
+index 0000000..8a18b6c
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,228 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Clock, Ellipsis, Languages, Shield } from "lucide-react";
@@ -4921,7 +5049,7 @@ index 0000000..75fb7da
 +import type { DropdownOption } from "@/components/Dropdown.tsx";
 +import { Dropdown } from "@/components/Dropdown.tsx";
 +import { categoryLabel } from "@/lib/categories.ts";
-+import { useT } from "@/lib/i18n.ts";
++import { languageOptions, useT } from "@/lib/i18n.ts";
 +import { scrollBehavior } from "@/lib/motion.ts";
 +import { useSettings } from "@/lib/settings.ts";
 +import { SCROLLBAR_NONE } from "@/lib/styles.ts";
@@ -5089,7 +5217,6 @@ index 0000000..75fb7da
 +  onChange: (next: Partial<FilterValues>) => void;
 +}) {
 +  const t = useT();
-+  const locales = [...globals.locales].sort((a, b) => a.name.localeCompare(b.name));
 +
 +  return (
 +    // single line at every width - narrow viewports scroll the row, exactly
@@ -5100,17 +5227,7 @@ index 0000000..75fb7da
 +        icon={<Languages className="size-3.5 shrink-0" />}
 +        label={t("search_language")}
 +        onChange={(language) => onChange({ language })}
-+        options={[
-+          { value: "all", label: `${t("default_language")} [all]` },
-+          {
-+            value: "auto",
-+            label: `${t("autodetect")}${values.search_language ? ` (${values.search_language})` : ""}`,
-+          },
-+          ...locales.map((locale) => ({
-+            value: locale.tag,
-+            label: `${locale.name}${locale.country ? `-${locale.country}` : ""} [${locale.tag}] ${locale.flag}`,
-+          })),
-+        ]}
++        options={languageOptions(globals.locales, t, values.search_language || undefined)}
 +        value={values.language}
 +      />
 +
@@ -5153,7 +5270,7 @@ index 0000000..75fb7da
 +}
 diff --git a/client/zjsearch/src/components/Shell.tsx b/client/zjsearch/src/components/Shell.tsx
 new file mode 100644
-index 0000000..c9e1b3f
+index 0000000..528dd9c
 --- /dev/null
 +++ b/client/zjsearch/src/components/Shell.tsx
 @@ -0,0 +1,226 @@
@@ -5166,7 +5283,7 @@ index 0000000..c9e1b3f
 +import { useT } from "@/lib/i18n.ts";
 +import { isModifiedClick, newTabLinkProps } from "@/lib/link.ts";
 +import { useRouter } from "@/lib/router.tsx";
-+import { ICON_BTN } from "@/lib/styles.ts";
++import { ICON_BTN, SCROLLBAR_NONE } from "@/lib/styles.ts";
 +import type { GlobalData } from "@/lib/types.ts";
 +
 +/** Anchor that performs SPA navigation for internal URLs. */
@@ -5367,7 +5484,7 @@ index 0000000..c9e1b3f
 +        <TopNav globals={globals} hideBrand />
 +        {/* app-shell scroll area: hidden scrollbar, contained overscroll; the
 +            footer rides inside so it scrolls away with overflowing content */}
-+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
++        <div className={`flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain ${SCROLLBAR_NONE}`}>
 +          <div className="flex flex-1 flex-col justify-start pt-[20vh] sm:pt-[30vh]">{children}</div>
 +          <Footer globals={globals} />
 +        </div>
@@ -5614,7 +5731,7 @@ index 0000000..26c2ef0
 +}
 diff --git a/client/zjsearch/src/features/overlay/OverlayProvider.tsx b/client/zjsearch/src/features/overlay/OverlayProvider.tsx
 new file mode 100644
-index 0000000..8a6a31b
+index 0000000..741dbaa
 --- /dev/null
 +++ b/client/zjsearch/src/features/overlay/OverlayProvider.tsx
 @@ -0,0 +1,249 @@
@@ -5641,7 +5758,7 @@ index 0000000..8a6a31b
 +
 +/** Panels the app can render inside the drawer. Returning null means "this
 +    payload is not panel-able" and shows the fallback with an escape link. */
-+export interface OverlayPanels {
++interface OverlayPanels {
 +  renderPage: (data: AnyPageData, hint?: string) => ReactNode;
 +}
 +
@@ -6019,10 +6136,10 @@ index 0000000..1fed8f7
 +}
 diff --git a/client/zjsearch/src/features/results/CategoryBlocks.tsx b/client/zjsearch/src/features/results/CategoryBlocks.tsx
 new file mode 100644
-index 0000000..a55dbf5
+index 0000000..6d0036b
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/CategoryBlocks.tsx
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,129 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -6033,6 +6150,7 @@ index 0000000..a55dbf5
 + */
 +
 +import { useMemo } from "react";
++import { Collapse } from "@/components/Collapse.tsx";
 +import { AppsGrid } from "@/features/results/AppsGrid.tsx";
 +import { collectBlocks } from "@/features/results/blocks.ts";
 +import { CardList } from "@/features/results/CardList.tsx";
@@ -6133,8 +6251,8 @@ index 0000000..a55dbf5
 +                onToggleBlock(key);
 +              }}
 +            />
-+            {!collapsed ? (
-+              <div className="mt-1 space-y-1">
++            <Collapse className={collapsed ? "" : "mt-1"} open={!collapsed} unmountAfterHide>
++              <div className="space-y-1">
 +                <CategoryCollectionView
 +                  autoOpenMap={autoOpenMap}
 +                  category={key}
@@ -6144,7 +6262,7 @@ index 0000000..a55dbf5
 +                  selected={selected}
 +                />
 +              </div>
-+            ) : null}
++            </Collapse>
 +          </section>
 +        );
 +      })}
@@ -6153,17 +6271,18 @@ index 0000000..a55dbf5
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 0000000..74e2d7e
+index 0000000..24f5057
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,251 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
 + * The results meta line: 「found N results」 and 「took X s」 toggles, each
-+ * expanding its own strip in place — the result strip carries the utility
-+ * actions (copy the shareable URL, machine-readable download formats), the
-+ * engine strip the per-engine timings and errors.
++ * expanding its own strip in place (shared Collapse animation) — the result
++ * strip carries the utility actions (copy the shareable URL, machine-
++ * readable download formats), the engine strip the per-engine timings and
++ * errors.
 + */
 +
 +import {
@@ -6179,9 +6298,12 @@ index 0000000..74e2d7e
 +  Timer,
 +} from "lucide-react";
 +import { useState } from "react";
++import { Collapse } from "@/components/Collapse.tsx";
++import { Meter } from "@/components/Meter.tsx";
 +import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
 +import { useCopyToast } from "@/lib/clipboard.ts";
 +import { downloadResults } from "@/lib/exporters.ts";
++import { round1 } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { isModifiedClick } from "@/lib/link.ts";
 +import { flashToast } from "@/lib/toast.ts";
@@ -6233,7 +6355,7 @@ index 0000000..74e2d7e
 +  const toggle = (panel: "engines" | "results") => {
 +    setOpenPanel((current) => (current === panel ? null : panel));
 +  };
-+  const roundedTime = data.max_response_time ? Math.round(data.max_response_time * 10) / 10 : null;
++  const roundedTime = data.max_response_time ? round1(data.max_response_time) : null;
 +  const maxTime = data.max_response_time ?? 0;
 +
 +  return (
@@ -6267,8 +6389,8 @@ index 0000000..74e2d7e
 +        ) : null}
 +      </div>
 +
-+      {openPanel === "results" ? (
-+        <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-3">
++      <Collapse className={openPanel === "results" ? "mt-2" : ""} open={openPanel === "results"}>
++        <div className="rounded-2xl border border-line bg-surface px-4 py-3">
 +          <div className="flex items-center gap-3">
 +            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
 +              <Link2 className="size-4.5" />
@@ -6332,10 +6454,10 @@ index 0000000..74e2d7e
 +            </div>
 +          ) : null}
 +        </div>
-+      ) : null}
++      </Collapse>
 +
-+      {openPanel === "engines" ? (
-+        <div className="mt-2 rounded-2xl border border-line bg-surface px-4 py-3">
++      <Collapse className={openPanel === "engines" ? "mt-2" : ""} open={openPanel === "engines"}>
++        <div className="rounded-2xl border border-line bg-surface px-4 py-3">
 +          {/* one fixed-layout table for every engine: timings get seconds +
 +              bar, unresponsive engines their error label + an empty track on
 +              the same grid; table-fixed makes the w-24 truncation real */}
@@ -6386,13 +6508,13 @@ index 0000000..74e2d7e
 +                  </td>
 +                  <td className="py-0.5">
 +                    <div className="flex items-center gap-2">
-+                      <span className="w-24 shrink-0 text-right text-ink-3">{Math.round(timing.time * 10) / 10}</span>
-+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-+                        <span
-+                          className="block h-full rounded-full bg-accent/70"
-+                          style={{ width: maxTime > 0 ? `${Math.max(2, (timing.time / maxTime) * 100)}%` : "0%" }}
-+                        />
-+                      </span>
++                      <span className="w-24 shrink-0 text-right text-ink-3">{round1(timing.time)}</span>
++                      <Meter
++                        fillClassName="bg-accent/70"
++                        max={maxTime}
++                        trackClassName="h-1.5 flex-1"
++                        value={timing.time}
++                      />
 +                    </div>
 +                  </td>
 +                </tr>
@@ -6400,28 +6522,39 @@ index 0000000..74e2d7e
 +            </tbody>
 +          </table>
 +        </div>
-+      ) : null}
++      </Collapse>
 +    </div>
 +  );
 +}
 diff --git a/client/zjsearch/src/features/results/EmptyStates.tsx b/client/zjsearch/src/features/results/EmptyStates.tsx
 new file mode 100644
-index 0000000..aba780d
+index 0000000..eae0ca7
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/EmptyStates.tsx
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,90 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Info, RefreshCw, Search } from "lucide-react";
++import { ChevronLeft, Info, RefreshCw, Search, SearchX } from "lucide-react";
 +import { useT } from "@/lib/i18n.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
-+export function NoResults({ pageno, hasInfobox }: { pageno: number; hasInfobox: boolean }) {
++export function NoResults({
++  pageno,
++  hasInfobox,
++  onPrev,
++}: {
++  pageno: number;
++  hasInfobox: boolean;
++  /** wired by ResultsPage: a real 「previous page」 action on later pages */
++  onPrev?: () => void;
++}) {
 +  const t = useT();
 +  const firstPage = pageno === 1;
 +  if (hasInfobox && firstPage) {
++    // the infobox above already answers the query visually — a one-line
++    // notice instead of the full empty-state composition
 +    return (
-+      <div className="rounded-2xl border border-line bg-surface p-4 text-sm text-ink-2">
++      <div className="rounded-2xl border border-line bg-surface p-4 text-sm text-ink-2 animate-fade-up">
 +        <p className="flex items-center gap-2">
 +          <Info className="size-4 shrink-0 text-accent" />
 +          {t("no_web_results")}
@@ -6430,31 +6563,36 @@ index 0000000..aba780d
 +    );
 +  }
 +  return (
-+    <div className="mx-auto max-w-md rounded-2xl border border-line bg-surface p-6 text-sm text-ink-2 animate-fade-up">
-+      <p className="flex items-center gap-2 font-medium text-ink">
-+        <Info className="size-4 text-accent" />
-+        {firstPage ? t("sorry") : ""}
-+      </p>
-+      <p className="mt-2">{firstPage ? t("no_results_found") : t("no_more_results")}</p>
-+      <ul className="mt-2 list-disc space-y-1 pl-5">
++    <div className="mx-auto max-w-lg py-10 text-center animate-fade-up">
++      <span className="mx-auto grid size-14 place-items-center rounded-full bg-accent-soft text-accent">
++        <SearchX aria-hidden="true" className="size-7" />
++      </span>
++      <h2 className="mt-4 text-xl font-semibold tracking-tight text-ink">
++        {firstPage ? t("sorry") : t("no_more_results")}
++      </h2>
++      <p className="mt-1.5 text-sm text-ink-2">{firstPage ? t("no_results_found") : t("go_previous_page")}</p>
++      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
 +        {firstPage ? (
-+          <>
-+            <li>
-+              <button
-+                className="inline-flex items-center gap-1 text-accent hover:underline"
-+                onClick={() => window.location.reload()}
-+                type="button"
-+              >
-+                <RefreshCw className="size-3.5" />
-+                {t("refresh_page")}
-+              </button>
-+            </li>
-+            <li>{t("try_other_query")}</li>
-+          </>
-+        ) : (
-+          <li>{t("go_previous_page")}</li>
-+        )}
-+      </ul>
++          <button
++            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-4 py-2 text-[13px] font-medium text-ink-2 transition-colors hover:border-accent hover:text-accent"
++            onClick={() => window.location.reload()}
++            type="button"
++          >
++            <RefreshCw className="size-3.5" />
++            {t("refresh_page")}
++          </button>
++        ) : onPrev ? (
++          <button
++            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-4 py-2 text-[13px] font-medium text-ink-2 transition-colors hover:border-accent hover:text-accent"
++            onClick={onPrev}
++            type="button"
++          >
++            <ChevronLeft className="size-3.5" />
++            {t("previous_page")}
++          </button>
++        ) : null}
++      </div>
++      {firstPage ? <p className="mt-3 text-[13px] text-ink-3">{t("try_other_query")}</p> : null}
 +    </div>
 +  );
 +}
@@ -6469,7 +6607,7 @@ index 0000000..aba780d
 +      <span className="text-ink-3">{t("try_searching_for")}</span>
 +      {data.corrections.map((correction) => (
 +        <button
-+          className="rounded-full bg-accent-soft px-3 py-1.5 font-medium text-[13px] text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++          className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-3 py-1.5 text-[13px] font-medium text-accent transition-colors hover:bg-accent-strong hover:text-accent-contrast"
 +          dir="auto"
 +          key={correction.q}
 +          onClick={() => {
@@ -6486,10 +6624,10 @@ index 0000000..aba780d
 +}
 diff --git a/client/zjsearch/src/features/results/FilesGrid.tsx b/client/zjsearch/src/features/results/FilesGrid.tsx
 new file mode 100644
-index 0000000..ade258c
+index 0000000..18dd919
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/FilesGrid.tsx
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,121 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Files-intent layout: landscape file tiles mirroring the media grids.
@@ -6498,13 +6636,15 @@ index 0000000..ade258c
 +    slot and the magnet/torrent action sits in the tile center like the
 +    media play buttons. */
 +
-+import { ArrowDown, ArrowUp, Calendar, Download, FileText, Film, Magnet, Music } from "lucide-react";
++import { ArrowDown, ArrowUp, Download, FileText, Film, Magnet, Music } from "lucide-react";
 +import {
 +  TileBadge,
 +  TileCell,
 +  TileCenterAction,
 +  TileEngines,
 +  TileFavicon,
++  TileMeta,
++  TileMetaDate,
 +  TileTitle,
 +} from "@/features/results/Tile.tsx";
 +import { formatDate } from "@/lib/format.ts";
@@ -6579,34 +6719,27 @@ index 0000000..ade258c
 +              ) : null}
 +            </div>
 +            <TileTitle globals={globals} result={result} />
-+            <div className="mt-1.5 flex min-h-5 items-center justify-between gap-2 text-xs text-ink-3">
-+              {health ? (
-+                <span className="inline-flex items-center gap-2">
-+                  {result.seed !== undefined ? (
-+                    <span className="inline-flex items-center gap-0.5 font-medium text-ok">
-+                      <ArrowUp className="size-3" />
-+                      {result.seed}
-+                    </span>
-+                  ) : null}
-+                  {result.leech !== undefined ? (
-+                    <span className="inline-flex items-center gap-0.5 font-medium text-danger">
-+                      <ArrowDown className="size-3" />
-+                      {result.leech}
-+                    </span>
-+                  ) : null}
-+                </span>
-+              ) : (
-+                <span />
-+              )}
-+              <span className="flex shrink-0 items-center gap-1">
-+                {date ? (
-+                  <>
-+                    <Calendar className="size-3" />
-+                    {date}
-+                  </>
-+                ) : null}
-+              </span>
-+            </div>
++            <TileMeta
++              left={
++                health ? (
++                  <span className="inline-flex items-center gap-2">
++                    {result.seed !== undefined ? (
++                      <span className="inline-flex items-center gap-0.5 font-medium text-ok">
++                        <ArrowUp className="size-3" />
++                        {result.seed}
++                      </span>
++                    ) : null}
++                    {result.leech !== undefined ? (
++                      <span className="inline-flex items-center gap-0.5 font-medium text-danger">
++                        <ArrowDown className="size-3" />
++                        {result.leech}
++                      </span>
++                    ) : null}
++                  </span>
++                ) : null
++              }
++              right={<TileMetaDate date={date} />}
++            />
 +            <div className="mt-auto pt-1.5">
 +              <TileEngines result={result} />
 +            </div>
@@ -6660,10 +6793,10 @@ index 0000000..2be8524
 +}
 diff --git a/client/zjsearch/src/features/results/InfiniteScroll.tsx b/client/zjsearch/src/features/results/InfiniteScroll.tsx
 new file mode 100644
-index 0000000..acdeae8
+index 0000000..11e73ad
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/InfiniteScroll.tsx
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,49 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useRef } from "react";
@@ -6704,7 +6837,12 @@ index 0000000..acdeae8
 +  }
 +  return (
 +    <div aria-busy={loading} className="flex justify-center py-6" ref={ref}>
-+      <div className="size-6 animate-spin-slow rounded-full border-2 border-line border-t-accent-strong" />
++      {/* the spinner only spins while a page is actually loading — an idle
++          sentinel stays a quiet spacer so the eye isn't teased by a fake
++          progress indicator */}
++      {loading ? (
++        <div className="size-6 animate-spin-slow rounded-full border-2 border-line border-t-accent-strong" />
++      ) : null}
 +    </div>
 +  );
 +}
@@ -6909,10 +7047,10 @@ index 0000000..23d04f4
 +}
 diff --git a/client/zjsearch/src/features/results/MapView.tsx b/client/zjsearch/src/features/results/MapView.tsx
 new file mode 100644
-index 0000000..c6490fe
+index 0000000..beeb2c5
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/MapView.tsx
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,260 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -6953,6 +7091,10 @@ index 0000000..c6490fe
 +      return;
 +    }
 +    let instance: OlMap | null = null;
++    // the OpenLayers modules stream in over several awaits — a close during
++    // that window must stop the boot (the map would otherwise mount onto the
++    // detached container and leak)
++    let cancelled = false;
 +
 +    void (async () => {
 +      const container = containerRef.current;
@@ -6961,11 +7103,17 @@ index 0000000..c6490fe
 +      }
 +      // controls (zoom, attribution) render unstyled garbage without it
 +      await import("ol/ol.css");
++      if (cancelled) {
++        return;
++      }
 +      const { default: OlMap } = await import("ol/Map.js");
 +      const { default: View } = await import("ol/View.js");
 +      const { default: TileLayer } = await import("ol/layer/Tile.js");
 +      const { default: OSM } = await import("ol/source/OSM.js");
 +      const { fromLonLat } = await import("ol/proj.js");
++      if (cancelled) {
++        return;
++      }
 +
 +      const layers: BaseLayer[] = [new TileLayer({ source: new OSM() })];
 +      let center = fromLonLat([0, 0]);
@@ -6978,6 +7126,9 @@ index 0000000..c6490fe
 +        const { default: StrokeStyle } = await import("ol/style/Stroke.js");
 +        const { default: FillStyle } = await import("ol/style/Fill.js");
 +        const { default: Style } = await import("ol/style/Style.js");
++        if (cancelled) {
++          return;
++        }
 +        const format = new GeoJSON();
 +        vectorSource = new VectorSource({
 +          features: format.readFeatures(geojson, {
@@ -7030,6 +7181,9 @@ index 0000000..c6490fe
 +          import("ol/layer/Vector.js"),
 +          import("ol/source/Vector.js"),
 +        ]);
++        if (cancelled) {
++          return;
++        }
 +        const marker = new Feature({ geometry: new Point(pointLonLat) });
 +        marker.setStyle(
 +          new Style({
@@ -7050,11 +7204,17 @@ index 0000000..c6490fe
 +        layers,
 +        view: new View({ center, zoom: 16, maxZoom: 16 }),
 +      });
++      if (cancelled) {
++        map.setTarget(undefined);
++        return;
++      }
 +      instance = map;
 +
 +      // metric scale bar, bottom-left
 +      const { default: ScaleLine } = await import("ol/control/ScaleLine.js");
-+      map.addControl(new ScaleLine({ units: "metric" }));
++      if (!cancelled) {
++        map.addControl(new ScaleLine({ units: "metric" }));
++      }
 +
 +      // restore-to-location for the recenter button (animated unless the
 +      // user prefers reduced motion)
@@ -7096,6 +7256,8 @@ index 0000000..c6490fe
 +    })();
 +
 +    return () => {
++      cancelled = true;
++      restoreRef.current = null;
 +      instance?.setTarget(undefined);
 +    };
 +  }, [open, longitude, latitude, boundingbox, geojson]);
@@ -7151,10 +7313,10 @@ index 0000000..c6490fe
 +}
 diff --git a/client/zjsearch/src/features/results/MusicGrid.tsx b/client/zjsearch/src/features/results/MusicGrid.tsx
 new file mode 100644
-index 0000000..0e6cdda
+index 0000000..5bbb51b
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/MusicGrid.tsx
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,221 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Music-intent layout: square album-art tiles mirroring the video grid.
@@ -7162,15 +7324,19 @@ index 0000000..0e6cdda
 +    streams get a custom mini player (blur + play/pause + seek), embeddable
 +    sources play inside the tile like videos do. */
 +
-+import { Calendar, Music as MusicIcon, Pause, Play, User, X } from "lucide-react";
++import { Music as MusicIcon, Pause, Play } from "lucide-react";
 +import { useEffect, useRef, useState } from "react";
 +import { ResultLink } from "@/features/results/cardParts.tsx";
 +import {
 +  TileBadge,
 +  TileCell,
 +  TileCenterAction,
++  TileCloseAction,
 +  TileEngines,
 +  TileFavicon,
++  TileMeta,
++  TileMetaAuthor,
++  TileMetaDate,
 +  TileThumb,
 +  TileTitle,
 +} from "@/features/results/Tile.tsx";
@@ -7226,15 +7392,7 @@ index 0000000..0e6cdda
 +        ref={audioRef}
 +        src={src}
 +      />
-+      <button
-+        aria-label={t("close")}
-+        className="absolute end-2 top-2 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
-+        onClick={onClose}
-+        title={t("close")}
-+        type="button"
-+      >
-+        <X className="size-3.5" />
-+      </button>
++      <TileCloseAction label={t("close")} onClick={onClose} />
 +      <div className="flex flex-1 items-center justify-center">
 +        <button
 +          aria-label={playing ? t("pause") : t("play")}
@@ -7279,15 +7437,7 @@ index 0000000..0e6cdda
 +  return (
 +    <div className="absolute inset-0 z-10 animate-fade-in overflow-hidden rounded-xl border border-line bg-black">
 +      <iframe allowFullScreen className="size-full" referrerPolicy="origin" src={src} title={title} />
-+      <button
-+        aria-label={t("close")}
-+        className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
-+        onClick={onClose}
-+        title={t("close")}
-+        type="button"
-+      >
-+        <X className="size-3.5" />
-+      </button>
++      <TileCloseAction label={t("close")} onClick={onClose} />
 +    </div>
 +  );
 +}
@@ -7323,6 +7473,7 @@ index 0000000..0e6cdda
 +          >
 +            <TileThumb
 +              alt={result.title_text}
++              eager={indexOffset + index < 4}
 +              placeholder={
 +                <span className="grid size-full place-items-center bg-gradient-to-br from-surface-2 to-surface text-ink-3">
 +                  <MusicIcon className="size-10" />
@@ -7371,24 +7522,10 @@ index 0000000..0e6cdda
 +          ) : null}
 +        </div>
 +        <TileTitle globals={globals} result={result} />
-+        <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
-+          {result.author ? (
-+            <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
-+              <User className="size-3 shrink-0" />
-+              {result.author}
-+            </span>
-+          ) : (
-+            <span />
-+          )}
-+          <span className="flex shrink-0 items-center gap-1">
-+            {result.published_date ? (
-+              <>
-+                <Calendar className="size-3" />
-+                {formatDate(result.published_date)}
-+              </>
-+            ) : null}
-+          </span>
-+        </div>
++        <TileMeta
++          left={<TileMetaAuthor author={result.author} />}
++          right={<TileMetaDate date={result.published_date ? formatDate(result.published_date) : null} />}
++        />
 +        <div className="mt-auto pt-1.5">
 +          <TileEngines result={result} />
 +        </div>
@@ -7403,19 +7540,27 @@ index 0000000..0e6cdda
 +}
 diff --git a/client/zjsearch/src/features/results/PackageGrid.tsx b/client/zjsearch/src/features/results/PackageGrid.tsx
 new file mode 100644
-index 0000000..c861bfd
+index 0000000..6a5e01d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/PackageGrid.tsx
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,93 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Package results (crates.io, docker hub, pypi, ...): the file-tile
 +    language of FilesGrid applied to software packages - icon tile with the
 +    version badge, author/updated meta row, homepage/source actions. */
 +
-+import { Calendar, Code, ExternalLink, Package as PackageIcon, User } from "lucide-react";
++import { Code, ExternalLink, Package as PackageIcon } from "lucide-react";
 +import { ResultLink } from "@/features/results/cardParts.tsx";
-+import { TileCell, TileEngines, TileFavicon, TileTitle } from "@/features/results/Tile.tsx";
++import {
++  TileCell,
++  TileEngines,
++  TileFavicon,
++  TileMeta,
++  TileMetaAuthor,
++  TileMetaDate,
++  TileTitle,
++} from "@/features/results/Tile.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
@@ -7449,24 +7594,10 @@ index 0000000..c861bfd
 +        {result.favicon ? <TileFavicon src={result.favicon} /> : null}
 +      </ResultLink>
 +      <TileTitle globals={globals} result={result} />
-+      <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-ink-3">
-+        {result.maintainer || result.author ? (
-+          <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
-+            <User className="size-3 shrink-0" />
-+            {result.maintainer || result.author}
-+          </span>
-+        ) : (
-+          <span />
-+        )}
-+        <span className="flex shrink-0 items-center gap-1">
-+          {result.published_date ? (
-+            <>
-+              <Calendar className="size-3" />
-+              {formatDate(result.published_date)}
-+            </>
-+          ) : null}
-+        </span>
-+      </div>
++      <TileMeta
++        left={<TileMetaAuthor author={result.maintainer || result.author} />}
++        right={<TileMetaDate date={result.published_date ? formatDate(result.published_date) : null} />}
++      />
 +      <div className="mt-auto pt-1.5">
 +        <TileEngines result={result} />
 +        {result.homepage || result.source_code_url ? (
@@ -7508,14 +7639,19 @@ index 0000000..c861bfd
 +}
 diff --git a/client/zjsearch/src/features/results/Pagination.tsx b/client/zjsearch/src/features/results/Pagination.tsx
 new file mode 100644
-index 0000000..a4877e8
+index 0000000..a041b2a
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Pagination.tsx
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,87 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronLeft, ChevronRight } from "lucide-react";
 +import { useT } from "@/lib/i18n.ts";
++
++/** Shared pill button for the prev/next arrows (numbered pages swap the
++    border for the accent fill when current). */
++const pageBtn =
++  "flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-[13px] text-ink-2 transition-colors hover:border-accent hover:text-accent";
 +
 +/** Numbered pagination window (up to 11 pages, sliding after page 5). */
 +export function Pagination({
@@ -7549,7 +7685,7 @@ index 0000000..a4877e8
 +      {hasPrev ? (
 +        <button
 +          aria-label={t("previous_page")}
-+          className="flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-[13px] text-ink-2 transition-colors hover:border-accent hover:text-accent"
++          className={pageBtn}
 +          onClick={() => {
 +            onPage(pageno - 1);
 +          }}
@@ -7581,7 +7717,7 @@ index 0000000..a4877e8
 +      {hasNext ? (
 +        <button
 +          aria-label={t("next_page")}
-+          className="flex h-9 items-center gap-1 rounded-full border border-line bg-surface px-3 text-[13px] text-ink-2 transition-colors hover:border-accent hover:text-accent"
++          className={pageBtn}
 +          onClick={() => {
 +            onPage(pageno + 1);
 +          }}
@@ -7596,10 +7732,10 @@ index 0000000..a4877e8
 +}
 diff --git a/client/zjsearch/src/features/results/PosterGrid.tsx b/client/zjsearch/src/features/results/PosterGrid.tsx
 new file mode 100644
-index 0000000..8ed6bd7
+index 0000000..67d96ac
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/PosterGrid.tsx
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,60 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Poster wall for the movies category (`!movies`, tmdb / imdb): portrait
@@ -7631,6 +7767,7 @@ index 0000000..8ed6bd7
 +      >
 +        <TileThumb
 +          alt={result.title_text}
++          eager={indexOffset + index < 4}
 +          placeholder={
 +            <span className="grid size-full place-items-center text-ink-3">
 +              <Clapperboard className="size-8" />
@@ -7766,10 +7903,10 @@ index 0000000..a2d5bcc
 +}
 diff --git a/client/zjsearch/src/features/results/ResultsView.tsx b/client/zjsearch/src/features/results/ResultsView.tsx
 new file mode 100644
-index 0000000..4cb6b68
+index 0000000..a555c94
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/ResultsView.tsx
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,141 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -7778,6 +7915,7 @@ index 0000000..4cb6b68
 + * reuse the same views per category in CategoryBlocks).
 + */
 +
++import type { ReactNode } from "react";
 +import { AppsGrid } from "@/features/results/AppsGrid.tsx";
 +import { CardList, entriesOf } from "@/features/results/CardList.tsx";
 +import { CategoryBlocks } from "@/features/results/CategoryBlocks.tsx";
@@ -7808,108 +7946,111 @@ index 0000000..4cb6b68
 +  collapsedBlocks: Record<string, boolean>;
 +  onToggleBlock: (key: string) => void;
 +}) {
++  let view: ReactNode;
 +  switch (layout.kind) {
 +    case "images":
-+      return (
-+        <div className="mt-4">
-+          <ImageGrid results={results} />
-+        </div>
-+      );
++      view = <ImageGrid results={results} />;
++      break;
 +    case "videos":
-+      return (
-+        <div className="mt-4">
-+          <VideoGrid globals={globals} results={results} selected={selected} />
-+        </div>
-+      );
++      view = <VideoGrid globals={globals} results={results} selected={selected} />;
++      break;
 +    case "music":
-+      return (
-+        <div className="mt-4">
-+          <MusicGrid globals={globals} results={results} selected={selected} />
-+        </div>
-+      );
++      view = <MusicGrid globals={globals} results={results} selected={selected} />;
++      break;
 +    case "movies":
-+      return (
-+        <div className="mt-4">
-+          <PosterGrid globals={globals} results={results} selected={selected} />
-+        </div>
-+      );
++      view = <PosterGrid globals={globals} results={results} selected={selected} />;
++      break;
 +    case "apps":
-+      return (
-+        <div className="mt-4">
-+          <AppsGrid globals={globals} results={results} selected={selected} />
-+        </div>
-+      );
++      view = <AppsGrid globals={globals} results={results} selected={selected} />;
++      break;
 +    case "packages":
-+      return (
-+        <div className="mt-4">
-+          <PackageGrid globals={globals} results={results} selected={selected} />
-+        </div>
-+      );
++      view = <PackageGrid globals={globals} results={results} selected={selected} />;
++      break;
 +    case "files":
-+      return (
-+        <div className="mt-4">
-+          <FilesGrid globals={globals} results={results} selected={selected} />
-+        </div>
-+      );
++      view = <FilesGrid globals={globals} results={results} selected={selected} />;
++      break;
 +    case "products":
-+      return (
-+        <div className="mt-4">
-+          <ProductGrid globals={globals} results={results} selected={selected} />
-+        </div>
-+      );
++      view = <ProductGrid globals={globals} results={results} selected={selected} />;
++      break;
 +    case "dictionary":
-+      return (
-+        <CardList
-+          className="mt-2"
-+          entries={entriesOf(results)}
-+          globals={globals}
-+          renderItem={(result) => <DictionaryCard globals={globals} result={result} />}
-+          selected={selected}
-+        />
-+      );
++      view = <DictionaryCardList globals={globals} results={results} selected={selected} />;
++      break;
 +    case "science":
-+      return (
-+        <CardList
-+          className="mt-2"
-+          entries={entriesOf(results)}
-+          globals={globals}
-+          renderItem={(result) => <PaperCard globals={globals} result={result} />}
-+          selected={selected}
-+        />
-+      );
++      view = <PaperCardList globals={globals} results={results} selected={selected} />;
++      break;
 +    case "list":
 +      // category intent page: a pure relevance-ordered list in which every
 +      // type keeps its own card - extracting a type into a strip would break
 +      // the relevance order. space-y keeps highlighted (selected / hovered)
 +      // cards from touching, matching the mixed-block lists.
-+      return (
-+        <div className="mt-2">
-+          <CardList
-+            autoOpenMap={layout.autoOpenMap}
-+            entries={entriesOf(results)}
-+            globals={globals}
-+            selected={selected}
-+          />
-+        </div>
++      view = (
++        <CardList autoOpenMap={layout.autoOpenMap} entries={entriesOf(results)} globals={globals} selected={selected} />
 +      );
++      break;
 +    case "mixed":
-+      return (
-+        <div className="relative mt-2">
-+          <CategoryBlocks
-+            autoOpenMap={layout.autoOpenMap}
-+            collapsedBlocks={collapsedBlocks}
-+            globals={globals}
-+            onToggleBlock={onToggleBlock}
-+            results={results}
-+            selected={selected}
-+          />
-+        </div>
++      view = (
++        <CategoryBlocks
++          autoOpenMap={layout.autoOpenMap}
++          collapsedBlocks={collapsedBlocks}
++          globals={globals}
++          onToggleBlock={onToggleBlock}
++          results={results}
++          selected={selected}
++        />
 +      );
++      break;
 +  }
++  // one breathing offset below the filter row: grids get more, card lists
++  // and blocks sit tighter; mixed needs the relative wrapper for stacking
++  const wrapper =
++    layout.kind === "mixed"
++      ? "relative mt-2"
++      : layout.kind === "list" || layout.kind === "dictionary" || layout.kind === "science"
++        ? "mt-2"
++        : "mt-4";
++  return <div className={wrapper}>{view}</div>;
++}
++
++function DictionaryCardList({
++  globals,
++  results,
++  selected,
++}: {
++  globals: GlobalData;
++  results: ResultItem[];
++  selected: number;
++}) {
++  return (
++    <CardList
++      entries={entriesOf(results)}
++      globals={globals}
++      renderItem={(result) => <DictionaryCard globals={globals} result={result} />}
++      selected={selected}
++    />
++  );
++}
++
++function PaperCardList({
++  globals,
++  results,
++  selected,
++}: {
++  globals: GlobalData;
++  results: ResultItem[];
++  selected: number;
++}) {
++  return (
++    <CardList
++      entries={entriesOf(results)}
++      globals={globals}
++      renderItem={(result) => <PaperCard globals={globals} result={result} />}
++      selected={selected}
++    />
++  );
 +}
 diff --git a/client/zjsearch/src/features/results/Sidebar.tsx b/client/zjsearch/src/features/results/Sidebar.tsx
 new file mode 100644
-index 0000000..ddfc90d
+index 0000000..d6b5111
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Sidebar.tsx
 @@ -0,0 +1,65 @@
@@ -7957,8 +8098,8 @@ index 0000000..ddfc90d
 +    <aside className="flex flex-col gap-3">
 +      {hasInfobox ? (
 +        <section aria-label={t("info")} className="flex flex-col gap-3">
-+          {data.infoboxes.map((infobox, index) => (
-+            <Infobox globals={globals} infobox={infobox} key={index} onSearch={onSearch} />
++          {data.infoboxes.map((infobox) => (
++            <Infobox globals={globals} infobox={infobox} key={infobox.title} onSearch={onSearch} />
 +          ))}
 +        </section>
 +      ) : null}
@@ -8083,13 +8224,13 @@ index 0000000..c0c53af
 +}
 diff --git a/client/zjsearch/src/features/results/Tile.tsx b/client/zjsearch/src/features/results/Tile.tsx
 new file mode 100644
-index 0000000..9e0fafc
+index 0000000..7411898
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Tile.tsx
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,245 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Globe } from "lucide-react";
++import { Calendar, Eye, Globe, User, X } from "lucide-react";
 +import type { ReactNode } from "react";
 +import { useEffect, useState } from "react";
 +import { EnginesLine, ResultLink } from "@/features/results/cardParts.tsx";
@@ -8131,20 +8272,10 @@ index 0000000..9e0fafc
 +  return <EnginesLine compact result={result} />;
 +}
 +
-+/** Tile thumbnail with graceful failure: a missing/broken/hung thumbnail
-+    (12s grace) renders the caller's placeholder glyph instead of an error
-+    image. */
-+export function TileThumb({
-+  src,
-+  alt,
-+  placeholder,
-+  imgClassName = "size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]",
-+}: {
-+  src?: string;
-+  alt: string;
-+  placeholder: ReactNode;
-+  imgClassName?: string;
-+}) {
++/** Thumbnail load state with a 12s hung-request grace timer: `failed`
++    covers missing, broken AND stalled sources (the caller renders its
++    placeholder).  Shared by the grid tiles and the image masonry. */
++export function useGraceThumb(src: string | undefined) {
 +  const [failed, setFailed] = useState(!src);
 +  const [loaded, setLoaded] = useState(false);
 +  useEffect(() => {
@@ -8154,6 +8285,26 @@ index 0000000..9e0fafc
 +    const timer = window.setTimeout(() => setFailed(true), 12000);
 +    return () => window.clearTimeout(timer);
 +  }, [failed, loaded]);
++  return { failed, loaded, setFailed, setLoaded };
++}
++
++/** Tile thumbnail with graceful failure: a missing/broken/hung thumbnail
++    (12s grace) renders the caller's placeholder glyph instead of an error
++    image.  The first four cells of a page pass `eager` (LCP rule). */
++export function TileThumb({
++  src,
++  alt,
++  placeholder,
++  eager = false,
++  imgClassName = "size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]",
++}: {
++  src?: string;
++  alt: string;
++  placeholder: ReactNode;
++  eager?: boolean;
++  imgClassName?: string;
++}) {
++  const { failed, setFailed, setLoaded } = useGraceThumb(src);
 +  if (failed) {
 +    return <>{placeholder}</>;
 +  }
@@ -8162,11 +8313,76 @@ index 0000000..9e0fafc
 +      alt={alt}
 +      className={imgClassName}
 +      decoding="async"
-+      loading="lazy"
++      fetchPriority={eager ? "high" : undefined}
++      loading={eager ? "eager" : "lazy"}
 +      onError={() => setFailed(true)}
 +      onLoad={() => setLoaded(true)}
 +      src={src ?? ""}
 +    />
++  );
++}
++
++/** Close chip over playing media (28px icon-chip tier) — identical in every
++    grid and card that swaps a tile for an embed/player. */
++export function TileCloseAction({ label, onClick }: { label: string; onClick: () => void }) {
++  return (
++    <button
++      aria-label={label}
++      className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++      onClick={onClick}
++      title={label}
++      type="button"
++    >
++      <X className="size-3.5" />
++    </button>
++  );
++}
++
++/** Tile meta footer (below the title, above the engines row): an author /
++    health slot left and views/date slots right — one rhythm for every grid,
++    with fixed min height so cells align when a slot is empty. */
++export function TileMeta({ left, right }: { left?: ReactNode; right?: ReactNode }) {
++  return (
++    <div className="mt-1.5 flex min-h-5 items-center justify-between gap-2 text-xs text-ink-3">
++      <span className="inline-flex min-w-0 items-center">{left}</span>
++      <span className="flex shrink-0 items-center gap-2">{right}</span>
++    </div>
++  );
++}
++
++export function TileMetaAuthor({ author }: { author?: string }) {
++  if (!author) {
++    return null;
++  }
++  return (
++    <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
++      <User className="size-3 shrink-0" />
++      {author}
++    </span>
++  );
++}
++
++export function TileMetaViews({ views }: { views?: string }) {
++  if (!views) {
++    return null;
++  }
++  return (
++    <span className="inline-flex items-center gap-1">
++      <Eye className="size-3 shrink-0" />
++      {views}
++    </span>
++  );
++}
++
++export function TileMetaDate({ date }: { date?: string | null }) {
++  if (!date) {
++    return null;
++  }
++  return (
++    <span className="inline-flex items-center gap-1">
++      <Calendar className="size-3 shrink-0" />
++      {date}
++    </span>
 +  );
 +}
 +
@@ -8259,21 +8475,26 @@ index 0000000..9e0fafc
 +}
 diff --git a/client/zjsearch/src/features/results/VideoGrid.tsx b/client/zjsearch/src/features/results/VideoGrid.tsx
 new file mode 100644
-index 0000000..d51b98e
+index 0000000..9cb42e7
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/VideoGrid.tsx
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,109 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Calendar, Eye, Play, User, X } from "lucide-react";
++import { Play } from "lucide-react";
 +import { useState } from "react";
 +import { ResultLink } from "@/features/results/cardParts.tsx";
 +import {
 +  TileBadge,
 +  TileCell,
 +  TileCenterAction,
++  TileCloseAction,
 +  TileEngines,
 +  TileFavicon,
++  TileMeta,
++  TileMetaAuthor,
++  TileMetaDate,
++  TileMetaViews,
 +  TileThumb,
 +  TileTitle,
 +} from "@/features/results/Tile.tsx";
@@ -8306,7 +8527,12 @@ index 0000000..d51b98e
 +            globals={globals}
 +            result={result}
 +          >
-+            <TileThumb alt={result.title_text} placeholder={null} src={result.thumbnail} />
++            <TileThumb
++              alt={result.title_text}
++              eager={indexOffset + index < 4}
++              placeholder={null}
++              src={result.thumbnail}
++            />
 +            {length ? <TileBadge>{length}</TileBadge> : null}
 +            {result.favicon ? <TileFavicon src={result.favicon} /> : null}
 +          </ResultLink>
@@ -8322,17 +8548,12 @@ index 0000000..d51b98e
 +            </div>
 +          ) : null}
 +          {result.iframe_src && isPlaying ? (
-+            <button
-+              aria-label={t("hide_video")}
-+              className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++            <TileCloseAction
++              label={t("hide_video")}
 +              onClick={() => {
 +                setPlaying(null);
 +              }}
-+              title={t("hide_video")}
-+              type="button"
-+            >
-+              <X className="size-3.5" />
-+            </button>
++            />
 +          ) : result.iframe_src ? (
 +            <TileCenterAction
 +              icon={<Play className="size-5 translate-x-px" />}
@@ -8344,32 +8565,15 @@ index 0000000..d51b98e
 +          ) : null}
 +        </div>
 +        <TileTitle globals={globals} result={result} />
-+        <div className="mt-1.5 flex items-center justify-between gap-3 text-xs text-ink-3">
-+          {result.author ? (
-+            <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
-+              <User className="size-3 shrink-0" />
-+              {result.author}
-+            </span>
-+          ) : (
-+            <span />
-+          )}
-+          <span className="flex shrink-0 items-center gap-2">
-+            {result.views ? (
-+              <span className="inline-flex items-center gap-1">
-+                <Eye className="size-3 shrink-0" />
-+                {result.views}
-+              </span>
-+            ) : null}
-+            <span className="flex items-center gap-1">
-+              {result.published_date ? (
-+                <>
-+                  <Calendar className="size-3" />
-+                  {formatDate(result.published_date)}
-+                </>
-+              ) : null}
-+            </span>
-+          </span>
-+        </div>
++        <TileMeta
++          left={<TileMetaAuthor author={result.author} />}
++          right={
++            <>
++              <TileMetaViews views={result.views} />
++              <TileMetaDate date={result.published_date ? formatDate(result.published_date) : null} />
++            </>
++          }
++        />
 +        <div className="mt-auto pt-1.5">
 +          <TileEngines result={result} />
 +        </div>
@@ -8386,12 +8590,13 @@ index 0000000..d51b98e
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Answers.tsx b/client/zjsearch/src/features/results/answers/Answers.tsx
 new file mode 100644
-index 0000000..ad9a925
+index 0000000..7a7f8b8
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Answers.tsx
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,108 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
++import { useMemo } from "react";
 +import { LegacyAnswer } from "@/features/results/answers/Legacy.tsx";
 +import { StockAnswer } from "@/features/results/answers/Stock.tsx";
 +import { TranslationsAnswer } from "@/features/results/answers/Translations.tsx";
@@ -8407,54 +8612,90 @@ index 0000000..ad9a925
 +  return answer.template !== "answer/legacy.html" || answer.data?.kind === "unit_conversion";
 +}
 +
++/** Content-identity key: stateful widgets (weather source list expansion)
++    must not inherit their state from a different answer after a new search
++    the way index keys let them. The index suffix keeps duplicates safe. */
++function answerKey(answer: AnswerData, index: number): string {
++  switch (answer.template) {
++    case "answer/translations.html":
++      return `translations-${answer.translations[0]?.text ?? ""}-${index}`;
++    case "answer/weather.html":
++      return `weather-${answer.service}-${index}`;
++    case "answer/stock.html":
++      return `stock-${answer.data.symbol}-${index}`;
++    default:
++      return `legacy-${answer.engine}-${index}`;
++  }
++}
++
 +export function Answers({ answers, query }: { answers: AnswerData[]; query?: string }) {
 +  const t = useT();
++  const visible = useMemo(() => {
++    if (answers.length === 0) {
++      return [];
++    }
++    // several weather engines may answer the same query with the same data
++    // at different coverage (duckduckgo ~10 days hourly, open-meteo ~2.7
++    // days, wttr.in 3 days 3-hourly): render the longest coverage as one
++    // card and credit every answering engine as its source
++    const weatherAnswers = answers
++      .filter(
++        (answer): answer is Extract<AnswerData, { template: "answer/weather.html" }> =>
++          answer.template === "answer/weather.html",
++      )
++      .sort((a, b) => b.forecasts.length - a.forecasts.length);
++    const longest = weatherAnswers[0];
++    const merged: Array<{ answer: AnswerData; key: string }> = [];
++    let weatherInserted = false;
++    answers.forEach((answer, index) => {
++      if (answer.template === "answer/weather.html") {
++        if (!weatherInserted && longest !== undefined) {
++          merged.push({ answer: longest, key: answerKey(longest, index) });
++          weatherInserted = true;
++        }
++        return;
++      }
++      merged.push({ answer, key: answerKey(answer, index) });
++    });
++    return merged;
++  }, [answers]);
++  const weatherSources = useMemo(
++    () =>
++      answers
++        .filter(
++          (answer): answer is Extract<AnswerData, { template: "answer/weather.html" }> =>
++            answer.template === "answer/weather.html",
++        )
++        .map((a) => ({ service: a.service, url: a.url })),
++    [answers],
++  );
++
 +  if (answers.length === 0) {
 +    return null;
 +  }
-+  // several weather engines may answer the same query with the same data at
-+  // different coverage (duckduckgo ~10 days hourly, open-meteo ~2.7 days,
-+  // wttr.in 3 days 3-hourly): render the longest coverage as one card and
-+  // credit every answering engine as its source
-+  const weatherAnswers = answers.filter(
-+    (answer): answer is Extract<AnswerData, { template: "answer/weather.html" }> =>
-+      answer.template === "answer/weather.html",
-+  );
-+  weatherAnswers.sort((a, b) => b.forecasts.length - a.forecasts.length);
-+  const weatherSources = weatherAnswers.map((a) => ({ service: a.service, url: a.url }));
-+  const longest = weatherAnswers[0];
-+  const visible: AnswerData[] = [];
-+  let weatherInserted = false;
-+  for (const answer of answers) {
-+    if (answer.template === "answer/weather.html") {
-+      if (!weatherInserted && longest !== undefined) {
-+        visible.push(longest);
-+        weatherInserted = true;
-+      }
-+      continue;
-+    }
-+    visible.push(answer);
-+  }
++
 +  return (
 +    <section aria-label={t("answers")} className="space-y-2">
-+      {visible.map((answer, index) => {
-+        const body =
-+          answer.template === "answer/translations.html" ? (
-+            <TranslationsAnswer answer={answer} key={index} query={query} />
-+          ) : answer.template === "answer/weather.html" ? (
-+            <WeatherAnswer answer={answer} key={index} sources={weatherSources} />
-+          ) : answer.template === "answer/stock.html" ? (
-+            <StockAnswer answer={answer} key={index} />
-+          ) : (
-+            <LegacyAnswer answer={answer} key={index} />
-+          );
-+        return isCarded(answer) ? (
-+          <div className="animate-fade-up rounded-2xl border border-accent/25 bg-accent-soft/50 px-4 py-3" key={index}>
-+            {body}
-+          </div>
-+        ) : (
-+          <div className="animate-fade-up border-b border-line px-4 pb-3 last:border-b-0" key={index}>
-+            {body}
++      {visible.map(({ answer, key }) => {
++        const carded = isCarded(answer);
++        return (
++          <div
++            className={
++              carded
++                ? "animate-fade-up rounded-2xl border border-accent/25 bg-accent-soft/50 px-4 py-3"
++                : "animate-fade-up border-b border-line px-4 pb-3 last:border-b-0"
++            }
++            key={key}
++          >
++            {answer.template === "answer/translations.html" ? (
++              <TranslationsAnswer answer={answer} query={query} />
++            ) : answer.template === "answer/weather.html" ? (
++              <WeatherAnswer answer={answer} sources={weatherSources} />
++            ) : answer.template === "answer/stock.html" ? (
++              <StockAnswer answer={answer} />
++            ) : (
++              <LegacyAnswer answer={answer} />
++            )}
 +          </div>
 +        );
 +      })}
@@ -8705,10 +8946,10 @@ index 0000000..ec20b40
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Stock.tsx b/client/zjsearch/src/features/results/answers/Stock.tsx
 new file mode 100644
-index 0000000..1169fa5
+index 0000000..43ea166
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Stock.tsx
-@@ -0,0 +1,354 @@
+@@ -0,0 +1,350 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Stock quote card (stock_quote plugin, eastmoney data), DDG/Yahoo style:
@@ -8748,6 +8989,20 @@ index 0000000..1169fa5
 +  return t(keys[range]);
 +}
 +
++/** Shared 0–100 SVG projection for the stock charts: min→max mapped with an
++    8% bleed so strokes and endpoint labels never clip.  `extra` values join
++    the domain (the previous close) so reference lines and polylines agree. */
++function makeScale(values: number[], extra: number[] = []) {
++  const all = [...values, ...extra];
++  const min = Math.min(...all);
++  const max = Math.max(...all);
++  const span = max - min || 1;
++  return {
++    xPct: (idx: number) => (values.length < 2 ? 0 : (idx / (values.length - 1)) * 100),
++    yPct: (value: number) => ((max + span * 0.08 - value) / (span * 1.16)) * 100,
++  };
++}
++
 +/** Intraday line colored per segment against the previous close (Yahoo
 +    style): runs above the reference stroke in the bullish color, below in
 +    the bearish one. */
@@ -8762,11 +9017,7 @@ index 0000000..1169fa5
 +  prevClose: number;
 +  series: number[];
 +}) {
-+  const min = Math.min(...series, prevClose);
-+  const max = Math.max(...series, prevClose);
-+  const span = max - min || 1;
-+  const yPct = (v: number) => ((max + span * 0.08 - v) / (span * 1.16)) * 100;
-+  const xPct = (i: number) => (i / (series.length - 1)) * 100;
++  const { xPct, yPct } = makeScale(series, [prevClose]);
 +
 +  const runs: Array<{ above: boolean; points: string[] }> = [];
 +  let current: { above: boolean; points: string[] } | null = null;
@@ -8806,11 +9057,7 @@ index 0000000..1169fa5
 +  if (first === undefined || last === undefined || series.length < 2) {
 +    return null;
 +  }
-+  const min = Math.min(...series);
-+  const max = Math.max(...series);
-+  const span = max - min || 1;
-+  const yPct = (v: number) => ((max + span * 0.08 - v) / (span * 1.16)) * 100;
-+  const xPct = (i: number) => (i / (series.length - 1)) * 100;
++  const { xPct, yPct } = makeScale(series);
 +  const line = series.map((v, i) => `${xPct(i).toFixed(2)},${yPct(v).toFixed(2)}`).join(" ");
 +  const firstY = yPct(first).toFixed(2);
 +  const lastY = yPct(last).toFixed(2);
@@ -8849,6 +9096,10 @@ index 0000000..1169fa5
 +  const candles = active.candles;
 +  const closes = candles.map((c) => c[3]);
 +  const hoverClose = hover !== null ? closes[hover] : undefined;
++  // one shared projection for the 1D segments and every overlay: the
++  // previous-close reference joins the domain so the dashed line, the
++  // polyline and the hover dot all agree on the vertical mapping
++  const scale = makeScale(closes, range === "1D" ? [d.previous_close] : []);
 +
 +  const stats: Array<[string, string]> = (
 +    [
@@ -8944,7 +9195,7 @@ index 0000000..1169fa5
 +              <div
 +                aria-hidden="true"
 +                className="absolute inset-x-0 border-t border-dashed border-danger/60"
-+                style={{ top: `${yPctOf(closes, d.previous_close)}%` }}
++                style={{ top: `${scale.yPct(d.previous_close)}%` }}
 +              />
 +            ) : null}
 +            {range === "1D" ? (
@@ -8967,12 +9218,12 @@ index 0000000..1169fa5
 +                <div
 +                  aria-hidden="true"
 +                  className="absolute inset-y-0 border-l border-dashed border-ink-3/60"
-+                  style={{ left: `${xPctOf(closes, hover)}%` }}
++                  style={{ left: `${scale.xPct(hover)}%` }}
 +                />
 +                <div
 +                  aria-hidden="true"
 +                  className={`absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-line bg-surface ${tone}`}
-+                  style={{ left: `${xPctOf(closes, hover)}%`, top: `${yPctOf(closes, hoverClose)}%` }}
++                  style={{ left: `${scale.xPct(hover)}%`, top: `${scale.yPct(hoverClose)}%` }}
 +                />
 +              </>
 +            ) : null}
@@ -8994,10 +9245,7 @@ index 0000000..1169fa5
 +              </>
 +            ) : null}
 +            {/* price tag: hovered close, else the last one */}
-+            <div
-+              className="absolute right-0 -translate-y-1/2"
-+              style={{ top: `${yPctOf(closes, hoverClose ?? d.price)}%` }}
-+            >
++            <div className="absolute right-0 -translate-y-1/2" style={{ top: `${scale.yPct(hoverClose ?? d.price)}%` }}>
 +              <span
 +                className={`rounded border border-line bg-surface px-1 py-0.5 text-[10px] font-medium tabular-nums ${
 +                  hover !== null && hoverClose !== undefined ? tone : "text-ink"
@@ -9010,7 +9258,7 @@ index 0000000..1169fa5
 +            {hover !== null && candles[hover] ? (
 +              <div
 +                className={`pointer-events-none absolute top-1 z-10 w-44 rounded-lg border border-line bg-surface p-2 text-xs shadow-pop ${
-+                  xPctOf(closes, hover) > 55 ? "right-1/2 mr-3" : "left-1/2 ml-3"
++                  scale.xPct(hover) > 55 ? "right-1/2 mr-3" : "left-1/2 ml-3"
 +                }`}
 +              >
 +                <div className="mb-1 font-medium text-ink">{active.labels[hover]}</div>
@@ -9044,17 +9292,6 @@ index 0000000..1169fa5
 +  );
 +}
 +
-+function xPctOf(closes: number[], idx: number): number {
-+  return closes.length < 2 ? 0 : (idx / (closes.length - 1)) * 100;
-+}
-+
-+function yPctOf(closes: number[], value: number): number {
-+  const min = Math.min(...closes);
-+  const max = Math.max(...closes);
-+  const span = max - min || 1;
-+  return ((max + span * 0.08 - value) / (span * 1.16)) * 100;
-+}
-+
 +function TooltipRow({ label, value }: { label: string; value: string }) {
 +  return (
 +    <div className="flex items-baseline justify-between gap-3">
@@ -9065,10 +9302,10 @@ index 0000000..1169fa5
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Translations.tsx b/client/zjsearch/src/features/results/answers/Translations.tsx
 new file mode 100644
-index 0000000..9167858
+index 0000000..54c6d37
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Translations.tsx
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,195 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ArrowRight, ChevronDown } from "lucide-react";
@@ -9200,15 +9437,6 @@ index 0000000..9167858
 +        </ol>
 +      ) : null}
 +      {showExamples(2)}
-+      {first.examples.length > 0 ? (
-+        <div className="mt-2 space-y-1">
-+          {first.examples.slice(0, 2).map((example, i) => (
-+            <p className="text-sm italic leading-relaxed text-ink-2" dir="auto" key={i}>
-+              “{example}”
-+            </p>
-+          ))}
-+        </div>
-+      ) : null}
 +      {first.synonyms.length > 0 ? (
 +        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
 +          <span>{t("synonyms")}:</span>
@@ -9441,16 +9669,18 @@ index 0000000..be7ad17
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Weather.tsx b/client/zjsearch/src/features/results/answers/Weather.tsx
 new file mode 100644
-index 0000000..d2a0ae0
+index 0000000..d4c1deb
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Weather.tsx
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,324 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChevronLeft, MapPin } from "lucide-react";
-+import { useState } from "react";
++import { cap } from "@/lib/format.ts";
 +import { useLocale, useT } from "@/lib/i18n.ts";
++import { CHIP, CHIP_HOVER, SCROLLBAR_NONE } from "@/lib/styles.ts";
 +import type { AnswerData, WeatherItem } from "@/lib/types.ts";
++import { useCapExpand } from "@/lib/useCapExpand.ts";
 +
 +const MAX_SOURCES_SHOWN = 3;
 +
@@ -9505,7 +9735,7 @@ index 0000000..d2a0ae0
 +  if (locale.startsWith("zh")) {
 +    return WEATHER_CONDITION_ZH[condition] ?? condition;
 +  }
-+  return condition.charAt(0).toUpperCase() + condition.slice(1);
++  return cap(condition);
 +}
 +
 +/** The server datetime is location wall-clock (no offset): HH:mm is a plain
@@ -9565,7 +9795,7 @@ index 0000000..d2a0ae0
 +    }
 +  });
 +  return (
-+    <div className="mt-4 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
++    <div className={`mt-4 overflow-x-auto pb-1 ${SCROLLBAR_NONE}`}>
 +      <svg className="block" height={height} role="img" width={slots.length * step}>
 +        <title>{t("weather_trend")}</title>
 +        <path className="fill-accent/15" d={area} />
@@ -9641,7 +9871,9 @@ index 0000000..d2a0ae0
 +          key={day.date}
 +        >
 +          <p className="text-xs font-medium text-ink">{day.weekday}</p>
-+          {day.symbol ? <img alt="" className="mx-auto mt-1.5 size-8" src={day.symbol} /> : null}
++          {day.symbol ? (
++            <img alt="" className="mx-auto mt-1.5 size-8" decoding="async" loading="lazy" src={day.symbol} />
++          ) : null}
 +          <p className="mt-1.5 whitespace-nowrap text-xs">
 +            <span className="font-semibold text-ink">{Math.round(day.hi)}°</span>{" "}
 +            <span className="text-ink-3">{Math.round(day.lo)}°</span>
@@ -9662,9 +9894,12 @@ index 0000000..d2a0ae0
 +  const t = useT();
 +  const locale = useLocale();
 +  // same cap-and-expand contract as EnginesLine: 3 pills + "+N"
-+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
++  const {
++    expanded: sourcesExpanded,
++    toggle: toggleSources,
++    hidden: hiddenSources,
++  } = useCapExpand(sources.length, MAX_SOURCES_SHOWN);
 +  const shownSources = sourcesExpanded ? sources : sources.slice(0, MAX_SOURCES_SHOWN);
-+  const hiddenSources = sources.length - MAX_SOURCES_SHOWN;
 +  const current = answer.current;
 +  const heroC = Math.round(current.temp_c);
 +  const heroF = Math.round(current.temp_f);
@@ -9692,7 +9927,9 @@ index 0000000..d2a0ae0
 +      </p>
 +      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-10 gap-y-3">
 +        <div className="flex items-center gap-4">
-+          {current.symbol ? <img alt="" className="size-16" src={current.symbol} /> : null}
++          {current.symbol ? (
++            <img alt="" className="size-16" decoding="async" loading="lazy" src={current.symbol} />
++          ) : null}
 +          <div>
 +            <p className="flex items-start gap-2">
 +              <span className="text-4xl font-semibold leading-none text-ink">
@@ -9720,7 +9957,7 @@ index 0000000..d2a0ae0
 +          {shownSources.map((source) =>
 +            source.url ? (
 +              <a
-+                className="inline-flex items-center rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 transition-colors hover:text-ink"
++                className={`${CHIP} ${CHIP_HOVER} text-ink-2`}
 +                href={source.url}
 +                key={source.service}
 +                rel="noreferrer"
@@ -9729,7 +9966,7 @@ index 0000000..d2a0ae0
 +                {source.service}
 +              </a>
 +            ) : (
-+              <span className="rounded-full bg-surface-2 px-2 py-0.5" key={source.service}>
++              <span className={CHIP} key={source.service}>
 +                {source.service}
 +              </span>
 +            ),
@@ -9737,10 +9974,8 @@ index 0000000..d2a0ae0
 +          {!sourcesExpanded && hiddenSources > 0 ? (
 +            <button
 +              aria-label={t("more")}
-+              className="rounded-full bg-surface-2 px-2 py-0.5 transition-colors hover:text-ink"
-+              onClick={() => {
-+                setSourcesExpanded(true);
-+              }}
++              className={`${CHIP} ${CHIP_HOVER}`}
++              onClick={toggleSources}
 +              title={sources.map((source) => source.service).join(", ")}
 +              type="button"
 +            >
@@ -9750,9 +9985,7 @@ index 0000000..d2a0ae0
 +          {sourcesExpanded && hiddenSources > 0 ? (
 +            <button
 +              className="inline-flex items-center gap-1 transition-colors hover:text-ink"
-+              onClick={() => {
-+                setSourcesExpanded(false);
-+              }}
++              onClick={toggleSources}
 +              type="button"
 +            >
 +              <ChevronLeft className="size-3 shrink-0" />
@@ -9796,10 +10029,10 @@ index 0000000..22a2c98
 +}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 0000000..8973dbd
+index 0000000..f103502
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
-@@ -0,0 +1,378 @@
+@@ -0,0 +1,394 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -9816,13 +10049,15 @@ index 0000000..8973dbd
 +  Server,
 +  User,
 +} from "lucide-react";
-+import { type ReactNode, useState } from "react";
++import { type ReactNode, useId, useState } from "react";
++import { Collapse } from "@/components/Collapse.tsx";
 +import { useCacheUrl } from "@/features/results/CacheUrlProvider.tsx";
 +import { formatDate, formatLength, formatScore } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { newTabLinkProps } from "@/lib/link.ts";
-+import { CHIP, META_ROW, SWIPE_ROW, TILE_BADGE } from "@/lib/styles.ts";
++import { CHIP, CHIP_HOVER, META_ROW, TILE_BADGE } from "@/lib/styles.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
++import { useCapExpand } from "@/lib/useCapExpand.ts";
 +
 +// ------------------------------------------------------------- shared parts
 +
@@ -9967,53 +10202,48 @@ index 0000000..8973dbd
 +}) {
 +  const t = useT();
 +  const cacheUrl = useCacheUrl();
-+  const [expanded, setExpanded] = useState(false);
++  // cap-and-expand: the first engine leads, "+N" reveals the rest
++  const { expanded, toggle, hidden } = useCapExpand(result.engines.length, 1);
 +  const engines = result.engines;
 +  if (engines.length === 0 && !leading) {
 +    return null;
 +  }
-+  const hidden = engines.length - 1;
 +  const chip =
 +    tone === "dark"
 +      ? "inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs text-zinc-300"
 +      : CHIP;
-+  const chipHover = tone === "dark" ? "transition-colors hover:text-white" : "transition-colors hover:text-ink";
++  const chipHover = tone === "dark" ? "transition-colors hover:text-white" : CHIP_HOVER;
 +  return (
 +    <div
 +      className={`mt-2 flex min-w-0 items-center gap-x-2 text-xs ${
 +        tone === "dark" ? "text-zinc-300" : "text-ink-3"
-+      } ${compact ? SWIPE_ROW : "flex-wrap gap-y-1"}`}
++      } ${compact ? "flex-nowrap overflow-hidden" : "flex-wrap gap-y-1"}`}
 +    >
 +      {typeof result.score === "number" ? (
-+        <span className={`${chip} tabular-nums`} title={t("scores")}>
++        <span className={`${chip} shrink-0 tabular-nums`} title={t("scores")}>
 +          <Award className="size-3 shrink-0" />
 +          {formatScore(result.score)}
 +        </span>
 +      ) : null}
 +      {leading}
 +      {engines.length > 0 ? (
-+        <span className={`${chip} max-w-full truncate`} title={engines.join(", ")}>
++        // the lead engine truncates inside the row (tiles pin this line to
++        // the tile bottom — it must never overflow the tile edge)
++        <span className={`${chip} min-w-0 max-w-full truncate`} title={engines.join(", ")}>
 +          <Server className="size-3 shrink-0" />
 +          {engines[0]}
 +        </span>
 +      ) : null}
 +      {expanded
 +        ? engines.slice(1).map((engine) => (
-+            <span className={chip} key={engine}>
++            <span className={`${chip} shrink-0`} key={engine}>
 +              <Server className="size-3 shrink-0" />
 +              {engine}
 +            </span>
 +          ))
 +        : null}
 +      {hidden > 0 ? (
-+        <button
-+          aria-expanded={expanded}
-+          className={`${chip} ${chipHover}`}
-+          onClick={() => {
-+            setExpanded((value) => !value);
-+          }}
-+          type="button"
-+        >
++        <button aria-expanded={expanded} className={`${chip} shrink-0 ${chipHover}`} onClick={toggle} type="button">
 +          {expanded ? (
 +            <>
 +              <ChevronLeft className="size-3 shrink-0" />
@@ -10025,10 +10255,23 @@ index 0000000..8973dbd
 +        </button>
 +      ) : null}
 +      {cacheUrl ? (
-+        <a className={`${chip} ${chipHover}`} href={cacheUrl + result.url} {...newTabLinkProps(true)}>
-+          <Archive className="size-3 shrink-0" />
-+          {t("cached")}
-+        </a>
++        compact ? (
++          // tiles: icon-only so the pinned one-liner never overflows the tile
++          <a
++            aria-label={t("cached")}
++            className={`${chip} shrink-0 ${chipHover}`}
++            href={cacheUrl + result.url}
++            {...newTabLinkProps(true)}
++            title={t("cached")}
++          >
++            <Archive className="size-3 shrink-0" />
++          </a>
++        ) : (
++          <a className={`${chip} ${chipHover}`} href={cacheUrl + result.url} {...newTabLinkProps(true)}>
++            <Archive className="size-3 shrink-0" />
++            {t("cached")}
++          </a>
++        )
 +      ) : null}
 +    </div>
 +  );
@@ -10096,9 +10339,11 @@ index 0000000..8973dbd
 +  children: (open: boolean) => ReactNode;
 +}) {
 +  const [open, setOpen] = useState(false);
++  const panelId = useId();
 +  return (
 +    <div>
 +      <button
++        aria-controls={panelId}
 +        aria-expanded={open}
 +        className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:text-ink"
 +        onClick={() => {
@@ -10109,7 +10354,11 @@ index 0000000..8973dbd
 +        <Play className="size-3.5" />
 +        {open ? hideLabel : showLabel}
 +      </button>
-+      {open ? <div className="mt-2 animate-fade-in">{children(open)}</div> : null}
++      {/* unmount after the close animation: folded embeds must not keep
++          streaming video/audio */}
++      <Collapse className={open ? "mt-2" : ""} id={panelId} open={open} unmountAfterHide>
++        {children(open)}
++      </Collapse>
 +    </div>
 +  );
 +}
@@ -10180,7 +10429,7 @@ index 0000000..8973dbd
 +}
 diff --git a/client/zjsearch/src/features/results/cards/CodeCard.tsx b/client/zjsearch/src/features/results/cards/CodeCard.tsx
 new file mode 100644
-index 0000000..bc485e8
+index 0000000..96e2285
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/CodeCard.tsx
 @@ -0,0 +1,47 @@
@@ -10215,7 +10464,7 @@ index 0000000..bc485e8
 +      ) : null}
 +      {result.content_html ? (
 +        <p
-+          className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++          className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +          dangerouslySetInnerHTML={{ __html: result.content_html }}
 +          dir="auto"
 +        />
@@ -10233,7 +10482,7 @@ index 0000000..bc485e8
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DefaultCard.tsx b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 new file mode 100644
-index 0000000..07532e9
+index 0000000..d2898a3
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 @@ -0,0 +1,73 @@
@@ -10264,7 +10513,7 @@ index 0000000..07532e9
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
-+        <div className="min-w-0 flex-1">
++        <div className="min-w-0 w-full max-w-prose">
 +          <PrettyUrl globals={globals} result={result} />
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
@@ -10284,7 +10533,7 @@ index 0000000..07532e9
 +            </div>
 +          ) : null}
 +          <p
-+            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{
 +              __html: result.content_html || t("no_description"),
 +            }}
@@ -10312,13 +10561,14 @@ index 0000000..07532e9
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DictionaryCard.tsx b/client/zjsearch/src/features/results/cards/DictionaryCard.tsx
 new file mode 100644
-index 0000000..e550394
+index 0000000..f64a68f
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DictionaryCard.tsx
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,41 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { type CardProps, EnginesLine, ResultArticle, ResultLink } from "@/features/results/cardParts.tsx";
++import { CODE_CHIP } from "@/lib/styles.ts";
 +
 +/** Dictionary entry card for the dictionaries/define categories: the headword
 +    is the identity (no URL chrome), a phonetic chip is lifted out of the
@@ -10340,14 +10590,14 @@ index 0000000..e550394
 +          </ResultLink>
 +        </h3>
 +        {ipa ? (
-+          <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-ink-2" dir="ltr">
++          <code className={CODE_CHIP} dir="ltr">
 +            /{ipa[1]}/
 +          </code>
 +        ) : null}
 +      </div>
 +      {content ? (
 +        <p
-+          className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-ink-2"
++          className="mt-1.5 line-clamp-3 max-w-prose text-sm leading-relaxed text-ink-2"
 +          dangerouslySetInnerHTML={{ __html: content }}
 +          dir="auto"
 +        />
@@ -10358,7 +10608,7 @@ index 0000000..e550394
 +}
 diff --git a/client/zjsearch/src/features/results/cards/FileCard.tsx b/client/zjsearch/src/features/results/cards/FileCard.tsx
 new file mode 100644
-index 0000000..cdbff2a
+index 0000000..c88057f
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/FileCard.tsx
 @@ -0,0 +1,114 @@
@@ -10423,14 +10673,14 @@ index 0000000..cdbff2a
 +          </div>
 +          {result.abstract_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.abstract_html }}
 +              dir="auto"
 +            />
 +          ) : null}
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -10527,7 +10777,7 @@ index 0000000..3cc2e82
 +}
 diff --git a/client/zjsearch/src/features/results/cards/MapCard.tsx b/client/zjsearch/src/features/results/cards/MapCard.tsx
 new file mode 100644
-index 0000000..4213801
+index 0000000..1188a1f
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/MapCard.tsx
 @@ -0,0 +1,83 @@
@@ -10544,7 +10794,7 @@ index 0000000..4213801
 +} from "@/features/results/cardParts.tsx";
 +import { MapResult } from "@/features/results/MapView.tsx";
 +import { useT } from "@/lib/i18n.ts";
-+import { META_ROW } from "@/lib/styles.ts";
++import { CHIP, CHIP_HOVER, META_ROW } from "@/lib/styles.ts";
 +
 +export function MapCard({ result, globals, autoOpenMap }: CardProps) {
 +  const t = useT();
@@ -10565,7 +10815,7 @@ index 0000000..4213801
 +      </div>
 +      {result.content_html ? (
 +        <p
-+          className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++          className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +          dangerouslySetInnerHTML={{ __html: result.content_html }}
 +          dir="auto"
 +        />
@@ -10598,7 +10848,7 @@ index 0000000..4213801
 +        <div className="mt-2 flex flex-wrap gap-2 text-xs">
 +          {result.map_links.map((link) => (
 +            <a
-+              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 hover:text-ink"
++              className={`${CHIP} ${CHIP_HOVER} text-ink-2`}
 +              href={link.url}
 +              key={link.url}
 +              rel="noreferrer"
@@ -10616,30 +10866,31 @@ index 0000000..4213801
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PackageCard.tsx b/client/zjsearch/src/features/results/cards/PackageCard.tsx
 new file mode 100644
-index 0000000..8707e86
+index 0000000..5ccd754
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PackageCard.tsx
-@@ -0,0 +1,136 @@
+@@ -0,0 +1,135 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Calendar, ChevronLeft, Code, ExternalLink, Scale, Star, User } from "lucide-react";
-+import { type ReactNode, useState } from "react";
++import type { ReactNode } from "react";
 +import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
-+import { CHIP, META_ROW } from "@/lib/styles.ts";
++import { CHIP, CHIP_HOVER, META_ROW } from "@/lib/styles.ts";
++import { useCapExpand } from "@/lib/useCapExpand.ts";
 +
 +export function PackageCard({ result, globals }: CardProps) {
 +  const t = useT();
-+  const [tagsExpanded, setTagsExpanded] = useState(false);
++  const { expanded: tagsExpanded, toggle: toggleTags, hidden: hiddenTags } = useCapExpand(result.tags?.length ?? 0, 4);
 +  // same slot rhythm as DefaultCard: url / title / meta / content / engines;
 +  // secondary links fold into the engines row so no card grows extra rows
 +  const links: Array<{ icon: ReactNode; label: string; url: string }> = [];
 +  if (result.homepage) {
-+    links.push({ icon: <ExternalLink className="size-3" />, label: "Homepage", url: result.homepage });
++    links.push({ icon: <ExternalLink className="size-3" />, label: t("homepage"), url: result.homepage });
 +  }
 +  if (result.source_code_url && result.source_code_url !== result.url) {
-+    links.push({ icon: <Code className="size-3" />, label: "Source code", url: result.source_code_url });
++    links.push({ icon: <Code className="size-3" />, label: t("repository"), url: result.source_code_url });
 +  }
 +  for (const [name, url] of Object.entries(result.project_links ?? {})) {
 +    if (url !== result.url) {
@@ -10700,7 +10951,7 @@ index 0000000..8707e86
 +      ) : null}
 +      {result.content_html ? (
 +        <p
-+          className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++          className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +          dangerouslySetInnerHTML={{ __html: result.content_html }}
 +          dir="auto"
 +        />
@@ -10712,13 +10963,11 @@ index 0000000..8707e86
 +              #{tag}
 +            </span>
 +          ))}
-+          {result.tags.length > 4 ? (
++          {hiddenTags > 0 ? (
 +            <button
 +              aria-expanded={tagsExpanded}
-+              className={`${CHIP} transition-colors hover:text-ink`}
-+              onClick={() => {
-+                setTagsExpanded((value) => !value);
-+              }}
++              className={`${CHIP} ${CHIP_HOVER}`}
++              onClick={toggleTags}
 +              title={result.tags.join(", ")}
 +              type="button"
 +            >
@@ -10728,7 +10977,7 @@ index 0000000..8707e86
 +                  {t("show_less")}
 +                </>
 +              ) : (
-+                `+${result.tags.length - 4}`
++                `+${hiddenTags}`
 +              )}
 +            </button>
 +          ) : null}
@@ -10739,7 +10988,7 @@ index 0000000..8707e86
 +          links.length > 0
 +            ? links.map((link) => (
 +                <a
-+                  className={`${CHIP} text-ink-2 transition-colors hover:text-ink`}
++                  className={`${CHIP} ${CHIP_HOVER} text-ink-2`}
 +                  href={link.url}
 +                  key={link.url}
 +                  rel="noreferrer"
@@ -10758,14 +11007,14 @@ index 0000000..8707e86
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PaperCard.tsx b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 new file mode 100644
-index 0000000..ec9ef57
+index 0000000..fa06139
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PaperCard.tsx
-@@ -0,0 +1,194 @@
+@@ -0,0 +1,192 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { BookOpen, Calendar, ChevronLeft, ExternalLink, FileText, Fingerprint, Quote, User } from "lucide-react";
-+import { type ReactNode, useState } from "react";
++import type { ReactNode } from "react";
 +import {
 +  type CardProps,
 +  EnginesLine,
@@ -10777,7 +11026,8 @@ index 0000000..ec9ef57
 +} from "@/features/results/cardParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
-+import { META_ROW } from "@/lib/styles.ts";
++import { CHIP, CHIP_HOVER, META_ROW, MONO_CHIP } from "@/lib/styles.ts";
++import { useCapExpand } from "@/lib/useCapExpand.ts";
 +
 +/** Scholarly layout (science intent, arxiv/pubmed/...): authors · venue ·
 +    date meta line, clamped abstract, PDF/HTML actions and a compact DOI
@@ -10839,14 +11089,13 @@ index 0000000..ec9ef57
 +  // every optional extra (PDF/HTML, DOI, citation note, subject tags) lives
 +  // in ONE footer row in a fixed order, so cards share the same skeleton no
 +  // matter which fields the source engine provides
-+  const maxTags = 2;
 +  const tags = result.tags ?? [];
-+  const [tagsExpanded, setTagsExpanded] = useState(false);
++  const { expanded: tagsExpanded, toggle: toggleTags, hidden: hiddenTags } = useCapExpand(tags.length, 2);
 +  const hasFooter = Boolean(result.pdf_url || result.html_url || result.doi || result.comments || tags.length > 0);
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
-+        <div className="min-w-0 flex-1">
++        <div className="min-w-0 w-full max-w-prose">
 +          <PrettyUrl globals={globals} result={result} />
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
@@ -10866,7 +11115,7 @@ index 0000000..ec9ef57
 +          ) : null}
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -10890,7 +11139,7 @@ index 0000000..ec9ef57
 +                  ) : null}
 +                  {result.html_url ? (
 +                    <a
-+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-2 hover:text-ink"
++                      className={`${CHIP} shrink-0 ${CHIP_HOVER} text-ink-2`}
 +                      href={result.html_url}
 +                      rel="noreferrer"
 +                      target="_blank"
@@ -10901,7 +11150,7 @@ index 0000000..ec9ef57
 +                  ) : null}
 +                  {result.doi ? (
 +                    <a
-+                      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 font-mono text-xs text-ink-2 hover:text-ink"
++                      className={`${MONO_CHIP} min-w-0 max-w-full shrink-0 ${CHIP_HOVER}`}
 +                      dir="ltr"
 +                      href={doiHref}
 +                      rel="noreferrer"
@@ -10916,18 +11165,16 @@ index 0000000..ec9ef57
 +              ) : null}
 +              {tags.length > 0 ? (
 +                <div className="flex flex-wrap items-center gap-1">
-+                  {tags.slice(0, tagsExpanded ? tags.length : maxTags).map((tag) => (
-+                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-ink-3" key={tag} title={tag}>
++                  {tags.slice(0, tagsExpanded ? tags.length : 2).map((tag) => (
++                    <span className={`${CHIP} text-ink-3`} key={tag} title={tag}>
 +                      #{tag}
 +                    </span>
 +                  ))}
-+                  {tags.length > maxTags ? (
++                  {hiddenTags > 0 ? (
 +                    <button
 +                      aria-expanded={tagsExpanded}
-+                      className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-ink-3 transition-colors hover:text-ink"
-+                      onClick={() => {
-+                        setTagsExpanded((value) => !value);
-+                      }}
++                      className={`${CHIP} text-ink-3 ${CHIP_HOVER}`}
++                      onClick={toggleTags}
 +                      title={tags.join(", ")}
 +                      type="button"
 +                    >
@@ -10937,7 +11184,7 @@ index 0000000..ec9ef57
 +                          {t("show_less")}
 +                        </>
 +                      ) : (
-+                        `+${tags.length - maxTags}`
++                        `+${hiddenTags}`
 +                      )}
 +                    </button>
 +                  ) : null}
@@ -10958,7 +11205,7 @@ index 0000000..ec9ef57
 +}
 diff --git a/client/zjsearch/src/features/results/cards/ProductCard.tsx b/client/zjsearch/src/features/results/cards/ProductCard.tsx
 new file mode 100644
-index 0000000..38402e8
+index 0000000..3fa6dcc
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/ProductCard.tsx
 @@ -0,0 +1,65 @@
@@ -11011,7 +11258,7 @@ index 0000000..38402e8
 +          </div>
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -11082,7 +11329,7 @@ index 0000000..6d35617
 +// whole card subtree
 diff --git a/client/zjsearch/src/features/results/cards/TorrentCard.tsx b/client/zjsearch/src/features/results/cards/TorrentCard.tsx
 new file mode 100644
-index 0000000..a28cc3e
+index 0000000..6c85097
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/TorrentCard.tsx
 @@ -0,0 +1,91 @@
@@ -11158,7 +11405,7 @@ index 0000000..a28cc3e
 +          </div>
 +          {result.content_html ? (
 +            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +              dangerouslySetInnerHTML={{ __html: result.content_html }}
 +              dir="auto"
 +            />
@@ -11179,13 +11426,13 @@ index 0000000..a28cc3e
 +}
 diff --git a/client/zjsearch/src/features/results/cards/VideoCard.tsx b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 new file mode 100644
-index 0000000..6cb1679
+index 0000000..08f9f1d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/VideoCard.tsx
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,99 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Play, X } from "lucide-react";
++import { Play } from "lucide-react";
 +import { useState } from "react";
 +import {
 +  type CardProps,
@@ -11198,6 +11445,7 @@ index 0000000..6cb1679
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
++import { TileCloseAction } from "@/features/results/Tile.tsx";
 +import { formatLength } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +
@@ -11208,7 +11456,7 @@ index 0000000..6cb1679
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
-+        <div className="min-w-0 flex-1">
++        <div className="min-w-0 w-full max-w-prose">
 +          <PrettyUrl globals={globals} result={result} />
 +          <div className="mt-1">
 +            <Title globals={globals} result={result} />
@@ -11222,7 +11470,7 @@ index 0000000..6cb1679
 +            </div>
 +          ) : null}
 +          <p
-+            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
++            className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
 +            dangerouslySetInnerHTML={{ __html: result.content_html || t("no_description") }}
 +            dir="auto"
 +          />
@@ -11251,17 +11499,12 @@ index 0000000..6cb1679
 +                    src={result.iframe_src ?? ""}
 +                    title={result.title_text}
 +                  />
-+                  <button
-+                    aria-label={t("hide_video")}
-+                    className="absolute end-1 top-1 z-10 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++                  <TileCloseAction
++                    label={t("hide_video")}
 +                    onClick={() => {
 +                      setPreviewOpen(false);
 +                    }}
-+                    title={t("hide_video")}
-+                    type="button"
-+                  >
-+                    <X className="size-3.5" />
-+                  </button>
++                  />
 +                </>
 +              ) : hasMedia ? (
 +                <button
@@ -11288,18 +11531,19 @@ index 0000000..6cb1679
 +}
 diff --git a/client/zjsearch/src/features/results/image/ImageGrid.tsx b/client/zjsearch/src/features/results/image/ImageGrid.tsx
 new file mode 100644
-index 0000000..2394977
+index 0000000..02a1dc3
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/ImageGrid.tsx
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,116 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Image results: borderless masonry grid; the lightbox opens through a portal. */
 +
 +import { ImageOff } from "lucide-react";
-+import { useEffect, useState } from "react";
++import { useState } from "react";
 +import { createPortal } from "react-dom";
 +import { Lightbox } from "@/features/results/image/Lightbox.tsx";
++import { useGraceThumb } from "@/features/results/Tile.tsx";
 +import type { ResultItem } from "@/lib/types.ts";
 +
 +function ImageTile({
@@ -11313,22 +11557,10 @@ index 0000000..2394977
 +  thumbSrc: string;
 +  onOpen: (index: number) => void;
 +}) {
-+  const [loaded, setLoaded] = useState(false);
 +  const result = results[index];
 +  // missing or unloadable thumbnails collapse to a quiet placeholder tile
 +  // (a hung request gets the same treatment after a grace period)
-+  const [failed, setFailed] = useState(!thumbSrc);
-+  useEffect(() => {
-+    if (loaded || failed) {
-+      return;
-+    }
-+    const timer = window.setTimeout(() => {
-+      setFailed(true);
-+    }, 12000);
-+    return () => {
-+      window.clearTimeout(timer);
-+    };
-+  }, [loaded, failed]);
++  const { failed, loaded, setFailed, setLoaded } = useGraceThumb(thumbSrc || undefined);
 +  if (!result) {
 +    return null;
 +  }
@@ -11362,7 +11594,8 @@ index 0000000..2394977
 +          loaded ? "opacity-100" : "h-44 opacity-0"
 +        }`}
 +        decoding="async"
-+        loading="lazy"
++        fetchPriority={index < 4 ? "high" : undefined}
++        loading={index < 4 ? "eager" : "lazy"}
 +        onError={() => {
 +          setFailed(true);
 +          setLoaded(true);
@@ -11420,10 +11653,10 @@ index 0000000..2394977
 +}
 diff --git a/client/zjsearch/src/features/results/image/Lightbox.tsx b/client/zjsearch/src/features/results/image/Lightbox.tsx
 new file mode 100644
-index 0000000..a8488da
+index 0000000..8352084
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/Lightbox.tsx
-@@ -0,0 +1,358 @@
+@@ -0,0 +1,375 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11581,7 +11814,16 @@ index 0000000..a8488da
 +
 +  useEffect(() => {
 +    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-+      if (event.key !== "Escape" && event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
++      const zoomIn = event.key === "+" || event.key === "=";
++      const zoomOut = event.key === "-";
++      if (
++        event.key !== "Escape" &&
++        event.key !== "ArrowLeft" &&
++        event.key !== "ArrowRight" &&
++        !zoomIn &&
++        !zoomOut &&
++        event.key !== "0"
++      ) {
 +        return;
 +      }
 +      // capture phase so the results-page hotkeys (arrows paginate) don't
@@ -11591,15 +11833,23 @@ index 0000000..a8488da
 +        close(true);
 +      } else if (event.key === "ArrowLeft") {
 +        nav(-1);
-+      } else {
++      } else if (event.key === "ArrowRight") {
 +        nav(1);
++      } else if (event.key === "0") {
++        resetZoom();
++      } else if (zoomIn || zoomOut) {
++        // keyboard path of the wheel zoom: same 0.5×–5× window, ±15% steps
++        setZoom((prev) => {
++          const next = Math.min(5, Math.max(0.5, prev * (zoomIn ? 1.15 : 1 / 1.15)));
++          return Math.round(next * 100) / 100;
++        });
 +      }
 +    };
 +    window.addEventListener("keydown", onKeyDown, { capture: true });
 +    return () => {
 +      window.removeEventListener("keydown", onKeyDown, { capture: true });
 +    };
-+  }, [close, nav]);
++  }, [close, nav, resetZoom]);
 +
 +  if (!result) {
 +    return null;
@@ -11900,10 +12150,10 @@ index 0000000..508bc76
 +}
 diff --git a/client/zjsearch/src/lib/categories.ts b/client/zjsearch/src/lib/categories.ts
 new file mode 100644
-index 0000000..cd8173f
+index 0000000..a127ef3
 --- /dev/null
 +++ b/client/zjsearch/src/lib/categories.ts
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,38 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -11912,6 +12162,7 @@ index 0000000..cd8173f
 + * constants only pin down the names the client special-cases.
 + */
 +
++import { cap } from "@/lib/format.ts";
 +import type { StringKey, Translate } from "@/lib/i18n.ts";
 +
 +/** Pseudo category of engine-bang searches (`!imdb bat`): the results carry
@@ -11922,7 +12173,7 @@ index 0000000..cd8173f
 +export const PACKAGES_BLOCK_CATEGORY = "it";
 +
 +/** Server group id for engines that fit none of the tab's sub-categories. */
-+export const NO_SUBGROUPING = "without further subgrouping";
++const NO_SUBGROUPING = "without further subgrouping";
 +
 +/** Localized label for a category id (`cat_<id>` in the i18n catalogs).  The
 +    theme owns its category labels — the server ships ids only.  Unknown ids
@@ -11930,7 +12181,7 @@ index 0000000..cd8173f
 +export function categoryLabel(category: string, t: Translate): string {
 +  const key = `cat_${category.replaceAll(" ", "_")}` as StringKey;
 +  const label = t(key);
-+  return label === key ? category.charAt(0).toUpperCase() + category.slice(1) : label;
++  return label === key ? cap(category) : label;
 +}
 +
 +/** Localized label for an engine subgroup id inside a preferences engine tab. */
@@ -11943,7 +12194,7 @@ index 0000000..cd8173f
 +}
 diff --git a/client/zjsearch/src/lib/clipboard.ts b/client/zjsearch/src/lib/clipboard.ts
 new file mode 100644
-index 0000000..82f82a3
+index 0000000..0de5191
 --- /dev/null
 +++ b/client/zjsearch/src/lib/clipboard.ts
 @@ -0,0 +1,28 @@
@@ -11955,7 +12206,7 @@ index 0000000..82f82a3
 +/** Raw clipboard write shared by every copy path (buttons, wrappers,
 +    hotkeys).  Copy confirmation is rendered by `flashToast` in
 +    `lib/toast.ts` — one green 「已复制」 pill app-wide. */
-+export function writeClipboard(value: string): Promise<boolean> {
++function writeClipboard(value: string): Promise<boolean> {
 +  return navigator.clipboard
 +    .writeText(value)
 +    .then(() => true)
@@ -12467,10 +12718,10 @@ index 0000000..d562a20
 +}
 diff --git a/client/zjsearch/src/lib/format.ts b/client/zjsearch/src/lib/format.ts
 new file mode 100644
-index 0000000..4b37d4e
+index 0000000..dac1818
 --- /dev/null
 +++ b/client/zjsearch/src/lib/format.ts
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,73 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Client side formatting helpers (dates, durations, response times). */
@@ -12531,11 +12782,22 @@ index 0000000..4b37d4e
 +
 +/** Result relevance score, one decimal (e.g. "3.5"). */
 +export function formatScore(score: number): string {
-+  return (Math.round(score * 10) / 10).toFixed(1);
++  return round1(score).toFixed(1);
++}
++
++/** Round to one decimal — the display tier for response times and per-result
++    scores across the meta line, stats page and engine tables. */
++export function round1(value: number): number {
++  return Math.round(value * 10) / 10;
++}
++
++/** Capitalise the first letter (option labels, condition names). */
++export function cap(value: string): string {
++  return value.charAt(0).toUpperCase() + value.slice(1);
 +}
 diff --git a/client/zjsearch/src/lib/http.ts b/client/zjsearch/src/lib/http.ts
 new file mode 100644
-index 0000000..3070470
+index 0000000..b725b1d
 --- /dev/null
 +++ b/client/zjsearch/src/lib/http.ts
 @@ -0,0 +1,33 @@
@@ -12547,7 +12809,7 @@ index 0000000..3070470
 + * abort handling and the error shape stay identical everywhere.
 + */
 +
-+export class HttpError extends Error {
++class HttpError extends Error {
 +  readonly status: number;
 +
 +  constructor(status: number) {
@@ -12574,10 +12836,10 @@ index 0000000..3070470
 +}
 diff --git a/client/zjsearch/src/lib/i18n.ts b/client/zjsearch/src/lib/i18n.ts
 new file mode 100644
-index 0000000..9e3d246
+index 0000000..ebdd1a8
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n.ts
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,86 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -12599,9 +12861,31 @@ index 0000000..9e3d246
 +import { createContext, useContext, useMemo } from "react";
 +import { EN, type StringKey } from "@/lib/i18n/en.ts";
 +import { ZH_CN } from "@/lib/i18n/zh-CN.ts";
++import type { LocaleInfo } from "@/lib/types.ts";
 +
 +export type { StringKey };
 +export type Translate = (key: StringKey) => string;
++
++/** Language picker options shared by the results filter row and the
++    preferences general tab: default [all], autodetect (optionally annotated
++    with the detected language), then the instance locales sorted by name,
++    each carrying its tag + flag. */
++export function languageOptions(
++  locales: LocaleInfo[],
++  t: Translate,
++  autodetectSuffix?: string,
++): Array<{ value: string; label: string }> {
++  return [
++    { value: "all", label: `${t("default_language")} [all]` },
++    { value: "auto", label: autodetectSuffix ? `${t("autodetect")} (${autodetectSuffix})` : t("autodetect") },
++    ...[...locales]
++      .sort((a, b) => a.name.localeCompare(b.name))
++      .map((item) => ({
++        value: item.tag,
++        label: `${item.name}${item.country ? `-${item.country}` : ""} [${item.tag}] ${item.flag}`,
++      })),
++  ];
++}
 +
 +/** Catalogs keyed by their locale tag; the catalog file name IS the tag. */
 +const CATALOGS: Record<string, Partial<Record<StringKey, string>>> = {
@@ -12644,10 +12928,10 @@ index 0000000..9e3d246
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..3799604
+index 0000000..550fad3
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,369 @@
+@@ -0,0 +1,368 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -12727,14 +13011,15 @@ index 0000000..3799604
 +  definitions: "Definitions",
 +  synonyms: "Synonyms",
 +  sorry: "Sorry!",
-+  no_results_found: "No results were found. You can try to:",
-+  no_more_results: "There are no more results. You can try to:",
-+  refresh_page: "Refresh the page.",
-+  try_other_query: "Search for another query or select another category (above).",
-+  go_previous_page: "Go back to the previous page using the previous page button.",
++  no_results_found: "No results were found for this query.",
++  no_more_results: "There are no more results here.",
++  refresh_page: "Refresh",
++  try_other_query: "Try another keyword or pick a different category above.",
++  go_previous_page: "Go back to the previous page.",
 +  error_loading_next_page: "Error loading the next page",
 +  no_cookies: "There is currently no data available. ",
 +  page_not_found: "Page not found",
++  info_pages: "Info pages",
 +  hotkeys_vim: "Vim-like",
 +  general: "General",
 +  user_interface: "User interface",
@@ -12744,7 +13029,6 @@ index 0000000..3799604
 +  close: "Close",
 +  allow: "Allow",
 +  name: "Name",
-+  description: "Description",
 +  autocomplete: "Autocomplete",
 +  show_queries_as_you_type: "Show possible queries as you type",
 +  favicon_resolver: "Favicon Resolver",
@@ -13008,7 +13292,6 @@ index 0000000..3799604
 +  stat_mcap: "Market cap",
 +  stat_avg_volume: "Avg. volume",
 +  stock_asof: "As of",
-+  tip_date: "Date",
 +  tip_close: "Close",
 +  tip_open: "Open",
 +  tip_high: "High",
@@ -13019,10 +13302,10 @@ index 0000000..3799604
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..b6e1075
+index 0000000..8b186a2
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,362 @@
+@@ -0,0 +1,361 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -13103,15 +13386,16 @@ index 0000000..b6e1075
 +  humidity: "湿度",
 +  definitions: "定义",
 +  synonyms: "同义词",
-+  sorry: "很抱歉!",
-+  no_results_found: "未找到任何结果,你可以尝试:",
-+  no_more_results: "没有更多结果了,你可以尝试:",
++  sorry: "很抱歉",
++  no_results_found: "未找到与该查询相关的结果。",
++  no_more_results: "没有更多结果了。",
 +  refresh_page: "刷新页面",
-+  try_other_query: "更换关键词或选择其他分类(见上方)。",
-+  go_previous_page: "使用“上一页”按钮返回上一页。",
++  try_other_query: "试试更换关键词,或从上方选择其他分类。",
++  go_previous_page: "返回上一页。",
 +  error_loading_next_page: "加载下一页时出错",
 +  no_cookies: "当前没有可用数据。",
 +  page_not_found: "页面不存在",
++  info_pages: "信息页",
 +  hotkeys_vim: "Vim 风格",
 +  general: "常规",
 +  user_interface: "界面",
@@ -13121,7 +13405,6 @@ index 0000000..b6e1075
 +  close: "关闭",
 +  allow: "允许",
 +  name: "名称",
-+  description: "描述",
 +  autocomplete: "自动补全",
 +  show_queries_as_you_type: "输入时显示可能的查询",
 +  favicon_resolver: "网站图标解析服务",
@@ -13378,7 +13661,6 @@ index 0000000..b6e1075
 +  stat_mcap: "总市值",
 +  stat_avg_volume: "平均成交量",
 +  stock_asof: "截至",
-+  tip_date: "日期",
 +  tip_close: "收盘",
 +  tip_open: "开盘",
 +  tip_high: "最高",
@@ -13964,10 +14246,10 @@ index 0000000..e63d8cb
 +}
 diff --git a/client/zjsearch/src/lib/styles.ts b/client/zjsearch/src/lib/styles.ts
 new file mode 100644
-index 0000000..c97f63e
+index 0000000..6b2abee
 --- /dev/null
 +++ b/client/zjsearch/src/lib/styles.ts
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,75 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -13996,12 +14278,27 @@ index 0000000..c97f63e
 +
 +/** Tiny meta chip (engine pills, mono tokens, tag pills): callers add their
 +    own text colour / font / hover on top of the shape. */
-+export const CHIP = "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5";
++export const CHIP = "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 transition-colors";
 +
 +/** Mono-token variant of CHIP (IPs, digests, language pairs, algo names):
 +    same shape, monospace ink-2 text — the 12px meta tier for unbreakable
 +    payloads, always with break-all/truncate on the content around it. */
 +export const MONO_CHIP = `${CHIP} font-mono text-xs text-ink-2`;
++
++/** Hover behaviour for interactive chips — every hoverable chip raises its
++    text colour the same way (transition-colors lives in CHIP itself). */
++export const CHIP_HOVER = "hover:text-ink";
++
++/** Square code chip (inline code tokens: algo names, config keys, license
++    tags) — the non-pill sibling of CHIP in the 12px meta tier. */
++export const CODE_CHIP = "rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-ink-2";
++
++/** Segmented-control language (preference tabs, info tabs, stock range
++    picker): one shape, two states — selected fills accent-strong. */
++export const SEGMENT =
++  "flex items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-[13px] transition-colors";
++export const SEGMENT_ACTIVE = "bg-accent-strong font-medium text-accent-contrast";
++export const SEGMENT_IDLE = "text-ink-2 hover:bg-surface-2 hover:text-ink";
 +
 +/** Shared disabled treatment for secondary controls (pager arrows, sliders):
 +    dimmed and click-transparent, never invisible. */
@@ -14177,7 +14474,7 @@ index 0000000..b8935db
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 0000000..c796acb
+index 0000000..725df84
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
 @@ -0,0 +1,546 @@
@@ -14191,7 +14488,7 @@ index 0000000..c796acb
 +
 +// ------------------------------------------------------------------ globals
 +
-+interface LocaleInfo {
++export interface LocaleInfo {
 +  tag: string;
 +  name: string;
 +  country: string;
@@ -14727,6 +15024,35 @@ index 0000000..c796acb
 +export function isInfoPageData(data: AnyPageData): data is InfoPageData {
 +  return data.globals.page === "info";
 +}
+diff --git a/client/zjsearch/src/lib/useCapExpand.ts b/client/zjsearch/src/lib/useCapExpand.ts
+new file mode 100644
+index 0000000..a10c481
+--- /dev/null
++++ b/client/zjsearch/src/lib/useCapExpand.ts
+@@ -0,0 +1,23 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { useState } from "react";
++
++/**
++ * The app-wide cap-and-expand contract for chip rows (EnginesLine "+N",
++ * paper/package tags, weather sources): show the first `cap` items until
++ * toggled, then everything plus a 「show less」 affordance. Callers render
++ * the chips themselves (CHIP/MONO_CHIP constants) so each row keeps its own
++ * layout; this only owns the visibility state machine.
++ */
++export function useCapExpand(total: number, cap: number) {
++  const [expanded, setExpanded] = useState(false);
++  return {
++    expanded,
++    toggle: () => {
++      setExpanded((value) => !value);
++    },
++    /** items to render before expanding */
++    shown: expanded ? total : cap,
++    hidden: Math.max(0, total - cap),
++  };
++}
 diff --git a/client/zjsearch/src/main.tsx b/client/zjsearch/src/main.tsx
 new file mode 100644
 index 0000000..0dd7e03
@@ -14968,19 +15294,20 @@ index 0000000..704ffc8
 +}
 diff --git a/client/zjsearch/src/pages/InfoPage.tsx b/client/zjsearch/src/pages/InfoPage.tsx
 new file mode 100644
-index 0000000..90cac15
+index 0000000..972648e
 --- /dev/null
 +++ b/client/zjsearch/src/pages/InfoPage.tsx
-@@ -0,0 +1,326 @@
+@@ -0,0 +1,328 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import type { LucideIcon } from "lucide-react";
 +import { ExternalLink, Info, Link2, LoaderCircle, Mail, Network, Scale, Search, Server, Shield } from "lucide-react";
-+import { useEffect, useRef, useState } from "react";
++import { useEffect, useId, useRef, useState } from "react";
 +import { Shell } from "@/components/Shell.tsx";
 +import { fetchJson, fetchText } from "@/lib/http.ts";
 +import { type StringKey, useT } from "@/lib/i18n.ts";
 +import { extractPageData } from "@/lib/pageData.ts";
++import { SEGMENT, SEGMENT_ACTIVE, SEGMENT_IDLE } from "@/lib/styles.ts";
 +import { type GlobalData, type InfoPageData, isInfoPageData } from "@/lib/types.ts";
 +
 +/** Minimal config shape the instance page reads from GET /config. */
@@ -15247,11 +15574,12 @@ index 0000000..90cac15
 +      });
 +  };
 +
++  const panelId = useId();
 +  return (
 +    <Shell embedded={embedded} globals={globals}>
 +      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-16 sm:px-6">
 +        <nav
-+          aria-label="info pages"
++          aria-label={t("info_pages")}
 +          className="mb-6 mt-5 flex flex-wrap gap-1.5 rounded-2xl border border-line bg-surface p-2"
 +          role="tablist"
 +        >
@@ -15260,12 +15588,10 @@ index 0000000..90cac15
 +            const Icon = entry.icon;
 +            return (
 +              <button
++                aria-controls={panelId}
 +                aria-selected={isActive}
-+                className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-[13px] transition-colors ${
-+                  isActive
-+                    ? "bg-accent-strong font-medium text-accent-contrast"
-+                    : "text-ink-2 hover:bg-surface-2 hover:text-ink"
-+                }`}
++                className={`${SEGMENT} flex-1 ${isActive ? SEGMENT_ACTIVE : SEGMENT_IDLE}`}
++                id={`info-tab-${entry.pagename}`}
 +                key={entry.kind === "server" ? `${entry.locale}/${entry.pagename}` : entry.pagename}
 +                onClick={() => {
 +                  openPage(entry);
@@ -15279,31 +15605,33 @@ index 0000000..90cac15
 +            );
 +          })}
 +        </nav>
-+        {switching ? (
-+          <div className="flex justify-center py-20 text-ink-3">
-+            <LoaderCircle className="size-5 animate-spin-slow" />
-+          </div>
-+        ) : active.html !== null ? (
-+          <article
-+            className="prose-basic animate-fade-up"
-+            dangerouslySetInnerHTML={{ __html: active.html }}
-+            dir="auto"
-+          />
-+        ) : active.pagename === "license" ? (
-+          <LicensePage />
-+        ) : (
-+          <InstancePage globals={globals} />
-+        )}
++        <div aria-labelledby={`info-tab-${active.pagename}`} id={panelId} role="tabpanel">
++          {switching ? (
++            <div className="flex justify-center py-20 text-ink-3">
++              <LoaderCircle className="size-5 animate-spin-slow" />
++            </div>
++          ) : active.html !== null ? (
++            <article
++              className="prose-basic animate-fade-up"
++              dangerouslySetInnerHTML={{ __html: active.html }}
++              dir="auto"
++            />
++          ) : active.pagename === "license" ? (
++            <LicensePage />
++          ) : (
++            <InstancePage globals={globals} />
++          )}
++        </div>
 +      </main>
 +    </Shell>
 +  );
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..5704ed8
+index 0000000..9efc934
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,369 @@
+@@ -0,0 +1,388 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -15458,13 +15786,23 @@ index 0000000..5704ed8
 +      return;
 +    }
 +    setAppendState("loading");
++    // guard against the mid-flight navigation race: if the user submits a
++    // new query while page N+1 is fetching, the reset effect has already
++    // cleared `appended` — the stale response must not paste into it
++    const hrefAtStart = href;
 +    const nextParams = buildParams({ pageno: data.pageno + 1 });
 +    void fetchSearchPage(nextParams, globals.method)
 +      .then((next) => {
++        if (appendedHref.current !== hrefAtStart) {
++          return;
++        }
 +        setAppended((prev) => [...prev, ...next.results]);
 +        setAppendState(next.paging ? "idle" : "done");
 +      })
 +      .catch(() => {
++        if (appendedHref.current !== hrefAtStart) {
++          return;
++        }
 +        setAppendState("error");
 +      });
 +  };
@@ -15540,6 +15878,11 @@ index 0000000..5704ed8
 +  // `pending` covers streamed full loads: the app booted before the engines
 +  // finished, the real payload swaps in through the router (no fetch here)
 +  const showSkeletons = (loading || data.pending === true) && !error;
++  // the right rail exists while it can ever get content: the streamed boot
++  // keeps the width reservation (matching the static skeleton so the swap
++  // never shifts); afterwards it stays only with content — an absent rail
++  // frees the column and the container-query grids widen into it
++  const showRail = showSkeletons || data.infoboxes.length > 0 || globals.method === "POST";
 +
 +  return (
 +    <Shell globals={globals} hideTopNav>
@@ -15594,8 +15937,8 @@ index 0000000..5704ed8
 +
 +            {!showSkeletons && data.infoboxes.length > 0 ? (
 +              <div className="mt-3 flex flex-col gap-3 lg:hidden">
-+                {data.infoboxes.map((infobox, index) => (
-+                  <Infobox globals={globals} infobox={infobox} key={index} onSearch={submitQuery} />
++                {data.infoboxes.map((infobox) => (
++                  <Infobox globals={globals} infobox={infobox} key={infobox.title} onSearch={submitQuery} />
 +                ))}
 +              </div>
 +            ) : null}
@@ -15624,7 +15967,11 @@ index 0000000..5704ed8
 +
 +                {allResults.length === 0 && data.answers.length === 0 ? (
 +                  <div className="mt-6">
-+                    <NoResults hasInfobox={data.infoboxes.length > 0} pageno={data.pageno} />
++                    <NoResults
++                      hasInfobox={data.infoboxes.length > 0}
++                      onPrev={data.pageno > 1 ? () => onPage(data.pageno - 1) : undefined}
++                      pageno={data.pageno}
++                    />
 +                  </div>
 +                ) : (
 +                  <CacheUrlProvider cacheUrl={globals.cache_url}>
@@ -15642,6 +15989,7 @@ index 0000000..5704ed8
 +                )}
 +
 +                {infiniteScroll &&
++                allResults.length > 0 &&
 +                !collapsedBlocks.general &&
 +                appendState !== "done" &&
 +                (data.paging || appended.length > 0) ? (
@@ -15659,12 +16007,11 @@ index 0000000..5704ed8
 +            )}
 +          </div>
 +
-+          {/* the right rail is reserved on desktop so the two-column layout
-+              stays stable: the infobox fills it when the query has one,
-+              otherwise the column sits empty by design */}
-+          <div className="hidden w-full shrink-0 pt-4 lg:flex lg:flex-col lg:gap-3 lg:w-80 xl:w-96 lg:pb-6">
-+            {showSkeletons ? null : <Sidebar data={data} onSearch={submitQuery} />}
-+          </div>
++          {showRail ? (
++            <div className="hidden w-full shrink-0 pt-4 lg:flex lg:flex-col lg:gap-3 lg:w-80 xl:w-96 lg:pb-6">
++              {showSkeletons ? null : <Sidebar data={data} onSearch={submitQuery} />}
++            </div>
++          ) : null}
 +        </div>
 +      </main>
 +
@@ -15675,36 +16022,24 @@ index 0000000..5704ed8
 +}
 diff --git a/client/zjsearch/src/pages/StatsPage.tsx b/client/zjsearch/src/pages/StatsPage.tsx
 new file mode 100644
-index 0000000..b35bcf1
+index 0000000..7485c7e
 --- /dev/null
 +++ b/client/zjsearch/src/pages/StatsPage.tsx
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,249 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChartColumn, ChevronLeft } from "lucide-react";
 +import { useMemo } from "react";
++import { Meter } from "@/components/Meter.tsx";
 +import { Link, Shell } from "@/components/Shell.tsx";
 +import { SortHeader } from "@/components/SortHeader.tsx";
++import { round1 } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { reliabilityColor } from "@/lib/styles.ts";
 +import { useSortState } from "@/lib/tableSort.ts";
 +import type { EngineStat, StatsPageData } from "@/lib/types.ts";
 +
 +type SortKey = "name" | "score" | "result_count" | "time" | "reliability";
-+
-+function Bar({ value, max, className = "" }: { value: number; max: number; className?: string }) {
-+  if (max <= 0) {
-+    return null;
-+  }
-+  return (
-+    <span className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
-+      <span
-+        className={`block h-full rounded-full ${className || "bg-accent"}`}
-+        style={{ width: `${Math.max(2, Math.min(100, (value / max) * 100))}%` }}
-+      />
-+    </span>
-+  );
-+}
 +
 +function TimeCell({ engine, maxTime }: { engine: EngineStat; maxTime: number }) {
 +  const t = useT();
@@ -15718,7 +16053,7 @@ index 0000000..b35bcf1
 +  ].join("\n");
 +  return (
 +    <div className="flex items-center gap-2" title={tooltip}>
-+      <span className="w-10 text-ink-2">{Math.round(engine.total * 10) / 10}</span>
++      <span className="w-10 text-ink-2">{round1(engine.total)}</span>
 +      <span className="relative h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
 +        {engine.http !== null ? (
 +          <span
@@ -15903,13 +16238,13 @@ index 0000000..b35bcf1
 +                      </Link>
 +                    </td>
 +                    <td className="px-4 py-2.5 text-ink-2">
-+                      {engine.score_per_result !== null ? Math.round(engine.score_per_result * 10) / 10 : "–"}
++                      {engine.score_per_result !== null ? round1(engine.score_per_result) : "–"}
 +                    </td>
 +                    <td className="px-4 py-2.5">
 +                      {engine.result_count ? (
 +                        <div className="flex items-center gap-2">
 +                          <span className="w-10 text-ink-2">{engine.result_count}</span>
-+                          <Bar max={data.max_result_count} value={engine.result_count} />
++                          <Meter max={data.max_result_count} value={engine.result_count} />
 +                        </div>
 +                      ) : (
 +                        <span className="text-ink-3">–</span>
@@ -15963,16 +16298,17 @@ index 0000000..ddc8ad1
 +export const StatsPage = lazy(() => import("@/pages/StatsPage.tsx").then((m) => ({ default: m.StatsPage })));
 diff --git a/client/zjsearch/src/pages/preferences/PreferencesPage.tsx b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
 new file mode 100644
-index 0000000..d3a7b54
+index 0000000..62139e3
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/PreferencesPage.tsx
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,106 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, Cookie, LayoutGrid, Palette, Puzzle, SlidersHorizontal } from "lucide-react";
 +import { useEffect, useMemo, useState } from "react";
 +import { Link, Shell } from "@/components/Shell.tsx";
 +import { useT } from "@/lib/i18n.ts";
++import { SEGMENT, SEGMENT_ACTIVE, SEGMENT_IDLE } from "@/lib/styles.ts";
 +import { flashToast } from "@/lib/toast.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
 +import { CookieTab } from "@/pages/preferences/tabs/CookieTab.tsx";
@@ -16044,11 +16380,7 @@ index 0000000..d3a7b54
 +            <button
 +              aria-controls={`prefs-panel-${item.id}`}
 +              aria-selected={tab === item.id}
-+              className={`flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-[13px] transition-colors ${
-+                tab === item.id
-+                  ? "bg-accent-strong font-medium text-accent-contrast"
-+                  : "text-ink-2 hover:bg-surface-2 hover:text-ink"
-+              }`}
++              className={`${SEGMENT} flex-1 ${tab === item.id ? SEGMENT_ACTIVE : SEGMENT_IDLE}`}
 +              id={`prefs-tab-${item.id}`}
 +              key={item.id}
 +              onClick={() => {
@@ -16078,10 +16410,10 @@ index 0000000..d3a7b54
 +}
 diff --git a/client/zjsearch/src/pages/preferences/parts.tsx b/client/zjsearch/src/pages/preferences/parts.tsx
 new file mode 100644
-index 0000000..045087d
+index 0000000..467c3aa
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/parts.tsx
-@@ -0,0 +1,276 @@
+@@ -0,0 +1,275 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, ExternalLink, Sparkle } from "lucide-react";
@@ -16091,19 +16423,14 @@ index 0000000..045087d
 +import { Link } from "@/components/Shell.tsx";
 +import { loadEngineDescriptions } from "@/lib/engineDescriptions.ts";
 +import { type StringKey, type Translate, useT } from "@/lib/i18n.ts";
++import { CODE_CHIP } from "@/lib/styles.ts";
 +import type { EngineEntry } from "@/lib/types.ts";
 +
 +export { CategoryTab } from "@/components/CategoryTab.tsx";
 +
-+// ------------------------------------------------------------- row primitives
-+
 +// ------------------------------------------------------------ layout blocks
 +
-+export function cap(value: string): string {
-+  return value.charAt(0).toUpperCase() + value.slice(1);
-+}
-+
-+export function IconTile({ children }: { children: ReactNode }) {
++function IconTile({ children }: { children: ReactNode }) {
 +  return (
 +    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">{children}</span>
 +  );
@@ -16161,7 +16488,7 @@ index 0000000..045087d
 +
 +/** Section header inside a Card — Card's divide-y draws the separators, so a
 +    Fragment of header + rows works as one group. */
-+export function GroupHeader({ label }: { label: string }) {
++export function SectionLabel({ label }: { label: string }) {
 +  return <p className="bg-surface-2/60 px-5 py-2.5 text-xs font-medium text-ink-3 sm:px-6">{label}</p>;
 +}
 +
@@ -16247,7 +16574,7 @@ index 0000000..045087d
 +  unit_converter: { description: "plugin_unit_converter_desc", name: "plugin_unit_converter" },
 +};
 +
-+export function pluginLabels(
++function pluginLabels(
 +  plugin: { id: string; name: string; description: string },
 +  t: Translate,
 +): { description: string; name: string } {
@@ -16280,7 +16607,7 @@ index 0000000..045087d
 +        {labels.description}
 +        <span className="mt-1 flex flex-wrap gap-1">
 +          {keywords.map((keyword) => (
-+            <code className="rounded bg-surface-2 px-1.5 py-0.5" key={keyword}>
++            <code className={CODE_CHIP} key={keyword}>
 +              {keyword}
 +            </code>
 +          ))}
@@ -16298,7 +16625,7 @@ index 0000000..045087d
 +
 +// ------------------------------------------------------------------ engines
 +
-+export function EngineTooltip({ engine }: { engine: EngineEntry }) {
++export function EngineTooltip({ engine, pinned = false }: { engine: EngineEntry; pinned?: boolean }) {
 +  const t = useT();
 +  const [desc, setDesc] = useState<{ text: string; source: string } | null>(null);
 +  useEffect(() => {
@@ -16311,7 +16638,11 @@ index 0000000..045087d
 +  }, [engine.name]);
 +
 +  return (
-+    <div className="pointer-events-none absolute start-0 top-full z-30 mt-1 hidden w-80 rounded-xl border border-line bg-surface p-3 text-xs shadow-pop group-hover/engine:block group-focus-within/engine:block">
++    <div
++      className={`pointer-events-none absolute start-0 top-full z-30 mt-1 hidden w-80 rounded-xl border border-line bg-surface p-3 text-xs shadow-pop group-hover/engine:block group-focus-within/engine:block ${
++        pinned ? "block" : ""
++      }`}
++    >
 +      {desc ? (
 +        <p className="text-ink-2">
 +          {desc.text}{" "}
@@ -16343,7 +16674,7 @@ index 0000000..045087d
 +      <p className="mt-1.5 flex flex-wrap gap-1">
 +        <span className="text-ink-3">!bang:</span>
 +        {[engine.name, engine.shortcut].map((bang) => (
-+          <code className="rounded bg-surface-2 px-1" key={bang}>
++          <code className={CODE_CHIP} key={bang}>
 +            !{bang.replaceAll(" ", "_")}
 +          </code>
 +        ))}
@@ -16360,7 +16691,7 @@ index 0000000..045087d
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/CookieTab.tsx b/client/zjsearch/src/pages/preferences/tabs/CookieTab.tsx
 new file mode 100644
-index 0000000..b6faf87
+index 0000000..bf3c669
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/CookieTab.tsx
 @@ -0,0 +1,124 @@
@@ -16371,18 +16702,18 @@ index 0000000..b6faf87
 +import { Link } from "@/components/Shell.tsx";
 +import { useT } from "@/lib/i18n.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
-+import { Card, GroupHeader, SettingRow } from "@/pages/preferences/parts.tsx";
++import { Card, SectionLabel, SettingRow } from "@/pages/preferences/parts.tsx";
 +import type { PreferencesForm } from "@/pages/preferences/usePreferencesForm.ts";
 +
 +/** Cookie transparency: what this instance stores in the visitor's browser,
 +    plus the preference-share URLs and hash for restoring settings elsewhere —
-+    in the shared Card + GroupHeader language of the other tabs. */
++    in the shared Card + SectionLabel language of the other tabs. */
 +export function CookieTab({ data, form }: { data: PreferencesPageData; form: PreferencesForm }) {
 +  const t = useT();
 +  const shareOrigin = window.location.origin;
 +  return (
 +    <Card>
-+      <GroupHeader label={t("cookie_group_stored")} />
++      <SectionLabel label={t("cookie_group_stored")} />
 +      <SettingRow description={t("cookies_list_desc")} icon={<Cookie className="size-4.5" />} title={t("cookies")} />
 +      {data.cookies.length > 0 ? (
 +        <div className="w-full overflow-x-auto">
@@ -16412,7 +16743,7 @@ index 0000000..b6faf87
 +        </p>
 +      )}
 +
-+      <GroupHeader label={t("cookie_group_share")} />
++      <SectionLabel label={t("cookie_group_share")} />
 +      <SettingRow
 +        description={t("prefs_url_privacy_note")}
 +        icon={<LinkIcon className="size-4.5" />}
@@ -16490,19 +16821,20 @@ index 0000000..b6faf87
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/EngineTable.tsx b/client/zjsearch/src/pages/preferences/tabs/EngineTable.tsx
 new file mode 100644
-index 0000000..f69cf68
+index 0000000..5310a44
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/EngineTable.tsx
-@@ -0,0 +1,235 @@
+@@ -0,0 +1,260 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, Check, Minus } from "lucide-react";
-+import type { ReactNode } from "react";
++import { type ReactNode, useState } from "react";
++import { Meter } from "@/components/Meter.tsx";
 +import { SortHeader } from "@/components/SortHeader.tsx";
 +import { engineGroupLabel } from "@/lib/categories.ts";
 +import { loadEngineDescriptions } from "@/lib/engineDescriptions.ts";
 +import { useT } from "@/lib/i18n.ts";
-+import { reliabilityColor } from "@/lib/styles.ts";
++import { CODE_CHIP, reliabilityColor } from "@/lib/styles.ts";
 +import { type SortState, useSortState } from "@/lib/tableSort.ts";
 +import type { EngineEntry, PreferencesPageData } from "@/lib/types.ts";
 +import { EngineTooltip, Switch } from "@/pages/preferences/parts.tsx";
@@ -16564,6 +16896,98 @@ index 0000000..f69cf68
 +  return (av - bv) * dir;
 +}
 +
++/** One engine row; owns the pinned state of its info tooltip (click pins —
++    touch users cannot hover). */
++function EngineRow({
++  engine,
++  engineKey,
++  enabled,
++  toggleEngine,
++  showMetrics,
++}: {
++  engine: EngineEntry;
++  engineKey: string;
++  enabled: boolean;
++  toggleEngine: (key: string, value: boolean) => void;
++  showMetrics: boolean;
++}) {
++  const t = useT();
++  const [pinned, setPinned] = useState(false);
++  return (
++    <tr className="border-t border-line transition-colors hover:bg-surface-2/40" key={engineKey}>
++      <td className="px-3 py-3">
++        <Switch
++          checked={enabled}
++          label={`${t("allow")} ${engine.name}`}
++          onChange={(value) => {
++            toggleEngine(engineKey, value);
++          }}
++        />
++      </td>
++      <td className="max-w-52 px-4 py-3">
++        {/* hover, keyboard focus, or a click (pins it — touch users cannot
++              hover) reveals the tooltip */}
++        <div className="group/engine relative">
++          <button
++            aria-expanded={pinned}
++            aria-label={`${t("show_engine_info")}: ${engine.name}`}
++            className="flex items-center gap-1 truncate font-medium text-ink"
++            onClick={() => {
++              setPinned((value) => !value);
++            }}
++            onMouseEnter={() => void loadEngineDescriptions()}
++            type="button"
++          >
++            {engine.enable_http ? <AlertTriangle className="size-3.5 shrink-0 text-warning" /> : null}
++            <span className="truncate">
++              {engine.name}
++              {engine.language ? ` (${engine.language})` : ""}
++            </span>
++          </button>
++          <EngineTooltip engine={engine} pinned={pinned} />
++        </div>
++      </td>
++      <td className="px-4 py-3">
++        <code className={CODE_CHIP}>!{engine.shortcut}</code>
++      </td>
++      <td className="px-4 py-3">
++        {engine.supports_safesearch ? (
++          <Check className="size-3.5 text-ok" />
++        ) : (
++          <Minus className="size-3.5 text-ink-3" />
++        )}
++      </td>
++      <td className="px-4 py-3">
++        {engine.supports_time_range ? (
++          <Check className="size-3.5 text-ok" />
++        ) : (
++          <Minus className="size-3.5 text-ink-3" />
++        )}
++      </td>
++      <td className="px-4 py-3">{engine.weight}</td>
++      {showMetrics ? (
++        <td className="px-4 py-3">
++          {engine.stats_time !== null ? (
++            <div className="flex items-center gap-2">
++              <span className="w-10 text-ink-2">{engine.stats_time}</span>
++              {/* the metric is a percentage already: value = its own scale */}
++              <Meter fillClassName="bg-accent-strong" max={100} trackClassName="h-1.5 w-24" value={engine.stats_time} />
++            </div>
++          ) : (
++            <span className="text-ink-3">–</span>
++          )}
++        </td>
++      ) : null}
++      <td className={`px-4 py-3 ${engine.warn_timeout ? "font-medium text-danger" : "text-ink-2"}`}>
++        {engine.timeout}s
++      </td>
++      {showMetrics ? (
++        <td className={`px-4 py-3 font-medium ${reliabilityColor(engine.reliability)}`}>{engine.reliability ?? "–"}</td>
++      ) : null}
++    </tr>
++  );
++}
++
 +export function EngineTable({
 +  tab,
 +  enabled,
@@ -16578,83 +17002,15 @@ index 0000000..f69cf68
 +  const t = useT();
 +  const { sort, cycleSort } = useSortState<EngineSortKey>();
 +
-+  const engineRow = (engine: EngineEntry): ReactNode => {
-+    const key = `${engine.name}__${tab.category}`;
-+    return (
-+      <tr className="border-t border-line transition-colors hover:bg-surface-2/40" key={key}>
-+        <td className="px-3 py-3">
-+          <Switch
-+            checked={enabled[key] ?? false}
-+            label={`${t("allow")} ${engine.name}`}
-+            onChange={(value) => {
-+              toggleEngine(key, value);
-+            }}
-+          />
-+        </td>
-+        <td className="max-w-52 px-4 py-3">
-+          {/* hover OR keyboard focus reveals the tooltip */}
-+          <div className="group/engine relative">
-+            <button
-+              aria-label={`${t("show_engine_info")}: ${engine.name}`}
-+              className="flex items-center gap-1 truncate font-medium text-ink"
-+              onMouseEnter={() => void loadEngineDescriptions()}
-+              type="button"
-+            >
-+              {engine.enable_http ? <AlertTriangle className="size-3.5 shrink-0 text-warning" /> : null}
-+              <span className="truncate">
-+                {engine.name}
-+                {engine.language ? ` (${engine.language})` : ""}
-+              </span>
-+            </button>
-+            <EngineTooltip engine={engine} />
-+          </div>
-+        </td>
-+        <td className="px-4 py-3">
-+          <code className="rounded bg-surface-2 px-1">!{engine.shortcut}</code>
-+        </td>
-+        <td className="px-4 py-3">
-+          {engine.supports_safesearch ? (
-+            <Check className="size-3.5 text-ok" />
-+          ) : (
-+            <Minus className="size-3.5 text-ink-3" />
-+          )}
-+        </td>
-+        <td className="px-4 py-3">
-+          {engine.supports_time_range ? (
-+            <Check className="size-3.5 text-ok" />
-+          ) : (
-+            <Minus className="size-3.5 text-ink-3" />
-+          )}
-+        </td>
-+        <td className="px-4 py-3">{engine.weight}</td>
-+        {showMetrics ? (
-+          <td className="px-4 py-3">
-+            {engine.stats_time !== null ? (
-+              <div className="flex items-center gap-2">
-+                <span className="w-10 text-ink-2">{engine.stats_time}</span>
-+                <span className="h-1.5 w-24 overflow-hidden rounded-full bg-surface-2">
-+                  <span
-+                    className="block h-full bg-accent-strong"
-+                    style={{ width: `${Math.min(100, engine.stats_time)}%` }}
-+                  />
-+                </span>
-+              </div>
-+            ) : (
-+              <span className="text-ink-3">–</span>
-+            )}
-+          </td>
-+        ) : null}
-+        <td className={`px-4 py-3 ${engine.warn_timeout ? "font-medium text-danger" : "text-ink-2"}`}>
-+          {engine.timeout}s
-+        </td>
-+        {showMetrics ? (
-+          <td className={`px-4 py-3 font-medium ${reliabilityColor(engine.reliability)}`}>
-+            {engine.reliability ?? "–"}
-+          </td>
-+        ) : null}
-+      </tr>
-+    );
-+  };
++  const engineRow = (engine: EngineEntry): ReactNode => (
++    <EngineRow
++      enabled={Boolean(enabled[`${engine.name}__${tab.category}`])}
++      engine={engine}
++      engineKey={`${engine.name}__${tab.category}`}
++      showMetrics={showMetrics}
++      toggleEngine={toggleEngine}
++    />
++  );
 +
 +  const rows: ReactNode[] = [];
 +  if (!sort.key) {
@@ -16667,7 +17023,7 @@ index 0000000..f69cf68
 +              {engineGroupLabel(group.group, t)}
 +            </td>
 +            <td className="px-3 py-1.5" colSpan={showMetrics ? 7 : 5}>
-+              {group.group_bang ? <code className="rounded bg-surface-2 px-1">{group.group_bang}</code> : null}
++              {group.group_bang ? <code className={CODE_CHIP}>{group.group_bang}</code> : null}
 +            </td>
 +          </tr>,
 +        );
@@ -16731,7 +17087,7 @@ index 0000000..f69cf68
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx b/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx
 new file mode 100644
-index 0000000..626371f
+index 0000000..6f84c49
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/EnginesPane.tsx
 @@ -0,0 +1,105 @@
@@ -16741,13 +17097,13 @@ index 0000000..626371f
 +import { categoryLabel } from "@/lib/categories.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
-+import { Card, CategoryTab, GroupHeader, SettingRow } from "@/pages/preferences/parts.tsx";
++import { Card, CategoryTab, SectionLabel, SettingRow } from "@/pages/preferences/parts.tsx";
 +import { EngineTable } from "@/pages/preferences/tabs/EngineTable.tsx";
 +import type { PreferencesForm } from "@/pages/preferences/usePreferencesForm.ts";
 +
 +/** Engines tab pane: the private-engine tokens up top, then the per-category
 +    engine tables with the enable/disable-all shortcuts — in the shared
-+    Card + GroupHeader language of the other tabs. */
++    Card + SectionLabel language of the other tabs. */
 +export function EnginesPane({
 +  data,
 +  form,
@@ -16768,7 +17124,7 @@ index 0000000..626371f
 +    : [];
 +  return (
 +    <Card>
-+      <GroupHeader label={t("engines_group_list")} />
++      <SectionLabel label={t("engines_group_list")} />
 +      {/* access tokens unlock private engines — kept first so they are found
 +          without scrolling past the tables */}
 +      <SettingRow description={t("access_tokens")} icon={<Key className="size-4.5" />} title={t("engine_tokens")}>
@@ -16842,10 +17198,10 @@ index 0000000..626371f
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx b/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx
 new file mode 100644
-index 0000000..4c267d3
+index 0000000..800676d
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,220 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -16862,9 +17218,9 @@ index 0000000..4c267d3
 +} from "lucide-react";
 +import { Fragment } from "react";
 +import { categoryLabel } from "@/lib/categories.ts";
-+import { useT } from "@/lib/i18n.ts";
++import { languageOptions, useT } from "@/lib/i18n.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
-+import { Card, CategoryTab, GroupHeader, Select, SettingRow, Switch } from "@/pages/preferences/parts.tsx";
++import { Card, CategoryTab, SectionLabel, Select, SettingRow, Switch } from "@/pages/preferences/parts.tsx";
 +import type { PreferencesForm } from "@/pages/preferences/usePreferencesForm.ts";
 +
 +export function GeneralTab({
@@ -16895,7 +17251,7 @@ index 0000000..4c267d3
 +    <Card>
 +      {showSearch ? (
 +        <Fragment>
-+          <GroupHeader label={t("general_group_search")} />
++          <SectionLabel label={t("general_group_search")} />
 +          {!locked.has("categories") ? (
 +            <SettingRow icon={<LayoutGrid className="size-4.5" />} stacked title={t("default_categories")}>
 +              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
@@ -16939,16 +17295,7 @@ index 0000000..4c267d3
 +              <Select
 +                ariaLabel={t("search_language")}
 +                onChange={form.setLanguage}
-+                options={[
-+                  { value: "all", label: `${t("default_language")} [all]` },
-+                  { value: "auto", label: t("autodetect") },
-+                  ...[...globals.locales]
-+                    .sort((a, b) => a.name.localeCompare(b.name))
-+                    .map((item) => ({
-+                      value: item.tag,
-+                      label: `${item.name}${item.country ? `-${item.country}` : ""} [${item.tag}] ${item.flag}`,
-+                    })),
-+                ]}
++                options={languageOptions(globals.locales, t)}
 +                value={form.language}
 +              />
 +            </SettingRow>
@@ -16975,7 +17322,7 @@ index 0000000..4c267d3
 +      ) : null}
 +      {showInput ? (
 +        <Fragment>
-+          <GroupHeader label={t("general_group_input")} />
++          <SectionLabel label={t("general_group_input")} />
 +          {!locked.has("autocomplete") ? (
 +            <SettingRow
 +              description={t("show_queries_as_you_type")}
@@ -17010,7 +17357,7 @@ index 0000000..4c267d3
 +      ) : null}
 +      {showRequests ? (
 +        <Fragment>
-+          <GroupHeader label={t("general_group_requests")} />
++          <SectionLabel label={t("general_group_requests")} />
 +          {!locked.has("results_on_new_tab") ? (
 +            <SettingRow
 +              description={t("open_result_new_tabs")}
@@ -17030,7 +17377,6 @@ index 0000000..4c267d3
 +              icon={<ArrowLeftRight className="size-4.5" />}
 +              title={t("http_method")}
 +            >
-+              {" "}
 +              <div className="inline-flex rounded-xl border border-line bg-surface p-0.5">
 +                {(["POST", "GET"] as const).map((value) => (
 +                  <button
@@ -17078,10 +17424,10 @@ index 0000000..4c267d3
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/PluginsTab.tsx b/client/zjsearch/src/pages/preferences/tabs/PluginsTab.tsx
 new file mode 100644
-index 0000000..d2ef942
+index 0000000..d6a1bf5
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/PluginsTab.tsx
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,174 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -17106,8 +17452,9 @@ index 0000000..d2ef942
 +} from "lucide-react";
 +import { Fragment, type ReactNode } from "react";
 +import { type StringKey, useT } from "@/lib/i18n.ts";
++import { CODE_CHIP } from "@/lib/styles.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
-+import { Card, GroupHeader, PluginRow, SettingRow } from "@/pages/preferences/parts.tsx";
++import { Card, PluginRow, SectionLabel, SettingRow } from "@/pages/preferences/parts.tsx";
 +import type { PreferencesForm } from "@/pages/preferences/usePreferencesForm.ts";
 +
 +/** One dedicated icon per plugin — the old rows all shared Sparkle and read
@@ -17192,7 +17539,7 @@ index 0000000..d2ef942
 +        }
 +        return (
 +          <Fragment key={group.id}>
-+            <GroupHeader label={t(group.id)} />
++            <SectionLabel label={t(group.id)} />
 +            {plugins.map((plugin) => (
 +              <PluginRow
 +                enabled={form.plugins[plugin.id] ?? false}
@@ -17210,7 +17557,7 @@ index 0000000..d2ef942
 +      })}
 +      {others.length > 0 ? (
 +        <Fragment>
-+          <GroupHeader label={t("cat_other")} />
++          <SectionLabel label={t("cat_other")} />
 +          {others.map((plugin) => (
 +            <PluginRow
 +              enabled={form.plugins[plugin.id] ?? false}
@@ -17227,7 +17574,7 @@ index 0000000..d2ef942
 +      ) : null}
 +      {data.answerers.length > 0 ? (
 +        <Fragment>
-+          <GroupHeader label={t("instant_answers")} />
++          <SectionLabel label={t("instant_answers")} />
 +          {data.answerers.map((answerer) => {
 +            const labels = answererLabels(answerer.name, answerer.description);
 +            return (
@@ -17237,7 +17584,7 @@ index 0000000..d2ef942
 +                    {labels.description}
 +                    <span className="mt-1 flex flex-wrap gap-1">
 +                      {answerer.keywords.map((keyword) => (
-+                        <code className="rounded bg-surface-2 px-1.5 py-0.5" key={keyword}>
++                        <code className={CODE_CHIP} key={keyword}>
 +                          {keyword}
 +                        </code>
 +                      ))}
@@ -17257,19 +17604,20 @@ index 0000000..d2ef942
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx b/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx
 new file mode 100644
-index 0000000..3a1151b
+index 0000000..b69c4fe
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,163 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlignCenterVertical, Globe, Languages, Link as LinkIcon, Monitor, Moon, Sun, Tag } from "lucide-react";
 +import { Fragment } from "react";
++import { cap } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { ThemeStyle } from "@/lib/theme.ts";
 +import { applyCenterAlignment, applyThemeStyle } from "@/lib/theme.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
-+import { Card, cap, GroupHeader, Select, SettingRow, Switch } from "@/pages/preferences/parts.tsx";
++import { Card, SectionLabel, Select, SettingRow, Switch } from "@/pages/preferences/parts.tsx";
 +import type { PreferencesForm } from "@/pages/preferences/usePreferencesForm.ts";
 +
 +export function UiTab({
@@ -17292,7 +17640,7 @@ index 0000000..3a1151b
 +    <Card>
 +      {showLook ? (
 +        <Fragment>
-+          <GroupHeader label={t("ui_group_look")} />
++          <SectionLabel label={t("ui_group_look")} />
 +          {!locked.has("locale") ? (
 +            <SettingRow
 +              description={t("change_layout_language")}
@@ -17314,7 +17662,7 @@ index 0000000..3a1151b
 +                onChange={form.setTheme}
 +                options={data.themes.map((name) => ({
 +                  value: name,
-+                  label: name === "zjsearch" ? "ZJSearch" : name.charAt(0).toUpperCase() + name.slice(1),
++                  label: name === "zjsearch" ? "ZJSearch" : cap(name),
 +                }))}
 +                value={form.theme}
 +              />
@@ -17373,7 +17721,7 @@ index 0000000..3a1151b
 +      ) : null}
 +      {showDisplay ? (
 +        <Fragment>
-+          <GroupHeader label={t("ui_group_display")} />
++          <SectionLabel label={t("ui_group_display")} />
 +          {!locked.has("favicon_resolver") ? (
 +            <SettingRow
 +              description={t("display_favicons")}
@@ -17656,10 +18004,10 @@ index 0000000..b717522
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
 diff --git a/client/zjsearch/src/styles/global.css b/client/zjsearch/src/styles/global.css
 new file mode 100644
-index 0000000..6f814e3
+index 0000000..7d2ef25
 --- /dev/null
 +++ b/client/zjsearch/src/styles/global.css
-@@ -0,0 +1,868 @@
+@@ -0,0 +1,893 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* zjsearch design system: minimal, modern, light & dark. */
@@ -18437,7 +18785,32 @@ index 0000000..6f814e3
 +  }
 +}
 +
++/* Native <details> disclosures (sidebar boxes, dictionary definitions, help
++   sections) get the same height animation as the JS Collapse component where
++   the browser supports it (Chromium 131+; elsewhere the chevron rotation
++   alone marks the toggle — graceful degradation). */
++@supports selector(details::details-content) {
++  /* let block-size interpolate to `auto` (the details-open height) */
++  :root {
++    interpolate-size: allow-keywords;
++  }
++  details::details-content {
++    block-size: 0;
++    overflow: hidden;
++    transition:
++      block-size 0.3s cubic-bezier(0.22, 1, 0.36, 1),
++      content-visibility 0.3s allow-discrete;
++  }
++  details[open]::details-content {
++    block-size: auto;
++  }
++}
++
 +@media (prefers-reduced-motion: reduce) {
++  details::details-content {
++    transition-duration: 0.01ms !important;
++  }
++
 +  *,
 +  *::before,
 +  *::after {
