@@ -602,7 +602,7 @@ index 0000000..bf131a1
 +    disabled: false
 diff --git a/client/zjsearch/biome.json b/client/zjsearch/biome.json
 new file mode 100644
-index 0000000..48e363e
+index 0000000..e3a2db3
 --- /dev/null
 +++ b/client/zjsearch/biome.json
 @@ -0,0 +1,51 @@
@@ -610,7 +610,7 @@ index 0000000..48e363e
 +  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
 +  "files": {
 +    "ignoreUnknown": true,
-+    "includes": ["**", "!node_modules", "!src/brand"]
++    "includes": ["**", "!node_modules", "!src/brand", "!.lighthouse-archive"]
 +  },
 +  "formatter": {
 +    "enabled": true,
@@ -7154,10 +7154,10 @@ index 0000000..8a18b6c
 +}
 diff --git a/client/zjsearch/src/components/Shell.tsx b/client/zjsearch/src/components/Shell.tsx
 new file mode 100644
-index 0000000..528dd9c
+index 0000000..b86ae16
 --- /dev/null
 +++ b/client/zjsearch/src/components/Shell.tsx
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,212 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ChartColumn, Heart, Info, SlidersHorizontal } from "lucide-react";
@@ -7292,7 +7292,7 @@ index 0000000..528dd9c
 +        <Link ariaLabel={globals.instance_name} className="shrink-0 select-none" href="/" title={globals.instance_name}>
 +          <span className="text-xl font-extrabold tracking-tight text-ink">
 +            {globals.instance_name}
-+            <span className="text-accent">.</span>
++            <span className="text-accent-strong">.</span>
 +          </span>
 +        </Link>
 +      )}
@@ -7301,25 +7301,11 @@ index 0000000..528dd9c
 +  );
 +}
 +
-+function Footer({ globals }: { globals: GlobalData }) {
-+  const t = useT();
-+  const { openOverlay } = useOverlay();
++function Footer() {
 +  const year = new Date().getFullYear();
 +  return (
 +    <footer className="mx-auto w-full max-w-5xl px-4 pb-8 text-center text-xs text-ink-3 sm:px-6">
 +      <p className="leading-5">© {year} Zhijie Online</p>
-+      <p className="leading-5">
-+        {t("powered_by")}{" "}
-+        <button
-+          className="cursor-pointer transition-colors hover:text-accent hover:underline"
-+          onClick={() => {
-+            openOverlay(globals.about_url, t("about"), "about");
-+          }}
-+          type="button"
-+        >
-+          SearXNG
-+        </button>
-+      </p>
 +    </footer>
 +  );
 +}
@@ -7370,7 +7356,7 @@ index 0000000..528dd9c
 +            footer rides inside so it scrolls away with overflowing content */}
 +        <div className={`flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain ${SCROLLBAR_NONE}`}>
 +          <div className="flex flex-1 flex-col justify-start pt-[20vh] sm:pt-[30vh]">{children}</div>
-+          <Footer globals={globals} />
++          <Footer />
 +        </div>
 +      </div>
 +    );
@@ -7380,7 +7366,7 @@ index 0000000..528dd9c
 +      <ProgressBar active={loading} />
 +      {hideTopNav ? null : <TopNav globals={globals} hideBrand={false} />}
 +      <div className="flex flex-1 flex-col">{children}</div>
-+      <Footer globals={globals} />
++      <Footer />
 +    </div>
 +  );
 +}
@@ -12904,13 +12890,23 @@ index 0000000..5ccd754
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PaperCard.tsx b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 new file mode 100644
-index 0000000..49ff33e
+index 0000000..f4c6fef
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PaperCard.tsx
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,214 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { BookOpen, Calendar, ChevronLeft, ExternalLink, FileText, Fingerprint, Quote, User } from "lucide-react";
++import {
++  Activity,
++  BookOpen,
++  Calendar,
++  ChevronLeft,
++  ExternalLink,
++  FileText,
++  Fingerprint,
++  Quote,
++  User,
++} from "lucide-react";
 +import type { ReactNode } from "react";
 +import {
 +  type CardProps,
@@ -13056,6 +13052,18 @@ index 0000000..49ff33e
 +                    >
 +                      <Fingerprint className="size-3 shrink-0" />
 +                      <span className="truncate">{result.doi}</span>
++                    </a>
++                  ) : null}
++                  {result.doi ? (
++                    <a
++                      className={`${CHIP} shrink-0 ${CHIP_HOVER} text-ink-2`}
++                      href={`https://www.altmetric.com/details/doi/${result.doi}`}
++                      rel="noreferrer"
++                      target="_blank"
++                      title="Altmetric"
++                    >
++                      <Activity className="size-3" />
++                      Altmetric
 +                    </a>
 +                  ) : null}
 +                </div>
@@ -13553,17 +13561,18 @@ index 0000000..eeeb9ff
 +}
 diff --git a/client/zjsearch/src/features/results/image/Lightbox.tsx b/client/zjsearch/src/features/results/image/Lightbox.tsx
 new file mode 100644
-index 0000000..f1a3551
+index 0000000..59bba02
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/Lightbox.tsx
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,402 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +import { imageAlt } from "@/lib/format.ts";
 +
 +/**
-+ * Kagi-style image lightbox: image centered, prev/next round buttons, bottom
-+ * bar with actions and metadata, keyboard navigation, touch swipe, zoom &
-+ * drag-pan, and an #image-viewer hash so the back button dismisses it.
++ * Kagi-style image lightbox: image centered, top bar with the image details
++ * row, prev/next round buttons, bottom bar with actions, keyboard
++ * navigation, touch swipe, zoom & drag-pan, and an #image-viewer hash so
++ * the back button dismisses it.
 + */
 +
 +import { ChevronLeft, ChevronRight, Download, ExternalLink, ImageOff, X } from "lucide-react";
@@ -13760,6 +13769,10 @@ index 0000000..f1a3551
 +  const linkProps = newTabLinkProps(settings.results_on_new_tab);
 +
 +  const hostname = result.netloc || (result.url ? hostnameOf(result.url) : "");
++  // the title already names the site; engines whose source field adds
++  // information (openverse: "flickr") keep the extra label
++  const source = result.source?.toLowerCase() === hostname.toLowerCase() ? null : result.source;
++  const formats = result.formats ?? [];
 +
 +  return (
 +    <div
@@ -13780,15 +13793,42 @@ index 0000000..f1a3551
 +      role="dialog"
 +      tabIndex={-1}
 +    >
-+      {/* top bar */}
-+      <div className="flex items-center justify-between p-3">
-+        <span className="text-xs text-zinc-400" dir="ltr">
-+          {index + 1} / {results.length}
-+          {zoom !== 1 ? <span className="ms-2 opacity-80">{Math.round(zoom * 100)}%</span> : null}
-+        </span>
++      {/* top bar: the image details as a permanent inline row (wrapping on
++          narrow viewports — same data at every width, no toggle), the zoom
++          percentage appended while zoomed, close at the end */}
++      <div className="flex items-start justify-between gap-3 p-3">
++        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-0.5 py-1.5 text-xs leading-5">
++          <Label label={t("resolution")} value={result.resolution} />
++          <Label label={t("type")} value={result.img_format} />
++          <Label label={t("filesize")} value={result.filesize} />
++          <Label label={t("source")} value={source} />
++          {formats.length > 0 ? (
++            <span className="inline-flex flex-wrap items-center gap-x-1">
++              <span className="text-zinc-400">{t("image_formats")}</span>
++              {formats.map((ref, index) => (
++                <span className="whitespace-nowrap" key={`${ref.url} ${ref.label}`}>
++                  {index > 0 ? <span className="text-zinc-500">· </span> : null}
++                  <a
++                    className="text-zinc-200 transition-colors hover:text-white hover:underline"
++                    dir="ltr"
++                    href={ref.url}
++                    {...linkProps}
++                  >
++                    {ref.label}
++                  </a>
++                </span>
++              ))}
++            </span>
++          ) : null}
++          {zoom !== 1 ? (
++            <span className="whitespace-nowrap text-zinc-400" dir="ltr">
++              {Math.round(zoom * 100)}%
++            </span>
++          ) : null}
++        </div>
 +        <button
 +          aria-label={t("close")}
-+          className="grid size-9 place-items-center rounded-full text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
++          className="grid size-9 shrink-0 place-items-center rounded-full text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
 +          data-dialog-close=""
 +          onClick={() => {
 +            close(true);
@@ -13863,8 +13903,8 @@ index 0000000..f1a3551
 +        </div>
 +      </div>
 +
-+      {/* bottom bar: title / actions / metadata - fixed sections so button
-+          positions never shift with the title length */}
++      {/* bottom bar: title block + the fixed action buttons as the right
++          anchor; details live behind the top-bar (i) toggle */}
 +      <div className="flex items-center gap-x-4 border-t border-white/10 bg-[#1c1c1c]/95 px-5 py-3">
 +        <div className="min-w-0 flex-1">
 +          {result.url ? (
@@ -13896,7 +13936,7 @@ index 0000000..f1a3551
 +              href={result.img_src}
 +              {...linkProps}
 +            >
-+              {t("view_source")}
++              {t("view_original")}
 +              <ExternalLink className="size-3.5" />
 +            </a>
 +          ) : null}
@@ -13911,12 +13951,6 @@ index 0000000..f1a3551
 +            </a>
 +          ) : null}
 +        </div>
-+
-+        <div className="hidden shrink-0 items-center gap-x-6 text-xs xl:flex">
-+          <Label label={t("resolution")} value={result.resolution} />
-+          <Label label={t("type")} value={result.img_format} />
-+          <Label label={t("source")} value={result.source} />
-+        </div>
 +      </div>
 +    </div>
 +  );
@@ -13927,10 +13961,10 @@ index 0000000..f1a3551
 +    return null;
 +  }
 +  return (
-+    <p className="whitespace-nowrap leading-5">
++    <span className="whitespace-nowrap">
 +      <span className="text-zinc-400">{label} </span>
 +      <span className="text-zinc-200">{value}</span>
-+    </p>
++    </span>
 +  );
 +}
 diff --git a/client/zjsearch/src/features/results/layout.ts b/client/zjsearch/src/features/results/layout.ts
@@ -14849,10 +14883,10 @@ index 0000000..ebdd1a8
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 0000000..550fad3
+index 0000000..f3a9822
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,368 @@
+@@ -0,0 +1,372 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -14922,8 +14956,10 @@ index 0000000..550fad3
 +  type: "Type",
 +  resolution: "Resolution",
 +  source: "Source",
++  image_formats: "Image formats",
++  original_format: "original format",
 +  engines: "Engines",
-+  view_source: "View source",
++  view_original: "View original",
 +  feels_like: "Feels Like",
 +  weather_trend: "Temperature trend",
 +  wind: "Wind",
@@ -15180,6 +15216,8 @@ index 0000000..550fad3
 +  privacypolicy: "Privacy policy",
 +  contact: "Contact",
 +  public_instances: "Public instances",
++  source_code: "Source code",
++  issue_tracker: "Issue tracker",
 +  about_instance: "About this instance",
 +  categories: "Categories",
 +  plugins: "Plugins",
@@ -15223,10 +15261,10 @@ index 0000000..550fad3
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 0000000..8b186a2
+index 0000000..c87dd2d
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,361 @@
+@@ -0,0 +1,365 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -15298,8 +15336,10 @@ index 0000000..8b186a2
 +  type: "类型",
 +  resolution: "分辨率",
 +  source: "来源",
++  image_formats: "图片格式",
++  original_format: "原始格式",
 +  engines: "引擎",
-+  view_source: "查看源码",
++  view_original: "查看原图",
 +  feels_like: "体感温度",
 +  weather_trend: "温度趋势",
 +  wind: "风速",
@@ -15549,6 +15589,8 @@ index 0000000..8b186a2
 +  privacypolicy: "隐私政策",
 +  contact: "联系方式",
 +  public_instances: "公共实例",
++  source_code: "源代码",
++  issue_tracker: "问题反馈",
 +  about_instance: "关于本实例",
 +  categories: "分类",
 +  plugins: "插件",
@@ -15717,10 +15759,10 @@ index 0000000..92ef5dc
 +}
 diff --git a/client/zjsearch/src/lib/router.tsx b/client/zjsearch/src/lib/router.tsx
 new file mode 100644
-index 0000000..5e2a00d
+index 0000000..50d7bba
 --- /dev/null
 +++ b/client/zjsearch/src/lib/router.tsx
-@@ -0,0 +1,250 @@
+@@ -0,0 +1,253 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -15732,7 +15774,7 @@ index 0000000..5e2a00d
 +import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 +import { translateFor } from "@/lib/i18n.ts";
 +import { extractPageData, parseEmbeddedPageData } from "@/lib/pageData.ts";
-+import { buildSearchUrl, type SearchParams, searchParamEntries } from "@/lib/searchParams.ts";
++import { buildSearchUrl, type SearchParams, searchParamEntries, urlThemeOverride } from "@/lib/searchParams.ts";
 +import { type AnyPageData, isErrorPageData, isPendingSearchData, isRedirectPageData } from "@/lib/types.ts";
 +
 +export interface NavigateOptions {
@@ -15869,6 +15911,9 @@ index 0000000..5e2a00d
 +
 +  const search = useCallback(
 +    (params: SearchParams, options?: NavigateOptions) => {
++      // an explicit `?theme=` link override rides along with every search
++      const override = urlThemeOverride();
++      const effective = override ? { ...params, theme: override } : params;
 +      // POST mode mirrors the upstream form flow: the query travels in the
 +      // request body so it never lands in the URL, the history or access
 +      // logs — a real form submission, exactly like the simple theme
@@ -15877,7 +15922,7 @@ index 0000000..5e2a00d
 +        form.method = "POST";
 +        form.action = "/search";
 +        form.hidden = true;
-+        for (const [key, value] of searchParamEntries(params)) {
++        for (const [key, value] of searchParamEntries(effective)) {
 +          const input = document.createElement("input");
 +          input.type = "hidden";
 +          input.name = key;
@@ -15888,7 +15933,7 @@ index 0000000..5e2a00d
 +        form.submit();
 +        return;
 +      }
-+      navigate(buildSearchUrl(params), options);
++      navigate(buildSearchUrl(effective), options);
 +    },
 +    [navigate],
 +  );
@@ -15973,10 +16018,10 @@ index 0000000..5e2a00d
 +}
 diff --git a/client/zjsearch/src/lib/searchParams.ts b/client/zjsearch/src/lib/searchParams.ts
 new file mode 100644
-index 0000000..456787e
+index 0000000..7a16e04
 --- /dev/null
 +++ b/client/zjsearch/src/lib/searchParams.ts
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,146 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -15999,6 +16044,7 @@ index 0000000..456787e
 +  safesearch?: number;
 +  timeout_limit?: string;
 +  engine_data?: Record<string, Record<string, string>>;
++  theme?: string;
 +}
 +
 +/** One entry per search parameter, shared by the URL builder and the POST
@@ -16017,6 +16063,9 @@ index 0000000..456787e
 +  if (params.timeout_limit) {
 +    entries.push(["timeout_limit", params.timeout_limit]);
 +  }
++  if (params.theme) {
++    entries.push(["theme", params.theme]);
++  }
 +  if (params.pageno !== undefined && params.pageno > 1) {
 +    entries.push(["pageno", String(params.pageno)]);
 +  }
@@ -16033,6 +16082,14 @@ index 0000000..456787e
 +
 +export function buildSearchUrl(params: SearchParams): string {
 +  return `/search?${new URLSearchParams(searchParamEntries(params)).toString()}`;
++}
++
++/** A `?theme=` URL override must survive subsequent searches — the simple
++    theme keeps a hidden `theme` input in its forms for the same reason.
++    Read at call time from the current location; URLs built with explicit
++    params (the shareable search URL) never carry it. */
++export function urlThemeOverride(): string | null {
++  return new URLSearchParams(window.location.search).get("theme");
 +}
 +
 +/** Shareable URL rebuilt from a results payload - the address bar carries no
@@ -16085,6 +16142,7 @@ index 0000000..456787e
 +    time_range: query.get("time_range") ?? undefined,
 +    safesearch: query.has("safesearch") ? Number(query.get("safesearch")) : undefined,
 +    timeout_limit: query.get("timeout_limit") ?? undefined,
++    theme: query.get("theme") ?? undefined,
 +    engine_data: Object.keys(engine_data).length > 0 ? engine_data : undefined,
 +  };
 +}
@@ -16092,10 +16150,16 @@ index 0000000..456787e
 +/** Fetch one results page through the current effective method: POST mode
 +    pages the query through the request body, GET mode through the URL. */
 +export async function fetchSearchPage(params: SearchParams, method: "GET" | "POST"): Promise<SearchPageData> {
++  const override = urlThemeOverride();
++  const effective = override ? { ...params, theme: override } : params;
 +  const html =
 +    method === "POST"
-+      ? await fetchText("/search", { body: toSearchFormData(params), headers: { Accept: "text/html" }, method: "POST" })
-+      : await fetchText(buildSearchUrl(params), { headers: { Accept: "text/html" } });
++      ? await fetchText("/search", {
++          body: toSearchFormData(effective),
++          headers: { Accept: "text/html" },
++          method: "POST",
++        })
++      : await fetchText(buildSearchUrl(effective), { headers: { Accept: "text/html" } });
 +  const data = extractPageData(html);
 +  // a redirect could land on a non-results shell (e.g. the index page) — the
 +  // caller dereferences results/paging, so fail loudly instead of crashing
@@ -17075,10 +17139,10 @@ index 0000000..6745380
 +void bootstrap();
 diff --git a/client/zjsearch/src/pages/IndexPage.tsx b/client/zjsearch/src/pages/IndexPage.tsx
 new file mode 100644
-index 0000000..9c14469
+index 0000000..6e3c118
 --- /dev/null
 +++ b/client/zjsearch/src/pages/IndexPage.tsx
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,183 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Lightbulb, SlidersHorizontal, X } from "lucide-react";
@@ -17088,6 +17152,7 @@ index 0000000..9c14469
 +import { CategoryTabs, defaultFilterValues, type FilterValues, SearchFilters } from "@/components/SearchControls.tsx";
 +import { Shell } from "@/components/Shell.tsx";
 +import { focusSearchInput, type HotkeyTarget, useHotkeys } from "@/features/hotkeys.ts";
++import { useOverlay } from "@/features/overlay/OverlayProvider.tsx";
 +import { useT } from "@/lib/i18n.ts";
 +import { useRouter } from "@/lib/router.tsx";
 +import { useSettings } from "@/lib/settings.ts";
@@ -17101,6 +17166,7 @@ index 0000000..9c14469
 +export function IndexPage({ data }: { data: IndexData }) {
 +  const { search } = useRouter();
 +  const globals = data.globals;
++  const { openOverlay } = useOverlay();
 +  const [query, setQuery] = useState("");
 +  const [selected, setSelected] = useState<string[]>(
 +    data.selected_categories && data.selected_categories.length > 0
@@ -17146,9 +17212,27 @@ index 0000000..9c14469
 +  return (
 +    <Shell globals={globals} variant="hero">
 +      <main className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 pb-24">
++        {/* the accent dot is the attribution: hovering (or focusing) it fades
++            in "Powered by SearXNG" beside the wordmark — absolutely positioned
++            so the centered brand never shifts — and tapping it opens About */}
 +        <h1 className="animate-fade-up text-6xl font-extrabold tracking-tight text-ink sm:text-7xl">
 +          {globals.instance_name}
-+          <span className="text-accent">.</span>
++          <button
++            aria-label={`${t("powered_by")} SearXNG`}
++            className="group/dot relative cursor-pointer text-accent-strong"
++            onClick={() => {
++              openOverlay(globals.about_url, t("about"), "about");
++            }}
++            type="button"
++          >
++            .
++            <span
++              aria-hidden="true"
++              className="pointer-events-none absolute bottom-1.5 left-full ms-3 whitespace-nowrap text-xs font-medium tracking-normal text-ink-3 opacity-0 transition-opacity duration-150 group-focus-visible/dot:opacity-100 group-hover/dot:opacity-100"
++            >
++              {t("powered_by")} SearXNG
++            </span>
++          </button>
 +        </h1>
 +        {/* raised stacking level: fade-up leaves a residual transform (a
 +            stacking context) on every animated sibling, which would let the
@@ -17244,14 +17328,27 @@ index 0000000..9c14469
 +}
 diff --git a/client/zjsearch/src/pages/InfoPage.tsx b/client/zjsearch/src/pages/InfoPage.tsx
 new file mode 100644
-index 0000000..972648e
+index 0000000..c2ca9e0
 --- /dev/null
 +++ b/client/zjsearch/src/pages/InfoPage.tsx
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,348 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import type { LucideIcon } from "lucide-react";
-+import { ExternalLink, Info, Link2, LoaderCircle, Mail, Network, Scale, Search, Server, Shield } from "lucide-react";
++import {
++  Bug,
++  Code,
++  ExternalLink,
++  Info,
++  Link2,
++  LoaderCircle,
++  Mail,
++  Network,
++  Scale,
++  Search,
++  Server,
++  Shield,
++} from "lucide-react";
 +import { useEffect, useId, useRef, useState } from "react";
 +import { Shell } from "@/components/Shell.tsx";
 +import { fetchJson, fetchText } from "@/lib/http.ts";
@@ -17380,6 +17477,12 @@ index 0000000..972648e
 +  const t = useT();
 +  const config = useInstanceConfig();
 +  const links: Array<{ label: string; url: string; icon: LucideIcon }> = [];
++  if (globals.git_url) {
++    links.push({ label: t("source_code"), url: globals.git_url, icon: Code });
++  }
++  if (globals.issue_url) {
++    links.push({ label: t("issue_tracker"), url: globals.issue_url, icon: Bug });
++  }
 +  if (globals.privacypolicy_url) {
 +    links.push({ label: t("privacypolicy"), url: globals.privacypolicy_url, icon: Shield });
 +  }
@@ -17401,6 +17504,7 @@ index 0000000..972648e
 +      <p className="font-mono text-xs text-ink-3" dir="ltr">
 +        v{config?.version || globals.version}
 +      </p>
++      <p className="mt-0.5 text-xs text-ink-3">{t("powered_by")} SearXNG</p>
 +      {config ? (
 +        <div className="my-5 grid grid-cols-3 gap-px overflow-hidden rounded-2xl border border-line bg-line">
 +          <Stat label={t("engines")} value={config.engines.filter((engine) => engine.enabled).length} />
@@ -17447,7 +17551,7 @@ index 0000000..972648e
 +  const t = useT();
 +  const [active, setActive] = useState<{ pagename: string; html: string | null }>(() => {
 +    // the drawer opens on the instance page unless the entry point asks for
-+    // a specific tab (footer "Powered by SearXNG" → About SearXNG);
++    // a specific tab (hero "Powered by SearXNG" note → About SearXNG);
 +    // standalone URLs stay faithful to the address bar
 +    if (embedded && !initialPagename) {
 +      return { pagename: "instance", html: null };
@@ -17578,7 +17682,7 @@ index 0000000..972648e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..34445aa
+index 0000000..8ebe7c0
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
 @@ -0,0 +1,391 @@
@@ -17850,7 +17954,7 @@ index 0000000..34445aa
 +            title={globals.instance_name}
 +          >
 +            {globals.instance_name}
-+            <span className="text-accent">.</span>
++            <span className="text-accent-strong">.</span>
 +          </Link>
 +          <div className="min-w-0 flex-1 max-w-2xl xl:max-w-3xl 2xl:max-w-4xl">
 +            <SearchBox initialQuery={data.q} onSubmitQuery={submitQuery} />
@@ -18383,10 +18487,10 @@ index 0000000..c9fb91e
 +}
 diff --git a/client/zjsearch/src/pages/preferences/parts.tsx b/client/zjsearch/src/pages/preferences/parts.tsx
 new file mode 100644
-index 0000000..467c3aa
+index 0000000..f0b26d1
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/parts.tsx
-@@ -0,0 +1,275 @@
+@@ -0,0 +1,289 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlertTriangle, ExternalLink, Sparkle } from "lucide-react";
@@ -18635,6 +18739,20 @@ index 0000000..467c3aa
 +            target="_blank"
 +          >
 +            {engine.website}
++            <ExternalLink className="size-3" />
++          </a>
++        </p>
++      ) : null}
++      {engine.wikidata_id ? (
++        <p className="mt-1.5 truncate">
++          <a
++            className="inline-flex items-center gap-1 text-accent hover:underline"
++            dir="ltr"
++            href={`https://www.wikidata.org/wiki/${engine.wikidata_id}`}
++            rel="noreferrer"
++            target="_blank"
++          >
++            wikidata.org/wiki/{engine.wikidata_id}
 +            <ExternalLink className="size-3" />
 +          </a>
 +        </p>
@@ -21336,10 +21454,10 @@ index 40a4c80..b17570a 100644
          return results
 diff --git a/searx/engines/zjsearch_fixtures.py b/searx/engines/zjsearch_fixtures.py
 new file mode 100644
-index 0000000..b100160
+index 0000000..71bf5b9
 --- /dev/null
 +++ b/searx/engines/zjsearch_fixtures.py
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,219 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +"""Deterministic offline fixtures for the zjsearch Lighthouse gate
 +(``npm run audit``, see ``client/zjsearch/audit-settings.yml``).
@@ -21395,7 +21513,7 @@ index 0000000..b100160
 +
 +"""Small local image served by the instance itself — keeps the audited page
 +fully offline and its payload deterministic."""
-+FIXTURE_IMG = "/static/img/512.png"
++FIXTURE_IMG = "/static/themes/zjsearch/img/512.png"
 +
 +_DAYS = datetime.timedelta(days=1)
 +_PUBLISHED = datetime.datetime.now() - 30 * _DAYS  # noqa: DTZ005 (audit-only)
@@ -21436,6 +21554,14 @@ index 0000000..b100160
 +            "img_src": FIXTURE_IMG,
 +            "thumbnail_src": FIXTURE_IMG,
 +            "content": f"Offline fixture image #{index} for the masonry grid.",
++            "resolution": f"{800 + index * 10} x {600 + index * 8}",
++            "img_format": "jpeg",
++            "filesize": f"{index}.2 MB",
++            "source": "example.com",
++            "formats": [
++                {"url": f"https://example.com/zjaudit/images/{index}?size=large", "label": "Large"},
++                {"url": f"https://example.com/zjaudit/images/{index}?size=thumbnail", "label": "Thumbnail"},
++            ],
 +        }
 +        for index in range(1, 31)
 +    ]
@@ -23583,10 +23709,10 @@ index 0000000..a72c1e1
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 0000000..02cc22c
+index 0000000..40106ba
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,575 @@
+@@ -0,0 +1,582 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -23649,6 +23775,13 @@ index 0000000..02cc22c
 +
 +{# ----------------------------------------------------------------- results #}
 +
++{#- Media URL for the page payload.  The privacy proxy only accepts http(s)
++    URLs — same-origin static paths (offline fixtures, instance assets) would
++    400 through it, so they pass through unchanged. -#}
++{% macro media_url(url) -%}
++{%- if url.startswith('/') %}{{ url }}{% else %}{{ image_proxify(url) }}{% endif -%}
++{%- endmacro %}
++
 +{#- One search result.  Emits the union of all fields used by the 11 result
 +    layouts; ``template`` tells the client which one to render. -#}
 +{% macro _result_data(result) -%}
@@ -23674,15 +23807,15 @@ index 0000000..02cc22c
 +  {%- if result.score is number %}"score": {{ result.score }},{% endif %}
 +  {%- if result.author %}"author": {{ result.author|striptags|tojson }},{% endif %}
 +  {%- if result.metadata %}"metadata": {{ result.metadata|tojson }},{% endif %}
-+  {%- if result.img_src %}"img_src": {{ (image_proxify(result.img_src) or '')|tojson }},{% endif %}
-+  {%- if result.thumbnail %}"thumbnail": {{ (image_proxify(result.thumbnail) or '')|tojson }},{% endif %}
++  {%- if result.img_src %}"img_src": {{ (media_url(result.img_src) or '')|tojson }},{% endif %}
++  {%- if result.thumbnail %}"thumbnail": {{ (media_url(result.thumbnail) or '')|tojson }},{% endif %}
 +  {%- if result.iframe_src %}"iframe_src": {{ result.iframe_src|tojson }},{% endif %}
 +  {%- if result.audio_src %}"audio_src": {{ result.audio_src|tojson }},{% endif %}
 +  {%- if result.open_group %}"open_group": true,{% endif %}
 +  {%- if result.close_group %}"close_group": true,{% endif %}
 +
 +  {%- if result.template == 'images.html' %}
-+  "thumbnail_src": {{ (image_proxify(result.thumbnail_src) if result.thumbnail_src else '')|tojson }},
++  "thumbnail_src": {{ (media_url(result.thumbnail_src) if result.thumbnail_src else '')|tojson }},
 +  "resolution": {{ (result.resolution or '')|tojson }},
 +  "img_format": {{ (result.img_format or '')|tojson }},
 +  "source": {{ (result.source or '')|tojson }},
@@ -23873,14 +24006,14 @@ index 0000000..02cc22c
 +{
 +  "title": {{ (infobox.infobox or '')|tojson }},
 +  "content_html": {{ (infobox.content or '')|tojson }},
-+  "img_src": {{ (image_proxify(infobox.img_src) if infobox.img_src else '')|tojson }}
++  "img_src": {{ (media_url(infobox.img_src) if infobox.img_src else '')|tojson }}
 +  {%- if infobox.attributes %}
 +  , "attributes": [
 +    {%- for a in infobox.attributes -%}
 +    {
 +      "label": {{ (a.get('label') or '')|tojson }},
 +      "value": {{ (a.get('value') or '')|tojson }},
-+      "image_src": {{ (image_proxify(a['image']['src']) if a.get('image') and a['image'].get('src') else '')|tojson }},
++      "image_src": {{ (media_url(a['image']['src']) if a.get('image') and a['image'].get('src') else '')|tojson }},
 +      "image_alt": {{ (a['image'].get('alt', '') if a.get('image') else '')|tojson }}
 +    }{{ ", " if not loop.last }}
 +    {%- endfor -%}
