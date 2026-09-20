@@ -229,10 +229,10 @@ index 0000000..2d3b19b
 +Licensor: Zhijie He
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 0000000..62056b0
+index 0000000..6a00a18
 --- /dev/null
 +++ b/client/zjsearch/README.rst
-@@ -0,0 +1,297 @@
+@@ -0,0 +1,301 @@
 +=====
 +zjsearch
 +=====
@@ -319,7 +319,11 @@ index 0000000..62056b0
 +  steps), so widescreen mode (90rem cap) grows a column, centered mode
 +  (72rem) drops one, and the sidebar/empty-rail changes re-flow grids
 +  automatically. New grids must use container variants, not ``sm:``/
-+  ``xl:`` viewport breakpoints.
++  ``xl:`` viewport breakpoints. A rail-free card-list page
++  (``list``/``dictionary``/``science``) is the exception: borderless text
++  rows cannot use the freed width, so its column caps to the exact width
++  the reserved rail would leave — a deliberate reading measure instead of
++  a formless void, and a gapless boot swap.
 +- **Icons** — lucide-react, imported per usage site with
 +  ``aria-hidden``; 18px (``size-4.5``) in 36px round buttons, 14px
 +  (``size-3.5``) leading icons in tabs/pills, 12px (``size-3``) inside
@@ -17740,10 +17744,10 @@ index 0000000..d250d0a
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 0000000..8ebe7c0
+index 0000000..24ddd3e
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,391 @@
+@@ -0,0 +1,398 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useEffect, useMemo, useRef, useState } from "react";
@@ -17995,6 +17999,13 @@ index 0000000..8ebe7c0
 +  // never shifts); afterwards it stays only with content — an absent rail
 +  // frees the column and the container-query grids widen into it
 +  const showRail = showSkeletons || data.infoboxes.length > 0 || globals.method === "POST";
++  // a freed rail column is only useful to container-query grids; card-list
++  // presentations render borderless rows capped at the reading measure, so
++  // the full freed width would read as a formless void. They keep instead
++  // the exact width the reserved rail gives the column — which also keeps
++  // the streamed boot → payload swap gapless for text pages.
++  const cardListLayout = layout.kind === "list" || layout.kind === "dictionary" || layout.kind === "science";
++  const columnCap = !showRail && cardListLayout ? "lg:max-w-[calc(100%-22rem)] xl:max-w-[calc(100%-26rem)]" : "";
 +
 +  return (
 +    <Shell globals={globals} hideTopNav>
@@ -18027,7 +18038,7 @@ index 0000000..8ebe7c0
 +        <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
 +          {/* @container: grid density keys off the actual column width, so
 +              widescreen adds a column and centered mode drops one */}
-+          <div className="@container min-w-0 flex-1 pt-4" ref={listRef}>
++          <div className={`@container min-w-0 flex-1 pt-4 ${columnCap}`} ref={listRef}>
 +            {/* Kagi layout: the tabs and filters live in the results column so
 +                the infobox sidebar rises to the top of the page */}
 +            <CategoryTabs
