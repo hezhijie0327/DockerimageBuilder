@@ -1,3 +1,132 @@
+diff --git a/searx/engines/brave.py b/searx/engines/brave.py
+index 459f0c8c919..2593dbd7b0b 100644
+--- a/searx/engines/brave.py
++++ b/searx/engines/brave.py
+@@ -261,18 +261,18 @@ def response(resp: "SXNG_Response") -> EngineResults:
+ 
+     match brave_category:
+         case "search" | "goggles":
+-            return _parse_results(_parse_search_result, resp)
++            return _parse_results(parse_search_result, resp)
+         case "news":
+-            return _parse_results(_parse_news_result, resp)
++            return _parse_results(parse_news_result, resp)
+         case "images":
+-            return _parse_results(_parse_image_result, resp)
++            return _parse_results(parse_image_result, resp)
+         case "videos":
+-            return _parse_results(_parse_video_result, resp)
++            return _parse_results(parse_video_result, resp)
+         case _:
+             raise ValueError(f"Unsupported brave category: {brave_category}")  # pyright: ignore[reportUnreachable]
+ 
+ 
+-def _parse_search_result(result: dict[str, t.Any]) -> MainResult:
++def parse_search_result(result: dict[str, t.Any]) -> MainResult:
+     thumbnail: dict[str, t.Any] = result.get("thumbnail", {})
+     return MainResult(
+         template="default.html",
+@@ -291,7 +291,7 @@ def _parse_secondary_items(json_data: dict[str, t.Any], results: EngineResults):
+     videos_resp: dict[str, t.Any] = body_resp.get("videos", {})
+     if videos_resp and "results" in videos_resp:
+         for result in videos_resp.get("results", []):
+-            results.add(_parse_video_result(result))
++            results.add(parse_video_result(result))
+     # related queries -> suggestion
+     query: dict[str, t.Any] = body_resp.get("query", {})
+     if query and "related_queries" in query:
+@@ -300,7 +300,7 @@ def _parse_secondary_items(json_data: dict[str, t.Any], results: EngineResults):
+             results.add(results.types.LegacyResult(suggestion=suggestion))
+ 
+ 
+-def _parse_news_result(result: dict[str, t.Any]) -> MainResult:
++def parse_news_result(result: dict[str, t.Any]) -> MainResult:
+     thumbnail: dict[str, t.Any] = result.get("thumbnail", {})
+     return MainResult(
+         title=result.get("title", ""),
+@@ -312,7 +312,7 @@ def _parse_news_result(result: dict[str, t.Any]) -> MainResult:
+     )
+ 
+ 
+-def _parse_image_result(result: dict[str, t.Any]) -> Image:
++def parse_image_result(result: dict[str, t.Any]) -> Image:
+     properties: dict[str, t.Any] = result.get("properties", {})
+     thumbnail: dict[str, t.Any] = result.get("thumbnail", {})
+     width, height = properties.get("width"), properties.get("height")
+@@ -327,7 +327,7 @@ def _parse_image_result(result: dict[str, t.Any]) -> Image:
+     )
+ 
+ 
+-def _parse_video_result(result: dict[str, t.Any]) -> MainResult:
++def parse_video_result(result: dict[str, t.Any]) -> MainResult:
+     video: dict[str, t.Any] = result.get("video", {})
+     thumbnail: dict[str, t.Any] = result.get("thumbnail", {})
+ 
+diff --git a/searx/engines/braveapi.py b/searx/engines/braveapi.py
+index 83ea1800c49..2053a6c6422 100644
+--- a/searx/engines/braveapi.py
++++ b/searx/engines/braveapi.py
+@@ -27,11 +27,10 @@
+ import typing as t
+ 
+ from urllib.parse import urlencode
+-from dateutil import parser
+ 
++from searx.engines.brave import parse_video_result
+ from searx.exceptions import SearxEngineAPIException
+ from searx.result_types import EngineResults
+-from searx.utils import html_to_text
+ 
+ if t.TYPE_CHECKING:
+     from searx.extended_types import SXNG_Response
+@@ -94,43 +93,13 @@ def request(query: str, params: "OnlineParams") -> None:
+     params["headers"]["Accept"] = "application/json"
+ 
+ 
+-def _extract_published_date(published_date_raw: str):
+-    """Extract and parse the published date from the API response.
+-
+-    Args:
+-        published_date_raw: Raw date string from the API
+-
+-    Returns:
+-        Parsed datetime object or None if parsing fails
+-    """
+-    if not published_date_raw:
+-        return None
+-
+-    try:
+-        return parser.parse(published_date_raw)
+-    except parser.ParserError:
+-        return None
+-
+-
+ def response(resp: "SXNG_Response") -> EngineResults:
+     """Process the API response and return results."""
+-    res = EngineResults()
+     data = resp.json()
+ 
+-    for result in (data.get("web") or {}).get("results", []):
+-        thumbnail_obj = result.get("thumbnail")
+-        thumbnail = ""
+-        if thumbnail_obj and not thumbnail_obj.get("logo", False):
+-            thumbnail = thumbnail_obj.get("src") or ""
+-
+-        res.add(
+-            res.types.MainResult(
+-                url=result["url"],
+-                title=html_to_text(result["title"]),
+-                content=html_to_text(result.get("description", "")),
+-                publishedDate=_extract_published_date(result.get("age")),
+-                thumbnail=thumbnail,
+-            ),
+-        )
++    res = EngineResults()
++    results_json = (data.get("web") or {}).get("results", [])
++    for result in results_json:
++        res.add(parse_video_result(result))
+ 
+     return res
 diff --git a/searx/engines/findborg.py b/searx/engines/findborg.py
 new file mode 100644
 index 00000000000..3b59fe7d0be
