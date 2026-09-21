@@ -21523,10 +21523,10 @@ index 40a4c80..b17570a 100644
          return results
 diff --git a/searx/engines/zjsearch_fixtures.py b/searx/engines/zjsearch_fixtures.py
 new file mode 100644
-index 0000000..71bf5b9
+index 0000000..4aaf31e
 --- /dev/null
 +++ b/searx/engines/zjsearch_fixtures.py
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,227 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +"""Deterministic offline fixtures for the zjsearch Lighthouse gate
 +(``npm run audit``, see ``client/zjsearch/audit-settings.yml``).
@@ -21566,6 +21566,8 @@ index 0000000..71bf5b9
 +
 +import datetime
 +import typing as t
++
++from searx.result_types import Video
 +
 +engine_type = "offline"
 +categories = ["general", "images", "videos", "music", "files", "science", "it", "apps"]
@@ -21636,15 +21638,21 @@ index 0000000..71bf5b9
 +    ]
 +
 +
-+def _videos() -> list[dict[str, t.Any]]:
++def _videos() -> list[Video]:
++    # the typed Video class real video engines emit since upstream #6743:
++    # timedelta length, thumbnail (not img_src), author/views meta and the
++    # auto-filled iframe_src (empty here — example.com is no known embedder)
 +    return [
-+        {
-+            "title": f"Audit fixture video #{index}",
-+            "url": f"https://example.com/zjaudit/videos/{index}",
-+            "content": f"Offline fixture video #{index} for the video grid.",
-+            "img_src": FIXTURE_IMG,
-+            "length": 60 * index % 3600,
-+        }
++        Video(
++            title=f"Audit fixture video #{index}",
++            url=f"https://example.com/zjaudit/videos/{index}",
++            content=f"Offline fixture video #{index} for the video grid.",
++            thumbnail=FIXTURE_IMG,
++            publishedDate=_PUBLISHED - index * _DAYS,
++            length=datetime.timedelta(seconds=(60 * index) % 3600),
++            author=f"Fixture channel #{index % 4}",
++            views=f"{13 * index % 90 + 10}K",
++        )
 +        for index in range(1, 13)
 +    ]
 +
@@ -23680,7 +23688,7 @@ index eba07bb..b1c184e 100644
          """The hash value of field *answer* is the hash value of the
          :py:obj:`Answer` object.  :py:obj:`Answer <Result.__eq__>` objects are
 diff --git a/searx/settings.yml b/searx/settings.yml
-index b587a4e..e11e682 100644
+index 17e6b17..12bbfef 100644
 --- a/searx/settings.yml
 +++ b/searx/settings.yml
 @@ -228,6 +228,9 @@ plugins:
