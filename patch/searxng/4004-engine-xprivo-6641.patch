@@ -1,6 +1,6 @@
 diff --git a/searx/engines/xprivo.py b/searx/engines/xprivo.py
 new file mode 100644
-index 00000000000..63a2302709c
+index 00000000000..8abb4474ae7
 --- /dev/null
 +++ b/searx/engines/xprivo.py
 @@ -0,0 +1,85 @@
@@ -31,7 +31,7 @@ index 00000000000..63a2302709c
 +time_range_support = True
 +
 +base_url = "https://www.xprivo.com"
-+page_size = 10  # not configurable
++_page_size = 10  # not configurable
 +
 +api_key = "API_KEY_XPRIVO"
 +
@@ -41,7 +41,7 @@ index 00000000000..63a2302709c
 +
 +def setup(_):
 +    if xprivo_search_type not in t.get_args(XPrivoSearchType):
-+        raise ValueError("invalid search type: %s" % {xprivo_search_type})
++        raise ValueError(f"invalid search type: {xprivo_search_type}")
 +
 +
 +def request(query: str, params: "OnlineParams"):
@@ -55,27 +55,27 @@ index 00000000000..63a2302709c
 +        "search_type": xprivo_search_type,
 +        "time_filter": params["time_range"],
 +        "region": "",
-+        "offset": (params["pageno"] - 1) * page_size,
++        "offset": (params["pageno"] - 1) * _page_size,
 +        "source": "",
 +    }
 +
 +
-+def response(resp: "SXNG_Response"):
++def response(resp: "SXNG_Response") -> EngineResults:
 +    res = EngineResults()
 +
 +    # response is a Server-Side Events (SSE) stream
 +    data_raw = resp.text.split("\n", 1)[0].removeprefix("data: ")
 +    data = json.loads(data_raw)
 +
++    result: dict[str, str]
 +    for result in data["results"]:
 +        if xprivo_search_type == "videos":
 +            res.add(
-+                res.types.LegacyResult(
-+                    template="videos.html",
++                res.types.Video(
 +                    url=result["url"],
 +                    title=result["title"],
 +                    content=result["snippet"],
-+                    thumbnail=result.get("og_image"),
++                    thumbnail=result.get("og_image") or "",
 +                )
 +            )
 +        else:
@@ -84,7 +84,7 @@ index 00000000000..63a2302709c
 +                    url=result["url"],
 +                    title=result["title"],
 +                    content=result["snippet"],
-+                    thumbnail=result.get("og_image"),
++                    thumbnail=result.get("og_image") or "",
 +                )
 +            )
 +
