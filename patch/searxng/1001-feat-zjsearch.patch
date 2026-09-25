@@ -9139,10 +9139,10 @@ index 000000000..d48fa47d0
 +}
 diff --git a/client/zjsearch/src/features/results/AiSummary.tsx b/client/zjsearch/src/features/results/AiSummary.tsx
 new file mode 100644
-index 000000000..adb4fff98
+index 000000000..0294f121b
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/AiSummary.tsx
-@@ -0,0 +1,778 @@
+@@ -0,0 +1,776 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +// KaTeX typography for the math pipeline (lazy-loaded plugins, css is small
@@ -9159,7 +9159,7 @@ index 000000000..adb4fff98
 +import type { PluggableList } from "unified";
 +import { ClampReveal } from "@/components/ClampReveal.tsx";
 +import { Collapse } from "@/components/Collapse.tsx";
-+import { type AiSourceMeta, splitAnswerStream } from "@/features/results/aiAnswer.ts";
++import { type AiSourceMeta, CITATION_RE, splitAnswerStream } from "@/features/results/aiAnswer.ts";
 +import { useCopyToast } from "@/lib/clipboard.ts";
 +import { fetchStream } from "@/lib/http.ts";
 +import { useT } from "@/lib/i18n.ts";
@@ -9329,8 +9329,6 @@ index 000000000..adb4fff98
 +
 +const OVERVIEW_PREVIEW_PX = 224;
 +
-+const CITATION = /\[(\d+(?:\s*[,，]\s*\d+)*)\]|\[\*\]/g;
-+
 +/** The props react-markdown hands to component overrides (hast props, whose
 +    shape varies per tag -- hence the index signature). */
 +type MdProps = {
@@ -9372,7 +9370,7 @@ index 000000000..adb4fff98
 +      }
 +      return line
 +        .split(/(`[^`]*`)/)
-+        .map((part, index) => (index % 2 === 1 ? part : part.replace(CITATION, rewriteCitation)))
++        .map((part, index) => (index % 2 === 1 ? part : part.replace(CITATION_RE, rewriteCitation)))
 +        .join("");
 +    })
 +    .join("\n");
@@ -12235,10 +12233,10 @@ index 000000000..b6dc09fc6
 +}
 diff --git a/client/zjsearch/src/features/results/aiAnswer.ts b/client/zjsearch/src/features/results/aiAnswer.ts
 new file mode 100644
-index 000000000..a2f70c4af
+index 000000000..2fc91378b
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/aiAnswer.ts
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,151 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { resultHost } from "@/lib/link.ts";
@@ -12348,6 +12346,47 @@ index 000000000..a2f70c4af
 +    answer: (text.slice(0, open) + text.slice(close + "</think>".length)).trim(),
 +    thinking: false,
 +  };
++}
++
++/** The citation grammar the renderer rewrites: [n], [n,m] (also full-width
++    commas) and the common-knowledge [*].  Shared by the citation-link
++    rewriting (AiSummary) and the cited-sources extraction below. */
++export const CITATION_RE = /\[(\d+(?:\s*[,，]\s*\d+)*)\]|\[\*\]/g;
++
++/** The source numbers actually cited in a settled answer — the same [n] /
++    [n,m] grammar the renderer rewrites, with the same skips: fenced code
++    blocks and inline spans hold array indexes, not citations.  1-based;
++    sorted, deduped. */
++export function citedSourceNumbers(answer: string): number[] {
++  const out = new Set<number>();
++  let inFence = false;
++  for (const line of answer.split("\n")) {
++    if (/^\s*(?:```|~~~)/.test(line)) {
++      inFence = !inFence;
++      continue;
++    }
++    if (inFence) {
++      continue;
++    }
++    for (const part of line.split(/(`[^`]*`)/)) {
++      if (part.startsWith("`")) {
++        continue;
++      }
++      for (const match of part.matchAll(CITATION_RE)) {
++        const group = match[1];
++        if (!group) {
++          continue; // [*] — common knowledge, no source behind it
++        }
++        for (const n of group.split(/\s*[,，]\s*/)) {
++          const num = Number.parseInt(n, 10);
++          if (Number.isInteger(num) && num > 0) {
++            out.add(num);
++          }
++        }
++      }
++    }
++  }
++  return [...out].sort((a, b) => a - b);
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Answers.tsx b/client/zjsearch/src/features/results/answers/Answers.tsx
 new file mode 100644
@@ -20101,10 +20140,10 @@ index 000000000..d250d0a7e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 000000000..edd1dc64d
+index 000000000..5062f4062
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,477 @@
+@@ -0,0 +1,532 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20116,7 +20155,13 @@ index 000000000..edd1dc64d
 +import { tryEvaluateExpression } from "@/features/calculator.ts";
 +import { focusSearchInput, useHotkeys } from "@/features/hotkeys.ts";
 +import { AiAnswerCard, AiAnswerTrigger, useAiAnswer } from "@/features/results/AiSummary.tsx";
-+import { aiSourceMeta, buildAiContext, collectAiImages } from "@/features/results/aiAnswer.ts";
++import {
++  aiSourceMeta,
++  buildAiContext,
++  citedSourceNumbers,
++  collectAiImages,
++  splitAnswerStream,
++} from "@/features/results/aiAnswer.ts";
 +import { Answers } from "@/features/results/answers/Answers.tsx";
 +import { CalculatorAnswer } from "@/features/results/answers/Calculator.tsx";
 +import { CacheUrlProvider } from "@/features/results/CacheUrlProvider.tsx";
@@ -20352,30 +20397,40 @@ index 000000000..edd1dc64d
 +  const aiMeta = useMemo(() => aiSourceMeta(allResults), [allResults]);
 +
 +  // Quick Answer citation [n] → the n-th result of the flat list the answer
-+  // context was built from; its card is found through the result link (every
-+  // card view renders one) and flashed while scrolled into view.
-+  // useCallback keeps the identity stable for the memoized answer body.
++  // context was built from.  The cited indices live in STATE (not bare DOM
++  // attributes) so the dashed frames can be cleared when the answer they
++  // belong to is replaced, and re-applied when React recreates a marked
++  // card's DOM (category blocks unmount while folded).
++  const [aiCited, setAiCited] = useState<ReadonlySet<number>>(() => new Set());
++  const findResultCard = useCallback((index: number, result: ResultItem): HTMLElement | null => {
++    const list = listRef.current;
++    if (!list) {
++      return null;
++    }
++    // text cards anchor through their result link, grid tiles through
++    // data-hotkey-index (the global result index) or the image tiles'
++    // data-ai-url (present even when a thumbnail failed to load)
++    const probe =
++      list.querySelector(`a[href="${CSS.escape(result.url)}"]`) ??
++      list.querySelector(`[data-hotkey-index="${index}"]`) ??
++      list.querySelector(`[data-ai-url="${CSS.escape(result.url)}"]`);
++    return probe?.closest<HTMLElement>("article, [data-hotkey-index], button") ?? null;
++  }, []);
++
 +  const jumpToAiSource = useCallback(
 +    (index: number): boolean => {
 +      const result = allResults[index - 1];
-+      if (!result || !listRef.current) {
++      if (!result) {
 +        return false;
 +      }
-+      // text cards anchor through their result link, grid tiles through
-+      // data-hotkey-index (the global result index) or the image tiles'
-+      // data-ai-url (present even when a thumbnail failed to load)
-+      const probe =
-+        listRef.current.querySelector(`a[href="${CSS.escape(result.url)}"]`) ??
-+        listRef.current.querySelector(`[data-hotkey-index="${index - 1}"]`) ??
-+        listRef.current.querySelector(`[data-ai-url="${CSS.escape(result.url)}"]`);
-+      const card = probe?.closest<HTMLElement>("article, [data-hotkey-index], button");
++      const card = findResultCard(index - 1, result);
 +      if (!card) {
 +        return false;
 +      }
 +      card.scrollIntoView({ block: "start", behavior: scrollBehavior() });
-+      // the dashed frame persists — an accumulating set of the results the
++      // the dashed frame persists — the accumulating set of the results the
 +      // AI cited; the tint flash below is the one-shot locate highlight
-+      card.setAttribute("data-ai-cited", "");
++      setAiCited((prev) => new Set(prev).add(index - 1));
 +      if (flashTimer.current !== null) {
 +        window.clearTimeout(flashTimer.current);
 +      }
@@ -20390,8 +20445,47 @@ index 000000000..edd1dc64d
 +      }, 1900);
 +      return true;
 +    },
-+    [allResults],
++    [allResults, findResultCard],
 +  );
++
++  // the marks belong to the answer that produced them: a fresh ask (new
++  // question, regenerate) and every new search payload drop the set
++  // biome-ignore lint/correctness/useExhaustiveDependencies: data is the commit key — a new payload invalidates the marks even mid-idle
++  useEffect(() => {
++    if (aiAnswer.phase === "streaming") {
++      setAiCited(new Set());
++    }
++  }, [aiAnswer.phase, data]);
++
++  // as soon as the answer settles, mark EVERY result it actually cites —
++  // the cited source numbers are parsed from the settled answer text with
++  // the same grammar (and code-block skips) the renderer uses
++  useEffect(() => {
++    if (aiAnswer.phase !== "done") {
++      return;
++    }
++    const { answer } = splitAnswerStream(aiAnswer.text);
++    setAiCited(new Set(citedSourceNumbers(answer).map((n) => n - 1)));
++  }, [aiAnswer.phase, aiAnswer.text]);
++
++  // (re-)apply the frames from the set — idempotent, so it doubles as the
++  // re-marker for cards whose DOM was recreated while folded
++  useEffect(() => {
++    const list = listRef.current;
++    if (!list) {
++      return;
++    }
++    for (const el of [...list.querySelectorAll("[data-ai-cited]")]) {
++      if (!aiCited.has(Number(el.getAttribute("data-ai-cited")))) {
++        el.removeAttribute("data-ai-cited");
++      }
++    }
++    for (const index of aiCited) {
++      const result = allResults[index];
++      const card = result ? findResultCard(index, result) : null;
++      card?.setAttribute("data-ai-cited", String(index));
++    }
++  }, [aiCited, allResults, findResultCard]);
 +  const layout = useMemo(
 +    () => detectResultsLayout(data, selectedCategories, allResults),
 +    [data, selectedCategories, allResults],
