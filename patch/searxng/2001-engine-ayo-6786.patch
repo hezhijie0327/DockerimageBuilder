@@ -1,0 +1,156 @@
+diff --git a/searx/engines/ayo.py b/searx/engines/ayo.py
+new file mode 100644
+index 00000000000..99e71f039ef
+--- /dev/null
++++ b/searx/engines/ayo.py
+@@ -0,0 +1,90 @@
++# SPDX-License-Identifier: AGPL-3.0-or-later
++"""Ayo (general)"""
++
++import typing as t
++import re
++
++from searx.exceptions import SearxEngineAPIException
++from searx.network import get, post
++from searx.result_types import EngineResults
++from searx.utils import eval_xpath, eval_xpath_list, extract_text, solve_anubis_preact_challenge
++from searx.enginelib import EngineCache
++
++if t.TYPE_CHECKING:
++    from searx.extended_types import SXNG_Response
++    from searx.search.processors import OnlineParams
++
++
++about = {
++    "website": "https://search.ayo.de",
++    "wikidata_id": None,
++    "official_api_documentation": None,
++    "use_official_api": False,
++    "require_api_key": True,
++    "results": "HTML",
++}
++
++categories = ["general"]
++paging = True
++
++base_url = "https://search.ayo.de"
++
++_CSRF_TOKEN_RE = re.compile(r"const csrfToken = '(.+)';")
++
++CACHE: EngineCache
++"""Cache for storing the cookies and after solving an Anubis CAPTCHA."""
++
++
++def setup(engine_settings: dict[str, str]):
++    global CACHE  # pylint:disable=global-statement
++    CACHE = EngineCache(engine_settings["name"])
++
++
++def request(query: str, params: "OnlineParams"):
++    cookies = {}
++    if cached_cookies := CACHE.get("cookies"):
++        cookies = cached_cookies
++        resp = get(base_url, cookies=cookies)
++    else:
++        resp = solve_anubis_preact_challenge(base_url)
++        cookies = dict(resp.cookies)
++        CACHE.set("cookies", cookies)
++
++    csrf_token = _CSRF_TOKEN_RE.search(resp.text)
++    if not csrf_token:
++        raise SearxEngineAPIException("csrf token not found")
++    csrf_token = csrf_token.group(1)
++
++    # extract the URL of the actual results - base64 encoded JSON + server-side signature,
++    # so we can't build the query URL ourselves
++    resp = post(
++        f"{base_url}/search",
++        json={
++            "_token": csrf_token,
++            "source": "searchbox",
++            "q": query,
++        },
++        cookies=cookies,
++    )
++    url = extract_text(eval_xpath(resp.html(), "//div[@id='organic-results']/@data-url"))
++    if not url:
++        raise SearxEngineAPIException("failed to extract results URL")
++
++    params["url"] = url
++    params["cookies"] = cookies
++
++
++def response(resp: "SXNG_Response"):
++    res = EngineResults()
++    doc = resp.html()
++
++    for result in eval_xpath_list(doc, "//div[contains(@class, 'search-result')]"):
++        res.add(
++            res.types.MainResult(
++                url=extract_text(eval_xpath(result, ".//a/@href")) or "",
++                title=extract_text(eval_xpath(result, ".//a//h3")) or "",
++                content=extract_text(eval_xpath(result, ".//a/p")),
++            )
++        )
++
++    return res
+diff --git a/searx/utils.py b/searx/utils.py
+index de795ab8d0c..5b775e48a00 100644
+--- a/searx/utils.py
++++ b/searx/utils.py
+@@ -1,7 +1,7 @@
+ # SPDX-License-Identifier: AGPL-3.0-or-later
+ """Utility functions for the engines"""
+ 
+-from hashlib import pbkdf2_hmac
++from hashlib import pbkdf2_hmac, sha256
+ 
+ import re
+ import importlib
+@@ -19,6 +19,7 @@
+ from html import escape
+ from urllib.parse import urljoin, urlparse, parse_qs, urlencode
+ from datetime import timedelta
++from time import sleep
+ from markdown_it import MarkdownIt
+ 
+ from lxml import html
+@@ -28,7 +29,9 @@
+ from searx import settings
+ from searx.data import USER_AGENTS
+ from searx.version import VERSION_TAG
+-from searx.exceptions import SearxXPathSyntaxException, SearxEngineXPathException
++from searx.exceptions import SearxXPathSyntaxException, SearxEngineXPathException, SearxEngineAPIException
++from searx.extended_types import SXNG_Response
++from searx.network import get
+ from searx import logger
+ 
+ logger = logger.getChild('utils')
+@@ -845,3 +848,27 @@ def solve_altcha(parameters: dict[str, t.Any], maxCounter: int = 1000) -> tuple[
+         counter += 1
+ 
+     return None
++
++
++def solve_anubis_preact_challenge(url: str) -> SXNG_Response:
++    """Solves the Preact challenge from the Anubis bot blocker."""
++    resp = get(url)
++
++    preact_json = extract_text(eval_xpath(resp.html(), "//script[@id='preact_info']"))
++    if not preact_json:
++        raise SearxEngineAPIException("failed to extract Anubis challenge")
++    preact_challenge = json.loads(preact_json)
++
++    result = sha256(preact_challenge["challenge"].encode()).hexdigest()
++
++    # difficulty * 80ms is the minum hardcoded time in Anubis to solve the challenge,
++    # we assume that we need at least 30ms for building the sha256
++    # sum and sending the network requests
++    difficulty = int(preact_challenge["difficulty"])
++    sleep(0.08 * difficulty - 0.03)
++
++    url_parsed = urlparse(url)
++    url = f"{url_parsed.scheme}://{url_parsed.netloc}{preact_challenge['redir']}&result={result}"
++    challenge_resp = get(url, cookies=resp.cookies)
++
++    return challenge_resp
