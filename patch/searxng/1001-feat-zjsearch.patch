@@ -229,10 +229,10 @@ index 000000000..2d3b19b28
 +Licensor: Zhijie He
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 000000000..707bd913e
+index 000000000..02aa709d9
 --- /dev/null
 +++ b/client/zjsearch/README.rst
-@@ -0,0 +1,340 @@
+@@ -0,0 +1,345 @@
 +=====
 +zjsearch
 +=====
@@ -466,7 +466,12 @@ index 000000000..707bd913e
 +``params`` carries the chosen SDK's ``create()`` kwargs (``max_tokens``
 +translates to each API's own key; ``temperature`` stays opt-in) and
 +``extra_body`` / ``extra_headers`` pass through 1:1 as the
-+provider-specific escape hatches.  The stream protocol and the client
++provider-specific escape hatches.  The thinking-intensity knobs are the
++SDK's own names — ``reasoning_effort: low`` (chat completions),
++``reasoning: {effort: low}`` (Responses API — its ``summary`` deltas
++surface in the card's thinking block), ``thinking: {type: enabled,
++budget_tokens: 2048}`` (Anthropic), ``thinking_config:
++{thinking_budget: 1024}`` (Gemini).  The stream protocol and the client
 +card live in ``features/results/AiSummary.tsx``.
 +
 +Which dialect for which provider?  Aggregators (aihubmix, openrouter,
@@ -702,10 +707,10 @@ index 000000000..e3a2db3a3
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 000000000..691b8217b
+index 000000000..3a0dca09e
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,170 @@
 +# zjsearch theme dev instance settings (tracked; carries LAN-specific values
 +# such as the outgoing proxy).
 +# Run with:
@@ -861,9 +866,21 @@ index 000000000..691b8217b
 +    #   sdk: gemini
 +    #   base_url: "https://generativelanguage.googleapis.com"
 +    #   model: "gemini-..."
-+    extra_body:  # LM Studio / vLLM only -- drop it for online providers
-+      chat_template_kwargs:
-+        enable_thinking: false
++    # thinking-intensity knobs live in params under each SDK's own name:
++    #   openai_chat_completions -> reasoning_effort: low | medium | high
++    #   openai_responses        -> reasoning: {effort: low, summary: auto}
++    #                              (summary deltas surface in the thinking
++    #                              block; reasoning models only)
++    #   anthropic               -> thinking: {type: enabled, budget_tokens: 2048}
++    #   gemini                  -> thinking_config: {thinking_budget: 1024}
++    params:
++      reasoning_effort: "low"  # the openai dialect's thinking-intensity knob
++    # NOTE: reasoning_effort and the LM Studio hard-off below are mutually
++    # exclusive -- sending an effort implies a reasoning request and
++    # re-enables thinking despite the template kwarg
++    # extra_body:  # LM Studio / vLLM only -- drop it for online providers
++    #   chat_template_kwargs:
++    #     enable_thinking: false
 diff --git a/client/zjsearch/make-patch.ps1 b/client/zjsearch/make-patch.ps1
 new file mode 100644
 index 000000000..d9c88ffc5
@@ -10696,10 +10713,10 @@ index 000000000..d48fa47d0
 +}
 diff --git a/client/zjsearch/src/features/results/AiSummary.tsx b/client/zjsearch/src/features/results/AiSummary.tsx
 new file mode 100644
-index 000000000..251b63355
+index 000000000..ee7023fe9
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/AiSummary.tsx
-@@ -0,0 +1,796 @@
+@@ -0,0 +1,823 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -10761,6 +10778,8 @@ index 000000000..251b63355
 +      timeline (history + current), which viewIndex points into */
 +  history: AiHistoryTurn[];
 +  viewIndex: number;
++  /** the question the live (newest) answer is replying to */
++  question: string;
 +  /** ask the question for the current results (or re-ask after an error) */
 +  start: (q: string, context: string, images?: string[]) => void;
 +  toggle: (q: string, context: string, images?: string[]) => void;
@@ -10884,7 +10903,20 @@ index 000000000..251b63355
 +    setViewIndex(0);
 +  };
 +
-+  return { followUp, go, history, open, phase, regenerate, reset, start, text, toggle, viewIndex };
++  return {
++    followUp,
++    go,
++    history,
++    open,
++    phase,
++    question: lastAskRef.current?.q ?? "",
++    regenerate,
++    reset,
++    start,
++    text,
++    toggle,
++    viewIndex,
++  };
 +}
 +
 +/** Meta-row entry (the 12px toggle tier of 「found N results · took X s」). */
@@ -11283,6 +11315,11 @@ index 000000000..251b63355
 +  const think = viewingLatest ? live.think : "";
 +  const thinking = viewingLatest ? live.thinking : false;
 +  const answer = viewingLatest ? live.answer : (state.history[viewIndex]?.a ?? "");
++  // chat mode (follow-ups exist): every turn shows the question it answers
++  // as a right-aligned user bubble -- the live view carries the question
++  // being answered, historical turns their own
++  const question = viewingLatest ? state.question : (state.history[viewIndex]?.q ?? "");
++  const showQuestion = total > 1 && question.trim().length > 0;
 +  const hasThink = think.trim().length > 0;
 +  const hasAnswer = answer.trim().length > 0;
 +  const streaming = state.phase === "streaming";
@@ -11436,6 +11473,13 @@ index 000000000..251b63355
 +            }}
 +          >
 +            <div ref={overviewRef}>
++              {showQuestion ? (
++                <div className="mb-2 flex justify-end">
++                  <div className="max-w-[85%] rounded-2xl rounded-ee-md bg-surface-2 px-4 py-2.5 text-sm text-ink">
++                    {question}
++                  </div>
++                </div>
++              ) : null}
 +              <MarkdownAnswer markdown={markdown} meta={sourceMeta} onCite={onCite} settled={state.phase === "done"} />
 +            </div>
 +            {needsClamp ? (
@@ -31109,10 +31153,10 @@ index da873400e..4de1df3da 100755
      run()
 diff --git a/searx/zjsearch_ai.py b/searx/zjsearch_ai.py
 new file mode 100644
-index 000000000..4996a3bd0
+index 000000000..8962eb0f4
 --- /dev/null
 +++ b/searx/zjsearch_ai.py
-@@ -0,0 +1,892 @@
+@@ -0,0 +1,901 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +"""zjsearch theme: the whole-page AI Overview.
 +
@@ -31304,8 +31348,17 @@ index 000000000..4996a3bd0
 +    client = _sdk_http_clients.get(remote)
 +    if client is None:
 +        out = settings.get("outgoing", {})
-+        proxies = dict(out.get("proxies") or {}) if remote else {}
-+        client = httpx2.AsyncClient(mounts=proxies or None, verify=out.get("verify", True))
++        mounts = {}
++        if remote:
++            # searx outgoing.proxies values are proxy URLs or LISTS of
++            # fallback URLs (the curl engines round-robin the list);
++            # httpx2 mounts want one transport per pattern -- the first
++            # URL of a list serves
++            for pattern, value in dict(out.get("proxies") or {}).items():
++                urls = [str(u) for u in (value if isinstance(value, list) else [value]) if u]
++                if urls:
++                    mounts[str(pattern)] = httpx2.AsyncHTTPTransport(proxy=httpx2.Proxy(urls[0]))
++        client = httpx2.AsyncClient(mounts=mounts or None, verify=out.get("verify", True))
 +        _sdk_http_clients[remote] = client
 +    return client
 +
