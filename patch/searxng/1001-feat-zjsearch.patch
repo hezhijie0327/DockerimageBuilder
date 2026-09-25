@@ -7812,10 +7812,10 @@ index 000000000..e950b62a3
 +}
 diff --git a/client/zjsearch/src/components/SearchBox.tsx b/client/zjsearch/src/components/SearchBox.tsx
 new file mode 100644
-index 000000000..47d806693
+index 000000000..9055717f0
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchBox.tsx
-@@ -0,0 +1,353 @@
+@@ -0,0 +1,354 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { LoaderCircle, Search, X } from "lucide-react";
@@ -8027,14 +8027,15 @@ index 000000000..47d806693
 +  };
 +
 +  const showDropdown = open && suggestions.length > 0;
-+  /** the navigated suggestion split for the ghost layer: typed prefix solid,
-+      completion muted (null when no suggestion is actively selected, or the
-+      suggestion doesn't extend the typed prefix — then nothing is ghosted
-+      and the input keeps its plain ink text) */
-+  const ghost =
-+    open && active >= 0 && suggestions[active]?.text.startsWith(typed)
-+      ? { typed, completion: suggestions[active].text.slice(typed.length) }
-+      : null;
++  /** the navigated suggestion split for the ghost layer: the typed prefix
++      solid, the completion muted.  Case-INSENSITIVE prefix check — "Tes"
++      still ghosts against "testicular torsion"; the ghost's solid span
++      carries the suggestion's own casing so the mirror matches the input
++      value exactly.  Non-extending suggestions just show plain ink text. */
++  const activeSuggestion = open && active >= 0 ? suggestions[active] : undefined;
++  const ghost = activeSuggestion?.text.toLowerCase().startsWith(typed.toLowerCase())
++    ? { typed: activeSuggestion.text.slice(0, typed.length), completion: activeSuggestion.text.slice(typed.length) }
++    : null;
 +  // the list stays mounted through its fade-out window; render the last
 +  // non-empty suggestion set so a mid-exit fetch clearing `suggestions`
 +  // cannot collapse the fading panel into an empty bordered box
@@ -8080,8 +8081,8 @@ index 000000000..47d806693
 +            aria-label={t("search")}
 +            autoCapitalize="none"
 +            autoComplete="off"
-+            className={`relative w-full bg-transparent text-base outline-none placeholder:text-ink-3 ${
-+              ghost ? "text-transparent caret-ink selection:bg-transparent" : ""
++            className={`relative w-full bg-transparent text-base outline-none placeholder:text-ink-3 selection:bg-transparent ${
++              ghost ? "text-transparent caret-ink" : ""
 +            }`}
 +            dir="auto"
 +            name="q"
@@ -20100,10 +20101,10 @@ index 000000000..d250d0a7e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 000000000..db2f16279
+index 000000000..edd1dc64d
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,470 @@
+@@ -0,0 +1,477 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20372,9 +20373,16 @@ index 000000000..db2f16279
 +        return false;
 +      }
 +      card.scrollIntoView({ block: "start", behavior: scrollBehavior() });
++      // the dashed frame persists — an accumulating set of the results the
++      // AI cited; the tint flash below is the one-shot locate highlight
++      card.setAttribute("data-ai-cited", "");
 +      if (flashTimer.current !== null) {
 +        window.clearTimeout(flashTimer.current);
 +      }
++      // restart the flash when a second citation hits the same card (setting
++      // the attribute again would not replay a running CSS animation)
++      card.removeAttribute("data-ai-flash");
++      void card.offsetWidth;
 +      card.setAttribute("data-ai-flash", "");
 +      flashTimer.current = window.setTimeout(() => {
 +        card.removeAttribute("data-ai-flash");
@@ -22586,10 +22594,10 @@ index 000000000..b7175227e
 +export type PreferencesForm = ReturnType<typeof usePreferencesForm>;
 diff --git a/client/zjsearch/src/styles/base.css b/client/zjsearch/src/styles/base.css
 new file mode 100644
-index 000000000..e5a5595bd
+index 000000000..6955665a1
 --- /dev/null
 +++ b/client/zjsearch/src/styles/base.css
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,80 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* Element defaults plus .highlight — the query-highlight span the server-side
@@ -22647,16 +22655,23 @@ index 000000000..e5a5595bd
 +    box-decoration-break: clone;
 +  }
 +
-+  /* transient tint when a Quick Answer citation jumps to its result row
-+      (set/cleared imperatively around a scrollIntoView) */
++  /* "selected by the AI" marks around result rows reached through Quick
++      Answer citations: the dashed accent frame PERSISTS (an accumulating
++      set of the results the AI cited); the locate tint flashes once per
++      jump.  outline never shifts layout and follows rounded corners. */
++  [data-ai-cited] {
++    outline: 2px dashed var(--accent);
++    outline-offset: -2px;
++  }
++
 +  [data-ai-flash] {
-+    animation: zjs-ai-flash 1.8s ease-out both;
++    animation: zjs-ai-flash 1.9s ease-out both;
 +  }
 +}
 +
 +@keyframes zjs-ai-flash {
 +  0%,
-+  40% {
++  45% {
 +    background-color: var(--accent-soft);
 +  }
 +  100% {
