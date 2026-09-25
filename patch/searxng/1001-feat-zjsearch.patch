@@ -9750,6 +9750,55 @@ index 000000000..418f938d9
 +    </button>
 +  );
 +}
+diff --git a/client/zjsearch/src/components/CapChip.tsx b/client/zjsearch/src/components/CapChip.tsx
+new file mode 100644
+index 000000000..a719f549b
+--- /dev/null
++++ b/client/zjsearch/src/components/CapChip.tsx
+@@ -0,0 +1,43 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { ChevronLeft } from "lucide-react";
++import { useT } from "@/lib/i18n.ts";
++
++/**
++ * The one "+N ⇄ ‹ show less" chip for cap-and-expand rows (EnginesLine,
++ * package/paper tags, weather sources) — pairs with `useCapExpand`, which
++ * owns the visibility state machine while callers render their own chips.
++ * Pass the chip classes; the expanded branch keeps them so the toggle never
++ * changes shape mid-row.
++ */
++export function CapChip({
++  className,
++  expanded,
++  hidden,
++  onToggle,
++  title,
++}: {
++  className: string;
++  expanded: boolean;
++  /** how many entries the cap hides — the chip renders nothing at 0 */
++  hidden: number;
++  onToggle: () => void;
++  title?: string;
++}) {
++  const t = useT();
++  if (hidden <= 0) {
++    return null;
++  }
++  return (
++    <button aria-expanded={expanded} className={className} onClick={onToggle} title={title} type="button">
++      {expanded ? (
++        <>
++          <ChevronLeft className="size-3 shrink-0" />
++          {t("show_less")}
++        </>
++      ) : (
++        `+${hidden}`
++      )}
++    </button>
++  );
++}
 diff --git a/client/zjsearch/src/components/CategoryIcon.tsx b/client/zjsearch/src/components/CategoryIcon.tsx
 new file mode 100644
 index 000000000..0b7f01ec6
@@ -9896,12 +9945,149 @@ index 000000000..3d1eaff70
 +    </button>
 +  );
 +}
+diff --git a/client/zjsearch/src/components/ClampReveal.tsx b/client/zjsearch/src/components/ClampReveal.tsx
+new file mode 100644
+index 000000000..15733974c
+--- /dev/null
++++ b/client/zjsearch/src/components/ClampReveal.tsx
+@@ -0,0 +1,131 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { ChevronDown } from "lucide-react";
++import { type ReactNode, useEffect, useId, useRef, useState } from "react";
++import { useT } from "@/lib/i18n.ts";
++
++/**
++ * Clamp-and-reveal disclosure for long content (infobox abstract, AI
++ * overview): the content shows a fixed-height preview with a gradient scrim
++ * and one full-width expand pill.
++ *
++ * Expanding animates max-height to the measured content height and lifts the
++ * cap entirely once the ease has played (late growth -- a diagram that renders
++ * after the measurement, fonts, view switches -- must never sit under a stale
++ * cap); collapsing re-applies the cap at the fresh content height first, so
++ * the ease down to the preview interpolates instead of snapping.
++ *
++ * max-height cannot transition to `none`, which is why the expanded state
++ * pins a real pixel value kept current by a ResizeObserver (+1 guards against
++ * sub-pixel rounding clipping the last text line).  Content that fits the
++ * preview renders without clamp, scrim or toggle.  While `active` is false
++ * (a stream still growing) the height simply follows the content.
++ */
++export function ClampReveal({
++  active = true,
++  buttonClassName,
++  className = "",
++  children,
++  previewPx,
++}: {
++  /** false while the content is still growing (streaming): never clamp */
++  active?: boolean;
++  /** full button classes for the expand/collapse pill */
++  buttonClassName: string;
++  /** extra classes on the capped wrapper (spacing) */
++  className?: string;
++  children: ReactNode;
++  /** collapsed preview height in px */
++  previewPx: number;
++}) {
++  const t = useT();
++  const [expanded, setExpanded] = useState(false);
++  const [capless, setCapless] = useState(false);
++  const contentId = useId();
++  const contentRef = useRef<HTMLDivElement>(null);
++  const [contentPx, setContentPx] = useState<number | null>(null);
++
++  // the measured node is mounted by the time this component renders (callers
++  // render it with the content), so a mount-only observer is enough
++  useEffect(() => {
++    const el = contentRef.current;
++    if (!el) {
++      return;
++    }
++    const ro = new ResizeObserver(() => {
++      setContentPx(Math.ceil(el.getBoundingClientRect().height) + 1);
++    });
++    ro.observe(el);
++    return () => {
++      ro.disconnect();
++    };
++  }, []);
++
++  // unmeasured content is assumed tall: the toggle exists from the first
++  // frame instead of popping in after the observer's first tick
++  const needsClamp = active && (contentPx === null || contentPx > previewPx + 24);
++
++  const toggle = () => {
++    setCapless(false);
++    if (expanded) {
++      // let the wrapper re-apply the pixel cap at the current height before
++      // the collapsed state eases down to the preview
++      requestAnimationFrame(() => {
++        requestAnimationFrame(() => {
++          setExpanded(false);
++        });
++      });
++    } else {
++      setExpanded(true);
++    }
++  };
++
++  return (
++    <>
++      {/* overflow-hidden stays on in both states (without it inner margins
++          collapse through the wrapper when expanded); flow-root keeps the
++          inner's first-child margin inside the measured box */}
++      <div
++        className={`relative overflow-hidden transition-[max-height] duration-300 ease-out ${className}`}
++        id={contentId}
++        onTransitionEnd={(event) => {
++          if (event.propertyName === "max-height" && expanded) {
++            setCapless(true);
++          }
++        }}
++        style={{
++          maxHeight: needsClamp
++            ? expanded
++              ? capless
++                ? undefined
++                : (contentPx ?? previewPx)
++              : previewPx
++            : (contentPx ?? undefined),
++        }}
++      >
++        <div className="relative flow-root" ref={contentRef}>
++          {children}
++        </div>
++        {needsClamp ? (
++          <div
++            className={`pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-300 ${
++              expanded ? "opacity-0" : "opacity-100"
++            }`}
++          />
++        ) : null}
++      </div>
++      {needsClamp ? (
++        <button
++          aria-controls={contentId}
++          aria-expanded={expanded}
++          className={buttonClassName}
++          onClick={toggle}
++          type="button"
++        >
++          {expanded ? t("collapse") : t("expand")}
++          <ChevronDown className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
++        </button>
++      ) : null}
++    </>
++  );
++}
 diff --git a/client/zjsearch/src/components/Collapse.tsx b/client/zjsearch/src/components/Collapse.tsx
 new file mode 100644
-index 000000000..23af86afe
+index 000000000..c33a34662
 --- /dev/null
 +++ b/client/zjsearch/src/components/Collapse.tsx
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,87 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { type ReactNode, useEffect, useState } from "react";
@@ -9944,14 +10130,23 @@ index 000000000..23af86afe
 +      if (!present) {
 +        setPresent(true);
 +      }
-+      // mount at 0fr first, then let the transition play on the next frames
-+      const frame = requestAnimationFrame(() => {
-+        requestAnimationFrame(() => {
++      // mount at 0fr first, then let the transition play on the next frames;
++      // the timeout is the fallback for starved rAF (occluded tab, jammed
++      // compositor) -- without it the panel would stay at 0fr forever
++      let done = false;
++      const expand = () => {
++        if (!done) {
++          done = true;
 +          setExpanded(true);
-+        });
++        }
++      };
++      const frame = requestAnimationFrame(() => {
++        requestAnimationFrame(expand);
 +      });
++      const timer = window.setTimeout(expand, 120);
 +      return () => {
 +        cancelAnimationFrame(frame);
++        window.clearTimeout(timer);
 +      };
 +    }
 +    setExpanded(false);
@@ -10063,10 +10258,10 @@ index 000000000..2a033f0b4
 +}
 diff --git a/client/zjsearch/src/components/Dropdown.tsx b/client/zjsearch/src/components/Dropdown.tsx
 new file mode 100644
-index 000000000..1b9471f7f
+index 000000000..dc923fdd1
 --- /dev/null
 +++ b/client/zjsearch/src/components/Dropdown.tsx
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,251 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -10096,7 +10291,6 @@ index 000000000..1b9471f7f
 +  variant = "bare",
 +  menuClassName = "",
 +  icon,
-+  iconOnly = false,
 +  triggerLabel,
 +  triggerClassName,
 +  multiple = false,
@@ -10125,7 +10319,6 @@ index 000000000..1b9471f7f
 +  /** optional icon shown before the label in the trigger */
 +  icon?: ReactNode;
 +  /** trigger renders only the icon (kebab-style menus) */
-+  iconOnly?: boolean;
 +}) {
 +  const [open, setOpen] = useState(false);
 +  const [active, setActive] = useState(-1);
@@ -10239,19 +10432,13 @@ index 000000000..1b9471f7f
 +        aria-haspopup="listbox"
 +        aria-label={ariaLabel}
 +        className={
-+          iconOnly
-+            ? `flex size-9 items-center justify-center rounded-full transition-colors ${
-+                open ? "bg-surface-2 text-ink" : "text-ink-2 hover:bg-surface-2/70 hover:text-ink"
++          variant === "bare"
++            ? `relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] transition-colors ${
++                open ? "bg-surface-2 text-ink" : (triggerClassName ?? "text-ink-2 hover:bg-surface-2/70 hover:text-ink")
 +              }`
-+            : variant === "bare"
-+              ? `relative flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] transition-colors ${
-+                  open
-+                    ? "bg-surface-2 text-ink"
-+                    : (triggerClassName ?? "text-ink-2 hover:bg-surface-2/70 hover:text-ink")
-+                }`
-+              : `flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 text-[13px] transition-colors ${
-+                  open ? "border-ink-3" : "border-line hover:border-ink-3"
-+                } bg-surface text-ink ${triggerClassName ?? ""}`
++            : `flex h-9 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 text-[13px] transition-colors ${
++                open ? "border-ink-3" : "border-line hover:border-ink-3"
++              } bg-surface text-ink ${triggerClassName ?? ""}`
 +        }
 +        onClick={() => {
 +          if (open) {
@@ -10266,16 +10453,14 @@ index 000000000..1b9471f7f
 +        type="button"
 +      >
 +        {icon}
-+        {iconOnly ? null : <span className="truncate">{triggerLabel ?? current?.label ?? value}</span>}
-+        {underline && !iconOnly ? (
++        <span className="truncate">{triggerLabel ?? current?.label ?? value}</span>
++        {underline ? (
 +          <span aria-hidden="true" className="absolute inset-x-4 -bottom-0.5 h-0.5 rounded-full bg-accent-strong" />
 +        ) : null}
-+        {iconOnly ? null : (
-+          <ChevronDown
-+            aria-hidden="true"
-+            className={`size-3.5 shrink-0 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
-+          />
-+        )}
++        <ChevronDown
++          aria-hidden="true"
++          className={`size-3.5 shrink-0 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
++        />
 +      </button>
 +
 +      {renderMenu && menuStyle
@@ -10855,7 +11040,7 @@ index 000000000..6b895026b
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 000000000..8a18b6c86
+index 000000000..52bf4db7b
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
 @@ -0,0 +1,228 @@
@@ -10871,7 +11056,7 @@ index 000000000..8a18b6c86
 +import { languageOptions, useT } from "@/lib/i18n.ts";
 +import { scrollBehavior } from "@/lib/motion.ts";
 +import { useSettings } from "@/lib/settings.ts";
-+import { SCROLLBAR_NONE } from "@/lib/styles.ts";
++import { SCROLLBAR_NONE, SCROLLBAR_NONE_SM } from "@/lib/styles.ts";
 +import type { GlobalData } from "@/lib/types.ts";
 +
 +interface CategoryTabsProps {
@@ -10957,7 +11142,7 @@ index 000000000..8a18b6c86
 +        className={`min-w-0 flex flex-wrap items-center gap-x-1 gap-y-0.5 ${
 +          wrap
 +            ? "ps-2"
-+            : "-ms-4 sm:flex-nowrap sm:gap-y-0 sm:overflow-x-auto sm:pb-0.5 sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden sm:[&>*]:shrink-0"
++            : `-ms-4 sm:flex-nowrap sm:gap-y-0 sm:overflow-x-auto sm:pb-0.5 ${SCROLLBAR_NONE_SM} sm:[&>*]:shrink-0`
 +        }`}
 +        ref={scrollerRef}
 +      >
@@ -11822,10 +12007,10 @@ index 000000000..d48fa47d0
 +}
 diff --git a/client/zjsearch/src/features/results/AiSummary.tsx b/client/zjsearch/src/features/results/AiSummary.tsx
 new file mode 100644
-index 000000000..d3368306f
+index 000000000..bdfdeefd2
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/AiSummary.tsx
-@@ -0,0 +1,836 @@
+@@ -0,0 +1,756 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +// KaTeX typography for the math pipeline (lazy-loaded plugins, css is small
@@ -11840,11 +12025,13 @@ index 000000000..d3368306f
 +import remarkEmoji from "remark-emoji";
 +import remarkGfm from "remark-gfm";
 +import type { PluggableList } from "unified";
++import { ClampReveal } from "@/components/ClampReveal.tsx";
 +import { Collapse } from "@/components/Collapse.tsx";
 +import { type AiSourceMeta, splitAnswerStream } from "@/features/results/aiAnswer.ts";
 +import { useCopyToast } from "@/lib/clipboard.ts";
 +import { fetchStream } from "@/lib/http.ts";
 +import { useT } from "@/lib/i18n.ts";
++import { CODE_CHIP, META_TOGGLE } from "@/lib/styles.ts";
 +import type { AiCapability } from "@/lib/types.ts";
 +
 +/** 基础 remark 插件集 —— 系统 Prompt 实际广告的语法面（GFM / 表情 shortcode /
@@ -11974,11 +12161,7 @@ index 000000000..d3368306f
 +export function AiAnswerTrigger({ phase, onToggle }: { phase: AiAnswerPhase; onToggle: () => void }) {
 +  const t = useT();
 +  return (
-+    <button
-+      className="inline-flex min-h-6 items-center gap-1 transition-colors hover:text-ink"
-+      onClick={onToggle}
-+      type="button"
-+    >
++    <button className={`${META_TOGGLE} text-xs`} onClick={onToggle} type="button">
 +      <Sparkles className="size-3 shrink-0" />
 +      {phase === "streaming" ? t("ai_answering") : phase === "error" ? t("ai_answer_failed") : t("ai_answer")}
 +    </button>
@@ -12060,6 +12243,7 @@ index 000000000..d3368306f
 +    wrapper's overflow-hidden cannot clip it); clicking jumps to the
 +    matching result row.  Moving between chip and panel keeps it open. */
 +function CitationChip({ n, source, onCite }: { n: number; source: AiSourceMeta; onCite?: (index: number) => boolean }) {
++  const t = useT();
 +  const [panel, setPanel] = useState<{ x: number; y: number } | null>(null);
 +  const hideTimer = useRef<number | null>(null);
 +  const chipRef = useRef<HTMLButtonElement | null>(null);
@@ -12144,7 +12328,7 @@ index 000000000..d3368306f
 +                ) : null}
 +                <span className="truncate">{source.domain}</span>
 +                <a
-+                  aria-label="open"
++                  aria-label={t("open_source")}
 +                  className="ms-auto inline-flex items-center rounded p-0.5 transition-colors hover:bg-surface-2 hover:text-accent"
 +                  href={source.u}
 +                  onClick={(event) => {
@@ -12367,11 +12551,7 @@ index 000000000..d3368306f
 +      <blockquote className="my-2 border-s-2 border-line ps-3 text-ink-2">{children}</blockquote>
 +    ),
 +    code: ({ className, children }) =>
-+      className ? (
-+        <code className={className}>{children}</code>
-+      ) : (
-+        <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs">{children}</code>
-+      ),
++      className ? <code className={className}>{children}</code> : <code className={CODE_CHIP}>{children}</code>,
 +    dd: ({ children }) => <dd className="ms-5 text-ink-2">{children}</dd>,
 +    dt: ({ children }) => <dt className="mt-2 font-medium text-ink">{children}</dt>,
 +    h1: heading,
@@ -12511,7 +12691,6 @@ index 000000000..d3368306f
 +}) {
 +  const t = useT();
 +  const [thinkForced, setThinkForced] = useState<boolean | null>(null);
-+  const [overviewExpanded, setOverviewExpanded] = useState(false);
 +  const { think, answer, thinking } = splitAnswerStream(state.text);
 +  const hasThink = think.trim().length > 0;
 +  const hasAnswer = answer.trim().length > 0;
@@ -12525,50 +12704,6 @@ index 000000000..d3368306f
 +  const failed = state.phase === "error" || (state.phase === "done" && !hasAnswer && !hasThink);
 +
 +  const markdown = useMemo(() => citeToLinks(answer), [answer]);
-+  const overviewRef = useRef<HTMLDivElement | null>(null);
-+  const [contentPx, setContentPx] = useState<number | null>(null);
-+
-+  // the measured node mounts with the answer (it does not exist before the
-+  // first chunk), so the observer attaches when it appears -- a mount-only
-+  // effect would measure nothing on the click -> stream -> done path
-+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when the measured node mounts
-+  useEffect(() => {
-+    const el = overviewRef.current;
-+    if (!el) {
-+      return;
-+    }
-+    const ro = new ResizeObserver(() => {
-+      // +1 guards against sub-pixel rounding clipping the last text line
-+      setContentPx(Math.ceil(el.getBoundingClientRect().height) + 1);
-+    });
-+    ro.observe(el);
-+    return () => {
-+      ro.disconnect();
-+    };
-+  }, [hasAnswer]);
-+
-+  // content that fits the preview needs no clamp, gradient or toggle
-+  const needsClamp = state.phase === "done" && contentPx !== null && contentPx > OVERVIEW_PREVIEW_PX + 24;
-+
-+  // expanded: the cap rides at contentPx while the 300ms ease plays, then is
-+  // lifted entirely -- late content growth (a mermaid svg that renders after
-+  // the measurement, fonts, view switches) must never sit under a stale cap.
-+  // collapsing re-applies the cap at the fresh contentPx first (same visual
-+  // height) so the ease down to the preview interpolates instead of snapping.
-+  const [expandCapless, setExpandCapless] = useState(false);
-+  const toggleExpanded = () => {
-+    if (overviewExpanded) {
-+      setExpandCapless(false);
-+      requestAnimationFrame(() => {
-+        requestAnimationFrame(() => {
-+          setOverviewExpanded(false);
-+        });
-+      });
-+    } else {
-+      setExpandCapless(false);
-+      setOverviewExpanded(true);
-+    }
-+  };
 +
 +  return (
 +    <div className="animate-fade-up rounded-2xl border border-line bg-surface p-4">
@@ -12615,45 +12750,15 @@ index 000000000..d3368306f
 +      ) : null}
 +      {hasAnswer ? (
 +        <div className={`${hasThink ? "mt-2 " : ""}text-sm leading-relaxed text-ink`}>
-+          <div
-+            className="relative overflow-hidden transition-[max-height] duration-300 ease-out"
-+            onTransitionEnd={(event) => {
-+              if (event.propertyName === "max-height" && overviewExpanded) {
-+                setExpandCapless(true);
-+              }
-+            }}
-+            style={{
-+              maxHeight: needsClamp
-+                ? overviewExpanded
-+                  ? expandCapless
-+                    ? undefined
-+                    : (contentPx ?? OVERVIEW_PREVIEW_PX)
-+                  : OVERVIEW_PREVIEW_PX
-+                : (contentPx ?? undefined),
-+            }}
++          {/* streaming renders uncapped (active=false); once settled the
++              shared clamp-and-reveal takes over the preview cap */}
++          <ClampReveal
++            active={state.phase === "done"}
++            buttonClassName="mt-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[13px] font-medium text-ink-2 transition-colors hover:text-ink"
++            previewPx={OVERVIEW_PREVIEW_PX}
 +          >
-+            <div ref={overviewRef}>
-+              <MarkdownAnswer markdown={markdown} meta={sourceMeta} onCite={onCite} settled={state.phase === "done"} />
-+            </div>
-+            {needsClamp ? (
-+              <div
-+                className={`pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-300 ${
-+                  overviewExpanded ? "opacity-0" : "opacity-100"
-+                }`}
-+              />
-+            ) : null}
-+          </div>
-+          {needsClamp ? (
-+            <button
-+              aria-expanded={overviewExpanded}
-+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[13px] font-medium text-ink-2 transition-colors hover:text-ink"
-+              onClick={toggleExpanded}
-+              type="button"
-+            >
-+              {overviewExpanded ? t("collapse") : t("expand")}
-+              <ChevronDown className={`size-3.5 transition-transform ${overviewExpanded ? "rotate-180" : ""}`} />
-+            </button>
-+          ) : null}
++            <MarkdownAnswer markdown={markdown} meta={sourceMeta} onCite={onCite} settled={state.phase === "done"} />
++          </ClampReveal>
 +        </div>
 +      ) : streaming && !hasThink ? (
 +        <p className="mt-2 text-xs text-ink-3">{t("ai_answering")}</p>
@@ -12664,7 +12769,7 @@ index 000000000..d3368306f
 +}
 diff --git a/client/zjsearch/src/features/results/AppsGrid.tsx b/client/zjsearch/src/features/results/AppsGrid.tsx
 new file mode 100644
-index 000000000..d5763a04a
+index 000000000..5d66a74b5
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/AppsGrid.tsx
 @@ -0,0 +1,58 @@
@@ -12676,7 +12781,7 @@ index 000000000..d5763a04a
 +
 +import { Image } from "lucide-react";
 +import { ResultLink } from "@/features/results/cardParts.tsx";
-+import { TileCell, TileEngines, TileThumb, TileTitle } from "@/features/results/Tile.tsx";
++import { TileCell, TileEngines, TileThumb, TileTitle } from "@/features/results/tileParts.tsx";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
 +export function AppsGrid({
@@ -12752,10 +12857,10 @@ index 000000000..244e1fcc1
 +}
 diff --git a/client/zjsearch/src/features/results/CardList.tsx b/client/zjsearch/src/features/results/CardList.tsx
 new file mode 100644
-index 000000000..84da3e233
+index 000000000..955522507
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/CardList.tsx
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,55 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import type { ReactNode } from "react";
@@ -12788,7 +12893,6 @@ index 000000000..84da3e233
 +  selected,
 +  autoOpenMap = false,
 +  spaced = true,
-+  className,
 +  renderItem,
 +}: {
 +  entries: CardListEntry[];
@@ -12796,11 +12900,10 @@ index 000000000..84da3e233
 +  selected: number;
 +  autoOpenMap?: boolean;
 +  spaced?: boolean;
-+  className?: string;
 +  renderItem?: (result: ResultItem, index: number) => ReactNode;
 +}) {
 +  return (
-+    <div className={cn(spaced && "space-y-1", className)}>
++    <div className={cn(spaced && "space-y-1")}>
 +      {entries.map(({ result, index }) => (
 +        <ResultRow index={index} key={index} selected={selected === index}>
 +          {renderItem ? (
@@ -12951,10 +13054,10 @@ index 000000000..5652bd993
 +}
 diff --git a/client/zjsearch/src/features/results/DebugPanels.tsx b/client/zjsearch/src/features/results/DebugPanels.tsx
 new file mode 100644
-index 000000000..3e290f18c
+index 000000000..ae92e46e5
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/DebugPanels.tsx
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,257 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -12968,6 +13071,7 @@ index 000000000..3e290f18c
 +import {
 +  AlertTriangle,
 +  ChevronDown,
++  Copy,
 +  FileCode2,
 +  FileJson,
 +  FileSpreadsheet,
@@ -12986,6 +13090,7 @@ index 000000000..3e290f18c
 +import { round1 } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { isModifiedClick } from "@/lib/link.ts";
++import { META_TOGGLE, PILL } from "@/lib/styles.ts";
 +import { flashToast } from "@/lib/toast.ts";
 +import type { ResultItem, SearchPageData } from "@/lib/types.ts";
 +
@@ -13007,9 +13112,8 @@ index 000000000..3e290f18c
 +  return index === -1 ? FORMAT_ORDER.length : index;
 +}
 +
-+const metaToggle = "inline-flex min-h-6 items-center gap-1 transition-colors hover:text-ink";
-+const stripChip =
-+  "inline-flex items-center gap-1 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:text-ink";
++const metaToggle = META_TOGGLE;
++const stripChip = `${PILL} gap-1 hover:text-ink`;
 +
 +export function DebugPanels({
 +  data,
@@ -13089,7 +13193,7 @@ index 000000000..3e290f18c
 +            </div>
 +            {/* confirmation comes from the shared green flashToast */}
 +            <button
-+              className="shrink-0 rounded-full border border-line px-3 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:border-accent hover:text-accent"
++              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[13px] font-medium text-ink-2 transition-colors hover:border-accent hover:text-accent"
 +              onClick={() => {
 +                if (searchUrl) {
 +                  copyToast(searchUrl);
@@ -13097,6 +13201,7 @@ index 000000000..3e290f18c
 +              }}
 +              type="button"
 +            >
++              <Copy className="size-3.5" />
 +              {t("copy_link")}
 +            </button>
 +          </div>
@@ -13308,7 +13413,7 @@ index 000000000..eae0ca7fd
 +}
 diff --git a/client/zjsearch/src/features/results/FilesGrid.tsx b/client/zjsearch/src/features/results/FilesGrid.tsx
 new file mode 100644
-index 000000000..18dd919fa
+index 000000000..3f226b9ea
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/FilesGrid.tsx
 @@ -0,0 +1,121 @@
@@ -13330,8 +13435,8 @@ index 000000000..18dd919fa
 +  TileMeta,
 +  TileMetaDate,
 +  TileTitle,
-+} from "@/features/results/Tile.tsx";
-+import { formatDate } from "@/lib/format.ts";
++} from "@/features/results/tileParts.tsx";
++import { formatDate, formatFilesize } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
@@ -13368,7 +13473,7 @@ index 000000000..18dd919fa
 +    <div className="grid grid-cols-2 gap-x-4 gap-y-8 @sm:grid-cols-3 @[46rem]:grid-cols-4 @5xl:grid-cols-5">
 +      {results.map((result, index) => {
 +        const extension = detectExtension(result.filename || result.title_text);
-+        const size = result.filesize || result.size || null;
++        const size = formatFilesize(result.filesize ?? result.size);
 +        const date = result.published_date ? formatDate(result.published_date) : result.time || null;
 +        const health = result.seed !== undefined || result.leech !== undefined;
 +        const downloadHref =
@@ -13532,16 +13637,16 @@ index 000000000..11e73ad62
 +}
 diff --git a/client/zjsearch/src/features/results/Infobox.tsx b/client/zjsearch/src/features/results/Infobox.tsx
 new file mode 100644
-index 000000000..21acaf7da
+index 000000000..3eccc43bd
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/Infobox.tsx
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,138 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ChevronDown, ExternalLink } from "lucide-react";
-+import { useEffect, useId, useRef, useState } from "react";
-+import { useT } from "@/lib/i18n.ts";
++import { ExternalLink, Search } from "lucide-react";
++import { ClampReveal } from "@/components/ClampReveal.tsx";
 +import { newTabLinkProps } from "@/lib/link.ts";
++import { PILL } from "@/lib/styles.ts";
 +import type { GlobalData, InfoboxData } from "@/lib/types.ts";
 +
 +/** Collapsed infobox preview height (the old max-h-72 clamp). */
@@ -13556,33 +13661,6 @@ index 000000000..21acaf7da
 +  globals: GlobalData;
 +  onSearch: (q: string) => void;
 +}) {
-+  const t = useT();
-+  const [expanded, setExpanded] = useState(false);
-+  const contentId = useId();
-+  const contentRef = useRef<HTMLDivElement>(null);
-+  // natural content height, kept current by a ResizeObserver: max-height
-+  // cannot transition to `none`, so the expanded state must pin a real
-+  // pixel value for the browser to animate to
-+  const [contentPx, setContentPx] = useState<number | null>(null);
-+
-+  useEffect(() => {
-+    const el = contentRef.current;
-+    if (!el) {
-+      return;
-+    }
-+    const ro = new ResizeObserver(() => {
-+      // +1 guards against sub-pixel rounding clipping the last text line
-+      setContentPx(Math.ceil(el.getBoundingClientRect().height) + 1);
-+    });
-+    ro.observe(el);
-+    return () => {
-+      ro.disconnect();
-+    };
-+  }, []);
-+
-+  // content that fits the preview needs no clamp, gradient or toggle
-+  const needsClamp = contentPx === null || contentPx > INFOBOX_PREVIEW_PX + 24;
-+
 +  return (
 +    <div className="rounded-2xl border border-line bg-surface p-3">
 +      <div className={infobox.img_src ? "flex items-start gap-4" : ""}>
@@ -13600,141 +13678,113 @@ index 000000000..21acaf7da
 +        </h2>
 +      </div>
 +
-+      {/* animated disclosure: overflow-hidden stays on in both states (without
-+          it the inner mt-3 collapses through the wrapper when expanded and
-+          the visible content jumps up 12px on toggle); flow-root keeps the
-+          inner's first-child margin inside the measured box */}
-+      <div
-+        className="relative mt-3 overflow-hidden transition-[max-height] duration-300 ease-out"
-+        id={contentId}
-+        style={{
-+          maxHeight: needsClamp ? (expanded ? (contentPx ?? INFOBOX_PREVIEW_PX) : INFOBOX_PREVIEW_PX) : undefined,
-+        }}
++      <ClampReveal
++        buttonClassName="mt-2 flex w-full items-center justify-center gap-1 border-t border-line pt-2.5 text-[13px] text-ink-3 transition-colors hover:text-ink"
++        className="mt-3"
++        previewPx={INFOBOX_PREVIEW_PX}
 +      >
-+        <div className="relative flow-root" ref={contentRef}>
-+          {infobox.attributes && infobox.attributes.length > 0 ? (
-+            <dl className="space-y-2.5 text-xs">
-+              {infobox.attributes.map((attribute, index) =>
-+                attribute.image_src ? (
-+                  // image attributes read as captioned figures - a table row
-+                  // with an inline image squeezes charts and misaligns labels
-+                  <div key={index}>
-+                    <dt className="text-ink-3">{attribute.label}</dt>
-+                    <dd className="mt-1.5">
-+                      <img
-+                        alt={attribute.image_alt || attribute.label}
-+                        className="mx-auto max-h-56 max-w-full rounded-xl border border-line bg-surface-2 object-contain"
-+                        decoding="async"
-+                        loading="lazy"
-+                        onError={(event) => {
-+                          event.currentTarget.style.display = "none";
-+                        }}
-+                        src={attribute.image_src}
-+                      />
-+                      {attribute.value ? (
-+                        <span className="mt-1 block leading-relaxed text-ink-2" dir="auto">
-+                          {attribute.value}
-+                        </span>
-+                      ) : null}
-+                    </dd>
-+                  </div>
-+                ) : (
-+                  <div className="flex gap-2" key={index}>
-+                    {/* dt capped: a long label must not squeeze the value out */}
-+                    <dt className="max-w-[40%] shrink-0 truncate text-ink-3" title={attribute.label}>
-+                      {attribute.label}:
-+                    </dt>
-+                    <dd className="min-w-0 text-ink-2">
-+                      <span dir="auto">{attribute.value}</span>
-+                    </dd>
-+                  </div>
-+                ),
-+              )}
-+            </dl>
-+          ) : null}
-+
-+          {infobox.content_html ? (
-+            <div
-+              className="mt-3 text-sm leading-relaxed text-ink-2 [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/40 [&_a]:underline-offset-2"
-+              dangerouslySetInnerHTML={{ __html: infobox.content_html }}
-+              dir="auto"
-+            />
-+          ) : null}
-+
-+          {infobox.urls && infobox.urls.length > 0 ? (
-+            <ul className="mt-3 space-y-1 text-xs">
-+              {infobox.urls.map((url) => (
-+                <li className="min-w-0" key={url.url}>
-+                  <a
-+                    className="flex min-h-6 min-w-0 max-w-full items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
-+                    {...newTabLinkProps(globals.results_on_new_tab)}
-+                    href={url.url}
-+                  >
-+                    <span className="min-w-0 truncate">{url.title}</span>
-+                    <ExternalLink className="size-3 shrink-0" />
-+                  </a>
-+                </li>
-+              ))}
-+            </ul>
-+          ) : null}
-+
-+          {infobox.related_topics && infobox.related_topics.length > 0 ? (
-+            <div className="mt-4 space-y-2">
-+              {infobox.related_topics.map((topic) => (
-+                <div key={topic.name}>
-+                  <h4 className="text-xs font-semibold text-ink" dir="auto">
-+                    {topic.name}
-+                  </h4>
-+                  <div className="mt-1 flex flex-wrap gap-1.5">
-+                    {topic.suggestions.map((suggestion) => (
-+                      <button
-+                        className="rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
-+                        key={suggestion}
-+                        onClick={() => {
-+                          onSearch(suggestion);
-+                        }}
-+                        type="button"
-+                      >
-+                        {suggestion}
-+                      </button>
-+                    ))}
-+                  </div>
++        {infobox.attributes && infobox.attributes.length > 0 ? (
++          <dl className="space-y-2.5 text-xs">
++            {infobox.attributes.map((attribute, index) =>
++              attribute.image_src ? (
++                // image attributes read as captioned figures - a table row
++                // with an inline image squeezes charts and misaligns labels
++                <div key={index}>
++                  <dt className="text-ink-3">{attribute.label}</dt>
++                  <dd className="mt-1.5">
++                    <img
++                      alt={attribute.image_alt || attribute.label}
++                      className="mx-auto max-h-56 max-w-full rounded-xl border border-line bg-surface-2 object-contain"
++                      decoding="async"
++                      loading="lazy"
++                      onError={(event) => {
++                        event.currentTarget.style.display = "none";
++                      }}
++                      src={attribute.image_src}
++                    />
++                    {attribute.value ? (
++                      <span className="mt-1 block leading-relaxed text-ink-2" dir="auto">
++                        {attribute.value}
++                      </span>
++                    ) : null}
++                  </dd>
 +                </div>
-+              ))}
-+            </div>
-+          ) : null}
-+        </div>
-+        {needsClamp ? (
++              ) : (
++                <div className="flex gap-2" key={index}>
++                  {/* dt capped: a long label must not squeeze the value out */}
++                  <dt className="max-w-[40%] shrink-0 truncate text-ink-3" title={attribute.label}>
++                    {attribute.label}:
++                  </dt>
++                  <dd className="min-w-0 text-ink-2">
++                    <span dir="auto">{attribute.value}</span>
++                  </dd>
++                </div>
++              ),
++            )}
++          </dl>
++        ) : null}
++
++        {infobox.content_html ? (
 +          <div
-+            className={`pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-surface to-transparent transition-opacity duration-300 ${
-+              expanded ? "opacity-0" : "opacity-100"
-+            }`}
++            className="mt-3 text-sm leading-relaxed text-ink-2 [&_a]:text-accent [&_a]:underline [&_a]:decoration-accent/40 [&_a]:underline-offset-2"
++            dangerouslySetInnerHTML={{ __html: infobox.content_html }}
++            dir="auto"
 +          />
 +        ) : null}
-+      </div>
-+      {needsClamp ? (
-+        <button
-+          aria-controls={contentId}
-+          aria-expanded={expanded}
-+          className="mt-2 flex w-full items-center justify-center gap-1 border-t border-line pt-2.5 text-[13px] text-ink-3 transition-colors hover:text-ink"
-+          onClick={() => {
-+            setExpanded((value) => !value);
-+          }}
-+          type="button"
-+        >
-+          {expanded ? t("collapse") : t("expand")}
-+          <ChevronDown className={`size-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
-+        </button>
-+      ) : null}
++
++        {infobox.urls && infobox.urls.length > 0 ? (
++          <ul className="mt-3 space-y-1 text-xs">
++            {infobox.urls.map((url) => (
++              <li className="min-w-0" key={url.url}>
++                <a
++                  className="flex min-h-6 min-w-0 max-w-full items-center gap-1 text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
++                  {...newTabLinkProps(globals.results_on_new_tab)}
++                  href={url.url}
++                >
++                  <span className="min-w-0 truncate">{url.title}</span>
++                  <ExternalLink className="size-3 shrink-0" />
++                </a>
++              </li>
++            ))}
++          </ul>
++        ) : null}
++
++        {infobox.related_topics && infobox.related_topics.length > 0 ? (
++          <div className="mt-4 space-y-2">
++            {infobox.related_topics.map((topic) => (
++              <div key={topic.name}>
++                <h4 className="text-xs font-semibold text-ink" dir="auto">
++                  {topic.name}
++                </h4>
++                <div className="mt-1 flex flex-wrap gap-1.5">
++                  {topic.suggestions.map((suggestion) => (
++                    <button
++                      className={`${PILL} hover:bg-accent-soft hover:text-accent`}
++                      key={suggestion}
++                      onClick={() => {
++                        onSearch(suggestion);
++                      }}
++                      type="button"
++                    >
++                      <Search className="size-3.5 shrink-0 text-ink-3" />
++                      {suggestion}
++                    </button>
++                  ))}
++                </div>
++              </div>
++            ))}
++          </div>
++        ) : null}
++      </ClampReveal>
 +    </div>
 +  );
 +}
 diff --git a/client/zjsearch/src/features/results/MapView.tsx b/client/zjsearch/src/features/results/MapView.tsx
 new file mode 100644
-index 000000000..beeb2c51d
+index 000000000..8e5a38724
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/MapView.tsx
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,261 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -13751,6 +13801,7 @@ index 000000000..beeb2c51d
 +import { CopyButton } from "@/components/CopyButton.tsx";
 +import { useT } from "@/lib/i18n.ts";
 +import { reducedMotion } from "@/lib/motion.ts";
++import { PILL } from "@/lib/styles.ts";
 +
 +interface MapResultProps {
 +  longitude?: string;
@@ -13954,7 +14005,7 @@ index 000000000..beeb2c51d
 +    <div className="mt-2">
 +      <button
 +        aria-expanded={open}
-+        className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:text-ink"
++        className={`${PILL} gap-1.5 hover:text-ink`}
 +        onClick={() => {
 +          setOpen((prev) => !prev);
 +        }}
@@ -13997,7 +14048,7 @@ index 000000000..beeb2c51d
 +}
 diff --git a/client/zjsearch/src/features/results/MusicGrid.tsx b/client/zjsearch/src/features/results/MusicGrid.tsx
 new file mode 100644
-index 000000000..204a03652
+index 000000000..c30fdc7f1
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/MusicGrid.tsx
 @@ -0,0 +1,221 @@
@@ -14023,7 +14074,7 @@ index 000000000..204a03652
 +  TileMetaDate,
 +  TileThumb,
 +  TileTitle,
-+} from "@/features/results/Tile.tsx";
++} from "@/features/results/tileParts.tsx";
 +import { formatClock, formatDate, formatLength, imageAlt } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { DISABLED } from "@/lib/styles.ts";
@@ -14224,7 +14275,7 @@ index 000000000..204a03652
 +}
 diff --git a/client/zjsearch/src/features/results/PackageGrid.tsx b/client/zjsearch/src/features/results/PackageGrid.tsx
 new file mode 100644
-index 000000000..6a5e01d04
+index 000000000..3783ff028
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/PackageGrid.tsx
 @@ -0,0 +1,93 @@
@@ -14244,7 +14295,7 @@ index 000000000..6a5e01d04
 +  TileMetaAuthor,
 +  TileMetaDate,
 +  TileTitle,
-+} from "@/features/results/Tile.tsx";
++} from "@/features/results/tileParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
@@ -14416,7 +14467,7 @@ index 000000000..a041b2ad3
 +}
 diff --git a/client/zjsearch/src/features/results/PosterGrid.tsx b/client/zjsearch/src/features/results/PosterGrid.tsx
 new file mode 100644
-index 000000000..f3e7c4abc
+index 000000000..a03ca2fa7
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/PosterGrid.tsx
 @@ -0,0 +1,61 @@
@@ -14428,7 +14479,7 @@ index 000000000..f3e7c4abc
 +
 +import { Clapperboard } from "lucide-react";
 +import { ResultLink } from "@/features/results/cardParts.tsx";
-+import { TileCell, TileEngines, TileFavicon, TileThumb, TileTitle } from "@/features/results/Tile.tsx";
++import { TileCell, TileEngines, TileFavicon, TileThumb, TileTitle } from "@/features/results/tileParts.tsx";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
 +export function PosterGrid({
@@ -14483,7 +14534,7 @@ index 000000000..f3e7c4abc
 +}
 diff --git a/client/zjsearch/src/features/results/ProductGrid.tsx b/client/zjsearch/src/features/results/ProductGrid.tsx
 new file mode 100644
-index 000000000..11ac8bb7f
+index 000000000..d0da5fc2f
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/ProductGrid.tsx
 @@ -0,0 +1,69 @@
@@ -14491,7 +14542,7 @@ index 000000000..11ac8bb7f
 +
 +import { Globe, Package, Tag, Truck } from "lucide-react";
 +import { ResultLink } from "@/features/results/cardParts.tsx";
-+import { TileCell, TileEngines, TileThumb, TileTitle } from "@/features/results/Tile.tsx";
++import { TileCell, TileEngines, TileThumb, TileTitle } from "@/features/results/tileParts.tsx";
 +import { imageAlt } from "@/lib/format.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +
@@ -14812,7 +14863,7 @@ index 000000000..d6b51119f
 +}
 diff --git a/client/zjsearch/src/features/results/SuggestionsBox.tsx b/client/zjsearch/src/features/results/SuggestionsBox.tsx
 new file mode 100644
-index 000000000..c0c53af6a
+index 000000000..0bbe85e28
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/SuggestionsBox.tsx
 @@ -0,0 +1,97 @@
@@ -14822,7 +14873,7 @@ index 000000000..c0c53af6a
 +import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 +import { useT } from "@/lib/i18n.ts";
 +import { scrollBehavior } from "@/lib/motion.ts";
-+import { DISABLED, SCROLLBAR_NONE } from "@/lib/styles.ts";
++import { DISABLED, PILL, SCROLLBAR_NONE } from "@/lib/styles.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
 +export function SuggestionsBox({ data, onSearch }: { data: SearchPageData; onSearch: (q: string) => void }) {
@@ -14886,7 +14937,7 @@ index 000000000..c0c53af6a
 +      >
 +        {data.suggestions.map((suggestion) => (
 +          <button
-+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:bg-accent-soft hover:text-accent"
++            className={`${PILL} shrink-0 gap-1.5 hover:bg-accent-soft hover:text-accent`}
 +            dir="auto"
 +            key={suggestion.q}
 +            onClick={() => {
@@ -14913,262 +14964,9 @@ index 000000000..c0c53af6a
 +    </div>
 +  );
 +}
-diff --git a/client/zjsearch/src/features/results/Tile.tsx b/client/zjsearch/src/features/results/Tile.tsx
-new file mode 100644
-index 000000000..98cd0a1b2
---- /dev/null
-+++ b/client/zjsearch/src/features/results/Tile.tsx
-@@ -0,0 +1,247 @@
-+// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
-+
-+import { Calendar, Eye, Globe, User, X } from "lucide-react";
-+import type { ReactNode } from "react";
-+import { useEffect, useState } from "react";
-+import { EnginesLine, ResultLink } from "@/features/results/cardParts.tsx";
-+import { TILE_BADGE } from "@/lib/styles.ts";
-+import type { GlobalData, ResultItem } from "@/lib/types.ts";
-+
-+/** Corner badge on a media tile — duration, filesize (dark pill, bottom-right). */
-+export function TileBadge({ children, className = "" }: { children: ReactNode; className?: string }) {
-+  return <span className={`bottom-2 right-2 ${TILE_BADGE} ${className}`}>{children}</span>;
-+}
-+
-+/** Source favicon pinned to the bottom-left of a media tile; falls back to the
-+    placeholder icon when the engine favicon is missing or blocked by the proxy. */
-+export function TileFavicon({ src }: { src: string }) {
-+  const [failed, setFailed] = useState(!src);
-+  if (failed) {
-+    return (
-+      <span className="absolute bottom-2 left-2 flex size-6 items-center justify-center rounded-full bg-white ring-1 ring-white/25">
-+        <Globe className="size-3.5 text-ink-2" />
-+      </span>
-+    );
-+  }
-+  return (
-+    <img
-+      alt=""
-+      className="absolute bottom-2 left-2 size-6 rounded-full bg-white object-contain ring-1 ring-white/25"
-+      decoding="async"
-+      loading="lazy"
-+      onError={() => setFailed(true)}
-+      src={src}
-+    />
-+  );
-+}
-+
-+/** Compact engine attribution for tile views: the unified EnginesLine
-+    ([score] [first engine] [+N]); the cached link is icon-only so the row
-+    stays on one line. */
-+export function TileEngines({ result }: { result: ResultItem }) {
-+  return <EnginesLine compact result={result} />;
-+}
-+
-+/** Thumbnail load state with a 12s hung-request grace timer: `failed`
-+    covers missing, broken AND stalled sources (the caller renders its
-+    placeholder).  Shared by the grid tiles and the image masonry. */
-+export function useGraceThumb(src: string | undefined) {
-+  const [failed, setFailed] = useState(!src);
-+  const [loaded, setLoaded] = useState(false);
-+  useEffect(() => {
-+    if (loaded || failed) {
-+      return;
-+    }
-+    const timer = window.setTimeout(() => setFailed(true), 12000);
-+    return () => window.clearTimeout(timer);
-+  }, [failed, loaded]);
-+  return { failed, loaded, setFailed, setLoaded };
-+}
-+
-+/** Tile thumbnail with graceful failure: a missing/broken/hung thumbnail
-+    (12s grace) renders the caller's placeholder glyph instead of an error
-+    image.  The first four cells of a page pass `eager` (LCP rule). */
-+export function TileThumb({
-+  src,
-+  alt,
-+  placeholder,
-+  eager = false,
-+  imgClassName = "size-full object-cover group-hover:scale-[1.03]",
-+}: {
-+  src?: string;
-+  alt: string;
-+  placeholder: ReactNode;
-+  eager?: boolean;
-+  imgClassName?: string;
-+}) {
-+  const { failed, loaded, setFailed, setLoaded } = useGraceThumb(src);
-+  if (failed) {
-+    return <>{placeholder}</>;
-+  }
-+  return (
-+    <img
-+      alt={alt}
-+      /* lazy images fade in on load, eager ones paint immediately (LCP);
-+         the transition lives here so custom imgClassName keep it too */
-+      className={`transition-[transform,opacity] duration-300 ${eager || loaded ? "opacity-100" : "opacity-0"} ${imgClassName}`}
-+      decoding="async"
-+      fetchPriority={eager ? "high" : undefined}
-+      loading={eager ? "eager" : "lazy"}
-+      onError={() => setFailed(true)}
-+      onLoad={() => setLoaded(true)}
-+      src={src ?? ""}
-+    />
-+  );
-+}
-+
-+/** Close chip over playing media (28px icon-chip tier) — identical in every
-+    grid and card that swaps a tile for an embed/player. */
-+export function TileCloseAction({ label, onClick }: { label: string; onClick: () => void }) {
-+  return (
-+    <button
-+      aria-label={label}
-+      className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
-+      onClick={onClick}
-+      title={label}
-+      type="button"
-+    >
-+      <X className="size-3.5" />
-+    </button>
-+  );
-+}
-+
-+/** Tile meta footer (below the title, above the engines row): an author /
-+    health slot left and views/date slots right — one rhythm for every grid,
-+    with fixed min height so cells align when a slot is empty. */
-+export function TileMeta({ left, right }: { left?: ReactNode; right?: ReactNode }) {
-+  return (
-+    <div className="mt-1.5 flex min-h-5 items-center justify-between gap-2 text-xs text-ink-3">
-+      <span className="inline-flex min-w-0 items-center">{left}</span>
-+      <span className="flex shrink-0 items-center gap-2">{right}</span>
-+    </div>
-+  );
-+}
-+
-+export function TileMetaAuthor({ author }: { author?: string }) {
-+  if (!author) {
-+    return null;
-+  }
-+  return (
-+    <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
-+      <User className="size-3 shrink-0" />
-+      {author}
-+    </span>
-+  );
-+}
-+
-+export function TileMetaViews({ views }: { views?: string }) {
-+  if (!views) {
-+    return null;
-+  }
-+  return (
-+    <span className="inline-flex items-center gap-1">
-+      <Eye className="size-3 shrink-0" />
-+      {views}
-+    </span>
-+  );
-+}
-+
-+export function TileMetaDate({ date }: { date?: string | null }) {
-+  if (!date) {
-+    return null;
-+  }
-+  return (
-+    <span className="inline-flex items-center gap-1">
-+      <Calendar className="size-3 shrink-0" />
-+      {date}
-+    </span>
-+  );
-+}
-+
-+// ------------------------------------------------- shared grid-cell anatomy
-+
-+/** Shared grid-cell scaffold — every media/product/package grid renders its
-+    cells through this wrapper so the hotkey contract (data-hotkey-index +
-+    selection ring) and the hover surface stay identical everywhere. */
-+export function TileCell({
-+  selected,
-+  hotkeyIndex,
-+  children,
-+}: {
-+  selected?: number;
-+  hotkeyIndex: number;
-+  children: ReactNode;
-+}) {
-+  return (
-+    <article
-+      className={`group -m-2 flex flex-col rounded-2xl p-2 ${
-+        selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""
-+      }`}
-+      data-hotkey-index={hotkeyIndex}
-+    >
-+      {children}
-+    </article>
-+  );
-+}
-+
-+/** Two-line tile title (fixed slots so every cell in a grid aligns). */
-+export function TileTitle({
-+  result,
-+  globals,
-+  className = "mt-2.5 min-h-[2.75rem]",
-+}: {
-+  result: ResultItem;
-+  globals: GlobalData;
-+  className?: string;
-+}) {
-+  return (
-+    <h2 className={`line-clamp-2 text-base font-medium leading-snug ${className}`}>
-+      <ResultLink
-+        className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
-+        globals={globals}
-+        result={result}
-+      >
-+        <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
-+      </ResultLink>
-+    </h2>
-+  );
-+}
-+
-+/** Centered disc action on a tile (play / magnet / download): hover-revealed
-+    emphasis, accent-strong fill on hover with accent-contrast icon. */
-+export function TileCenterAction({
-+  label,
-+  icon,
-+  href,
-+  download,
-+  onClick,
-+}: {
-+  label: string;
-+  icon: ReactNode;
-+  /** renders an <a> when set (magnet / download); a play <button> otherwise */
-+  href?: string;
-+  download?: boolean;
-+  onClick?: () => void;
-+}) {
-+  const className =
-+    "absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/70 text-white opacity-90 shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-accent-contrast group-hover:opacity-100";
-+  if (href !== undefined) {
-+    return (
-+      <a
-+        aria-label={label}
-+        className={className}
-+        href={href}
-+        {...(download ? { download: true } : {})}
-+        rel={download ? undefined : "noreferrer"}
-+        title={label}
-+      >
-+        {icon}
-+      </a>
-+    );
-+  }
-+  return (
-+    <button aria-label={label} className={className} onClick={onClick} title={label} type="button">
-+      {icon}
-+    </button>
-+  );
-+}
 diff --git a/client/zjsearch/src/features/results/VideoGrid.tsx b/client/zjsearch/src/features/results/VideoGrid.tsx
 new file mode 100644
-index 000000000..21e2aabe2
+index 000000000..b6dc09fc6
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/VideoGrid.tsx
 @@ -0,0 +1,109 @@
@@ -15190,7 +14988,7 @@ index 000000000..21e2aabe2
 +  TileMetaViews,
 +  TileThumb,
 +  TileTitle,
-+} from "@/features/results/Tile.tsx";
++} from "@/features/results/tileParts.tsx";
 +import { formatDate, formatLength, imageAlt } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
@@ -15283,12 +15081,13 @@ index 000000000..21e2aabe2
 +}
 diff --git a/client/zjsearch/src/features/results/aiAnswer.ts b/client/zjsearch/src/features/results/aiAnswer.ts
 new file mode 100644
-index 000000000..333cebd35
+index 000000000..a2f70c4af
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/aiAnswer.ts
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,110 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
++import { resultHost } from "@/lib/link.ts";
 +import type { InfoboxData, ResultItem } from "@/lib/types.ts";
 +
 +/**
@@ -15315,13 +15114,12 @@ index 000000000..333cebd35
 +export function aiSourceMeta(results: ResultItem[], max = 20): AiSourceMeta[] {
 +  const out: AiSourceMeta[] = [];
 +  for (const result of results.slice(0, max)) {
-+    let domain = "";
-+    try {
-+      domain = new URL(result.url).hostname.replace(/^www\./, "");
-+    } catch {
-+      domain = result.url.slice(0, 24);
-+    }
-+    out.push({ domain, favicon: result.favicon || "", t: result.title_text.slice(0, 200), u: result.url });
++    out.push({
++      domain: resultHost(result.url, result.netloc, true),
++      favicon: result.favicon || "",
++      t: result.title_text.slice(0, 200),
++      u: result.url,
++    });
 +  }
 +  return out;
 +}
@@ -15330,17 +15128,6 @@ index 000000000..333cebd35
 +const SHALLOW_SOURCES = 15;
 +const DEEP_SNIPPET_CHARS = 800;
 +const INFOBOX_CHARS = 2000;
-+
-+function hostOf(result: ResultItem): string {
-+  if (result.netloc) {
-+    return result.netloc;
-+  }
-+  try {
-+    return new URL(result.url).host;
-+  } catch {
-+    return result.url;
-+  }
-+}
 +
 +function dateOf(result: ResultItem): string {
 +  return result.published_date ? ` (${result.published_date.slice(0, 10)})` : "";
@@ -15373,12 +15160,12 @@ index 000000000..333cebd35
 +  for (const result of results.slice(0, DEEP_SOURCES)) {
 +    index += 1;
 +    lines.push(
-+      `[${index}] ${hostOf(result)}${dateOf(result)}: ${result.title_text}: ${result.content_text.slice(0, DEEP_SNIPPET_CHARS)}`,
++      `[${index}] ${resultHost(result.url, result.netloc)}${dateOf(result)}: ${result.title_text}: ${result.content_text.slice(0, DEEP_SNIPPET_CHARS)}`,
 +    );
 +  }
 +  for (const result of results.slice(DEEP_SOURCES, DEEP_SOURCES + SHALLOW_SOURCES)) {
 +    index += 1;
-+    lines.push(`[${index}] ${hostOf(result)}: ${result.title_text}`);
++    lines.push(`[${index}] ${resultHost(result.url, result.netloc)}: ${result.title_text}`);
 +  }
 +  const infobox = infoboxes[0];
 +  if (infobox) {
@@ -15768,10 +15555,10 @@ index 000000000..ec20b404b
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Stock.tsx b/client/zjsearch/src/features/results/answers/Stock.tsx
 new file mode 100644
-index 000000000..43ea166f1
+index 000000000..be4e32017
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Stock.tsx
-@@ -0,0 +1,350 @@
+@@ -0,0 +1,347 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Stock quote card (stock_quote plugin, eastmoney data), DDG/Yahoo style:
@@ -15784,6 +15571,7 @@ index 000000000..43ea166f1
 +import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 +import { useContext, useState } from "react";
 +import { I18nContext, useT } from "@/lib/i18n.ts";
++import { SEGMENT_ACTIVE, SEGMENT_SM } from "@/lib/styles.ts";
 +import type { AnswerData, StockAnswerPayload, StockSeries } from "@/lib/types.ts";
 +
 +type RangeKey = "1D" | "5D" | "1M" | "YTD" | "1Y" | "5Y" | "MAX";
@@ -15975,11 +15763,7 @@ index 000000000..43ea166f1
 +        <div className="mt-3 flex flex-wrap gap-1.5">
 +          {RANGES.filter((key) => (d.ranges[key]?.candles.length ?? 0) > 1).map((key) => (
 +            <button
-+              className={`rounded-full px-3 py-1 text-[13px] transition-colors ${
-+                key === range
-+                  ? "bg-accent-strong font-medium text-accent-contrast"
-+                  : "bg-surface-2 text-ink-2 hover:text-ink"
-+              }`}
++              className={`${SEGMENT_SM} rounded-full px-3 ${key === range ? SEGMENT_ACTIVE : "bg-surface-2 text-ink-2 hover:text-ink"}`}
 +              key={key}
 +              onClick={() => {
 +                setRange(key);
@@ -16491,13 +16275,14 @@ index 000000000..be7ad17fc
 +}
 diff --git a/client/zjsearch/src/features/results/answers/Weather.tsx b/client/zjsearch/src/features/results/answers/Weather.tsx
 new file mode 100644
-index 000000000..d4c1deb90
+index 000000000..adb10b265
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/answers/Weather.tsx
-@@ -0,0 +1,324 @@
+@@ -0,0 +1,311 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ChevronLeft, MapPin } from "lucide-react";
++import { MapPin } from "lucide-react";
++import { CapChip } from "@/components/CapChip.tsx";
 +import { cap } from "@/lib/format.ts";
 +import { useLocale, useT } from "@/lib/i18n.ts";
 +import { CHIP, CHIP_HOVER, SCROLLBAR_NONE } from "@/lib/styles.ts";
@@ -16793,27 +16578,13 @@ index 000000000..d4c1deb90
 +              </span>
 +            ),
 +          )}
-+          {!sourcesExpanded && hiddenSources > 0 ? (
-+            <button
-+              aria-label={t("more")}
-+              className={`${CHIP} ${CHIP_HOVER}`}
-+              onClick={toggleSources}
-+              title={sources.map((source) => source.service).join(", ")}
-+              type="button"
-+            >
-+              +{hiddenSources}
-+            </button>
-+          ) : null}
-+          {sourcesExpanded && hiddenSources > 0 ? (
-+            <button
-+              className="inline-flex items-center gap-1 transition-colors hover:text-ink"
-+              onClick={toggleSources}
-+              type="button"
-+            >
-+              <ChevronLeft className="size-3 shrink-0" />
-+              {t("show_less")}
-+            </button>
-+          ) : null}
++          <CapChip
++            className={`${CHIP} ${CHIP_HOVER}`}
++            expanded={sourcesExpanded}
++            hidden={hiddenSources}
++            onToggle={toggleSources}
++            title={sources.map((source) => source.service).join(", ")}
++          />
 +        </div>
 +      ) : null}
 +    </div>
@@ -16851,33 +16622,21 @@ index 000000000..22a2c986e
 +}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 000000000..524198c50
+index 000000000..0276e2676
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
-@@ -0,0 +1,400 @@
+@@ -0,0 +1,377 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import {
-+  Archive,
-+  Award,
-+  Calendar,
-+  ChevronLeft,
-+  Clock,
-+  Eye,
-+  Globe,
-+  ImageOff,
-+  Music,
-+  Play,
-+  Server,
-+  User,
-+} from "lucide-react";
++import { Archive, Award, Calendar, Clock, Eye, Globe, ImageOff, Music, Play, Server, User } from "lucide-react";
 +import { type ReactNode, useId, useState } from "react";
++import { CapChip } from "@/components/CapChip.tsx";
 +import { Collapse } from "@/components/Collapse.tsx";
 +import { useCacheUrl } from "@/features/results/CacheUrlProvider.tsx";
 +import { formatDate, formatLength, formatScore } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { newTabLinkProps } from "@/lib/link.ts";
-+import { CHIP, CHIP_HOVER, META_ROW, TILE_BADGE } from "@/lib/styles.ts";
++import { CHIP, CHIP_HOVER, META_ROW, PILL, TILE_BADGE } from "@/lib/styles.ts";
 +import type { GlobalData, ResultItem } from "@/lib/types.ts";
 +import { useCapExpand } from "@/lib/useCapExpand.ts";
 +
@@ -17065,16 +16824,7 @@ index 000000000..524198c50
 +          ))
 +        : null}
 +      {hidden > 0 ? (
-+        <button aria-expanded={expanded} className={`${chip} shrink-0 ${chipHover}`} onClick={toggle} type="button">
-+          {expanded ? (
-+            <>
-+              <ChevronLeft className="size-3 shrink-0" />
-+              {t("show_less")}
-+            </>
-+          ) : (
-+            `+${hidden}`
-+          )}
-+        </button>
++        <CapChip className={`${chip} shrink-0 ${chipHover}`} expanded={expanded} hidden={hidden} onToggle={toggle} />
 +      ) : null}
 +      {cacheUrl ? (
 +        compact ? (
@@ -17173,7 +16923,7 @@ index 000000000..524198c50
 +      <button
 +        aria-controls={panelId}
 +        aria-expanded={open}
-+        className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors hover:text-ink"
++        className={`${PILL} mt-1 gap-1.5 hover:text-ink`}
 +        onClick={() => {
 +          setOpen((prev) => !prev);
 +        }}
@@ -17234,8 +16984,6 @@ index 000000000..524198c50
 +  globals: GlobalData;
 +  /** map-intent pages open the inline OSM map automatically (upstream simple behaviour) */
 +  autoOpenMap?: boolean;
-+  /** music-intent pages show the media preview expanded with our own player */
-+  mediaOpen?: boolean;
 +  /** first results load their thumbnail eagerly (LCP) */
 +  eager?: boolean;
 +}
@@ -17310,10 +17058,10 @@ index 000000000..96e228534
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DefaultCard.tsx b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 new file mode 100644
-index 000000000..47b46f7b4
+index 000000000..1cd732cf8
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,68 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -17321,7 +17069,6 @@ index 000000000..47b46f7b4
 +  EmbedFrame,
 +  EnginesLine,
 +  MediaCollapse,
-+  MediaPreview,
 +  MetaLine,
 +  PrettyUrl,
 +  ResultArticle,
@@ -17336,7 +17083,7 @@ index 000000000..47b46f7b4
 +    slot rhythm) so with-image and without-image news stay structurally
 +    identical to every other result. */
 +
-+export function DefaultCard({ eager, result, globals, mediaOpen }: CardProps) {
++export function DefaultCard({ eager, result, globals }: CardProps) {
 +  const t = useT();
 +  return (
 +    <ResultArticle priority={result.priority}>
@@ -17351,13 +17098,9 @@ index 000000000..47b46f7b4
 +          </div>
 +          {result.iframe_src ? (
 +            <div className="mt-2">
-+              {mediaOpen ? (
-+                <MediaPreview src={result.iframe_src} />
-+              ) : (
-+                <MediaCollapse hideLabel={t("hide_media")} showLabel={t("show_media")}>
-+                  {() => <EmbedFrame src={result.iframe_src ?? ""} />}
-+                </MediaCollapse>
-+              )}
++              <MediaCollapse hideLabel={t("hide_media")} showLabel={t("show_media")}>
++                {() => <EmbedFrame src={result.iframe_src ?? ""} />}
++              </MediaCollapse>
 +            </div>
 +          ) : null}
 +          <p
@@ -17694,14 +17437,15 @@ index 000000000..1188a1fd2
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PackageCard.tsx b/client/zjsearch/src/features/results/cards/PackageCard.tsx
 new file mode 100644
-index 000000000..5ccd75498
+index 000000000..ad99555c2
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PackageCard.tsx
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,127 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Calendar, ChevronLeft, Code, ExternalLink, Scale, Star, User } from "lucide-react";
++import { Calendar, Code, ExternalLink, Scale, Star, User } from "lucide-react";
 +import type { ReactNode } from "react";
++import { CapChip } from "@/components/CapChip.tsx";
 +import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
@@ -17792,22 +17536,13 @@ index 000000000..5ccd75498
 +            </span>
 +          ))}
 +          {hiddenTags > 0 ? (
-+            <button
-+              aria-expanded={tagsExpanded}
++            <CapChip
 +              className={`${CHIP} ${CHIP_HOVER}`}
-+              onClick={toggleTags}
++              expanded={tagsExpanded}
++              hidden={hiddenTags}
++              onToggle={toggleTags}
 +              title={result.tags.join(", ")}
-+              type="button"
-+            >
-+              {tagsExpanded ? (
-+                <>
-+                  <ChevronLeft className="size-3 shrink-0" />
-+                  {t("show_less")}
-+                </>
-+              ) : (
-+                `+${hiddenTags}`
-+              )}
-+            </button>
++            />
 +          ) : null}
 +        </div>
 +      ) : null}
@@ -17835,24 +17570,15 @@ index 000000000..5ccd75498
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PaperCard.tsx b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 new file mode 100644
-index 000000000..f4c6fefa8
+index 000000000..c8cf3a117
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PaperCard.tsx
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,196 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import {
-+  Activity,
-+  BookOpen,
-+  Calendar,
-+  ChevronLeft,
-+  ExternalLink,
-+  FileText,
-+  Fingerprint,
-+  Quote,
-+  User,
-+} from "lucide-react";
++import { Activity, BookOpen, Calendar, ExternalLink, FileText, Fingerprint, Quote, User } from "lucide-react";
 +import type { ReactNode } from "react";
++import { CapChip } from "@/components/CapChip.tsx";
 +import {
 +  type CardProps,
 +  EnginesLine,
@@ -18021,22 +17747,13 @@ index 000000000..f4c6fefa8
 +                    </span>
 +                  ))}
 +                  {hiddenTags > 0 ? (
-+                    <button
-+                      aria-expanded={tagsExpanded}
++                    <CapChip
 +                      className={`${CHIP} text-ink-3 ${CHIP_HOVER}`}
-+                      onClick={toggleTags}
++                      expanded={tagsExpanded}
++                      hidden={hiddenTags}
++                      onToggle={toggleTags}
 +                      title={tags.join(", ")}
-+                      type="button"
-+                    >
-+                      {tagsExpanded ? (
-+                        <>
-+                          <ChevronLeft className="size-3 shrink-0" />
-+                          {t("show_less")}
-+                        </>
-+                      ) : (
-+                        `+${hiddenTags}`
-+                      )}
-+                    </button>
++                    />
 +                  ) : null}
 +                </div>
 +              ) : null}
@@ -18180,15 +17897,15 @@ index 000000000..6d356178d
 +// whole card subtree
 diff --git a/client/zjsearch/src/features/results/cards/TorrentCard.tsx b/client/zjsearch/src/features/results/cards/TorrentCard.tsx
 new file mode 100644
-index 000000000..6c85097c9
+index 000000000..7489c9501
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/TorrentCard.tsx
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,92 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ArrowDown, ArrowUp, Calendar, Download, FileText, Magnet, Package } from "lucide-react";
 +import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
-+import { formatDate } from "@/lib/format.ts";
++import { formatDate, formatFilesize } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { CHIP, META_ROW } from "@/lib/styles.ts";
 +
@@ -18198,6 +17915,7 @@ index 000000000..6c85097c9
 +
 +export function TorrentCard({ result, globals }: CardProps) {
 +  const t = useT();
++  const size = formatFilesize(result.filesize);
 +  return (
 +    <ResultArticle priority={result.priority}>
 +      <div className="flex gap-4">
@@ -18235,10 +17953,10 @@ index 000000000..6c85097c9
 +                {t("leecher")}
 +              </span>
 +            ) : null}
-+            {result.filesize ? (
++            {size ? (
 +              <span className="inline-flex items-center gap-1">
 +                <FileText className="size-3" />
-+                {result.filesize}
++                {size}
 +              </span>
 +            ) : null}
 +            {result.files ? (
@@ -18277,7 +17995,7 @@ index 000000000..6c85097c9
 +}
 diff --git a/client/zjsearch/src/features/results/cards/VideoCard.tsx b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 new file mode 100644
-index 000000000..b5bdd77b3
+index 000000000..fa568332c
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 @@ -0,0 +1,99 @@
@@ -18296,7 +18014,7 @@ index 000000000..b5bdd77b3
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
-+import { TileCloseAction } from "@/features/results/Tile.tsx";
++import { TileCloseAction } from "@/features/results/tileParts.tsx";
 +import { formatLength, imageAlt } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +
@@ -18345,7 +18063,7 @@ index 000000000..b5bdd77b3
 +                <>
 +                  <iframe
 +                    allowFullScreen
-+                    className="absolute inset-0 size-full"
++                    className="absolute inset-0 size-full animate-fade-in"
 +                    referrerPolicy="origin"
 +                    src={result.iframe_src ?? ""}
 +                    title={result.title_text}
@@ -18382,7 +18100,7 @@ index 000000000..b5bdd77b3
 +}
 diff --git a/client/zjsearch/src/features/results/image/ImageGrid.tsx b/client/zjsearch/src/features/results/image/ImageGrid.tsx
 new file mode 100644
-index 000000000..89eb53cd2
+index 000000000..3aea45fc7
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/ImageGrid.tsx
 @@ -0,0 +1,130 @@
@@ -18395,7 +18113,7 @@ index 000000000..89eb53cd2
 +import { useRef, useState } from "react";
 +import { createPortal } from "react-dom";
 +import { Lightbox } from "@/features/results/image/Lightbox.tsx";
-+import { useGraceThumb } from "@/features/results/Tile.tsx";
++import { useGraceThumb } from "@/features/results/tileParts.tsx";
 +import type { ResultItem } from "@/lib/types.ts";
 +import { useExitPresence } from "@/lib/useExitPresence.ts";
 +
@@ -18518,10 +18236,10 @@ index 000000000..89eb53cd2
 +}
 diff --git a/client/zjsearch/src/features/results/image/Lightbox.tsx b/client/zjsearch/src/features/results/image/Lightbox.tsx
 new file mode 100644
-index 000000000..533bbf185
+index 000000000..cde69fd88
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/image/Lightbox.tsx
-@@ -0,0 +1,415 @@
+@@ -0,0 +1,417 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +import { imageAlt } from "@/lib/format.ts";
 +
@@ -18536,8 +18254,9 @@ index 000000000..533bbf185
 +import { useCallback, useEffect, useRef, useState } from "react";
 +import { EnginesLine } from "@/features/results/cardParts.tsx";
 +import { useDialogFocus } from "@/lib/dialogFocus.ts";
++import { formatFilesize } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
-+import { hostnameOf, newTabLinkProps } from "@/lib/link.ts";
++import { newTabLinkProps, resultHost } from "@/lib/link.ts";
 +import { useSettings } from "@/lib/settings.ts";
 +import type { ResultItem } from "@/lib/types.ts";
 +
@@ -18737,7 +18456,7 @@ index 000000000..533bbf185
 +  const thumbSrc = result.thumbnail_src || result.img_src || "";
 +  const linkProps = newTabLinkProps(settings.results_on_new_tab);
 +
-+  const hostname = result.netloc || (result.url ? hostnameOf(result.url) : "");
++  const hostname = resultHost(result.url, result.netloc);
 +  // the title already names the site; engines whose source field adds
 +  // information (openverse: "flickr") keep the extra label
 +  const source = result.source?.toLowerCase() === hostname.toLowerCase() ? null : result.source;
@@ -18745,6 +18464,7 @@ index 000000000..533bbf185
 +
 +  return (
 +    <div
++      aria-label={result.title_text || t("image_viewer")}
 +      aria-modal="true"
 +      className={`fixed inset-0 z-50 flex flex-col bg-[#161616]/97 ${closing ? "animate-fade-out" : "animate-fade-in"}`}
 +      inert={closing || undefined}
@@ -18770,7 +18490,7 @@ index 000000000..533bbf185
 +        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-0.5 py-1.5 text-xs leading-5">
 +          <Label label={t("resolution")} value={result.resolution} />
 +          <Label label={t("type")} value={result.img_format} />
-+          <Label label={t("filesize")} value={result.filesize} />
++          <Label label={t("filesize")} value={formatFilesize(result.filesize)} />
 +          <Label label={t("source")} value={source} />
 +          {formats.length > 0 ? (
 +            <span className="inline-flex flex-wrap items-center gap-x-1">
@@ -19053,6 +18773,259 @@ index 000000000..2cf18b3ca
 +    return { kind: "list", autoOpenMap };
 +  }
 +  return { kind: "mixed", autoOpenMap };
++}
+diff --git a/client/zjsearch/src/features/results/tileParts.tsx b/client/zjsearch/src/features/results/tileParts.tsx
+new file mode 100644
+index 000000000..98cd0a1b2
+--- /dev/null
++++ b/client/zjsearch/src/features/results/tileParts.tsx
+@@ -0,0 +1,247 @@
++// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
++
++import { Calendar, Eye, Globe, User, X } from "lucide-react";
++import type { ReactNode } from "react";
++import { useEffect, useState } from "react";
++import { EnginesLine, ResultLink } from "@/features/results/cardParts.tsx";
++import { TILE_BADGE } from "@/lib/styles.ts";
++import type { GlobalData, ResultItem } from "@/lib/types.ts";
++
++/** Corner badge on a media tile — duration, filesize (dark pill, bottom-right). */
++export function TileBadge({ children, className = "" }: { children: ReactNode; className?: string }) {
++  return <span className={`bottom-2 right-2 ${TILE_BADGE} ${className}`}>{children}</span>;
++}
++
++/** Source favicon pinned to the bottom-left of a media tile; falls back to the
++    placeholder icon when the engine favicon is missing or blocked by the proxy. */
++export function TileFavicon({ src }: { src: string }) {
++  const [failed, setFailed] = useState(!src);
++  if (failed) {
++    return (
++      <span className="absolute bottom-2 left-2 flex size-6 items-center justify-center rounded-full bg-white ring-1 ring-white/25">
++        <Globe className="size-3.5 text-ink-2" />
++      </span>
++    );
++  }
++  return (
++    <img
++      alt=""
++      className="absolute bottom-2 left-2 size-6 rounded-full bg-white object-contain ring-1 ring-white/25"
++      decoding="async"
++      loading="lazy"
++      onError={() => setFailed(true)}
++      src={src}
++    />
++  );
++}
++
++/** Compact engine attribution for tile views: the unified EnginesLine
++    ([score] [first engine] [+N]); the cached link is icon-only so the row
++    stays on one line. */
++export function TileEngines({ result }: { result: ResultItem }) {
++  return <EnginesLine compact result={result} />;
++}
++
++/** Thumbnail load state with a 12s hung-request grace timer: `failed`
++    covers missing, broken AND stalled sources (the caller renders its
++    placeholder).  Shared by the grid tiles and the image masonry. */
++export function useGraceThumb(src: string | undefined) {
++  const [failed, setFailed] = useState(!src);
++  const [loaded, setLoaded] = useState(false);
++  useEffect(() => {
++    if (loaded || failed) {
++      return;
++    }
++    const timer = window.setTimeout(() => setFailed(true), 12000);
++    return () => window.clearTimeout(timer);
++  }, [failed, loaded]);
++  return { failed, loaded, setFailed, setLoaded };
++}
++
++/** Tile thumbnail with graceful failure: a missing/broken/hung thumbnail
++    (12s grace) renders the caller's placeholder glyph instead of an error
++    image.  The first four cells of a page pass `eager` (LCP rule). */
++export function TileThumb({
++  src,
++  alt,
++  placeholder,
++  eager = false,
++  imgClassName = "size-full object-cover group-hover:scale-[1.03]",
++}: {
++  src?: string;
++  alt: string;
++  placeholder: ReactNode;
++  eager?: boolean;
++  imgClassName?: string;
++}) {
++  const { failed, loaded, setFailed, setLoaded } = useGraceThumb(src);
++  if (failed) {
++    return <>{placeholder}</>;
++  }
++  return (
++    <img
++      alt={alt}
++      /* lazy images fade in on load, eager ones paint immediately (LCP);
++         the transition lives here so custom imgClassName keep it too */
++      className={`transition-[transform,opacity] duration-300 ${eager || loaded ? "opacity-100" : "opacity-0"} ${imgClassName}`}
++      decoding="async"
++      fetchPriority={eager ? "high" : undefined}
++      loading={eager ? "eager" : "lazy"}
++      onError={() => setFailed(true)}
++      onLoad={() => setLoaded(true)}
++      src={src ?? ""}
++    />
++  );
++}
++
++/** Close chip over playing media (28px icon-chip tier) — identical in every
++    grid and card that swaps a tile for an embed/player. */
++export function TileCloseAction({ label, onClick }: { label: string; onClick: () => void }) {
++  return (
++    <button
++      aria-label={label}
++      className="absolute end-2 top-2 z-20 grid size-7 place-items-center rounded-full bg-black/70 text-white transition-colors hover:bg-accent-strong hover:text-accent-contrast"
++      onClick={onClick}
++      title={label}
++      type="button"
++    >
++      <X className="size-3.5" />
++    </button>
++  );
++}
++
++/** Tile meta footer (below the title, above the engines row): an author /
++    health slot left and views/date slots right — one rhythm for every grid,
++    with fixed min height so cells align when a slot is empty. */
++export function TileMeta({ left, right }: { left?: ReactNode; right?: ReactNode }) {
++  return (
++    <div className="mt-1.5 flex min-h-5 items-center justify-between gap-2 text-xs text-ink-3">
++      <span className="inline-flex min-w-0 items-center">{left}</span>
++      <span className="flex shrink-0 items-center gap-2">{right}</span>
++    </div>
++  );
++}
++
++export function TileMetaAuthor({ author }: { author?: string }) {
++  if (!author) {
++    return null;
++  }
++  return (
++    <span className="inline-flex min-w-0 items-center gap-1 truncate" dir="auto">
++      <User className="size-3 shrink-0" />
++      {author}
++    </span>
++  );
++}
++
++export function TileMetaViews({ views }: { views?: string }) {
++  if (!views) {
++    return null;
++  }
++  return (
++    <span className="inline-flex items-center gap-1">
++      <Eye className="size-3 shrink-0" />
++      {views}
++    </span>
++  );
++}
++
++export function TileMetaDate({ date }: { date?: string | null }) {
++  if (!date) {
++    return null;
++  }
++  return (
++    <span className="inline-flex items-center gap-1">
++      <Calendar className="size-3 shrink-0" />
++      {date}
++    </span>
++  );
++}
++
++// ------------------------------------------------- shared grid-cell anatomy
++
++/** Shared grid-cell scaffold — every media/product/package grid renders its
++    cells through this wrapper so the hotkey contract (data-hotkey-index +
++    selection ring) and the hover surface stay identical everywhere. */
++export function TileCell({
++  selected,
++  hotkeyIndex,
++  children,
++}: {
++  selected?: number;
++  hotkeyIndex: number;
++  children: ReactNode;
++}) {
++  return (
++    <article
++      className={`group -m-2 flex flex-col rounded-2xl p-2 ${
++        selected === hotkeyIndex ? "bg-surface ring-1 ring-accent-strong" : ""
++      }`}
++      data-hotkey-index={hotkeyIndex}
++    >
++      {children}
++    </article>
++  );
++}
++
++/** Two-line tile title (fixed slots so every cell in a grid aligns). */
++export function TileTitle({
++  result,
++  globals,
++  className = "mt-2.5 min-h-[2.75rem]",
++}: {
++  result: ResultItem;
++  globals: GlobalData;
++  className?: string;
++}) {
++  return (
++    <h2 className={`line-clamp-2 text-base font-medium leading-snug ${className}`}>
++      <ResultLink
++        className="text-ink decoration-accent/50 underline-offset-2 hover:text-accent hover:underline"
++        globals={globals}
++        result={result}
++      >
++        <span dangerouslySetInnerHTML={{ __html: result.title_html }} dir="auto" />
++      </ResultLink>
++    </h2>
++  );
++}
++
++/** Centered disc action on a tile (play / magnet / download): hover-revealed
++    emphasis, accent-strong fill on hover with accent-contrast icon. */
++export function TileCenterAction({
++  label,
++  icon,
++  href,
++  download,
++  onClick,
++}: {
++  label: string;
++  icon: ReactNode;
++  /** renders an <a> when set (magnet / download); a play <button> otherwise */
++  href?: string;
++  download?: boolean;
++  onClick?: () => void;
++}) {
++  const className =
++    "absolute left-1/2 top-1/2 z-10 grid size-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/70 text-white opacity-90 shadow-pop transition-all hover:scale-105 hover:bg-accent-strong hover:text-accent-contrast group-hover:opacity-100";
++  if (href !== undefined) {
++    return (
++      <a
++        aria-label={label}
++        className={className}
++        href={href}
++        {...(download ? { download: true } : {})}
++        rel={download ? undefined : "noreferrer"}
++        title={label}
++      >
++        {icon}
++      </a>
++    );
++  }
++  return (
++    <button aria-label={label} className={className} onClick={onClick} title={label} type="button">
++      {icon}
++    </button>
++  );
 +}
 diff --git a/client/zjsearch/src/lib/categories.ts b/client/zjsearch/src/lib/categories.ts
 new file mode 100644
@@ -19639,10 +19612,10 @@ index 000000000..d562a20f6
 +}
 diff --git a/client/zjsearch/src/lib/format.ts b/client/zjsearch/src/lib/format.ts
 new file mode 100644
-index 000000000..05a50f4cb
+index 000000000..cb876dbdf
 --- /dev/null
 +++ b/client/zjsearch/src/lib/format.ts
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,112 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Client side formatting helpers (dates, durations, response times). */
@@ -19735,6 +19708,25 @@ index 000000000..05a50f4cb
 +    // malformed result URL — fall through to the URL itself
 +  }
 +  return result.url;
++}
++
++/** Filesize display: passthrough when the engine already humanized it,
++    raw byte counts get IEC units (files/torrents come both ways). */
++export function formatFilesize(size: string | number | undefined): string | null {
++  if (size === undefined || size === "") {
++    return null;
++  }
++  if (typeof size === "string") {
++    return size;
++  }
++  const units = ["B", "KB", "MB", "GB", "TB"];
++  let value = size;
++  let unit = 0;
++  while (value >= 1024 && unit < units.length - 1) {
++    value /= 1024;
++    unit += 1;
++  }
++  return `${value >= 100 || unit === 0 ? Math.round(value) : round1(value)} ${units[unit]}`;
 +}
 diff --git a/client/zjsearch/src/lib/http.ts b/client/zjsearch/src/lib/http.ts
 new file mode 100644
@@ -19911,7 +19903,7 @@ index 000000000..54f20d3c4
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 000000000..4bb8a961c
+index 000000000..53856287f
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
 @@ -0,0 +1,386 @@
@@ -19985,7 +19977,6 @@ index 000000000..4bb8a961c
 +  resolution: "Resolution",
 +  source: "Source",
 +  image_formats: "Image formats",
-+  original_format: "original format",
 +  engines: "Engines",
 +  view_original: "View original",
 +  feels_like: "Feels Like",
@@ -20016,7 +20007,7 @@ index 000000000..4bb8a961c
 +  name: "Name",
 +  autocomplete: "Autocomplete",
 +  show_queries_as_you_type: "Show possible queries as you type",
-+  favicon_resolver: "Favicon Resolver",
++  favicon_resolver: "Favicon resolver",
 +  display_favicons: "Display favicons near search results",
 +  filter_content: "Filter content",
 +  open_access_doi_resolver: "Open Access DOI resolver",
@@ -20095,7 +20086,7 @@ index 000000000..4bb8a961c
 +  open_source: "Open source",
 +
 +  homepage: "Project homepage",
-+  center_alignment: "Center Alignment",
++  center_alignment: "Center alignment",
 +  center_alignment_desc: "Turn off for the full-width widescreen layout; on narrows the results column and centers it.",
 +  search_options: "Search options",
 +  meta_found: "Found",
@@ -20298,12 +20289,13 @@ index 000000000..4bb8a961c
 +  tip_high: "High",
 +  tip_low: "Low",
 +  tip_volume: "Volume",
++  image_viewer: "Image viewer",
 +};
 +
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 000000000..6cd7b3615
+index 000000000..cd7bc0d36
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
 @@ -0,0 +1,379 @@
@@ -20379,7 +20371,6 @@ index 000000000..6cd7b3615
 +  resolution: "分辨率",
 +  source: "来源",
 +  image_formats: "图片格式",
-+  original_format: "原始格式",
 +  engines: "引擎",
 +  view_original: "查看原图",
 +  feels_like: "体感温度",
@@ -20685,13 +20676,14 @@ index 000000000..6cd7b3615
 +  tip_high: "最高",
 +  tip_low: "最低",
 +  tip_volume: "成交量",
++  image_viewer: "图片查看器",
 +};
 diff --git a/client/zjsearch/src/lib/link.ts b/client/zjsearch/src/lib/link.ts
 new file mode 100644
-index 000000000..187ae707e
+index 000000000..6a1409892
 --- /dev/null
 +++ b/client/zjsearch/src/lib/link.ts
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,43 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** target/rel attributes for outbound links, following the
@@ -20722,6 +20714,19 @@ index 000000000..187ae707e
 +    return url;
 +  }
 +}
++
++/** The compact display host for a result: the server-provided `netloc` wins
++    (it is already normalized), the URL hostname is the fallback.  With
++    `stripWww` the leading "www." is dropped for chip-style labels (AI
++    citations); every consumer of result hosts goes through here so the
++    label language stays one thing. */
++export function resultHost(url: string, netloc: string | undefined, stripWww = false): string {
++  let host = netloc || hostnameOf(url);
++  if (stripWww) {
++    host = host.replace(/^www\./, "");
++  }
++  return host || url.slice(0, 24);
++}
 diff --git a/client/zjsearch/src/lib/motion.ts b/client/zjsearch/src/lib/motion.ts
 new file mode 100644
 index 000000000..e83514a3c
@@ -20745,10 +20750,10 @@ index 000000000..e83514a3c
 +}
 diff --git a/client/zjsearch/src/lib/pageData.ts b/client/zjsearch/src/lib/pageData.ts
 new file mode 100644
-index 000000000..92ef5dc94
+index 000000000..e9df971c8
 --- /dev/null
 +++ b/client/zjsearch/src/lib/pageData.ts
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,76 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -20762,16 +20767,21 @@ index 000000000..92ef5dc94
 +import type { AnyPageData } from "@/lib/types.ts";
 +
 +export function parseEmbeddedPageData(): AnyPageData | null {
-+  const el = document.getElementById("page-data");
-+  const text = el?.textContent?.trim();
-+  if (!text) {
-+    return null;
++  // the late chunk carries ONE #page-data -- but the stream-error recovery
++  // (zjsearch_stream) may append a second, clean one after a failed attempt
++  // that left a broken script behind: prefer the last payload that parses
++  for (const el of [...document.querySelectorAll("#page-data")].reverse()) {
++    const text = el.textContent?.trim();
++    if (!text) {
++      continue;
++    }
++    try {
++      return JSON.parse(text) as AnyPageData;
++    } catch {
++      /* a truncated payload from a failed serialization -- try the next */
++    }
 +  }
-+  try {
-+    return JSON.parse(text) as AnyPageData;
-+  } catch {
-+    return null;
-+  }
++  return null;
 +}
 +
 +/** First-stage payload of a streamed search page (see
@@ -20793,11 +20803,18 @@ index 000000000..92ef5dc94
 +
 +export function extractPageData(html: string): AnyPageData {
 +  const doc = new DOMParser().parseFromString(html, "text/html");
-+  const text = doc.getElementById("page-data")?.textContent?.trim();
-+  if (!text) {
-+    throw new Error("page-data missing in response");
++  for (const el of [...doc.querySelectorAll("#page-data")].reverse()) {
++    const text = el.textContent?.trim();
++    if (!text) {
++      continue;
++    }
++    try {
++      return JSON.parse(text) as AnyPageData;
++    } catch {
++      /* a truncated payload from a failed stream serialization -- try the next */
++    }
 +  }
-+  return JSON.parse(text) as AnyPageData;
++  throw new Error("page-data missing in response");
 +}
 +
 +export function parseClientSettings(): ClientSettings {
@@ -21287,10 +21304,10 @@ index 000000000..e63d8cb75
 +}
 diff --git a/client/zjsearch/src/lib/styles.ts b/client/zjsearch/src/lib/styles.ts
 new file mode 100644
-index 000000000..3cef8764e
+index 000000000..12d90d5ef
 --- /dev/null
 +++ b/client/zjsearch/src/lib/styles.ts
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,98 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -21301,6 +21318,10 @@ index 000000000..3cef8764e
 +
 +/** Hidden-scrollbar tail for horizontally swipeable rows (mobile-style). */
 +export const SCROLLBAR_NONE = "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
++
++/** Responsive variant: the hidden-scrollbar swipe behaviour kicks in from
++    `sm:` up (below it the row wraps) — category/filter tab rows. */
++export const SCROLLBAR_NONE_SM = "sm:[scrollbar-width:none] sm:[&::-webkit-scrollbar]:hidden";
 +
 +/** Single-line swipe row: children never wrap or shrink — overflow swipes
 +    horizontally instead, like the mobile category tabs.  Callers add their
@@ -21342,6 +21363,22 @@ index 000000000..3cef8764e
 +  "flex items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-[13px] transition-colors";
 +export const SEGMENT_ACTIVE = "bg-accent-strong font-medium text-accent-contrast";
 +export const SEGMENT_IDLE = "text-ink-2 hover:bg-surface-2 hover:text-ink";
++
++/** Compact segmented control (in-row choice groups: preferences POST/GET,
++    theme-style picker, stock range pills): SEGMENT at the 13px control tier
++    with a tighter pad — pair with SEGMENT_ACTIVE / SEGMENT_IDLE. */
++export const SEGMENT_SM =
++  "flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[13px] transition-colors";
++
++/** Results meta-row toggle (12px tier: 「found N results」, 「took X s」, the
++    AI trigger): a borderless text button that raises its ink on hover. */
++export const META_TOGGLE = "inline-flex min-h-6 items-center gap-1 transition-colors hover:text-ink";
++
++/** Pill chip on the 13px control tier (strip chips, suggestion chips):
++    rounded surface fill; callers append their own gap-* and hover colour
++    (the selected language lives in the design contract, not here). */
++export const PILL =
++  "inline-flex items-center rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink-2 transition-colors";
 +
 +/** Shared disabled treatment for secondary controls (pager arrows, sliders):
 +    dimmed and click-transparent, never invisible. */
@@ -21534,10 +21571,10 @@ index 000000000..b8935dbc7
 +}
 diff --git a/client/zjsearch/src/lib/types.ts b/client/zjsearch/src/lib/types.ts
 new file mode 100644
-index 000000000..dcbbf8993
+index 000000000..79dfa0bc8
 --- /dev/null
 +++ b/client/zjsearch/src/lib/types.ts
-@@ -0,0 +1,555 @@
+@@ -0,0 +1,556 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -21640,7 +21677,8 @@ index 000000000..dcbbf8993
 +  resolution?: string;
 +  img_format?: string;
 +  source?: string;
-+  filesize?: string;
++  /** humanized string when the engine provides one, raw bytes otherwise */
++  filesize?: string | number;
 +  formats?: Array<{ url: string; label: string }>;
 +
 +  // torrent.html
@@ -22255,7 +22293,7 @@ index 000000000..67453802c
 +void bootstrap();
 diff --git a/client/zjsearch/src/pages/IndexPage.tsx b/client/zjsearch/src/pages/IndexPage.tsx
 new file mode 100644
-index 000000000..e45cb46f5
+index 000000000..1b0e08b0f
 --- /dev/null
 +++ b/client/zjsearch/src/pages/IndexPage.tsx
 @@ -0,0 +1,188 @@
@@ -22263,6 +22301,7 @@ index 000000000..e45cb46f5
 +
 +import { Lightbulb, SlidersHorizontal, X } from "lucide-react";
 +import { useState } from "react";
++import { Collapse } from "@/components/Collapse.tsx";
 +import { HelpModal } from "@/components/HelpModal.tsx";
 +import { SearchBox } from "@/components/SearchBox.tsx";
 +import { CategoryTabs, defaultFilterValues, type FilterValues, SearchFilters } from "@/components/SearchControls.tsx";
@@ -22370,9 +22409,10 @@ index 000000000..e45cb46f5
 +            variant="hero"
 +          />
 +        </div>
-+        {/* single stable toggle: opens the tabs + filter rows in flow; the
-+            hero is top-anchored (30vh), so growth extends downward only and
-+            the brand/search box never move */}
++        {/* single stable toggle: opens the tabs + filter rows in flow (the
++            shared Collapse animates both directions); the hero is top-anchored
++            (30vh), so growth extends downward only and the brand/search box
++            never move */}
 +        <div className="mt-3 flex w-full justify-end animate-fade-up [animation-delay:120ms]">
 +          <button
 +            aria-expanded={optionsOpen}
@@ -22388,31 +22428,29 @@ index 000000000..e45cb46f5
 +            {t("search_options")}
 +          </button>
 +        </div>
-+        {optionsOpen ? (
-+          <>
-+            <div className="relative z-10 mt-3 w-full animate-fade-up [animation-delay:60ms]">
-+              <CategoryTabs
-+                globals={globals}
-+                onSearch={(categories) => {
-+                  setSelected(categories);
-+                  submitSearch(query, categories);
-+                }}
-+                onSelectionChange={setSelected}
-+                selected={selected}
-+                wrap
-+              />
-+            </div>
-+            <div className="relative z-10 mt-2 flex w-full flex-wrap items-center gap-1.5 ps-6 animate-fade-in">
-+              <SearchFilters
-+                globals={globals}
-+                onChange={(next) => {
-+                  setFilters((prev) => ({ ...prev, ...next }));
-+                }}
-+                values={filters}
-+              />
-+            </div>
-+          </>
-+        ) : null}
++        <Collapse className={optionsOpen ? "mt-3" : ""} open={optionsOpen}>
++          <div className="relative z-10 w-full">
++            <CategoryTabs
++              globals={globals}
++              onSearch={(categories) => {
++                setSelected(categories);
++                submitSearch(query, categories);
++              }}
++              onSelectionChange={setSelected}
++              selected={selected}
++              wrap
++            />
++          </div>
++          <div className="relative z-10 mt-2 flex w-full flex-wrap items-center gap-1.5 ps-6">
++            <SearchFilters
++              globals={globals}
++              onChange={(next) => {
++                setFilters((prev) => ({ ...prev, ...next }));
++              }}
++              values={filters}
++            />
++          </div>
++        </Collapse>
 +      </main>
 +      {hintHidden ? null : (
 +        <div className="mx-auto mb-10 w-full max-w-xl px-4">
@@ -22806,10 +22844,10 @@ index 000000000..d250d0a7e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 000000000..3ab51f168
+index 000000000..db2f16279
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,468 @@
+@@ -0,0 +1,470 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23256,9 +23294,11 @@ index 000000000..3ab51f168
 +                      loadNextPage.current();
 +                    }}
 +                  />
-+                ) : (
++                ) : allResults.length > 0 ? (
++                  // a zero-result page is final — the NoResults state above
++                  // owns it (its later-page variant carries the prev action)
 +                  <Pagination onPage={onPage} pageno={data.pageno} paging={data.paging} />
-+                )}
++                ) : null}
 +              </>
 +            )}
 +          </div>
@@ -24490,10 +24530,10 @@ index 000000000..6f84c4911
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx b/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx
 new file mode 100644
-index 000000000..800676dc2
+index 000000000..68c35fed3
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/GeneralTab.tsx
-@@ -0,0 +1,220 @@
+@@ -0,0 +1,217 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -24511,6 +24551,7 @@ index 000000000..800676dc2
 +import { Fragment } from "react";
 +import { categoryLabel } from "@/lib/categories.ts";
 +import { languageOptions, useT } from "@/lib/i18n.ts";
++import { SEGMENT_ACTIVE, SEGMENT_SM } from "@/lib/styles.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
 +import { Card, CategoryTab, SectionLabel, Select, SettingRow, Switch } from "@/pages/preferences/parts.tsx";
 +import type { PreferencesForm } from "@/pages/preferences/usePreferencesForm.ts";
@@ -24673,11 +24714,7 @@ index 000000000..800676dc2
 +                {(["POST", "GET"] as const).map((value) => (
 +                  <button
 +                    aria-pressed={form.method === value}
-+                    className={`rounded-lg px-4 py-1.5 text-[13px] transition-colors ${
-+                      form.method === value
-+                        ? "bg-accent-strong font-medium text-accent-contrast"
-+                        : "text-ink-2 hover:text-ink"
-+                    }`}
++                    className={`${SEGMENT_SM} rounded-lg ${form.method === value ? SEGMENT_ACTIVE : "text-ink-2 hover:text-ink"}`}
 +                    key={value}
 +                    onClick={() => {
 +                      form.setMethod(value);
@@ -24896,16 +24933,17 @@ index 000000000..d6a1bf5c9
 +}
 diff --git a/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx b/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx
 new file mode 100644
-index 000000000..b69c4fe86
+index 000000000..6deea1632
 --- /dev/null
 +++ b/client/zjsearch/src/pages/preferences/tabs/UiTab.tsx
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,160 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { AlignCenterVertical, Globe, Languages, Link as LinkIcon, Monitor, Moon, Sun, Tag } from "lucide-react";
 +import { Fragment } from "react";
 +import { cap } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
++import { SEGMENT_ACTIVE, SEGMENT_SM } from "@/lib/styles.ts";
 +import type { ThemeStyle } from "@/lib/theme.ts";
 +import { applyCenterAlignment, applyThemeStyle } from "@/lib/theme.ts";
 +import type { PreferencesPageData } from "@/lib/types.ts";
@@ -24973,11 +25011,7 @@ index 000000000..b69c4fe86
 +                ).map(([value, label, icon]) => (
 +                  <button
 +                    aria-pressed={form.themeStyle === value}
-+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
-+                      form.themeStyle === value
-+                        ? "bg-accent-strong font-medium text-accent-contrast"
-+                        : "text-ink-2 hover:text-ink"
-+                    }`}
++                    className={`${SEGMENT_SM} gap-1.5 rounded-lg ${form.themeStyle === value ? SEGMENT_ACTIVE : "text-ink-2 hover:text-ink"}`}
 +                    key={value}
 +                    onClick={() => {
 +                      form.setThemeStyle(value);
@@ -25485,10 +25519,10 @@ index 000000000..c378c3911
 +}
 diff --git a/client/zjsearch/src/styles/boot.css b/client/zjsearch/src/styles/boot.css
 new file mode 100644
-index 000000000..b12d34e3c
+index 000000000..b10e45fb9
 --- /dev/null
 +++ b/client/zjsearch/src/styles/boot.css
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,243 @@
 +/* SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0 */
 +
 +/* Skeleton family: the .zjs-skeleton shimmer primitive (shared by the
@@ -25535,7 +25569,7 @@ index 000000000..b12d34e3c
 +    display: none;
 +    flex: none;
 +    font-family: var(--font-serif);
-+    font-size: 1.25rem;
++    font-size: 1.5rem;
 +    font-weight: 600;
 +    letter-spacing: -0.025em;
 +    color: var(--ink);
@@ -25597,6 +25631,11 @@ index 000000000..b12d34e3c
 +    gap: 0.25rem;
 +    margin-inline-start: auto;
 +  }
++  @media (min-width: 40rem) {
++    .zjs-boot-actions {
++      gap: 0.5rem;
++    }
++  }
 +  .zjs-boot-action {
 +    width: 2.25rem;
 +    height: 2.25rem;
@@ -25619,6 +25658,7 @@ index 000000000..b12d34e3c
 +    gap: 0.25rem;
 +    overflow: hidden;
 +    padding-block: 0.25rem;
++    margin-inline-start: -1rem;
 +  }
 +  .zjs-boot-tab {
 +    flex: none;
@@ -25635,6 +25675,7 @@ index 000000000..b12d34e3c
 +    align-items: center;
 +    gap: 0.25rem;
 +    margin-top: 0.25rem;
++    margin-inline-start: -1rem;
 +    overflow: hidden;
 +  }
 +  .zjs-boot-filter {
@@ -26496,10 +26537,10 @@ index 000000000..adc731056
 +}
 diff --git a/client/zjsearch/tools/assets.ts b/client/zjsearch/tools/assets.ts
 new file mode 100644
-index 000000000..f8b5461a2
+index 000000000..ba3371df9
 --- /dev/null
 +++ b/client/zjsearch/tools/assets.ts
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,75 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
@@ -26551,11 +26592,24 @@ index 000000000..f8b5461a2
 +      // the app bundle URLs live at the static ROOT (/static/zjsearch.min.js —
 +      // webapp.custom_url_for only maps filenames that exist there), so
 +      // publish the bundles next to the themed assets; chunk/ is rebuilt from
-+      // scratch so hashes removed by this build don't linger
++      // scratch so hashes removed by this build don't linger.
++      // EVERY root-level *.min.js/*.min.css artifact ships, not just the entry
++      // pair: vite also emits root-level CSS chunks (zjsearch2/3.min.css —
++      // KaTeX & co.) that the preload helpers resolve as siblings of the JS
++      // bundles.  A missing one 404s on /search and the awaited CSS dep of
++      // main.tsx's `await import(ResultsPage)` never settles — the app then
++      // boots into the skeleton forever (homepage SPA navigation still worked,
++      // which is why this read as "direct /search?q= URLs hang").
 +      const rootStatic = path.resolve(PATH.root, "searx/static");
-+      for (const file of ["zjsearch.min.js", "zjsearch.min.css"]) {
-+        await fs.copyFile(path.join(PATH.dist, file), path.join(rootStatic, file));
++      for (const file of await fs.readdir(PATH.dist)) {
++        if (/^zjsearch.*\.min\.(js|css)$/.test(file)) {
++          await fs.copyFile(path.join(PATH.dist, file), path.join(rootStatic, file));
++        }
 +      }
++      // the CSS chunks' url(...) references (KaTeX woff2/woff/ttf) resolve
++      // against the root-level CSS files -> /static/assets/...
++      await fs.rm(path.join(rootStatic, "assets"), { force: true, recursive: true });
++      await fs.cp(path.join(PATH.dist, "assets"), path.join(rootStatic, "assets"), { recursive: true });
 +      const rootChunk = path.join(rootStatic, "chunk");
 +      await fs.rm(rootChunk, { force: true, recursive: true });
 +      await fs.cp(path.join(PATH.dist, "chunk"), rootChunk, { recursive: true });
@@ -28927,10 +28981,10 @@ index 000000000..4cc73dee0
 +    return _FIXTURES["general"]()
 diff --git a/searx/plugins/advanced_search_syntax.py b/searx/plugins/advanced_search_syntax.py
 new file mode 100644
-index 000000000..b273fb278
+index 000000000..bbd036507
 --- /dev/null
 +++ b/searx/plugins/advanced_search_syntax.py
-@@ -0,0 +1,842 @@
+@@ -0,0 +1,862 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +# pylint: disable=too-many-return-statements, too-many-branches
 +"""Advanced search syntax plugin for ZJSearch.
@@ -29023,6 +29077,14 @@ index 000000000..b273fb278
 +
 +# File extension at the end of a URL path (filetype: filter)
 +_EXT_PATTERN = re.compile(r'\.([a-z0-9]+)$', re.IGNORECASE)
++
++# A domain-shaped term ("example.com", "en.wikipedia.org"): a bare -word that
++# has this shape reads as a domain exclusion and is promoted into the site
++# exclude set as well -- the plain word matcher only sees title + content,
++# so "-wikipedia.org" would otherwise never drop a result from the host.
++_DOMAINISH_TERM_RE = re.compile(
++    r'^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$', re.IGNORECASE
++)
 +
 +# Kana + CJK ideographs (unified, extension A, compatibility) -- scripts
 +# written without word separators; see `_word_matcher` (hangul is spaced and
@@ -29408,6 +29470,18 @@ index 000000000..b273fb278
 +        syntax['exclude_regexes'] = [m.strip() for m in p['exclude_regex'].findall(query)]
 +        syntax['exclude_words'] = [m.strip() for m in p['exclude_word'].findall(query)]
 +
++        # A domain-shaped exclusion ("-wikipedia.org") also excludes the HOST:
++        # the plain -word matcher runs against title + content only, so the
++        # domain would otherwise survive on every result whose text does not
++        # spell it out.  Numbers like "-1.5" match the shape too -- promoting
++        # them merely excludes a host nobody has, the word matcher still runs.
++        for w in syntax['exclude_words']:
++            if _DOMAINISH_TERM_RE.match(w):
++                domain = self._normalize_domain(w)
++                if domain and domain not in syntax['_site_exclude_set']:
++                    syntax['site_exclude'].append(domain)
++                    syntax['_site_exclude_set'].add(domain)
++
 +        # 8. Clean query for engines
 +        cleaned_query = self._clean_query_for_engines(query)
 +
@@ -29775,10 +29849,10 @@ index 000000000..b273fb278
 +                request.form = self._create_new_form_with_query(request.form, request.original_query)
 diff --git a/searx/plugins/currency_convert.py b/searx/plugins/currency_convert.py
 new file mode 100644
-index 000000000..2990ec97d
+index 000000000..e62fecc38
 --- /dev/null
 +++ b/searx/plugins/currency_convert.py
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,240 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +"""A plugin to convert currency pairs given in the query term (e.g.
 +``5 usd to cny``).  It complements the unit_converter plugin: currency rates
@@ -29981,15 +30055,19 @@ index 000000000..2990ec97d
 +        if len(query_parts) < 3:
 +            return results
 +
-+        for query_part in query_parts:
-+            for keyword in CONVERT_KEYWORDS:
-+                if query_part == keyword:
-+                    from_query, to_query = query.split(keyword, 1)
-+                    converted = _parse_and_convert(from_query.strip(), to_query.strip())
-+                    if converted:
-+                        answer, data = converted
-+                        results.add(results.types.Answer(answer=answer, data=data))
-+                    break
++        # split at the FIRST keyword word and answer that one pair: later
++        # keywords must not re-pair the conversion ("1 usd to eur in gbp"
++        # answers usd->eur, cut at the next keyword -- never usd->gbp)
++        keyword_at = [i for i, part in enumerate(query_parts) if part.lower() in CONVERT_KEYWORDS]
++        if not keyword_at:
++            return results
++        first = keyword_at[0]
++        from_query = " ".join(query_parts[:first]).strip()
++        to_query = " ".join(query_parts[first + 1 : (keyword_at[1] if len(keyword_at) > 1 else None)]).strip()
++        converted = _parse_and_convert(from_query, to_query)
++        if converted:
++            answer, data = converted
++            results.add(results.types.Answer(answer=answer, data=data))
 +
 +        return results
 +
@@ -30062,10 +30140,10 @@ index 314cc858e..c59c9d78d 100644
          return results
 diff --git a/searx/plugins/stock_quote.py b/searx/plugins/stock_quote.py
 new file mode 100644
-index 000000000..66d86fa4d
+index 000000000..f742904dc
 --- /dev/null
 +++ b/searx/plugins/stock_quote.py
-@@ -0,0 +1,593 @@
+@@ -0,0 +1,604 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +# pylint: disable=missing-module-docstring
 +
@@ -30103,6 +30181,10 @@ index 000000000..66d86fa4d
 +
 +QUOTE_CACHE: dict[str, tuple[float, dict[str, t.Any] | None]] = {}
 +"""``{source}:{symbol}`` -> (fetch time, payload or None while the resolve failed)."""
++
++QUOTE_CACHE_MAX = 512
++"""Entry cap: the cache keys on raw symbol variants (user input), so a cap
++keeps a long-running worker's memory flat; FIFO eviction is fine for a 60 s TTL."""
 +
 +SUFFIX_RE = re.compile(r"^(.*\S)\s+(?:stock|quote)$", re.IGNORECASE)
 +PREFIX_DOLLAR_RE = re.compile(r"^\$([A-Za-z0-9.\-]{1,16})$")
@@ -30441,8 +30523,11 @@ index 000000000..66d86fa4d
 +
 +def _tencent_fetch(symbol: str) -> dict[str, t.Any] | None:  # pylint: disable=too-many-locals
 +    tx_symbol = _tencent_symbol(symbol)
-+    # qt[1] carries the listing name; the bare code is the fallback
-+    code = tx_symbol[2:].upper()
++    # qt[1] carries the listing name; the bare code is the fallback -- strip
++    # the exchange prefix only when one is really there ("sh600519" ->
++    # "600519"); a symbol that passed through unchanged ("BRK.B", "3M")
++    # would lose its first two characters to a blind [2:] slice
++    code = tx_symbol[2:].upper() if re.fullmatch(r"(sh|sz|bj|hk|us)\S{2,}", tx_symbol.lower()) else tx_symbol.upper()
 +    name = code
 +
 +    year_start = f"{datetime.date.today().year}-01-01"
@@ -30610,6 +30695,10 @@ index 000000000..66d86fa4d
 +        if payload:
 +            break
 +    QUOTE_CACHE[symbol] = (time.monotonic(), payload)
++    while len(QUOTE_CACHE) > QUOTE_CACHE_MAX:
++        # FIFO: drop the oldest insertions (dict preserves insertion order)
++        oldest = next(iter(QUOTE_CACHE))
++        del QUOTE_CACHE[oldest]
 +    return payload
 +
 +
@@ -30660,10 +30749,30 @@ index 000000000..66d86fa4d
 +        )
 +        return results
 diff --git a/searx/plugins/time_zone.py b/searx/plugins/time_zone.py
-index 9239a3fbc..2bbe7d7b5 100644
+index 9239a3fbc..d7e192023 100644
 --- a/searx/plugins/time_zone.py
 +++ b/searx/plugins/time_zone.py
-@@ -53,17 +53,33 @@ class SXNGPlugin(Plugin):
+@@ -24,6 +24,9 @@ class SXNGPlugin(Plugin):
+ 
+     id: str = "time_zone"
+     keywords: list[str] = ["time", "timezone", "now", "clock", "timezones"]
++    # filler words that carry no location ("time in tokyo") -- without this,
++    # the leftover "in" makes the geolocation miss and the answer goes silent
++    fillers: list[str] = ["in"]
+ 
+     def __init__(self, plg_cfg: "PluginCfg"):
+         super().__init__(plg_cfg)
+@@ -46,24 +49,41 @@ class SXNGPlugin(Plugin):
+         if search.search_query.pageno > 1:
+             return results
+ 
+-        # remove keywords from the query
++        # remove keywords and filler words from the query
+         query = search.search_query.query
+-        query_parts = filter(lambda part: part.lower() not in self.keywords, query.split(" "))
++        skip = self.keywords + self.fillers
++        query_parts = filter(lambda part: part.lower() not in skip, query.split(" "))
+         search_term = " ".join(query_parts).strip()
  
          if not search_term:
              date_time = DateTime(datetime.datetime.now())
@@ -30748,25 +30857,37 @@ index 4077ddf03..218e61f35 100644
  
          return results
 diff --git a/searx/plugins/unit_converter.py b/searx/plugins/unit_converter.py
-index 3a91a8ec6..9815ba4b8 100644
+index 3a91a8ec6..5acef42af 100644
 --- a/searx/plugins/unit_converter.py
 +++ b/searx/plugins/unit_converter.py
-@@ -62,9 +62,11 @@ class SXNGPlugin(Plugin):
-             for keyword in CONVERT_KEYWORDS:
-                 if query_part == keyword:
-                     from_query, to_query = query.split(keyword, 1)
+@@ -58,13 +58,19 @@ class SXNGPlugin(Plugin):
+         if len(query_parts) < 3:
+             return results
+ 
+-        for query_part in query_parts:
+-            for keyword in CONVERT_KEYWORDS:
+-                if query_part == keyword:
+-                    from_query, to_query = query.split(keyword, 1)
 -                    target_val = _parse_text_and_convert(from_query.strip(), to_query.strip())
 -                    if target_val:
 -                        results.add(results.types.Answer(answer=target_val))
-+                    converted = _parse_text_and_convert(from_query.strip(), to_query.strip())
-+                    if converted:
-+                        answer, data = converted
-+                        results.add(results.types.Answer(answer=answer, data=data))
-+                    break
++        # split at the FIRST keyword word and answer that one pair: later
++        # keywords must not re-pair the conversion ("5 usd to eur in gbp"
++        # answers usd->eur, cut at the next keyword -- never usd->gbp)
++        keyword_at = [i for i, part in enumerate(query_parts) if part.lower() in CONVERT_KEYWORDS]
++        if not keyword_at:
++            return results
++        first = keyword_at[0]
++        from_query = " ".join(query_parts[:first]).strip()
++        to_query = " ".join(query_parts[first + 1 : (keyword_at[1] if len(keyword_at) > 1 else None)]).strip()
++        converted = _parse_text_and_convert(from_query, to_query)
++        if converted:
++            answer, data = converted
++            results.add(results.types.Answer(answer=answer, data=data))
  
          return results
  
-@@ -80,7 +82,7 @@ RE_MEASURE = r'''
+@@ -80,7 +86,7 @@ RE_MEASURE = r'''
  '''
  
  
@@ -30775,7 +30896,7 @@ index 3a91a8ec6..9815ba4b8 100644
  
      # pylint: disable=too-many-branches, too-many-locals
  
-@@ -88,7 +90,7 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
+@@ -88,7 +94,7 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
          return None
  
      measured = re.match(RE_MEASURE, from_query, re.VERBOSE)
@@ -30784,7 +30905,7 @@ index 3a91a8ec6..9815ba4b8 100644
          return None
  
      # Symbols are not unique, if there are several hits for the from-unit, then
-@@ -102,14 +104,14 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
+@@ -102,14 +108,14 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
      for symbol, si_name, from_si, to_si, orig_symbol in symbol_to_si():
  
          if symbol == measured.group('unit'):
@@ -30801,7 +30922,7 @@ index 3a91a8ec6..9815ba4b8 100644
  
      # second: find the right unit by comparing list of from-units with list of to-units
  
-@@ -119,21 +121,26 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
+@@ -119,21 +125,26 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
                  source_to_si = source[1]
                  target_from_si = target[1]
                  target_symbol = target[2]
@@ -30831,7 +30952,7 @@ index 3a91a8ec6..9815ba4b8 100644
  
      # convert value from SI unit to target unit
  
-@@ -148,4 +155,30 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
+@@ -148,4 +159,30 @@ def _parse_text_and_convert(from_query, to_query) -> str | None:
      else:
          result = babel.numbers.format_decimal(value, locale=_locale, format='#,##0.##########;-#')
  
@@ -31048,10 +31169,10 @@ index 000000000..cbc612015
 +</html>
 diff --git a/searx/templates/zjsearch/data/macros.html b/searx/templates/zjsearch/data/macros.html
 new file mode 100644
-index 000000000..09e8ab7be
+index 000000000..f2c8772c2
 --- /dev/null
 +++ b/searx/templates/zjsearch/data/macros.html
-@@ -0,0 +1,585 @@
+@@ -0,0 +1,583 @@
 +{#- zjsearch theme: server → React data contract.
 +
 +Every macro in this file serializes a piece of the Jinja render context into
@@ -31146,7 +31267,6 @@ index 000000000..09e8ab7be
 +    {%- endif %}
 +  {%- endif %}
 +  {%- if result.views %}"views": {{ result.views|tojson }},{% endif %}
-+  {%- if result.score is number %}"score": {{ result.score }},{% endif %}
 +  {%- if result.author %}"author": {{ result.author|striptags|tojson }},{% endif %}
 +  {%- if result.metadata %}"metadata": {{ result.metadata|tojson }},{% endif %}
 +  {%- if result.img_src %}"img_src": {{ (media_url(result.img_src) or '')|tojson }},{% endif %}
@@ -31206,7 +31326,7 @@ index 000000000..09e8ab7be
 +      {%- endfor -%}
 +    ],
 +    {%- endif %}
-+    {%- if result.boundingbox %}"boundingbox": {{ result.boundingbox|tojson }},{% endif %}
++    {%- if result.boundingbox %}"boundingbox": {{ result.boundingbox|map('float')|list|tojson }},{% endif %}
 +    {%- if result.longitude %}"longitude": {{ result.longitude|tojson }},{% endif %}
 +    {%- if result.latitude %}"latitude": {{ result.latitude|tojson }},{% endif %}
 +    {%- if result.geojson %}"geojson": {{ result.geojson|tojson }},{% endif %}
@@ -31246,7 +31366,6 @@ index 000000000..09e8ab7be
 +    {%- endif %}
 +  {%- elif result.template == 'file.html' %}
 +    {%- if result.abstract %}"abstract_html": {{ result.abstract|tojson }},{% endif %}
-+    {%- if result.author %}"author": {{ result.author|tojson }},{% endif %}
 +    {%- if result.filename %}"filename": {{ result.filename|tojson }},{% endif %}
 +    {%- if result.size %}"size": {{ result.size|tojson }},{% endif %}
 +    {%- if result.time %}"time": {{ result.time|tojson }},{% endif %}
@@ -32007,7 +32126,7 @@ index 000000000..7bd71c37c
 +{% endblock %}
 diff --git a/searx/templates/zjsearch/rss.xsl b/searx/templates/zjsearch/rss.xsl
 new file mode 100644
-index 000000000..962b7faa7
+index 000000000..0d99e1931
 --- /dev/null
 +++ b/searx/templates/zjsearch/rss.xsl
 @@ -0,0 +1,137 @@
@@ -32141,7 +32260,7 @@ index 000000000..962b7faa7
 +          </xsl:for-each>
 +        </main>
 +        <footer>© <span id="year"></span> <xsl:value-of select="$instance" /></footer>
-+        <script>
++        <script data-cfasync="false">
 +          document.getElementById("year").textContent = new Date().getFullYear();
 +        </script>
 +      </body>
@@ -33204,10 +33323,10 @@ index 000000000..a616c4262
 +    app.add_url_rule("/ai/answer", "zjsearch_ai_answer", _answer, methods=["POST"])
 diff --git a/searx/zjsearch_stream.py b/searx/zjsearch_stream.py
 new file mode 100644
-index 000000000..c9a51f9a6
+index 000000000..0cd00beaa
 --- /dev/null
 +++ b/searx/zjsearch_stream.py
-@@ -0,0 +1,369 @@
+@@ -0,0 +1,398 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +"""zjsearch theme: streaming search responses.
 +
@@ -33400,7 +33519,7 @@ index 000000000..c9a51f9a6
 +    @property
 +    def engine_data(self):
 +        self._run()
-+        return self._data.get('engine_data', [])
++        return self._data.get('engine_data', {})
 +
 +    @property
 +    def paging(self):
@@ -33521,18 +33640,47 @@ index 000000000..c9a51f9a6
 +    )
 +    template = flask.current_app.jinja_env.get_template('{}/results.html'.format(context['theme']))
 +
++    # recovery payload for a late-chunk serialization failure: the leading
++    # </script> closes a script the failure may have left open (a stray end
++    # tag is dropped by the HTML parser otherwise) and a clean page_error
++    # payload follows; the client prefers the last parseable #page-data, so
++    # it recovers even when the failed attempt left a broken script behind
++    _late_chunk_recovery = (
++        '</script>'
++        '<script id="page-data" type="application/json">'
++        '{%- from "zjsearch/data/macros.html" import page_error with context -%}'
++        '{{ page_error(message) }}'
++        '</script>'
++        '<script data-cfasync="false">'
++        'if (window.__zjsPageData) { window.__zjsPageData(); }'
++        ' else { document.dispatchEvent(new CustomEvent("zjs:page-data")); }'
++        '</script>'
++    )
++
 +    def generate():
 +        buf = None
-+        for chunk in template.stream(context):
-+            if buf is not None:
-+                buf.append(chunk)
-+                if SHELL_END in chunk:
-+                    yield ''.join(buf)
-+                    buf = None
-+            else:
-+                yield chunk
-+        if buf:
-+            yield ''.join(buf)
++        shell_done = False
++        try:
++            for chunk in template.stream(context):
++                if buf is not None:
++                    buf.append(chunk)
++                    if SHELL_END in chunk:
++                        yield ''.join(buf)
++                        buf = None
++                        shell_done = True
++                else:
++                    yield chunk
++            if buf:
++                yield ''.join(buf)
++        except Exception as exc:  # pylint: disable=broad-except
++            # a serialization error after the shell (a malformed result field
++            # reaching a macro) must not leave the client pending forever: it
++            # booted into the pending payload, so close with a page_error the
++            # router understands -- a bare truncation would hang the skeleton
++            logger.exception('zjsearch_stream: late chunk failed: %s', exc)
++            if shell_done:
++                recovery = flask.current_app.jinja_env.from_string(_late_chunk_recovery)
++                yield recovery.render(context, message=str(exc) or 'internal error')
 +
 +    response = flask.Response(flask.stream_with_context(generate()), mimetype='text/html')
 +    # ask reverse proxies to pass the early shell through unbuffered
