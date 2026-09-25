@@ -7812,10 +7812,10 @@ index 000000000..e950b62a3
 +}
 diff --git a/client/zjsearch/src/components/SearchBox.tsx b/client/zjsearch/src/components/SearchBox.tsx
 new file mode 100644
-index 000000000..6b895026b
+index 000000000..47d806693
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchBox.tsx
-@@ -0,0 +1,270 @@
+@@ -0,0 +1,353 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { LoaderCircle, Search, X } from "lucide-react";
@@ -7870,6 +7870,9 @@ index 000000000..6b895026b
 +  const listboxId = useId();
 +  const [innerQuery, setInnerQuery] = useState(initialQuery);
 +  const query = controlledQuery ?? innerQuery;
++  /** the text the user actually typed — the autocomplete baseline and the
++      restore point when arrow-key navigation wraps back past the list */
++  const [typed, setTyped] = useState(initialQuery);
 +  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 +  const [open, setOpen] = useState(false);
 +  const [active, setActive] = useState(-1);
@@ -7884,14 +7887,16 @@ index 000000000..6b895026b
 +  // keep the input in sync with server-provided queries (back/forward)
 +  useEffect(() => {
 +    setInnerQuery(initialQuery);
++    setTyped(initialQuery);
 +  }, [initialQuery]);
 +
-+  // debounced autocompleter
++  // debounced autocompleter — keyed on the TYPED text: arrow-key navigation
++  // rewrites the input with suggestion texts and must not re-fetch
 +  useEffect(() => {
 +    if (!settings.autocomplete) {
 +      return;
 +    }
-+    const trimmed = query.trim();
++    const trimmed = typed.trim();
 +    if (trimmed.length < (settings.autocomplete_min || 2)) {
 +      setSuggestions([]);
 +      return;
@@ -7911,7 +7916,7 @@ index 000000000..6b895026b
 +      window.clearTimeout(timer);
 +      controller.abort();
 +    };
-+  }, [query, settings.autocomplete, settings.autocomplete_min]);
++  }, [typed, settings.autocomplete, settings.autocomplete_min]);
 +
 +  // close the dropdown on outside clicks
 +  useEffect(() => {
@@ -7940,7 +7945,49 @@ index 000000000..6b895026b
 +    submit(query);
 +  };
 +
++  /** select the completion part of a navigated-to suggestion (Google
++      behaviour): the typed prefix stays free, continued typing replaces the
++      selected suffix; restoring the typed text puts the caret at the end */
++  const selectCompletion = (text: string) => {
++    requestAnimationFrame(() => {
++      const el = inputRef.current;
++      if (el && document.activeElement === el) {
++        el.setSelectionRange(typed.length, text.length);
++      }
++    });
++  };
++
++  /** ArrowDown/Up walk suggestions.length + 1 slots: the +1 slot is the
++      typed query itself, so navigating past the ends lands back on what
++      the user typed (Google behaviour). */
++  const navigateSelection = (delta: 1 | -1) => {
++    const count = suggestions.length + 1;
++    if (count <= 1) {
++      return;
++    }
++    const slot = (((active + delta) % count) + count) % count;
++    if (slot === suggestions.length) {
++      setActive(-1);
++      setQuery(typed);
++      selectCompletion(typed);
++      return;
++    }
++    const suggestion = suggestions[slot];
++    if (!suggestion) {
++      return;
++    }
++    setActive(slot);
++    setQuery(suggestion.text);
++    selectCompletion(suggestion.text);
++  };
++
 +  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
++    // IME composition (e.g. pinyin candidates) owns Enter and the arrows —
++    // handling them here would submit mid-composition or break candidate
++    // navigation
++    if (event.nativeEvent.isComposing) {
++      return;
++    }
 +    if (event.key === "Enter") {
 +      // some embedded browsers never run the implicit form submission, so
 +      // Enter is always handled explicitly here
@@ -7955,25 +8002,39 @@ index 000000000..6b895026b
 +      }
 +      return;
 +    }
-+    if (!open || suggestions.length === 0) {
-+      return;
-+    }
-+    if (event.key === "Escape") {
-+      setOpen(false);
-+      return;
-+    }
 +    if (event.key === "ArrowDown") {
 +      event.preventDefault();
-+      setActive((prev) => (prev + 1) % suggestions.length);
++      navigateSelection(1);
 +      return;
 +    }
 +    if (event.key === "ArrowUp") {
 +      event.preventDefault();
-+      setActive((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
++      navigateSelection(-1);
++      return;
++    }
++    if (!open || suggestions.length === 0) {
++      return;
++    }
++    if (event.key === "Escape") {
++      // restore the typed query first (a selection rewrites the input)
++      if (active >= 0) {
++        setActive(-1);
++        setQuery(typed);
++      }
++      setOpen(false);
++      return;
 +    }
 +  };
 +
 +  const showDropdown = open && suggestions.length > 0;
++  /** the navigated suggestion split for the ghost layer: typed prefix solid,
++      completion muted (null when no suggestion is actively selected, or the
++      suggestion doesn't extend the typed prefix — then nothing is ghosted
++      and the input keeps its plain ink text) */
++  const ghost =
++    open && active >= 0 && suggestions[active]?.text.startsWith(typed)
++      ? { typed, completion: suggestions[active].text.slice(typed.length) }
++      : null;
 +  // the list stays mounted through its fade-out window; render the last
 +  // non-empty suggestion set so a mid-exit fetch clearing `suggestions`
 +  // cannot collapse the fading panel into an empty bordered box
@@ -7995,30 +8056,52 @@ index 000000000..6b895026b
 +        onSubmit={onSubmit}
 +        role="search"
 +      >
-+        <input
-+          aria-activedescendant={active >= 0 && suggestions[active] ? `${listboxId}-${active}` : undefined}
-+          aria-autocomplete="list"
-+          aria-controls={showDropdown ? listboxId : undefined}
-+          aria-expanded={showDropdown}
-+          aria-label={t("search")}
-+          autoCapitalize="none"
-+          autoComplete="off"
-+          className="min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-ink-3"
-+          dir="auto"
-+          name="q"
-+          onChange={(event) => {
-+            setQuery(event.target.value);
-+            setOpen(true);
-+          }}
-+          onFocus={() => setOpen(true)}
-+          onKeyDown={onKeyDown}
-+          placeholder={t("search_placeholder")}
-+          ref={inputRef}
-+          role="combobox"
-+          spellCheck={false}
-+          type="text"
-+          value={query}
-+        />
++        <div className="relative min-w-0 flex-1">
++          {/* ghost layer for the navigated suggestion: the typed prefix keeps
++              its ink colour, the completion renders muted — a purely visual
++              "this part is the suggestion" cue (the real input's text is
++              transparent while the ghost shows; the caret stays visible via
++              caret-ink).  whitespace-pre + same font metrics keep the mirror
++              aligned with the input's single line. */}
++          {ghost ? (
++            <div
++              aria-hidden="true"
++              className="pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre text-base"
++            >
++              <span className="text-ink">{ghost.typed}</span>
++              <span className="text-ink-3">{ghost.completion}</span>
++            </div>
++          ) : null}
++          <input
++            aria-activedescendant={active >= 0 && suggestions[active] ? `${listboxId}-${active}` : undefined}
++            aria-autocomplete="list"
++            aria-controls={showDropdown ? listboxId : undefined}
++            aria-expanded={showDropdown}
++            aria-label={t("search")}
++            autoCapitalize="none"
++            autoComplete="off"
++            className={`relative w-full bg-transparent text-base outline-none placeholder:text-ink-3 ${
++              ghost ? "text-transparent caret-ink selection:bg-transparent" : ""
++            }`}
++            dir="auto"
++            name="q"
++            onChange={(event) => {
++              const value = event.target.value;
++              setQuery(value);
++              setTyped(value);
++              setActive(-1); // fresh typing clears the suggestion selection
++              setOpen(true);
++            }}
++            onFocus={() => setOpen(true)}
++            onKeyDown={onKeyDown}
++            placeholder={t("search_placeholder")}
++            ref={inputRef}
++            role="combobox"
++            spellCheck={false}
++            type="text"
++            value={query}
++          />
++        </div>
 +        {query ? (
 +          <button
 +            aria-label={t("clear")}
@@ -13692,14 +13775,27 @@ index 000000000..22a2c986e
 +}
 diff --git a/client/zjsearch/src/features/results/cardParts.tsx b/client/zjsearch/src/features/results/cardParts.tsx
 new file mode 100644
-index 000000000..0276e2676
+index 000000000..73cc151d5
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cardParts.tsx
-@@ -0,0 +1,377 @@
+@@ -0,0 +1,501 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { Archive, Award, Calendar, Clock, Eye, Globe, ImageOff, Music, Play, Server, User } from "lucide-react";
-+import { type ReactNode, useId, useState } from "react";
++import {
++  Archive,
++  Award,
++  Calendar,
++  ChevronDown,
++  Clock,
++  Eye,
++  Globe,
++  ImageOff,
++  Music,
++  Play,
++  Server,
++  User,
++} from "lucide-react";
++import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 +import { CapChip } from "@/components/CapChip.tsx";
 +import { Collapse } from "@/components/Collapse.tsx";
 +import { useCacheUrl } from "@/features/results/CacheUrlProvider.tsx";
@@ -14061,6 +14157,117 @@ index 000000000..0276e2676
 +    (url / mt-1 title / mt-1.5 snippet ×2 / mt-2 engines pill) so the swap to
 +    the real cards does not shift heights.  The streamed server skeleton
 +    (skeleton.html) mirrors these bars — keep both in sync. */
++/** Collapsed snippet preview: 2 lines of text-sm/leading-relaxed (22.75px
++    each) — 46px is the exact rendered height, so the ease lands without a
++    final snap when the clamp takes over. */
++const SNIPPET_PREVIEW_PX = 46;
++
++export function Snippet({ className = "", contentHtml }: { className?: string; contentHtml: string }) {
++  const t = useT();
++  const ref = useRef<HTMLParagraphElement | null>(null);
++  const [overflow, setOverflow] = useState(false);
++  const [expanded, setExpanded] = useState(false);
++  const [clamped, setClamped] = useState(true);
++  /** pixel cap while the expand/collapse ease plays (null = unbounded) */
++  const [animPx, setAnimPx] = useState<number | null>(null);
++
++  // new content resets to the collapsed preview
++  // biome-ignore lint/correctness/useExhaustiveDependencies: contentHtml keys the reset — re-run only when the snippet text changes
++  useLayoutEffect(() => {
++    setExpanded(false);
++    setClamped(true);
++    setAnimPx(null);
++    setOverflow(false);
++  }, [contentHtml]);
++
++  // overflow = the text needs more than the 2-line preview; re-checked
++  // whenever the collapsed box re-flows (rail appearing, container queries
++  // change the column width).  Only the collapsed idle state measures —
++  // touching the states mid-ease would kill the animation, and an expanded
++  // snippet simply keeps its toggle.
++  // biome-ignore lint/correctness/useExhaustiveDependencies: contentHtml is the commit key — the fresh text must be re-measured
++  useLayoutEffect(() => {
++    if (expanded || animPx !== null || !clamped) {
++      return;
++    }
++    const el = ref.current;
++    if (!el) {
++      return;
++    }
++    setOverflow(el.scrollHeight > el.clientHeight + 1);
++    const ro = new ResizeObserver(() => {
++      setOverflow(el.scrollHeight > el.clientHeight + 1);
++    });
++    ro.observe(el);
++    return () => {
++      ro.disconnect();
++    };
++  }, [contentHtml, expanded, animPx, clamped]);
++
++  const easeFrames = (apply: () => void) => {
++    requestAnimationFrame(() => {
++      requestAnimationFrame(apply);
++    });
++  };
++
++  const toggle = () => {
++    const el = ref.current;
++    if (!el) {
++      return;
++    }
++    if (expanded) {
++      // collapse: pin the full height, ease down to the preview, re-clamp at
++      // the end (the label flips immediately)
++      setAnimPx(el.scrollHeight);
++      easeFrames(() => {
++        setAnimPx(SNIPPET_PREVIEW_PX);
++      });
++    } else {
++      // expand: pin the preview height, lift the clamp, ease up, drop the cap
++      setAnimPx(el.clientHeight);
++      easeFrames(() => {
++        setClamped(false);
++        setAnimPx(el.scrollHeight);
++      });
++    }
++    setExpanded(!expanded);
++  };
++
++  return (
++    <div className={className}>
++      <p
++        className={`text-sm leading-relaxed text-ink-2 transition-[max-height] duration-300 ease-out ${clamped && animPx === null ? "line-clamp-2" : ""}`}
++        dangerouslySetInnerHTML={{ __html: contentHtml }}
++        dir="auto"
++        onTransitionEnd={(event) => {
++          if (event.propertyName !== "max-height") {
++            return;
++          }
++          if (expanded) {
++            setAnimPx(null); // fully revealed: late growth must not sit under a stale cap
++          } else {
++            setClamped(true);
++            setAnimPx(null);
++          }
++        }}
++        ref={ref}
++        style={{ maxHeight: animPx ?? undefined }}
++      />
++      {overflow || expanded ? (
++        <button
++          aria-expanded={expanded}
++          className="mt-0.5 inline-flex min-h-6 items-center gap-1 text-xs text-ink-3 transition-colors hover:text-ink"
++          onClick={toggle}
++          type="button"
++        >
++          {expanded ? t("collapse") : t("expand")}
++          <ChevronDown className={`size-3 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
++        </button>
++      ) : null}
++    </div>
++  );
++}
++
 +export function ResultSkeleton() {
 +  return (
 +    <div className="rounded-2xl p-4">
@@ -14075,11 +14282,18 @@ index 000000000..0276e2676
 +}
 diff --git a/client/zjsearch/src/features/results/cards/CodeCard.tsx b/client/zjsearch/src/features/results/cards/CodeCard.tsx
 new file mode 100644
-index 000000000..96e228534
+index 000000000..aee6d3557
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/CodeCard.tsx
-@@ -0,0 +1,47 @@
-+import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
+@@ -0,0 +1,48 @@
++import {
++  type CardProps,
++  EnginesLine,
++  PrettyUrl,
++  ResultArticle,
++  Snippet,
++  Title,
++} from "@/features/results/cardParts.tsx";
 +import { useT } from "@/lib/i18n.ts";
 +
 +export function CodeCard({ result, globals }: CardProps) {
@@ -14108,13 +14322,7 @@ index 000000000..96e228534
 +          </a>
 +        </p>
 +      ) : null}
-+      {result.content_html ? (
-+        <p
-+          className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
-+          dangerouslySetInnerHTML={{ __html: result.content_html }}
-+          dir="auto"
-+        />
-+      ) : null}
++      {result.content_html ? <Snippet className="mt-1.5 max-w-prose" contentHtml={result.content_html} /> : null}
 +      {result.code_html ? (
 +        <pre
 +          className="mt-2 max-h-96 overflow-auto rounded-xl border border-line bg-surface-2 p-4 font-mono text-xs leading-relaxed"
@@ -14128,10 +14336,10 @@ index 000000000..96e228534
 +}
 diff --git a/client/zjsearch/src/features/results/cards/DefaultCard.tsx b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
 new file mode 100644
-index 000000000..1cd732cf8
+index 000000000..da6a66706
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/DefaultCard.tsx
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,63 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import {
@@ -14143,6 +14351,7 @@ index 000000000..1cd732cf8
 +  PrettyUrl,
 +  ResultArticle,
 +  ResultLink,
++  Snippet,
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
@@ -14173,13 +14382,7 @@ index 000000000..1cd732cf8
 +              </MediaCollapse>
 +            </div>
 +          ) : null}
-+          <p
-+            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
-+            dangerouslySetInnerHTML={{
-+              __html: result.content_html || t("no_description"),
-+            }}
-+            dir="auto"
-+          />
++          <Snippet className="mt-1.5" contentHtml={result.content_html || t("no_description")} />
 +          {result.audio_src ? (
 +            <audio className="mt-2 w-full max-w-md" controls preload="none" src={result.audio_src} />
 +          ) : null}
@@ -14249,10 +14452,10 @@ index 000000000..f64a68f57
 +}
 diff --git a/client/zjsearch/src/features/results/cards/FileCard.tsx b/client/zjsearch/src/features/results/cards/FileCard.tsx
 new file mode 100644
-index 000000000..c88057fe4
+index 000000000..1ae2b67df
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/FileCard.tsx
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,103 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Download, FileText, Film, Music } from "lucide-react";
@@ -14262,6 +14465,7 @@ index 000000000..c88057fe4
 +  MediaCollapse,
 +  PrettyUrl,
 +  ResultArticle,
++  Snippet,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
 +import { useT } from "@/lib/i18n.ts";
@@ -14312,20 +14516,8 @@ index 000000000..c88057fe4
 +                </span>
 +              ))}
 +          </div>
-+          {result.abstract_html ? (
-+            <p
-+              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
-+              dangerouslySetInnerHTML={{ __html: result.abstract_html }}
-+              dir="auto"
-+            />
-+          ) : null}
-+          {result.content_html ? (
-+            <p
-+              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
-+              dangerouslySetInnerHTML={{ __html: result.content_html }}
-+              dir="auto"
-+            />
-+          ) : null}
++          {result.abstract_html ? <Snippet className="mt-1.5 max-w-prose" contentHtml={result.abstract_html} /> : null}
++          {result.content_html ? <Snippet className="mt-1.5 max-w-prose" contentHtml={result.content_html} /> : null}
 +          {result.embedded ? (
 +            isMedia ? (
 +              result.mtype === "video" ? (
@@ -14418,10 +14610,10 @@ index 000000000..3cc2e8227
 +}
 diff --git a/client/zjsearch/src/features/results/cards/MapCard.tsx b/client/zjsearch/src/features/results/cards/MapCard.tsx
 new file mode 100644
-index 000000000..1188a1fd2
+index 000000000..5ce5650d6
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/MapCard.tsx
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,78 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ExternalLink, MapPin } from "lucide-react";
@@ -14431,6 +14623,7 @@ index 000000000..1188a1fd2
 +  MetaLine,
 +  PrettyUrl,
 +  ResultArticle,
++  Snippet,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
 +import { MapResult } from "@/features/results/MapView.tsx";
@@ -14454,13 +14647,7 @@ index 000000000..1188a1fd2
 +      <div className="mt-1">
 +        <MetaLine result={result} />
 +      </div>
-+      {result.content_html ? (
-+        <p
-+          className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
-+          dangerouslySetInnerHTML={{ __html: result.content_html }}
-+          dir="auto"
-+        />
-+      ) : null}
++      {result.content_html ? <Snippet className="mt-1.5 max-w-prose" contentHtml={result.content_html} /> : null}
 +      {addressLine ? (
 +        <p className="mt-2 flex items-start gap-1 text-sm text-ink-2">
 +          <MapPin className="mt-0.5 size-3.5 shrink-0 text-ink-3" />
@@ -14507,16 +14694,23 @@ index 000000000..1188a1fd2
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PackageCard.tsx b/client/zjsearch/src/features/results/cards/PackageCard.tsx
 new file mode 100644
-index 000000000..ad99555c2
+index 000000000..ce2b7d93a
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PackageCard.tsx
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,128 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Calendar, Code, ExternalLink, Scale, Star, User } from "lucide-react";
 +import type { ReactNode } from "react";
 +import { CapChip } from "@/components/CapChip.tsx";
-+import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
++import {
++  type CardProps,
++  EnginesLine,
++  PrettyUrl,
++  ResultArticle,
++  Snippet,
++  Title,
++} from "@/features/results/cardParts.tsx";
 +import { formatDate } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { CHIP, CHIP_HOVER, META_ROW } from "@/lib/styles.ts";
@@ -14591,13 +14785,7 @@ index 000000000..ad99555c2
 +          {result.version ? <span key="version">v{result.version}</span> : null}
 +        </div>
 +      ) : null}
-+      {result.content_html ? (
-+        <p
-+          className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
-+          dangerouslySetInnerHTML={{ __html: result.content_html }}
-+          dir="auto"
-+        />
-+      ) : null}
++      {result.content_html ? <Snippet className="mt-1.5 max-w-prose" contentHtml={result.content_html} /> : null}
 +      {result.tags && result.tags.length > 0 ? (
 +        <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
 +          {result.tags.slice(0, tagsExpanded ? result.tags.length : 4).map((tag) => (
@@ -14640,10 +14828,10 @@ index 000000000..ad99555c2
 +}
 diff --git a/client/zjsearch/src/features/results/cards/PaperCard.tsx b/client/zjsearch/src/features/results/cards/PaperCard.tsx
 new file mode 100644
-index 000000000..c8cf3a117
+index 000000000..d441fb590
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/PaperCard.tsx
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,191 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Activity, BookOpen, Calendar, ExternalLink, FileText, Fingerprint, Quote, User } from "lucide-react";
@@ -14655,6 +14843,7 @@ index 000000000..c8cf3a117
 +  PrettyUrl,
 +  ResultArticle,
 +  ResultLink,
++  Snippet,
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
@@ -14747,13 +14936,7 @@ index 000000000..c8cf3a117
 +              ))}
 +            </p>
 +          ) : null}
-+          {result.content_html ? (
-+            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
-+              dangerouslySetInnerHTML={{ __html: result.content_html }}
-+              dir="auto"
-+            />
-+          ) : null}
++          {result.content_html ? <Snippet className="mt-1.5" contentHtml={result.content_html} /> : null}
 +          {hasFooter ? (
 +            // two stacked rows: actions + DOI, then topic tags as pills
 +            // with a +N fold - nothing truncates against its neighbours
@@ -14842,10 +15025,10 @@ index 000000000..c8cf3a117
 +}
 diff --git a/client/zjsearch/src/features/results/cards/ProductCard.tsx b/client/zjsearch/src/features/results/cards/ProductCard.tsx
 new file mode 100644
-index 000000000..ea14f530e
+index 000000000..2f9d7d494
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/ProductCard.tsx
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,61 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Globe, Tag, Truck } from "lucide-react";
@@ -14856,6 +15039,7 @@ index 000000000..ea14f530e
 +  PrettyUrl,
 +  ResultArticle,
 +  ResultLink,
++  Snippet,
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
@@ -14894,13 +15078,7 @@ index 000000000..ea14f530e
 +              </span>
 +            ) : null}
 +          </div>
-+          {result.content_html ? (
-+            <p
-+              className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
-+              dangerouslySetInnerHTML={{ __html: result.content_html }}
-+              dir="auto"
-+            />
-+          ) : null}
++          {result.content_html ? <Snippet className="mt-1.5" contentHtml={result.content_html} /> : null}
 +        </div>
 +        {result.thumbnail ? (
 +          <ResultLink className="ms-auto shrink-0 self-start" globals={globals} result={result}>
@@ -14967,14 +15145,21 @@ index 000000000..6d356178d
 +// whole card subtree
 diff --git a/client/zjsearch/src/features/results/cards/TorrentCard.tsx b/client/zjsearch/src/features/results/cards/TorrentCard.tsx
 new file mode 100644
-index 000000000..7489c9501
+index 000000000..02cbb8b7d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/TorrentCard.tsx
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,93 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { ArrowDown, ArrowUp, Calendar, Download, FileText, Magnet, Package } from "lucide-react";
-+import { type CardProps, EnginesLine, PrettyUrl, ResultArticle, Title } from "@/features/results/cardParts.tsx";
++import {
++  type CardProps,
++  EnginesLine,
++  PrettyUrl,
++  ResultArticle,
++  Snippet,
++  Title,
++} from "@/features/results/cardParts.tsx";
 +import { formatDate, formatFilesize } from "@/lib/format.ts";
 +import { useT } from "@/lib/i18n.ts";
 +import { CHIP, META_ROW } from "@/lib/styles.ts";
@@ -15042,13 +15227,7 @@ index 000000000..7489c9501
 +              </span>
 +            ) : null}
 +          </div>
-+          {result.content_html ? (
-+            <p
-+              className="mt-1.5 line-clamp-2 max-w-prose text-sm leading-relaxed text-ink-2"
-+              dangerouslySetInnerHTML={{ __html: result.content_html }}
-+              dir="auto"
-+            />
-+          ) : null}
++          {result.content_html ? <Snippet className="mt-1.5 max-w-prose" contentHtml={result.content_html} /> : null}
 +          {result.torrentfile ? (
 +            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
 +              <a className={`${CHIP} text-ink-2 transition-colors hover:text-ink`} href={result.torrentfile}>
@@ -15065,10 +15244,10 @@ index 000000000..7489c9501
 +}
 diff --git a/client/zjsearch/src/features/results/cards/VideoCard.tsx b/client/zjsearch/src/features/results/cards/VideoCard.tsx
 new file mode 100644
-index 000000000..fa568332c
+index 000000000..9f83ce7b0
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/cards/VideoCard.tsx
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,96 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Play } from "lucide-react";
@@ -15081,6 +15260,7 @@ index 000000000..fa568332c
 +  PrettyUrl,
 +  ResultArticle,
 +  ResultLink,
++  Snippet,
 +  Thumb,
 +  Title,
 +} from "@/features/results/cardParts.tsx";
@@ -15108,11 +15288,7 @@ index 000000000..fa568332c
 +              <MediaPreview src={result.iframe_src ?? ""} video />
 +            </div>
 +          ) : null}
-+          <p
-+            className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-2"
-+            dangerouslySetInnerHTML={{ __html: result.content_html || t("no_description") }}
-+            dir="auto"
-+          />
++          <Snippet className="mt-1.5" contentHtml={result.content_html || t("no_description")} />
 +        </div>
 +        {result.thumbnail ? (
 +          // the player replaces the thumbnail in place - same behaviour as
