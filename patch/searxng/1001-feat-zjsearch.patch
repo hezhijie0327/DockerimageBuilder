@@ -229,10 +229,10 @@ index 000000000..2d3b19b28
 +Licensor: Zhijie He
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 000000000..7ce136026
+index 000000000..707bd913e
 --- /dev/null
 +++ b/client/zjsearch/README.rst
-@@ -0,0 +1,305 @@
+@@ -0,0 +1,340 @@
 +=====
 +zjsearch
 +=====
@@ -439,6 +439,41 @@ index 000000000..7ce136026
 +  the streamed results shell can pre-warm it with an inline ``import()``
 +  while the engines run. If you rename that chunk, update
 +  ``results.html`` in the same change.
++
++AI Overview (optional)
++======================
++
++The whole-page AI answer is **off by default**.  Enable it in the instance
++settings (``zjsearch.ai``); ``searx/zjsearch_ai.py`` drives the official
++SDK of the chosen dialect (``openai`` / ``anthropic`` / ``google-genai``,
++pinned in ``requirements.txt``).  ``base_url`` is used **exactly as
++configured** — each SDK appends its own method paths, so the value follows
++the SDK's own convention:
++
++.. code-block:: yaml
++
++   zjsearch:
++     ai:
++       enabled: true
++       sdk: openai_chat_completions  # openai_chat_completions | openai_responses | anthropic | gemini
++       base_url: "https://api.openai.com/v1"                    # openai dialects
++       # base_url: "https://api.anthropic.com"                  # anthropic -- no /v1
++       # base_url: "https://generativelanguage.googleapis.com"  # gemini (a gateway
++       #                                                        # prefix like .../gemini works too)
++       api_key: ""   # or the ZJSEARCH_AI_KEY environment variable
++       model: "gpt-..."
++
++``params`` carries the chosen SDK's ``create()`` kwargs (``max_tokens``
++translates to each API's own key; ``temperature`` stays opt-in) and
++``extra_body`` / ``extra_headers`` pass through 1:1 as the
++provider-specific escape hatches.  The stream protocol and the client
++card live in ``features/results/AiSummary.tsx``.
++
++Which dialect for which provider?  Aggregators (aihubmix, openrouter,
++inferera, …) expose **OpenAI-compatible routes for every model** —
++Claude and Gemini included — so ``openai_chat_completions`` covers them
++all.  The ``anthropic`` / ``gemini`` dialects matter for the official
++APIs (or gateways that only speak those protocols).
 +
 +Code organization & conventions
 +===============================
@@ -667,10 +702,10 @@ index 000000000..e3a2db3a3
 +}
 diff --git a/client/zjsearch/dev-settings.yml b/client/zjsearch/dev-settings.yml
 new file mode 100644
-index 000000000..bf4f88d9f
+index 000000000..691b8217b
 --- /dev/null
 +++ b/client/zjsearch/dev-settings.yml
-@@ -0,0 +1,135 @@
+@@ -0,0 +1,158 @@
 +# zjsearch theme dev instance settings (tracked; carries LAN-specific values
 +# such as the outgoing proxy).
 +# Run with:
@@ -691,6 +726,10 @@ index 000000000..bf4f88d9f
 +    - csv
 +    - json
 +    - rss
++  # upstream default is "" (favicons off) -- with a resolver set, the
++  # favicon field populates across the theme (card URL rows, grid tiles,
++  # AI overview citation panels)
++  favicon_resolver: duckduckgo
 +
 +ui:
 +  default_theme: zjsearch
@@ -795,23 +834,42 @@ index 000000000..bf4f88d9f
 +    shortcut: zja
 +    disabled: false
 +
-+# per-result AI summaries (Kagi-style on-demand Summarize) -- dev points at
-+# the local LM Studio endpoint (any OpenAI-compatible server works)
++# the whole-page AI Overview (features/results/AiSummary.tsx) -- dev points
++# at the local LM Studio; the key travels via the ZJSEARCH_AI_KEY env so it
++# stays out of the repository.  base_url goes to the SDK exactly as written
++# (each SDK appends its own method paths):
++#   openai_chat_completions / openai_responses -> https://api.openai.com/v1
++#   anthropic -> https://api.anthropic.com                     (no /v1)
++#   gemini    -> https://generativelanguage.googleapis.com     (gateway
++#                prefixes like https://gw.example.com/gemini work too)
++# aggregators (aihubmix, openrouter, inferera, ...) expose OpenAI-compatible
++# routes for every model -- the openai dialect covers them all.
 +zjsearch:
 +  ai:
 +    enabled: true
-+    url: "http://localhost:1234/v1/chat/completions"
-+    key: "sk-lm-9uvISRZm:EdX6ZjoIFTUYSQHitJ4h"
++    sdk: openai_chat_completions
++    base_url: "http://localhost:1234/v1"
++    api_key: ""
 +    model: "qwen/qwen3.6-35b-a3b"
-+    extra_body:
++    # online examples -- swap sdk/base_url/model and the ZJSEARCH_AI_KEY:
++    #   sdk: openai_chat_completions
++    #   base_url: "https://api.openai.com/v1"
++    #   model: "gpt-..."
++    #   sdk: anthropic
++    #   base_url: "https://api.anthropic.com"
++    #   model: "claude-..."
++    #   sdk: gemini
++    #   base_url: "https://generativelanguage.googleapis.com"
++    #   model: "gemini-..."
++    extra_body:  # LM Studio / vLLM only -- drop it for online providers
 +      chat_template_kwargs:
 +        enable_thinking: false
 diff --git a/client/zjsearch/make-patch.ps1 b/client/zjsearch/make-patch.ps1
 new file mode 100644
-index 000000000..0e71d2c77
+index 000000000..d9c88ffc5
 --- /dev/null
 +++ b/client/zjsearch/make-patch.ps1
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,72 @@
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine. PowerShell twin of
 +# make-patch.sh - keep the two in sync.
@@ -825,7 +883,8 @@ index 000000000..0e71d2c77
 +# origin/master is fetched from origin first), so the patch carries the whole
 +# theme delta relative to master. The diff runs against the working tree, so
 +# uncommitted edits are included (untracked files are not). Included paths:
-+# client/zjsearch, searx/templates/zjsearch and every searx/ python change
++# client/zjsearch, searx/templates/zjsearch, requirements.txt and every
++# searx/ python change
 +# (searx/static is excluded) - the templates alone are not enough: the
 +# special-query answers (stats/hash/self-info/time-zone/random) carry their
 +# structured *data* payloads from the python side, and new templates running
@@ -871,7 +930,7 @@ index 000000000..0e71d2c77
 +
 +# byte-exact redirect through cmd: PowerShell's own ">" re-encodes git output
 +# (UTF-16 / BOM), which git apply would reject
-+cmd /c "git diff --text $Base -- client/zjsearch searx `"(exclude)searx/static`" > `"$Out`""
++cmd /c "git diff --text $Base -- client/zjsearch searx requirements.txt `"(exclude)searx/static`" > `"$Out`""
 +
 +$content = Get-Content $Out -Raw
 +$files = ([regex]::Matches($content, "(?m)^diff --git")).Count
@@ -885,10 +944,10 @@ index 000000000..0e71d2c77
 +}
 diff --git a/client/zjsearch/make-patch.sh b/client/zjsearch/make-patch.sh
 new file mode 100644
-index 000000000..8a0c669a7
+index 000000000..72e54a81a
 --- /dev/null
 +++ b/client/zjsearch/make-patch.sh
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,62 @@
 +#!/usr/bin/env bash
 +# Export the zjsearch theme changes (client sources + server data templates)
 +# as a single patch to apply on another machine:
@@ -902,7 +961,8 @@ index 000000000..8a0c669a7
 +# origin/master is fetched from origin first), so the patch carries the whole
 +# theme delta relative to master. The diff runs against the working tree, so
 +# uncommitted edits are included (untracked files are not). Included paths:
-+# client/zjsearch, searx/templates/zjsearch and every searx/ python change
++# client/zjsearch, searx/templates/zjsearch, requirements.txt and every
++# searx/ python change
 +# (searx/static is excluded) - the templates alone are not enough: the
 +# special-query answers (stats/hash/self-info/time-zone/random) carry their
 +# structured *data* payloads from the python side, and new templates running
@@ -941,7 +1001,7 @@ index 000000000..8a0c669a7
 +
 +cd "$(dirname "$0")/../.."
 +
-+git diff --text "$base" -- client/zjsearch searx ':(exclude)searx/static' > "$out"
++git diff --text "$base" -- client/zjsearch searx requirements.txt ':(exclude)searx/static' > "$out"
 +
 +files=$(grep -c '^diff --git' "$out" || true)
 +if [ "$files" = "0" ]; then
@@ -952,10 +1012,10 @@ index 000000000..8a0c669a7
 +grep '^diff --git' "$out" | sed 's/^diff --git a\///; s/ b\/.*//; s/^/  /'
 diff --git a/client/zjsearch/package-lock.json b/client/zjsearch/package-lock.json
 new file mode 100644
-index 000000000..884ea51ab
+index 000000000..87892ce68
 --- /dev/null
 +++ b/client/zjsearch/package-lock.json
-@@ -0,0 +1,5741 @@
+@@ -0,0 +1,6899 @@
 +{
 +  "name": "@hezhijie0327/zjsearch",
 +  "version": "0.1.0",
@@ -969,6 +1029,7 @@ index 000000000..884ea51ab
 +      "dependencies": {
 +        "clsx": "^2.1.1",
 +        "lucide-react": "^1.45.0",
++        "mermaid": "^12.0.0",
 +        "ol": "^10.10.0",
 +        "react": "^19.2.4",
 +        "react-dom": "^19.2.4",
@@ -991,6 +1052,19 @@ index 000000000..884ea51ab
 +        "tailwindcss": "^4.1.18",
 +        "typescript": "~5.9.3",
 +        "vite": "^8.2.2"
++      }
++    },
++    "node_modules/@antfu/install-pkg": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmmirror.com/@antfu/install-pkg/-/install-pkg-2.1.0.tgz",
++      "integrity": "sha512-sdg9NxU3zR4Mnawfbc/x6GB5Wf17WYud5qOuEuxXjaKpYpMkISSJEjItGebXJ2bQ4DIcly4NYH23mtkGJjvKUw==",
++      "license": "MIT",
++      "dependencies": {
++        "package-manager-detector": "^1.8.0",
++        "tinyexec": "^1.3.1"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/antfu"
 +      }
 +    },
 +    "node_modules/@biomejs/biome": {
@@ -1168,6 +1242,63 @@ index 000000000..884ea51ab
 +        "node": ">=14.21.3"
 +      }
 +    },
++    "node_modules/@braintree/sanitize-url": {
++      "version": "7.1.2",
++      "resolved": "https://registry.npmmirror.com/@braintree/sanitize-url/-/sanitize-url-7.1.2.tgz",
++      "integrity": "sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==",
++      "license": "MIT"
++    },
++    "node_modules/@chevrotain/cst-dts-gen": {
++      "version": "11.1.2",
++      "resolved": "https://registry.npmmirror.com/@chevrotain/cst-dts-gen/-/cst-dts-gen-11.1.2.tgz",
++      "integrity": "sha512-XTsjvDVB5nDZBQB8o0o/0ozNelQtn2KrUVteIHSlPd2VAV2utEb6JzyCJaJ8tGxACR4RiBNWy5uYUHX2eji88Q==",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@chevrotain/gast": "11.1.2",
++        "@chevrotain/types": "11.1.2",
++        "lodash-es": "4.17.23"
++      }
++    },
++    "node_modules/@chevrotain/cst-dts-gen/node_modules/lodash-es": {
++      "version": "4.17.23",
++      "resolved": "https://registry.npmmirror.com/lodash-es/-/lodash-es-4.17.23.tgz",
++      "integrity": "sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg==",
++      "license": "MIT"
++    },
++    "node_modules/@chevrotain/gast": {
++      "version": "11.1.2",
++      "resolved": "https://registry.npmmirror.com/@chevrotain/gast/-/gast-11.1.2.tgz",
++      "integrity": "sha512-Z9zfXR5jNZb1Hlsd/p+4XWeUFugrHirq36bKzPWDSIacV+GPSVXdk+ahVWZTwjhNwofAWg/sZg58fyucKSQx5g==",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@chevrotain/types": "11.1.2",
++        "lodash-es": "4.17.23"
++      }
++    },
++    "node_modules/@chevrotain/gast/node_modules/lodash-es": {
++      "version": "4.17.23",
++      "resolved": "https://registry.npmmirror.com/lodash-es/-/lodash-es-4.17.23.tgz",
++      "integrity": "sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg==",
++      "license": "MIT"
++    },
++    "node_modules/@chevrotain/regexp-to-ast": {
++      "version": "11.1.2",
++      "resolved": "https://registry.npmmirror.com/@chevrotain/regexp-to-ast/-/regexp-to-ast-11.1.2.tgz",
++      "integrity": "sha512-nMU3Uj8naWer7xpZTYJdxbAs6RIv/dxYzkYU8GSwgUtcAAlzjcPfX1w+RKRcYG8POlzMeayOQ/znfwxEGo5ulw==",
++      "license": "Apache-2.0"
++    },
++    "node_modules/@chevrotain/types": {
++      "version": "11.1.2",
++      "resolved": "https://registry.npmmirror.com/@chevrotain/types/-/types-11.1.2.tgz",
++      "integrity": "sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw==",
++      "license": "Apache-2.0"
++    },
++    "node_modules/@chevrotain/utils": {
++      "version": "11.1.2",
++      "resolved": "https://registry.npmmirror.com/@chevrotain/utils/-/utils-11.1.2.tgz",
++      "integrity": "sha512-4mudFAQ6H+MqBTfqLmU7G1ZwRzCLfJEooL/fsF6rCX5eePMbGhoy5n4g+G4vlh2muDcsCTJtL+uKbOzWxs5LHA==",
++      "license": "Apache-2.0"
++    },
 +    "node_modules/@emnapi/runtime": {
 +      "version": "1.11.3",
 +      "resolved": "https://registry.npmmirror.com/@emnapi/runtime/-/runtime-1.11.3.tgz",
@@ -1233,6 +1364,23 @@ index 000000000..884ea51ab
 +      "license": "MIT",
 +      "dependencies": {
 +        "tslib": "^2.8.0"
++      }
++    },
++    "node_modules/@iconify/types": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmmirror.com/@iconify/types/-/types-2.0.0.tgz",
++      "integrity": "sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==",
++      "license": "MIT"
++    },
++    "node_modules/@iconify/utils": {
++      "version": "3.1.7",
++      "resolved": "https://registry.npmmirror.com/@iconify/utils/-/utils-3.1.7.tgz",
++      "integrity": "sha512-JZHlwdID+dy+lTgbYC8NEC4zeugqeYsc6jewvzb4c58kHauJn+X7rNwQjxz5p2qSjqaEeQoLkCIQ9v/H4PK0/w==",
++      "license": "MIT",
++      "dependencies": {
++        "@antfu/install-pkg": "^2.0.1",
++        "@iconify/types": "^2.0.0",
++        "import-meta-resolve": "^4.2.0"
 +      }
 +    },
 +    "node_modules/@img/colour": {
@@ -1858,6 +2006,18 @@ index 000000000..884ea51ab
 +      "dependencies": {
 +        "@jridgewell/resolve-uri": "^3.1.0",
 +        "@jridgewell/sourcemap-codec": "^1.4.14"
++      }
++    },
++    "node_modules/@mermaid-js/parser": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmmirror.com/@mermaid-js/parser/-/parser-2.0.0.tgz",
++      "integrity": "sha512-K8BeapFUfrfxbRAUQAG5oBOCwo1+bNWzaVnPxTCutkfrTBn6T/j91FIhqxWJ32SUeQ9T3iy1zcmPZ5ROZEvDrg==",
++      "license": "MIT",
++      "dependencies": {
++        "@chevrotain/types": "~11.1.2"
++      },
++      "engines": {
++        "node": ">=22.12.0"
 +      }
 +    },
 +    "node_modules/@opentelemetry/api": {
@@ -2941,6 +3101,259 @@ index 000000000..884ea51ab
 +        "vite": "^5.2.0 || ^6 || ^7 || ^8"
 +      }
 +    },
++    "node_modules/@types/d3": {
++      "version": "7.4.3",
++      "resolved": "https://registry.npmmirror.com/@types/d3/-/d3-7.4.3.tgz",
++      "integrity": "sha512-lZXZ9ckh5R8uiFVt8ogUNf+pIrK4EsWrx2Np75WvF/eTpJ0FMHNhjXk8CKEx/+gpHbNQyJWehbFaTvqmHWB3ww==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-array": "*",
++        "@types/d3-axis": "*",
++        "@types/d3-brush": "*",
++        "@types/d3-chord": "*",
++        "@types/d3-color": "*",
++        "@types/d3-contour": "*",
++        "@types/d3-delaunay": "*",
++        "@types/d3-dispatch": "*",
++        "@types/d3-drag": "*",
++        "@types/d3-dsv": "*",
++        "@types/d3-ease": "*",
++        "@types/d3-fetch": "*",
++        "@types/d3-force": "*",
++        "@types/d3-format": "*",
++        "@types/d3-geo": "*",
++        "@types/d3-hierarchy": "*",
++        "@types/d3-interpolate": "*",
++        "@types/d3-path": "*",
++        "@types/d3-polygon": "*",
++        "@types/d3-quadtree": "*",
++        "@types/d3-random": "*",
++        "@types/d3-scale": "*",
++        "@types/d3-scale-chromatic": "*",
++        "@types/d3-selection": "*",
++        "@types/d3-shape": "*",
++        "@types/d3-time": "*",
++        "@types/d3-time-format": "*",
++        "@types/d3-timer": "*",
++        "@types/d3-transition": "*",
++        "@types/d3-zoom": "*"
++      }
++    },
++    "node_modules/@types/d3-array": {
++      "version": "3.2.2",
++      "resolved": "https://registry.npmmirror.com/@types/d3-array/-/d3-array-3.2.2.tgz",
++      "integrity": "sha512-hOLWVbm7uRza0BYXpIIW5pxfrKe0W+D5lrFiAEYR+pb6w3N2SwSMaJbXdUfSEv+dT4MfHBLtn5js0LAWaO6otw==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-axis": {
++      "version": "3.0.6",
++      "resolved": "https://registry.npmmirror.com/@types/d3-axis/-/d3-axis-3.0.6.tgz",
++      "integrity": "sha512-pYeijfZuBd87T0hGn0FO1vQ/cgLk6E1ALJjfkC0oJ8cbwkZl3TpgS8bVBLZN+2jjGgg38epgxb2zmoGtSfvgMw==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-selection": "*"
++      }
++    },
++    "node_modules/@types/d3-brush": {
++      "version": "3.0.6",
++      "resolved": "https://registry.npmmirror.com/@types/d3-brush/-/d3-brush-3.0.6.tgz",
++      "integrity": "sha512-nH60IZNNxEcrh6L1ZSMNA28rj27ut/2ZmI3r96Zd+1jrZD++zD3LsMIjWlvg4AYrHn/Pqz4CF3veCxGjtbqt7A==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-selection": "*"
++      }
++    },
++    "node_modules/@types/d3-chord": {
++      "version": "3.0.6",
++      "resolved": "https://registry.npmmirror.com/@types/d3-chord/-/d3-chord-3.0.6.tgz",
++      "integrity": "sha512-LFYWWd8nwfwEmTZG9PfQxd17HbNPksHBiJHaKuY1XeqscXacsS2tyoo6OdRsjf+NQYeB6XrNL3a25E3gH69lcg==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-color": {
++      "version": "3.1.3",
++      "resolved": "https://registry.npmmirror.com/@types/d3-color/-/d3-color-3.1.3.tgz",
++      "integrity": "sha512-iO90scth9WAbmgv7ogoq57O9YpKmFBbmoEoCHDB2xMBY0+/KVrqAaCDyCE16dUspeOvIxFFRI+0sEtqDqy2b4A==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-contour": {
++      "version": "3.0.6",
++      "resolved": "https://registry.npmmirror.com/@types/d3-contour/-/d3-contour-3.0.6.tgz",
++      "integrity": "sha512-BjzLgXGnCWjUSYGfH1cpdo41/hgdWETu4YxpezoztawmqsvCeep+8QGfiY6YbDvfgHz/DkjeIkkZVJavB4a3rg==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-array": "*",
++        "@types/geojson": "*"
++      }
++    },
++    "node_modules/@types/d3-delaunay": {
++      "version": "6.0.4",
++      "resolved": "https://registry.npmmirror.com/@types/d3-delaunay/-/d3-delaunay-6.0.4.tgz",
++      "integrity": "sha512-ZMaSKu4THYCU6sV64Lhg6qjf1orxBthaC161plr5KuPHo3CNm8DTHiLw/5Eq2b6TsNP0W0iJrUOFscY6Q450Hw==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-dispatch": {
++      "version": "3.0.7",
++      "resolved": "https://registry.npmmirror.com/@types/d3-dispatch/-/d3-dispatch-3.0.7.tgz",
++      "integrity": "sha512-5o9OIAdKkhN1QItV2oqaE5KMIiXAvDWBDPrD85e58Qlz1c1kI/J0NcqbEG88CoTwJrYe7ntUCVfeUl2UJKbWgA==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-drag": {
++      "version": "3.0.7",
++      "resolved": "https://registry.npmmirror.com/@types/d3-drag/-/d3-drag-3.0.7.tgz",
++      "integrity": "sha512-HE3jVKlzU9AaMazNufooRJ5ZpWmLIoc90A37WU2JMmeq28w1FQqCZswHZ3xR+SuxYftzHq6WU6KJHvqxKzTxxQ==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-selection": "*"
++      }
++    },
++    "node_modules/@types/d3-dsv": {
++      "version": "3.0.7",
++      "resolved": "https://registry.npmmirror.com/@types/d3-dsv/-/d3-dsv-3.0.7.tgz",
++      "integrity": "sha512-n6QBF9/+XASqcKK6waudgL0pf/S5XHPPI8APyMLLUHd8NqouBGLsU8MgtO7NINGtPBtk9Kko/W4ea0oAspwh9g==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-ease": {
++      "version": "3.0.2",
++      "resolved": "https://registry.npmmirror.com/@types/d3-ease/-/d3-ease-3.0.2.tgz",
++      "integrity": "sha512-NcV1JjO5oDzoK26oMzbILE6HW7uVXOHLQvHshBUW4UMdZGfiY6v5BeQwh9a9tCzv+CeefZQHJt5SRgK154RtiA==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-fetch": {
++      "version": "3.0.7",
++      "resolved": "https://registry.npmmirror.com/@types/d3-fetch/-/d3-fetch-3.0.7.tgz",
++      "integrity": "sha512-fTAfNmxSb9SOWNB9IoG5c8Hg6R+AzUHDRlsXsDZsNp6sxAEOP0tkP3gKkNSO/qmHPoBFTxNrjDprVHDQDvo5aA==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-dsv": "*"
++      }
++    },
++    "node_modules/@types/d3-force": {
++      "version": "3.0.10",
++      "resolved": "https://registry.npmmirror.com/@types/d3-force/-/d3-force-3.0.10.tgz",
++      "integrity": "sha512-ZYeSaCF3p73RdOKcjj+swRlZfnYpK1EbaDiYICEEp5Q6sUiqFaFQ9qgoshp5CzIyyb/yD09kD9o2zEltCexlgw==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-format": {
++      "version": "3.0.4",
++      "resolved": "https://registry.npmmirror.com/@types/d3-format/-/d3-format-3.0.4.tgz",
++      "integrity": "sha512-fALi2aI6shfg7vM5KiR1wNJnZ7r6UuggVqtDA+xiEdPZQwy/trcQaHnwShLuLdta2rTymCNpxYTiMZX/e09F4g==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-geo": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmmirror.com/@types/d3-geo/-/d3-geo-3.1.1.tgz",
++      "integrity": "sha512-65Emv9fQiQQqphLlRkuQ5ypPsOmWPhtBGCMv61JDPEPMvsx+gzhGf74yw1a78xFKPj6zw4AgQICJoQv0vK9M2w==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/geojson": "*"
++      }
++    },
++    "node_modules/@types/d3-hierarchy": {
++      "version": "3.1.7",
++      "resolved": "https://registry.npmmirror.com/@types/d3-hierarchy/-/d3-hierarchy-3.1.7.tgz",
++      "integrity": "sha512-tJFtNoYBtRtkNysX1Xq4sxtjK8YgoWUNpIiUee0/jHGRwqvzYxkq0hGVbbOGSz+JgFxxRu4K8nb3YpG3CMARtg==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-interpolate": {
++      "version": "3.0.4",
++      "resolved": "https://registry.npmmirror.com/@types/d3-interpolate/-/d3-interpolate-3.0.4.tgz",
++      "integrity": "sha512-mgLPETlrpVV1YRJIglr4Ez47g7Yxjl1lj7YKsiMCb27VJH9W8NVM6Bb9d8kkpG/uAQS5AmbA48q2IAolKKo1MA==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-color": "*"
++      }
++    },
++    "node_modules/@types/d3-path": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmmirror.com/@types/d3-path/-/d3-path-3.1.1.tgz",
++      "integrity": "sha512-VMZBYyQvbGmWyWVea0EHs/BwLgxc+MKi1zLDCONksozI4YJMcTt8ZEuIR4Sb1MMTE8MMW49v0IwI5+b7RmfWlg==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-polygon": {
++      "version": "3.0.2",
++      "resolved": "https://registry.npmmirror.com/@types/d3-polygon/-/d3-polygon-3.0.2.tgz",
++      "integrity": "sha512-ZuWOtMaHCkN9xoeEMr1ubW2nGWsp4nIql+OPQRstu4ypeZ+zk3YKqQT0CXVe/PYqrKpZAi+J9mTs05TKwjXSRA==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-quadtree": {
++      "version": "3.0.6",
++      "resolved": "https://registry.npmmirror.com/@types/d3-quadtree/-/d3-quadtree-3.0.6.tgz",
++      "integrity": "sha512-oUzyO1/Zm6rsxKRHA1vH0NEDG58HrT5icx/azi9MF1TWdtttWl0UIUsjEQBBh+SIkrpd21ZjEv7ptxWys1ncsg==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-random": {
++      "version": "3.0.4",
++      "resolved": "https://registry.npmmirror.com/@types/d3-random/-/d3-random-3.0.4.tgz",
++      "integrity": "sha512-UHYId5WTCx4L4YNel7NU00XUXXgvgpgZOvp10PuvsQENjMDXhh2RyFc0KBjO7B45ne4Ha1yVH7ii0vnzKkuzWA==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-scale": {
++      "version": "4.0.9",
++      "resolved": "https://registry.npmmirror.com/@types/d3-scale/-/d3-scale-4.0.9.tgz",
++      "integrity": "sha512-dLmtwB8zkAeO/juAMfnV+sItKjlsw2lKdZVVy6LRr0cBmegxSABiLEpGVmSJJ8O08i4+sGR6qQtb6WtuwJdvVw==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-time": "*"
++      }
++    },
++    "node_modules/@types/d3-scale-chromatic": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmmirror.com/@types/d3-scale-chromatic/-/d3-scale-chromatic-3.1.0.tgz",
++      "integrity": "sha512-iWMJgwkK7yTRmWqRB5plb1kadXyQ5Sj8V/zYlFGMUBbIPKQScw+Dku9cAAMgJG+z5GYDoMjWGLVOvjghDEFnKQ==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-selection": {
++      "version": "3.0.12",
++      "resolved": "https://registry.npmmirror.com/@types/d3-selection/-/d3-selection-3.0.12.tgz",
++      "integrity": "sha512-Qe/KWYhEiIIxGs7HrAAjMfShxKldx19SJtr5zu53f3afPsdZNz7HHtdTLXo/kqeiWNXVycI24kSnfzBYkTzpgw==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-shape": {
++      "version": "3.2.0",
++      "resolved": "https://registry.npmmirror.com/@types/d3-shape/-/d3-shape-3.2.0.tgz",
++      "integrity": "sha512-kVd74ta9eof3eJOvbNd1vGKS/XERRyQbT26Og63hIsvDO84cjD5gEOhsXf26w3FSoNlPVz84DOFcKv/oou+fMw==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-path": "*"
++      }
++    },
++    "node_modules/@types/d3-time": {
++      "version": "3.0.4",
++      "resolved": "https://registry.npmmirror.com/@types/d3-time/-/d3-time-3.0.4.tgz",
++      "integrity": "sha512-yuzZug1nkAAaBlBBikKZTgzCeA+k1uy4ZFwWANOfKw5z5LRhV0gNA7gNkKm7HoK+HRN0wX3EkxGk0fpbWhmB7g==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-time-format": {
++      "version": "4.0.3",
++      "resolved": "https://registry.npmmirror.com/@types/d3-time-format/-/d3-time-format-4.0.3.tgz",
++      "integrity": "sha512-5xg9rC+wWL8kdDj153qZcsJ0FWiFt0J5RB6LYUNZjwSnesfblqrI/bJ1wBdJ8OQfncgbJG5+2F+qfqnqyzYxyg==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-timer": {
++      "version": "3.0.2",
++      "resolved": "https://registry.npmmirror.com/@types/d3-timer/-/d3-timer-3.0.2.tgz",
++      "integrity": "sha512-Ps3T8E8dZDam6fUyNiMkekK3XUsaUEik+idO9/YjPtfj2qruF8tFBXS7XhtE4iIXBLxhmLjP3SXpLhVf21I9Lw==",
++      "license": "MIT"
++    },
++    "node_modules/@types/d3-transition": {
++      "version": "3.0.9",
++      "resolved": "https://registry.npmmirror.com/@types/d3-transition/-/d3-transition-3.0.9.tgz",
++      "integrity": "sha512-uZS5shfxzO3rGlu0cC3bjmMFKsXv+SmZZcgp0KD22ts4uGXp5EVYGzu/0YdwZeKmddhcAccYtREJKkPfXkZuCg==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-selection": "*"
++      }
++    },
++    "node_modules/@types/d3-zoom": {
++      "version": "3.0.8",
++      "resolved": "https://registry.npmmirror.com/@types/d3-zoom/-/d3-zoom-3.0.8.tgz",
++      "integrity": "sha512-iqMC4/YlFCSlO8+2Ii1GGGliCAY4XdeG748w5vQUbevlbDu0zSjH/+jojorQVBK/se0j6DUFNPBGSqD3YWYnDw==",
++      "license": "MIT",
++      "dependencies": {
++        "@types/d3-interpolate": "*",
++        "@types/d3-selection": "*"
++      }
++    },
 +    "node_modules/@types/debug": {
 +      "version": "4.1.13",
 +      "resolved": "https://registry.npmmirror.com/@types/debug/-/debug-4.1.13.tgz",
@@ -2964,6 +3377,12 @@ index 000000000..884ea51ab
 +      "dependencies": {
 +        "@types/estree": "*"
 +      }
++    },
++    "node_modules/@types/geojson": {
++      "version": "7946.0.16",
++      "resolved": "https://registry.npmmirror.com/@types/geojson/-/geojson-7946.0.16.tgz",
++      "integrity": "sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==",
++      "license": "MIT"
 +    },
 +    "node_modules/@types/hast": {
 +      "version": "3.0.5",
@@ -3024,6 +3443,13 @@ index 000000000..884ea51ab
 +        "@types/react": "^19.3.0"
 +      }
 +    },
++    "node_modules/@types/trusted-types": {
++      "version": "2.0.7",
++      "resolved": "https://registry.npmmirror.com/@types/trusted-types/-/trusted-types-2.0.7.tgz",
++      "integrity": "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==",
++      "license": "MIT",
++      "optional": true
++    },
 +    "node_modules/@types/unist": {
 +      "version": "3.0.3",
 +      "resolved": "https://registry.npmmirror.com/@types/unist/-/unist-3.0.3.tgz",
@@ -3035,6 +3461,16 @@ index 000000000..884ea51ab
 +      "resolved": "https://registry.npmmirror.com/@ungap/structured-clone/-/structured-clone-1.4.0.tgz",
 +      "integrity": "sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==",
 +      "license": "ISC"
++    },
++    "node_modules/@upsetjs/venn.js": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmmirror.com/@upsetjs/venn.js/-/venn.js-2.0.0.tgz",
++      "integrity": "sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw==",
++      "license": "MIT",
++      "optionalDependencies": {
++        "d3-selection": "^3.0.0",
++        "d3-transition": "^3.0.1"
++      }
 +    },
 +    "node_modules/@zarrita/storage": {
 +      "version": "0.2.0",
@@ -3249,6 +3685,26 @@ index 000000000..884ea51ab
 +        "url": "https://github.com/sponsors/wooorm"
 +      }
 +    },
++    "node_modules/chevrotain": {
++      "version": "11.1.2",
++      "resolved": "https://registry.npmmirror.com/chevrotain/-/chevrotain-11.1.2.tgz",
++      "integrity": "sha512-opLQzEVriiH1uUQ4Kctsd49bRoFDXGGSC4GUqj7pGyxM3RehRhvTlZJc1FL/Flew2p5uwxa1tUDWKzI4wNM8pg==",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@chevrotain/cst-dts-gen": "11.1.2",
++        "@chevrotain/gast": "11.1.2",
++        "@chevrotain/regexp-to-ast": "11.1.2",
++        "@chevrotain/types": "11.1.2",
++        "@chevrotain/utils": "11.1.2",
++        "lodash-es": "4.17.23"
++      }
++    },
++    "node_modules/chevrotain/node_modules/lodash-es": {
++      "version": "4.17.23",
++      "resolved": "https://registry.npmmirror.com/lodash-es/-/lodash-es-4.17.23.tgz",
++      "integrity": "sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg==",
++      "license": "MIT"
++    },
 +    "node_modules/chrome-launcher": {
 +      "version": "1.2.1",
 +      "resolved": "https://mirrors.cloud.tencent.com/npm/chrome-launcher/-/chrome-launcher-1.2.1.tgz",
@@ -3346,6 +3802,15 @@ index 000000000..884ea51ab
 +        "url": "https://github.com/sponsors/wooorm"
 +      }
 +    },
++    "node_modules/commander": {
++      "version": "7.2.0",
++      "resolved": "https://registry.npmmirror.com/commander/-/commander-7.2.0.tgz",
++      "integrity": "sha512-QrWXB+ZQSVPmIWIhtEO9H+gwHaMGYiF5ChvoJ+K9ZGHG/sVsa6yiesAD1GC/x46sET00Xlwo1u49RVVVzvcSkw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 10"
++      }
++    },
 +    "node_modules/configstore": {
 +      "version": "7.1.0",
 +      "resolved": "https://mirrors.cloud.tencent.com/npm/configstore/-/configstore-7.1.0.tgz",
@@ -3365,6 +3830,15 @@ index 000000000..884ea51ab
 +        "url": "https://github.com/sponsors/sindresorhus"
 +      }
 +    },
++    "node_modules/cose-base": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmmirror.com/cose-base/-/cose-base-1.0.3.tgz",
++      "integrity": "sha512-s9whTXInMSgAp/NVXVNuVxVKzGH2qck3aQlVHxDCdAEPgtMKwc4Wq6/QKhgdEdgbLSi9rBTAcPoRa6JpiG4ksg==",
++      "license": "MIT",
++      "dependencies": {
++        "layout-base": "^1.0.0"
++      }
++    },
 +    "node_modules/csp_evaluator": {
 +      "version": "1.1.8",
 +      "resolved": "https://mirrors.cloud.tencent.com/npm/csp_evaluator/-/csp_evaluator-1.1.8.tgz",
@@ -3376,6 +3850,511 @@ index 000000000..884ea51ab
 +      "version": "3.2.3",
 +      "resolved": "https://registry.npmmirror.com/csstype/-/csstype-3.2.3.tgz",
 +      "integrity": "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==",
++      "license": "MIT"
++    },
++    "node_modules/cytoscape": {
++      "version": "3.34.3",
++      "resolved": "https://registry.npmmirror.com/cytoscape/-/cytoscape-3.34.3.tgz",
++      "integrity": "sha512-yfYGhRcGAntq6YBD583j4n0Eg3jIxvWmZtz/5uz9UYkeIStSlMxuUja+ec5j3iBD8nv1rwaOAYMW09tBdkSeaQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10"
++      }
++    },
++    "node_modules/cytoscape-cose-bilkent": {
++      "version": "4.1.0",
++      "resolved": "https://registry.npmmirror.com/cytoscape-cose-bilkent/-/cytoscape-cose-bilkent-4.1.0.tgz",
++      "integrity": "sha512-wgQlVIUJF13Quxiv5e1gstZ08rnZj2XaLHGoFMYXz7SkNfCDOOteKBE6SYRfA9WxxI/iBc3ajfDoc6hb/MRAHQ==",
++      "license": "MIT",
++      "dependencies": {
++        "cose-base": "^1.0.0"
++      },
++      "peerDependencies": {
++        "cytoscape": "^3.2.0"
++      }
++    },
++    "node_modules/cytoscape-fcose": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmmirror.com/cytoscape-fcose/-/cytoscape-fcose-2.2.0.tgz",
++      "integrity": "sha512-ki1/VuRIHFCzxWNrsshHYPs6L7TvLu3DL+TyIGEsRcvVERmxokbf5Gdk7mFxZnTdiGtnA4cfSmjZJMviqSuZrQ==",
++      "license": "MIT",
++      "dependencies": {
++        "cose-base": "^2.2.0"
++      },
++      "peerDependencies": {
++        "cytoscape": "^3.2.0"
++      }
++    },
++    "node_modules/cytoscape-fcose/node_modules/cose-base": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmmirror.com/cose-base/-/cose-base-2.2.0.tgz",
++      "integrity": "sha512-AzlgcsCbUMymkADOJtQm3wO9S3ltPfYOFD5033keQn9NJzIbtnZj+UdBJe7DYml/8TdbtHJW3j58SOnKhWY/5g==",
++      "license": "MIT",
++      "dependencies": {
++        "layout-base": "^2.0.0"
++      }
++    },
++    "node_modules/cytoscape-fcose/node_modules/layout-base": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmmirror.com/layout-base/-/layout-base-2.0.1.tgz",
++      "integrity": "sha512-dp3s92+uNI1hWIpPGH3jK2kxE2lMjdXdr+DH8ynZHpd6PUlH6x6cbuXnoMmiNumznqaNO31xu9e79F0uuZ0JFg==",
++      "license": "MIT"
++    },
++    "node_modules/d3": {
++      "version": "7.9.0",
++      "resolved": "https://registry.npmmirror.com/d3/-/d3-7.9.0.tgz",
++      "integrity": "sha512-e1U46jVP+w7Iut8Jt8ri1YsPOvFpg46k+K8TpCb0P+zjCkjkPnV7WzfDJzMHy1LnA+wj5pLT1wjO901gLXeEhA==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-array": "3",
++        "d3-axis": "3",
++        "d3-brush": "3",
++        "d3-chord": "3",
++        "d3-color": "3",
++        "d3-contour": "4",
++        "d3-delaunay": "6",
++        "d3-dispatch": "3",
++        "d3-drag": "3",
++        "d3-dsv": "3",
++        "d3-ease": "3",
++        "d3-fetch": "3",
++        "d3-force": "3",
++        "d3-format": "3",
++        "d3-geo": "3",
++        "d3-hierarchy": "3",
++        "d3-interpolate": "3",
++        "d3-path": "3",
++        "d3-polygon": "3",
++        "d3-quadtree": "3",
++        "d3-random": "3",
++        "d3-scale": "4",
++        "d3-scale-chromatic": "3",
++        "d3-selection": "3",
++        "d3-shape": "3",
++        "d3-time": "3",
++        "d3-time-format": "4",
++        "d3-timer": "3",
++        "d3-transition": "3",
++        "d3-zoom": "3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-array": {
++      "version": "3.2.4",
++      "resolved": "https://registry.npmmirror.com/d3-array/-/d3-array-3.2.4.tgz",
++      "integrity": "sha512-tdQAmyA18i4J7wprpYq8ClcxZy3SC31QMeByyCFyRt7BVHdREQZ5lpzoe5mFEYZUWe+oq8HBvk9JjpibyEV4Jg==",
++      "license": "ISC",
++      "dependencies": {
++        "internmap": "1 - 2"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-axis": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmmirror.com/d3-axis/-/d3-axis-3.0.0.tgz",
++      "integrity": "sha512-IH5tgjV4jE/GhHkRV0HiVYPDtvfjHQlQfJHs0usq7M30XcSBvOotpmH1IgkcXsO/5gEQZD43B//fc7SRT5S+xw==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-brush": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmmirror.com/d3-brush/-/d3-brush-3.0.0.tgz",
++      "integrity": "sha512-ALnjWlVYkXsVIGlOsuWH1+3udkYFI48Ljihfnh8FZPF2QS9o+PzGLBslO0PjzVoHLZ2KCVgAM8NVkXPJB2aNnQ==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-dispatch": "1 - 3",
++        "d3-drag": "2 - 3",
++        "d3-interpolate": "1 - 3",
++        "d3-selection": "3",
++        "d3-transition": "3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-chord": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-chord/-/d3-chord-3.0.1.tgz",
++      "integrity": "sha512-VE5S6TNa+j8msksl7HwjxMHDM2yNK3XCkusIlpX5kwauBfXuyLAtNg9jCp/iHH61tgI4sb6R/EIMWCqEIdjT/g==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-path": "1 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-color": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmmirror.com/d3-color/-/d3-color-3.1.0.tgz",
++      "integrity": "sha512-zg/chbXyeBtMQ1LbD/WSoW2DpC3I0mpmPdW+ynRTj/x2DAWYrIY7qeZIHidozwV24m4iavr15lNwIwLxRmOxhA==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-contour": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmmirror.com/d3-contour/-/d3-contour-4.0.2.tgz",
++      "integrity": "sha512-4EzFTRIikzs47RGmdxbeUvLWtGedDUNkTcmzoeyg4sP/dvCexO47AaQL7VKy/gul85TOxw+IBgA8US2xwbToNA==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-array": "^3.2.0"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-delaunay": {
++      "version": "6.0.4",
++      "resolved": "https://registry.npmmirror.com/d3-delaunay/-/d3-delaunay-6.0.4.tgz",
++      "integrity": "sha512-mdjtIZ1XLAM8bm/hx3WwjfHt6Sggek7qH043O8KEjDXN40xi3vx/6pYSVTwLjEgiXQTbvaouWKynLBiUZ6SK6A==",
++      "license": "ISC",
++      "dependencies": {
++        "delaunator": "5"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-dispatch": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-dispatch/-/d3-dispatch-3.0.1.tgz",
++      "integrity": "sha512-rzUyPU/S7rwUflMyLc1ETDeBj0NRuHKKAcvukozwhshr6g6c5d8zh4c2gQjY2bZ0dXeGLWc1PF174P2tVvKhfg==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-drag": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmmirror.com/d3-drag/-/d3-drag-3.0.0.tgz",
++      "integrity": "sha512-pWbUJLdETVA8lQNJecMxoXfH6x+mO2UQo8rSmZ+QqxcbyA3hfeprFgIT//HW2nlHChWeIIMwS2Fq+gEARkhTkg==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-dispatch": "1 - 3",
++        "d3-selection": "3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-dsv": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-dsv/-/d3-dsv-3.0.1.tgz",
++      "integrity": "sha512-UG6OvdI5afDIFP9w4G0mNq50dSOsXHJaRE8arAS5o9ApWnIElp8GZw1Dun8vP8OyHOZ/QJUKUJwxiiCCnUwm+Q==",
++      "license": "ISC",
++      "dependencies": {
++        "commander": "7",
++        "iconv-lite": "0.6",
++        "rw": "1"
++      },
++      "bin": {
++        "csv2json": "bin/dsv2json.js",
++        "csv2tsv": "bin/dsv2dsv.js",
++        "dsv2dsv": "bin/dsv2dsv.js",
++        "dsv2json": "bin/dsv2json.js",
++        "json2csv": "bin/json2dsv.js",
++        "json2dsv": "bin/json2dsv.js",
++        "json2tsv": "bin/json2dsv.js",
++        "tsv2csv": "bin/dsv2dsv.js",
++        "tsv2json": "bin/dsv2json.js"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-ease": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-ease/-/d3-ease-3.0.1.tgz",
++      "integrity": "sha512-wR/XK3D3XcLIZwpbvQwQ5fK+8Ykds1ip7A2Txe0yxncXSdq1L9skcG7blcedkOX+ZcgxGAmLX1FrRGbADwzi0w==",
++      "license": "BSD-3-Clause",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-fetch": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-fetch/-/d3-fetch-3.0.1.tgz",
++      "integrity": "sha512-kpkQIM20n3oLVBKGg6oHrUchHM3xODkTzjMoj7aWQFq5QEM+R6E4WkzT5+tojDY7yjez8KgCBRoj4aEr99Fdqw==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-dsv": "1 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-force": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmmirror.com/d3-force/-/d3-force-3.0.0.tgz",
++      "integrity": "sha512-zxV/SsA+U4yte8051P4ECydjD/S+qeYtnaIyAs9tgHCqfguma/aAQDjo85A9Z6EKhBirHRJHXIgJUlffT4wdLg==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-dispatch": "1 - 3",
++        "d3-quadtree": "1 - 3",
++        "d3-timer": "1 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-format": {
++      "version": "3.1.2",
++      "resolved": "https://registry.npmmirror.com/d3-format/-/d3-format-3.1.2.tgz",
++      "integrity": "sha512-AJDdYOdnyRDV5b6ArilzCPPwc1ejkHcoyFarqlPqT7zRYjhavcT3uSrqcMvsgh2CgoPbK3RCwyHaVyxYcP2Arg==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-geo": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmmirror.com/d3-geo/-/d3-geo-3.1.1.tgz",
++      "integrity": "sha512-637ln3gXKXOwhalDzinUgY83KzNWZRKbYubaG+fGVuc/dxO64RRljtCTnf5ecMyE1RIdtqpkVcq0IbtU2S8j2Q==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-array": "2.5.0 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-hierarchy": {
++      "version": "3.1.2",
++      "resolved": "https://registry.npmmirror.com/d3-hierarchy/-/d3-hierarchy-3.1.2.tgz",
++      "integrity": "sha512-FX/9frcub54beBdugHjDCdikxThEqjnR93Qt7PvQTOHxyiNCAlvMrHhclk3cD5VeAaq9fxmfRp+CnWw9rEMBuA==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-interpolate": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-interpolate/-/d3-interpolate-3.0.1.tgz",
++      "integrity": "sha512-3bYs1rOD33uo8aqJfKP3JWPAibgw8Zm2+L9vBKEHJ2Rg+viTR7o5Mmv5mZcieN+FRYaAOWX5SJATX6k1PWz72g==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-color": "1 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-path": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmmirror.com/d3-path/-/d3-path-3.1.0.tgz",
++      "integrity": "sha512-p3KP5HCf/bvjBSSKuXid6Zqijx7wIfNW+J/maPs+iwR35at5JCbLUT0LzF1cnjbCHWhqzQTIN2Jpe8pRebIEFQ==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-polygon": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-polygon/-/d3-polygon-3.0.1.tgz",
++      "integrity": "sha512-3vbA7vXYwfe1SYhED++fPUQlWSYTTGmFmQiany/gdbiWgU/iEyQzyymwL9SkJjFFuCS4902BSzewVGsHHmHtXg==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-quadtree": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-quadtree/-/d3-quadtree-3.0.1.tgz",
++      "integrity": "sha512-04xDrxQTDTCFwP5H6hRhsRcb9xxv2RzkcsygFzmkSIOJy3PeRJP7sNk3VRIbKXcog561P9oU0/rVH6vDROAgUw==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-random": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-random/-/d3-random-3.0.1.tgz",
++      "integrity": "sha512-FXMe9GfxTxqd5D6jFsQ+DJ8BJS4E/fT5mqqdjovykEB2oFbTMDVdg1MGFxfQW+FBOGoB++k8swBrgwSHT1cUXQ==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-sankey": {
++      "version": "0.12.3",
++      "resolved": "https://registry.npmmirror.com/d3-sankey/-/d3-sankey-0.12.3.tgz",
++      "integrity": "sha512-nQhsBRmM19Ax5xEIPLMY9ZmJ/cDvd1BG3UVvt5h3WRxKg5zGRbvnteTyWAbzeSvlh3tW7ZEmq4VwR5mB3tutmQ==",
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "d3-array": "1 - 2",
++        "d3-shape": "^1.2.0"
++      }
++    },
++    "node_modules/d3-sankey/node_modules/d3-array": {
++      "version": "2.12.1",
++      "resolved": "https://registry.npmmirror.com/d3-array/-/d3-array-2.12.1.tgz",
++      "integrity": "sha512-B0ErZK/66mHtEsR1TkPEEkwdy+WDesimkM5gpZr5Dsg54BiTA5RXtYW5qTLIAcekaS9xfZrzBLF/OAkB3Qn1YQ==",
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "internmap": "^1.0.0"
++      }
++    },
++    "node_modules/d3-sankey/node_modules/d3-path": {
++      "version": "1.0.9",
++      "resolved": "https://registry.npmmirror.com/d3-path/-/d3-path-1.0.9.tgz",
++      "integrity": "sha512-VLaYcn81dtHVTjEHd8B+pbe9yHWpXKZUC87PzoFmsFrJqgFwDe/qxfp5MlfsfM1V5E/iVt0MmEbWQ7FVIXh/bg==",
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/d3-sankey/node_modules/d3-shape": {
++      "version": "1.3.7",
++      "resolved": "https://registry.npmmirror.com/d3-shape/-/d3-shape-1.3.7.tgz",
++      "integrity": "sha512-EUkvKjqPFUAZyOlhY5gzCxCeI0Aep04LwIRpsZ/mLFelJiUfnK56jo5JMDSE7yyP2kLSb6LtF+S5chMk7uqPqw==",
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "d3-path": "1"
++      }
++    },
++    "node_modules/d3-sankey/node_modules/internmap": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmmirror.com/internmap/-/internmap-1.0.1.tgz",
++      "integrity": "sha512-lDB5YccMydFBtasVtxnZ3MRBHuaoE8GKsppq+EchKL2U4nK/DmEpPHNH8MZe5HkMtpSiTSOZwfN0tzYjO/lJEw==",
++      "license": "ISC"
++    },
++    "node_modules/d3-scale": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmmirror.com/d3-scale/-/d3-scale-4.0.2.tgz",
++      "integrity": "sha512-GZW464g1SH7ag3Y7hXjf8RoUuAFIqklOAq3MRl4OaWabTFJY9PN/E1YklhXLh+OQ3fM9yS2nOkCoS+WLZ6kvxQ==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-array": "2.10.0 - 3",
++        "d3-format": "1 - 3",
++        "d3-interpolate": "1.2.0 - 3",
++        "d3-time": "2.1.1 - 3",
++        "d3-time-format": "2 - 4"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-scale-chromatic": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmmirror.com/d3-scale-chromatic/-/d3-scale-chromatic-3.1.0.tgz",
++      "integrity": "sha512-A3s5PWiZ9YCXFye1o246KoscMWqf8BsD9eRiJ3He7C9OBaxKhAd5TFCdEx/7VbKtxxTsu//1mMJFrEt572cEyQ==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-color": "1 - 3",
++        "d3-interpolate": "1 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-selection": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmmirror.com/d3-selection/-/d3-selection-3.0.0.tgz",
++      "integrity": "sha512-fmTRWbNMmsmWq6xJV8D19U/gw/bwrHfNXxrIN+HfZgnzqTHp9jOmKMhsTUjXOJnZOdZY9Q28y4yebKzqDKlxlQ==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-shape": {
++      "version": "3.2.0",
++      "resolved": "https://registry.npmmirror.com/d3-shape/-/d3-shape-3.2.0.tgz",
++      "integrity": "sha512-SaLBuwGm3MOViRq2ABk3eLoxwZELpH6zhl3FbAoJ7Vm1gofKx6El1Ib5z23NUEhF9AsGl7y+dzLe5Cw2AArGTA==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-path": "^3.1.0"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-time": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmmirror.com/d3-time/-/d3-time-3.1.0.tgz",
++      "integrity": "sha512-VqKjzBLejbSMT4IgbmVgDjpkYrNWUYJnbCGo874u7MMKIWsILRX+OpX/gTk8MqjpT1A/c6HY2dCA77ZN0lkQ2Q==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-array": "2 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-time-format": {
++      "version": "4.1.0",
++      "resolved": "https://registry.npmmirror.com/d3-time-format/-/d3-time-format-4.1.0.tgz",
++      "integrity": "sha512-dJxPBlzC7NugB2PDLwo9Q8JiTR3M3e4/XANkreKSUxF8vvXKqm1Yfq4Q5dl8budlunRVlUUaDUgFt7eA8D6NLg==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-time": "1 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-timer": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-timer/-/d3-timer-3.0.1.tgz",
++      "integrity": "sha512-ndfJ/JxxMd3nw31uyKoY2naivF+r29V+Lc0svZxe1JvvIRmi8hUsrMvdOwgS1o6uBHmiz91geQ0ylPP0aj1VUA==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/d3-transition": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmmirror.com/d3-transition/-/d3-transition-3.0.1.tgz",
++      "integrity": "sha512-ApKvfjsSR6tg06xrL434C0WydLr7JewBB3V+/39RMHsaXTOG0zmt/OAXeng5M5LBm0ojmxJrpomQVZ1aPvBL4w==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-color": "1 - 3",
++        "d3-dispatch": "1 - 3",
++        "d3-ease": "1 - 3",
++        "d3-interpolate": "1 - 3",
++        "d3-timer": "1 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      },
++      "peerDependencies": {
++        "d3-selection": "2 - 3"
++      }
++    },
++    "node_modules/d3-zoom": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmmirror.com/d3-zoom/-/d3-zoom-3.0.0.tgz",
++      "integrity": "sha512-b8AmV3kfQaqWAuacbPuNbL6vahnOJflOhexLzMMNLga62+/nh0JzvJ0aO/5a5MVgUFGS7Hu1P9P03o3fJkDCyw==",
++      "license": "ISC",
++      "dependencies": {
++        "d3-dispatch": "1 - 3",
++        "d3-drag": "2 - 3",
++        "d3-interpolate": "1 - 3",
++        "d3-selection": "2 - 3",
++        "d3-transition": "2 - 3"
++      },
++      "engines": {
++        "node": ">=12"
++      }
++    },
++    "node_modules/dagre-d3-es": {
++      "version": "7.0.14",
++      "resolved": "https://registry.npmmirror.com/dagre-d3-es/-/dagre-d3-es-7.0.14.tgz",
++      "integrity": "sha512-P4rFMVq9ESWqmOgK+dlXvOtLwYg0i7u0HBGJER0LZDJT2VHIPAMZ/riPxqJceWMStH5+E61QxFra9kIS3AqdMg==",
++      "license": "MIT",
++      "dependencies": {
++        "d3": "^7.9.0",
++        "lodash-es": "^4.17.21"
++      }
++    },
++    "node_modules/dayjs": {
++      "version": "1.11.23",
++      "resolved": "https://registry.npmmirror.com/dayjs/-/dayjs-1.11.23.tgz",
++      "integrity": "sha512-QDTCU0M0MxR3hQfnlDJfwekQiaanm1ubOD231u73WBckQ/fsamwRLiE2GBz6D3a/xF1NgfiDLJjXBa1hYOYTtQ==",
 +      "license": "MIT"
 +    },
 +    "node_modules/debug": {
@@ -3424,6 +4403,15 @@ index 000000000..884ea51ab
 +        "node": ">=8"
 +      }
 +    },
++    "node_modules/delaunator": {
++      "version": "5.1.0",
++      "resolved": "https://registry.npmmirror.com/delaunator/-/delaunator-5.1.0.tgz",
++      "integrity": "sha512-AGrQ4QSgssa1NGmWmLPqN5NY2KajF5MqxetNEO+o0n3ZwZZeTmt7bBnvzHWrmkZFxGgr4HdyFgelzgi06otLuQ==",
++      "license": "ISC",
++      "dependencies": {
++        "robust-predicates": "^3.0.2"
++      }
++    },
 +    "node_modules/dequal": {
 +      "version": "2.0.3",
 +      "resolved": "https://registry.npmmirror.com/dequal/-/dequal-2.0.3.tgz",
@@ -3463,6 +4451,15 @@ index 000000000..884ea51ab
 +      "dev": true,
 +      "license": "BSD-3-Clause"
 +    },
++    "node_modules/dompurify": {
++      "version": "3.4.16",
++      "resolved": "https://registry.npmmirror.com/dompurify/-/dompurify-3.4.16.tgz",
++      "integrity": "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==",
++      "license": "(MPL-2.0 OR Apache-2.0)",
++      "optionalDependencies": {
++        "@types/trusted-types": "^2.0.7"
++      }
++    },
 +    "node_modules/dot-prop": {
 +      "version": "9.0.0",
 +      "resolved": "https://mirrors.cloud.tencent.com/npm/dot-prop/-/dot-prop-9.0.0.tgz",
@@ -3491,6 +4488,12 @@ index 000000000..884ea51ab
 +      "integrity": "sha512-2Gcq6inCQs/AqfHP3f5ftCzk+pqeW2VlA1LgmPqEj2hfBO8HiZRspNYkD4HzFBe4u6lGqca4BspFr6Ix4Q400g==",
 +      "dev": true,
 +      "license": "ISC"
++    },
++    "node_modules/elkjs": {
++      "version": "0.9.3",
++      "resolved": "https://registry.npmmirror.com/elkjs/-/elkjs-0.9.3.tgz",
++      "integrity": "sha512-f/ZeWvW/BCXbhGEf1Ujp29EASo/lk1FDnETgNKwJrsVvGZhUWCZyg3xLJjAsxfOmt8KjswHmI5EwCQcPMpOYhQ==",
++      "license": "EPL-2.0"
 +    },
 +    "node_modules/emoji-regex": {
 +      "version": "8.0.0",
@@ -3533,6 +4536,18 @@ index 000000000..884ea51ab
 +      "integrity": "sha512-BuIB67FngDSyQ/dpQNOZybwdEBDUGJQvOqwWr4ha/ufYiqzuEwPkKO2zLhRAgay28tStRIHUeWmszZAJo3GCOg==",
 +      "dev": true,
 +      "license": "MIT"
++    },
++    "node_modules/es-toolkit": {
++      "version": "1.52.0",
++      "resolved": "https://registry.npmmirror.com/es-toolkit/-/es-toolkit-1.52.0.tgz",
++      "integrity": "sha512-XTNEJQh1tY1ZJVcf6ayP/2n4ZPyaHlW2FWs7xvw5ddPuhUVjLD3olQVQS7kf58JbAB48iL0uL/jerTrjtV3lDA==",
++      "license": "MIT",
++      "workspaces": [
++        "docs",
++        "benchmarks",
++        "tests/types",
++        "tests/browser-compat"
++      ]
 +    },
 +    "node_modules/escalade": {
 +      "version": "3.2.0",
@@ -3661,6 +4676,12 @@ index 000000000..884ea51ab
 +      "dev": true,
 +      "license": "ISC"
 +    },
++    "node_modules/hachure-fill": {
++      "version": "0.5.2",
++      "resolved": "https://registry.npmmirror.com/hachure-fill/-/hachure-fill-0.5.2.tgz",
++      "integrity": "sha512-3GKBOn+m2LX9iq+JC1064cSFprJY4jL1jCXTcpnfER5HYE2l/4EfWSGzkPa/ZDBmYI0ZOEj5VHV/eKnPGkHuOg==",
++      "license": "MIT"
++    },
 +    "node_modules/hast-util-to-jsx-runtime": {
 +      "version": "2.3.6",
 +      "resolved": "https://registry.npmmirror.com/hast-util-to-jsx-runtime/-/hast-util-to-jsx-runtime-2.3.6.tgz",
@@ -3737,6 +4758,18 @@ index 000000000..884ea51ab
 +        "url": "https://github.com/sponsors/typicode"
 +      }
 +    },
++    "node_modules/iconv-lite": {
++      "version": "0.6.3",
++      "resolved": "https://registry.npmmirror.com/iconv-lite/-/iconv-lite-0.6.3.tgz",
++      "integrity": "sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==",
++      "license": "MIT",
++      "dependencies": {
++        "safer-buffer": ">= 2.1.2 < 3.0.0"
++      },
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
 +    "node_modules/image-ssim": {
 +      "version": "0.2.0",
 +      "resolved": "https://mirrors.cloud.tencent.com/npm/image-ssim/-/image-ssim-0.2.0.tgz",
@@ -3759,11 +4792,30 @@ index 000000000..884ea51ab
 +        "node": ">=18"
 +      }
 +    },
++    "node_modules/import-meta-resolve": {
++      "version": "4.2.0",
++      "resolved": "https://registry.npmmirror.com/import-meta-resolve/-/import-meta-resolve-4.2.0.tgz",
++      "integrity": "sha512-Iqv2fzaTQN28s/FwZAoFq0ZSs/7hMAHJVX+w8PZl3cY19Pxk6jFFalxQoIfW2826i/fDLXv8IiEZRIT0lDuWcg==",
++      "license": "MIT",
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/wooorm"
++      }
++    },
 +    "node_modules/inline-style-parser": {
 +      "version": "0.2.7",
 +      "resolved": "https://registry.npmmirror.com/inline-style-parser/-/inline-style-parser-0.2.7.tgz",
 +      "integrity": "sha512-Nb2ctOyNR8DqQoR0OwRG95uNWIC0C1lCgf5Naz5H6Ji72KZ8OcFZLz2P5sNgwlyoJ8Yif11oMuYs5pBQa86csA==",
 +      "license": "MIT"
++    },
++    "node_modules/internmap": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmmirror.com/internmap/-/internmap-2.0.3.tgz",
++      "integrity": "sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg==",
++      "license": "ISC",
++      "engines": {
++        "node": ">=12"
++      }
 +    },
 +    "node_modules/intl-messageformat": {
 +      "version": "10.7.18",
@@ -3898,6 +4950,42 @@ index 000000000..884ea51ab
 +      "engines": {
 +        "node": ">=12"
 +      }
++    },
++    "node_modules/katex": {
++      "version": "0.16.47",
++      "resolved": "https://registry.npmmirror.com/katex/-/katex-0.16.47.tgz",
++      "integrity": "sha512-Eeo8Ys1doU1z+x8AZsPpQu+p/QcZBI5PeOo7QGQdy2x2m0MU/hYagBbGOmXwr5KVbEfVuWv9LpnQWeehogurjg==",
++      "funding": [
++        "https://opencollective.com/katex",
++        "https://github.com/sponsors/katex"
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "commander": "^8.3.0"
++      },
++      "bin": {
++        "katex": "cli.js"
++      }
++    },
++    "node_modules/katex/node_modules/commander": {
++      "version": "8.3.0",
++      "resolved": "https://registry.npmmirror.com/commander/-/commander-8.3.0.tgz",
++      "integrity": "sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 12"
++      }
++    },
++    "node_modules/khroma": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmmirror.com/khroma/-/khroma-2.1.0.tgz",
++      "integrity": "sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw=="
++    },
++    "node_modules/layout-base": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmmirror.com/layout-base/-/layout-base-1.0.2.tgz",
++      "integrity": "sha512-8h2oVEZNktL4BH2JCOI90iD1yXwL6iNW7KcCKT2QZgQJR2vbqDsldCTPRU9NifTCqHZci57XvQQ15YTu+sTYPg==",
++      "license": "MIT"
 +    },
 +    "node_modules/legacy-javascript": {
 +      "version": "0.0.1",
@@ -4274,7 +5362,6 @@ index 000000000..884ea51ab
 +      "version": "4.18.1",
 +      "resolved": "https://mirrors.cloud.tencent.com/npm/lodash-es/-/lodash-es-4.18.1.tgz",
 +      "integrity": "sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==",
-+      "dev": true,
 +      "license": "MIT"
 +    },
 +    "node_modules/longest-streak": {
@@ -4321,6 +5408,18 @@ index 000000000..884ea51ab
 +      "funding": {
 +        "type": "github",
 +        "url": "https://github.com/sponsors/wooorm"
++      }
++    },
++    "node_modules/marked": {
++      "version": "16.4.2",
++      "resolved": "https://registry.npmmirror.com/marked/-/marked-16.4.2.tgz",
++      "integrity": "sha512-TI3V8YYWvkVf3KJe1dRkpnjs68JUPyEa5vjKrp1XEEJUAOaQc+Qj+L1qWbPd0SJuAdQkFU0h73sXXqwDYxsiDA==",
++      "license": "MIT",
++      "bin": {
++        "marked": "bin/marked.js"
++      },
++      "engines": {
++        "node": ">= 20"
 +      }
 +    },
 +    "node_modules/marky": {
@@ -4623,6 +5722,40 @@ index 000000000..884ea51ab
 +      },
 +      "funding": {
 +        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/mermaid": {
++      "version": "12.0.0",
++      "resolved": "https://registry.npmmirror.com/mermaid/-/mermaid-12.0.0.tgz",
++      "integrity": "sha512-/wQXC9iBxoGV8p3erbvaXs9h77VyLDBH6GdayVjj3hEcSQhFU4N1WUhUppotCEqlIxI2pRMwjwBSwTB1MfZBgQ==",
++      "license": "MIT",
++      "dependencies": {
++        "@braintree/sanitize-url": "^7.1.2",
++        "@iconify/utils": "^3.0.2",
++        "@mermaid-js/parser": "^2.0.0",
++        "@types/d3": "^7.4.3",
++        "@upsetjs/venn.js": "^2.0.0",
++        "chevrotain": "~11.1.2",
++        "cytoscape": "^3.34.0",
++        "cytoscape-cose-bilkent": "^4.1.0",
++        "cytoscape-fcose": "^2.2.0",
++        "d3": "^7.9.0",
++        "d3-sankey": "^0.12.3",
++        "dagre-d3-es": "7.0.14",
++        "dayjs": "^1.11.21",
++        "dompurify": "^3.4.12",
++        "elkjs": "^0.9.3",
++        "es-toolkit": "^1.45.1",
++        "katex": "^0.16.47",
++        "khroma": "^2.1.0",
++        "marked": "^16.3.0",
++        "roughjs": "^4.6.6",
++        "stylis": "^4.3.6",
++        "ts-dedent": "^2.2.0",
++        "uuid": "^11.1.0 || ^12 || ^13 || ^14.0.0"
++      },
++      "engines": {
++        "node": ">=22.12.0"
 +      }
 +    },
 +    "node_modules/micromark": {
@@ -5291,6 +6424,12 @@ index 000000000..884ea51ab
 +        "url": "https://github.com/sponsors/sindresorhus"
 +      }
 +    },
++    "node_modules/package-manager-detector": {
++      "version": "1.8.0",
++      "resolved": "https://registry.npmmirror.com/package-manager-detector/-/package-manager-detector-1.8.0.tgz",
++      "integrity": "sha512-yQA4H19AmPEoMUeavPMDIe1higySl/gH/yaQrkT/s07Qp+7pp2hYz30N3z2l5BkjVkF9Ow6o0wjJamm2y7Sn0A==",
++      "license": "MIT"
++    },
 +    "node_modules/pako": {
 +      "version": "2.2.0",
 +      "resolved": "https://registry.npmmirror.com/pako/-/pako-2.2.0.tgz",
@@ -5338,6 +6477,12 @@ index 000000000..884ea51ab
 +      "integrity": "sha512-Tz11t3uKztEW5FEVZnj1ox8GKblWn+PvHY9TmJV5Mll2uHEwRdR/5Li1OlXoECjLYkApdhWy44ocONwXLiKO5A==",
 +      "license": "MIT"
 +    },
++    "node_modules/path-data-parser": {
++      "version": "0.1.0",
++      "resolved": "https://registry.npmmirror.com/path-data-parser/-/path-data-parser-0.1.0.tgz",
++      "integrity": "sha512-NOnmBpt5Y2RWbuv0LMzsayp3lVylAHLPUTut412ZA3l+C4uw4ZVkQbjShYCQ8TCpUMdPapr4YjUqLYD6v68j+w==",
++      "license": "MIT"
++    },
 +    "node_modules/pbf": {
 +      "version": "5.1.2",
 +      "resolved": "https://registry.npmmirror.com/pbf/-/pbf-5.1.2.tgz",
@@ -5368,6 +6513,22 @@ index 000000000..884ea51ab
 +      },
 +      "funding": {
 +        "url": "https://github.com/sponsors/jonschlinkert"
++      }
++    },
++    "node_modules/points-on-curve": {
++      "version": "0.2.0",
++      "resolved": "https://registry.npmmirror.com/points-on-curve/-/points-on-curve-0.2.0.tgz",
++      "integrity": "sha512-0mYKnYYe9ZcqMCWhUjItv/oHjvgEsfKvnUTg8sAtnHr3GVy7rGkXCb6d5cSyqrWqL4k81b9CPg3urd+T7aop3A==",
++      "license": "MIT"
++    },
++    "node_modules/points-on-path": {
++      "version": "0.2.1",
++      "resolved": "https://registry.npmmirror.com/points-on-path/-/points-on-path-0.2.1.tgz",
++      "integrity": "sha512-25ClnWWuw7JbWZcgqY/gJ4FQWadKxGWk+3kR/7kD0tCaDtPPMj7oHu2ToLaVhfpnHrZzYby2w6tUA0eOIuUg8g==",
++      "license": "MIT",
++      "dependencies": {
++        "path-data-parser": "0.1.0",
++        "points-on-curve": "0.2.0"
 +      }
 +    },
 +    "node_modules/postcss": {
@@ -5651,6 +6812,12 @@ index 000000000..884ea51ab
 +        "node": ">=10.0.0"
 +      }
 +    },
++    "node_modules/robust-predicates": {
++      "version": "3.0.3",
++      "resolved": "https://registry.npmmirror.com/robust-predicates/-/robust-predicates-3.0.3.tgz",
++      "integrity": "sha512-NS3levdsRIUOmiJ8FZWCP7LG3QpJyrs/TE0Zpf1yvZu8cAJJ6QMW92H1c7kWpdIHo8RvmLxN/o2JXTKHp74lUA==",
++      "license": "Unlicense"
++    },
 +    "node_modules/rolldown": {
 +      "version": "1.2.8",
 +      "resolved": "https://registry.npmmirror.com/rolldown/-/rolldown-1.2.8.tgz",
@@ -5684,6 +6851,30 @@ index 000000000..884ea51ab
 +        "@rolldown/binding-win32-arm64-msvc": "1.2.8",
 +        "@rolldown/binding-win32-x64-msvc": "1.2.8"
 +      }
++    },
++    "node_modules/roughjs": {
++      "version": "4.6.6",
++      "resolved": "https://registry.npmmirror.com/roughjs/-/roughjs-4.6.6.tgz",
++      "integrity": "sha512-ZUz/69+SYpFN/g/lUlo2FXcIjRkSu3nDarreVdGGndHEBJ6cXPdKguS8JGxwj5HA5xIbVKSmLgr5b3AWxtRfvQ==",
++      "license": "MIT",
++      "dependencies": {
++        "hachure-fill": "^0.5.2",
++        "path-data-parser": "^0.1.0",
++        "points-on-curve": "^0.2.0",
++        "points-on-path": "^0.2.1"
++      }
++    },
++    "node_modules/rw": {
++      "version": "1.3.3",
++      "resolved": "https://registry.npmmirror.com/rw/-/rw-1.3.3.tgz",
++      "integrity": "sha512-PdhdWy89SiZogBLaw42zdeqtRJ//zFd2PgQavcICDUgJT5oW10QCRKbJ6bg4r0/UY2M6BWd5tkxuGFRvCkgfHQ==",
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/safer-buffer": {
++      "version": "2.1.2",
++      "resolved": "https://registry.npmmirror.com/safer-buffer/-/safer-buffer-2.1.2.tgz",
++      "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
++      "license": "MIT"
 +    },
 +    "node_modules/scheduler": {
 +      "version": "0.28.0",
@@ -5875,6 +7066,12 @@ index 000000000..884ea51ab
 +        "inline-style-parser": "0.2.7"
 +      }
 +    },
++    "node_modules/stylis": {
++      "version": "4.4.0",
++      "resolved": "https://registry.npmmirror.com/stylis/-/stylis-4.4.0.tgz",
++      "integrity": "sha512-5Z9ZpRzfuH6l/UAvCPAPUo3665Nk2wLaZU3x+TLHKVzIz33+sbJqbtrYoC3KD4/uVOr2Zp+L0LySezP9OHV9yA==",
++      "license": "MIT"
++    },
 +    "node_modules/tailwindcss": {
 +      "version": "4.3.3",
 +      "resolved": "https://registry.npmmirror.com/tailwindcss/-/tailwindcss-4.3.3.tgz",
@@ -5907,7 +7104,6 @@ index 000000000..884ea51ab
 +      "version": "1.3.1",
 +      "resolved": "https://registry.npmmirror.com/tinyexec/-/tinyexec-1.3.1.tgz",
 +      "integrity": "sha512-GCvB3aoys96IuDFBMcTB46JOR6mdMtAToqwiW8JlWhsoh1mhHi/xn9ss/Dg7N555GiJyEt2qzoG/NHCwM6h1EA==",
-+      "dev": true,
 +      "license": "MIT",
 +      "engines": {
 +        "node": ">=18"
@@ -5965,6 +7161,15 @@ index 000000000..884ea51ab
 +      "funding": {
 +        "type": "github",
 +        "url": "https://github.com/sponsors/wooorm"
++      }
++    },
++    "node_modules/ts-dedent": {
++      "version": "2.3.0",
++      "resolved": "https://registry.npmmirror.com/ts-dedent/-/ts-dedent-2.3.0.tgz",
++      "integrity": "sha512-JfJeIHke7y2egdGGgRAvpCwYFUsHlM2gPcrVOxFkznt/4uzQ7HFmvE63iFHVLBJNDuyDOQgijDK/tXH/f6Msjg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=6.10"
 +      }
 +    },
 +    "node_modules/tslib": {
@@ -6140,6 +7345,19 @@ index 000000000..884ea51ab
 +      },
 +      "peerDependencies": {
 +        "browserslist": ">= 4.21.0"
++      }
++    },
++    "node_modules/uuid": {
++      "version": "14.0.2",
++      "resolved": "https://registry.npmmirror.com/uuid/-/uuid-14.0.2.tgz",
++      "integrity": "sha512-xZe/16rV4aa+HGSOCiY2YeLT1OybRLrrkL/Rqaq7p7GMVXjFh+6wN4oMYgjFmnSnhY8t6Xpdl2l9qmnHYuMHwQ==",
++      "funding": [
++        "https://github.com/sponsors/broofa",
++        "https://github.com/sponsors/ctavan"
++      ],
++      "license": "MIT",
++      "bin": {
++        "uuid": "dist-node/bin/uuid"
 +      }
 +    },
 +    "node_modules/vfile": {
@@ -6699,10 +7917,10 @@ index 000000000..884ea51ab
 +}
 diff --git a/client/zjsearch/package.json b/client/zjsearch/package.json
 new file mode 100644
-index 000000000..43832c492
+index 000000000..5dce167ec
 --- /dev/null
 +++ b/client/zjsearch/package.json
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,57 @@
 +{
 +  "$schema": "https://json.schemastore.org/package.json",
 +  "name": "@hezhijie0327/zjsearch",
@@ -6730,6 +7948,7 @@ index 000000000..43832c492
 +  "dependencies": {
 +    "clsx": "^2.1.1",
 +    "lucide-react": "^1.45.0",
++    "mermaid": "^12.0.0",
 +    "ol": "^10.10.0",
 +    "react": "^19.2.4",
 +    "react-dom": "^19.2.4",
@@ -9477,14 +10696,24 @@ index 000000000..d48fa47d0
 +}
 diff --git a/client/zjsearch/src/features/results/AiSummary.tsx b/client/zjsearch/src/features/results/AiSummary.tsx
 new file mode 100644
-index 000000000..03ff0c8c1
+index 000000000..251b63355
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/AiSummary.tsx
-@@ -0,0 +1,514 @@
+@@ -0,0 +1,796 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { ArrowUpRight, Brain, ChevronDown, Copy, RefreshCw, Sparkles } from "lucide-react";
-+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
++import {
++  ArrowUp,
++  ArrowUpRight,
++  Brain,
++  ChevronDown,
++  ChevronLeft,
++  ChevronRight,
++  Copy,
++  RefreshCw,
++  Sparkles,
++} from "lucide-react";
++import { Children, isValidElement, memo, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 +import { createPortal } from "react-dom";
 +import Markdown from "react-markdown";
 +import remarkGfm from "remark-gfm";
@@ -9496,7 +10725,7 @@ index 000000000..03ff0c8c1
 +import type { AiCapability } from "@/lib/types.ts";
 +
 +/**
-+ * The whole-page Quick Answer.  The server puts an {@link AiCapability}
++ * The whole-page AI Overview.  The server puts an {@link AiCapability}
 + * into the page-data globals only when the feature is configured;
 + * ResultsPage hosts the state (`useAiAnswer`) and renders the entry in the
 + * results meta row (`AiAnswerTrigger`) plus the answer card at the top of
@@ -9506,12 +10735,21 @@ index 000000000..03ff0c8c1
 + * starts, height-capped and tail-following inside), the answer is markdown
 + * (GFM) rendered through react-markdown with [n] citations rewritten into
 + * `#ref-n` links that the `a` override turns into favicon-domain chips
-+ * which click-jump to the matching result row.  The LLM call happens on
-+ * click only; before the first streamed byte errors answer as clean HTTP
-+ * statuses (403 / 422 / 502).
++ * which click-jump to the matching result row.  Follow-up questions replay
++ * the prior turns; the timeline switcher browses them.  The LLM call
++ * happens on click only; before the first streamed byte errors answer as
++ * clean HTTP statuses (403 / 422 / 502).
 + */
 +
 +export type AiAnswerPhase = "idle" | "streaming" | "done" | "error";
++
++/** One completed exchange, replayed to the model with every follow-up (the
++    server stays stateless): question + the visible answer (thinking
++    stripped). */
++export interface AiHistoryTurn {
++  a: string;
++  q: string;
++}
 +
 +export interface AiAnswerState {
 +  phase: AiAnswerPhase;
@@ -9519,9 +10757,19 @@ index 000000000..03ff0c8c1
 +      the visible markdown answer with [n] citations */
 +  text: string;
 +  open: boolean;
++  /** completed follow-up turns; the live answer is the +1 entry of the
++      timeline (history + current), which viewIndex points into */
++  history: AiHistoryTurn[];
++  viewIndex: number;
 +  /** ask the question for the current results (or re-ask after an error) */
 +  start: (q: string, context: string, images?: string[]) => void;
 +  toggle: (q: string, context: string, images?: string[]) => void;
++  /** step through the answer timeline: -1 = previous, +1 = next */
++  go: (delta: number) => void;
++  /** ask a follow-up: the prior turns (incl. the answer on screen) travel
++      with the request, so a short question like 换成表格 or 画成流程图
++      restyles or extends the previous answer */
++  followUp: (q: string) => void;
 +  /** re-run the last question against the same results */
 +  regenerate: () => void;
 +  /** drop everything (a new search invalidates the answer) */
@@ -9537,26 +10785,30 @@ index 000000000..03ff0c8c1
 +  const [phase, setPhase] = useState<AiAnswerPhase>("idle");
 +  const [text, setText] = useState("");
 +  const [open, setOpen] = useState(false);
++  const [history, setHistory] = useState<AiHistoryTurn[]>([]);
++  const [viewIndex, setViewIndex] = useState(0);
 +  const abortRef = useRef<AbortController | null>(null);
-+  const lastAskRef = useRef<{ context: string; images: string[]; q: string } | null>(null);
++  const lastAskRef = useRef<{ context: string; history: AiHistoryTurn[]; images: string[]; q: string } | null>(null);
 +
 +  useEffect(() => () => abortRef.current?.abort(), []);
 +
-+  const start = (q: string, context: string, images: string[] = []) => {
++  const start = (q: string, context: string, images: string[] = [], history: AiHistoryTurn[] = []) => {
 +    if (!capability) {
 +      return;
 +    }
 +    abortRef.current?.abort();
-+    lastAskRef.current = { context, images, q };
++    lastAskRef.current = { context, history, images, q };
 +    const controller = new AbortController();
 +    abortRef.current = controller;
 +    setPhase("streaming");
 +    setText("");
 +    setOpen(true);
++    setHistory(history);
++    setViewIndex(history.length); // a new stream is always the newest view
 +    let accumulated = "";
 +    void fetchStream(
 +      "/ai/answer",
-+      { context, images, lang, q, tk: capability.tk },
++      { context, history, images, lang, q, tk: capability.tk },
 +      (chunk) => {
 +        accumulated += chunk;
 +        if (!controller.signal.aborted) {
@@ -9577,10 +10829,31 @@ index 000000000..03ff0c8c1
 +      });
 +  };
 +
++  const go = (delta: number) => {
++    const total = history.length + (text.trim() ? 1 : 0);
++    if (total < 1) {
++      return;
++    }
++    setViewIndex((index) => Math.min(Math.max(index + delta, 0), total - 1));
++  };
++
++  const followUp = (q: string) => {
++    const last = lastAskRef.current;
++    if (!capability || !last || phase !== "done" || !text.trim()) {
++      return;
++    }
++    // the visible answer (thinking stripped) becomes the model's prior turn
++    const { answer } = splitAnswerStream(text);
++    if (!answer.trim()) {
++      return;
++    }
++    start(q, last.context, last.images, [...last.history, { a: answer, q: last.q }]);
++  };
++
 +  const regenerate = () => {
 +    const last = lastAskRef.current;
 +    if (last && phase !== "streaming") {
-+      start(last.q, last.context);
++      start(last.q, last.context, last.images, last.history);
 +    }
 +  };
 +
@@ -9591,9 +10864,10 @@ index 000000000..03ff0c8c1
 +    }
 +    if (phase === "streaming") {
 +      // collapse mid-stream: keep what already arrived as the settled
-+      // content — re-opening shows it without a refetch
++      // content — re-opening shows it without a refetch.  Stopping before
++      // the first byte is a user stop, not an error: reset the entry.
 +      abortRef.current?.abort();
-+      setPhase("done");
++      setPhase(text ? "done" : "idle");
 +      setOpen((prev) => !prev);
 +      return;
 +    }
@@ -9606,9 +10880,11 @@ index 000000000..03ff0c8c1
 +    setPhase("idle");
 +    setText("");
 +    setOpen(false);
++    setHistory([]);
++    setViewIndex(0);
 +  };
 +
-+  return { open, phase, regenerate, reset, start, text, toggle };
++  return { followUp, go, history, open, phase, regenerate, reset, start, text, toggle, viewIndex };
 +}
 +
 +/** Meta-row entry (the 12px toggle tier of 「found N results · took X s」). */
@@ -9715,6 +10991,10 @@ index 000000000..03ff0c8c1
 +    <>
 +      <button
 +        className="mx-0.5 inline-flex items-center rounded align-middle text-xs text-accent transition-colors hover:text-accent-hover hover:underline underline-offset-2"
++        onClick={() => {
++          onCite?.(n);
++          setPanel(null);
++        }}
 +        onMouseEnter={openPanel}
 +        onMouseLeave={closeSoon}
 +        ref={chipRef}
@@ -9772,32 +11052,105 @@ index 000000000..03ff0c8c1
 +}
 +const HEADING = "mt-3 text-base font-semibold text-ink first:mt-0";
 +
++const CODE_BLOCK = "mt-2 overflow-x-auto rounded-xl bg-surface-2 p-3 font-mono text-xs leading-relaxed text-ink";
++
++let mermaidSeq = 0;
++
++/** A settled ```mermaid fence renders as a diagram: the mermaid package
++    (heavy) is imported only when a block actually exists, the theme follows
++    the palette, and a chart the parser rejects falls back to a plain code
++    block.  The card only mounts this once its stream has settled -- the
++    fence grows chunk by chunk while streaming, and re-rendering the SVG on
++    every chunk reads as flicker (the streaming view is the code fallback). */
++function MermaidBlock({ chart }: { chart: string }) {
++  const [svg, setSvg] = useState<string | null>(null);
++  const [failed, setFailed] = useState(false);
++  useEffect(() => {
++    let cancelled = false;
++    const timer = window.setTimeout(async () => {
++      try {
++        const mermaid = (await import("mermaid")).default;
++        const dark =
++          document.documentElement.classList.contains("dark") || document.documentElement.classList.contains("black");
++        mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "neutral" });
++        const rendered = await mermaid.render(`zjs-mmd-${(mermaidSeq++).toString(36)}`, chart);
++        if (!cancelled) {
++          setSvg(rendered.svg);
++        }
++      } catch {
++        if (!cancelled) {
++          setFailed(true);
++        }
++      }
++    }, 300);
++    return () => {
++      cancelled = true;
++      window.clearTimeout(timer);
++    };
++  }, [chart]);
++  if (svg) {
++    return (
++      <div
++        className="zjs-mermaid mt-2 overflow-x-auto rounded-xl bg-surface-2 p-3"
++        dangerouslySetInnerHTML={{ __html: svg }}
++      />
++    );
++  }
++  if (failed) {
++    return <pre className={CODE_BLOCK}>{chart}</pre>;
++  }
++  return <div className="zjs-mermaid mt-2 min-h-24 rounded-xl bg-surface-2" />;
++}
++
++/** The text content of a react-markdown code child (the raw fence body). */
++function textOf(node: ReactNode): string {
++  if (node === null || node === undefined || typeof node === "boolean") {
++    return "";
++  }
++  if (typeof node === "string" || typeof node === "number") {
++    return String(node);
++  }
++  if (Array.isArray(node)) {
++    return node.map(textOf).join("");
++  }
++  if (isValidElement(node)) {
++    return textOf((node.props as { children?: ReactNode }).children);
++  }
++  return "";
++}
++
 +function markdownComponents(
 +  meta: AiSourceMeta[],
 +  onCite: ((index: number) => boolean) | undefined,
-+): Record<string, (props: { children?: ReactNode; className?: string; href?: string }) => ReactNode> {
++  settled: boolean,
++): Record<
++  string,
++  (props: { alt?: string; children?: ReactNode; className?: string; href?: string; src?: string }) => ReactNode
++> {
 +  const heading = ({ children }: { children?: ReactNode }) => (
 +    <h3 className={HEADING} dir="auto">
 +      {children}
 +    </h3>
 +  );
++  const external = ({ children, href }: { children?: ReactNode; href?: string }) => (
++    <a
++      className="text-accent underline-offset-2 transition-colors hover:text-accent-hover hover:underline"
++      href={href}
++      rel="noreferrer"
++      target="_blank"
++    >
++      {children}
++    </a>
++  );
 +  return {
 +    a: ({ children, href }) => {
 +      const m = /^#ref-(\d+)$/.exec(href ?? "");
 +      if (!m) {
-+        return (
-+          <a href={href} rel="noreferrer" target="_blank">
-+            {children}
-+          </a>
-+        );
++        return external({ children, href });
 +      }
 +      const n = Number.parseInt(m[1] ?? "", 10);
 +      if (Number.isNaN(n)) {
-+        return (
-+          <a href={href} rel="noreferrer" target="_blank">
-+            {children}
-+          </a>
-+        );
++        return external({ children, href });
 +      }
 +      const source = meta[n - 1];
 +      if (!source) {
@@ -9806,9 +11159,18 @@ index 000000000..03ff0c8c1
 +      // compact [n] whose hover opens the source preview panel
 +      return <CitationChip n={n} onCite={onCite} source={source} />;
 +    },
++    code: ({ className, children }) =>
++      className ? (
++        <code className={className}>{children}</code>
++      ) : (
++        <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs">{children}</code>
++      ),
 +    h1: heading,
 +    h2: heading,
 +    h3: heading,
++    img: ({ alt, src }) => (
++      <img alt={alt ?? ""} className="my-2 max-w-full rounded-xl border border-line" loading="lazy" src={src} />
++    ),
 +    li: ({ children }) => (
 +      <li className="marker:text-accent" dir="auto">
 +        {children}
@@ -9816,6 +11178,21 @@ index 000000000..03ff0c8c1
 +    ),
 +    ol: ({ children }) => <ol className="ms-5 list-decimal space-y-1">{children}</ol>,
 +    p: ({ children }) => <p dir="auto">{children}</p>,
++    pre: ({ children }) => {
++      // a settled ```mermaid fence becomes a rendered diagram -- while the
++      // stream is still growing into the fence it stays a code block (a
++      // diagram re-rendered on every chunk reads as flicker); every other
++      // block keeps the mono chrome of the 12px tier
++      const child = Children.toArray(children).find(isValidElement);
++      const props = child?.props as { children?: ReactNode; className?: string } | undefined;
++      if ((props?.className ?? "").includes("language-mermaid")) {
++        if (!settled) {
++          return <pre className={CODE_BLOCK}>{props?.children}</pre>;
++        }
++        return <MermaidBlock chart={textOf(props?.children)} />;
++      }
++      return <pre className={CODE_BLOCK}>{children}</pre>;
++    },
 +    table: ({ children }) => (
 +      <table className="my-2 w-full border-collapse text-xs" dir="auto">
 +        {children}
@@ -9823,13 +11200,36 @@ index 000000000..03ff0c8c1
 +    ),
 +    td: ({ children }) => <td className="border border-line px-2 py-1 align-top">{children}</td>,
 +    th: ({ children }) => (
-+      <th className="border border-line bg-surface-2 px-2 py-1 text-start font-medium" dir="auto">
-+        {children}
-+      </th>
++      <th className="border border-line bg-surface-2 px-2 py-1 text-start font-medium">{children}</th>
 +    ),
 +    ul: ({ children }) => <ul className="ms-5 list-disc space-y-1">{children}</ul>,
 +  };
 +}
++
++/** The answer body, memoized: the card re-renders on every clamp
++    measurement (contentPx), and a fresh components object made
++    react-markdown rebuild the whole tree each time -- which remounted
++    MermaidBlock and reset its svg/failed state on every tick, flickering
++    the answer (and any diagram) for as long as the content height kept
++    changing.  Stable props (markdown text, per-result meta, settled) keep
++    the subtree untouched by measurement churn. */
++const MarkdownAnswer = memo(function MarkdownAnswer({
++  markdown,
++  meta,
++  onCite,
++  settled,
++}: {
++  markdown: string;
++  meta: AiSourceMeta[];
++  onCite?: (index: number) => boolean;
++  settled: boolean;
++}) {
++  return (
++    <Markdown components={markdownComponents(meta, onCite, settled)} remarkPlugins={[remarkGfm]}>
++      {markdown}
++    </Markdown>
++  );
++});
 +
 +/** The capped reasoning scroll area: while the stream runs it keeps the
 +    newest line in view (no-op once settled or folded). */
@@ -9872,7 +11272,17 @@ index 000000000..03ff0c8c1
 +  const t = useT();
 +  const [thinkForced, setThinkForced] = useState<boolean | null>(null);
 +  const [overviewExpanded, setOverviewExpanded] = useState(false);
-+  const { think, answer, thinking } = splitAnswerStream(state.text);
++  const [draft, setDraft] = useState("");
++  const live = splitAnswerStream(state.text);
++  // the answer timeline: completed follow-up turns + the live one; viewIndex
++  // points into it (clamped here -- a new stream always lands on the newest
++  // view), historical turns are stored thinking-stripped
++  const total = state.history.length + (state.text.trim() ? 1 : 0);
++  const viewIndex = Math.min(state.viewIndex, Math.max(total - 1, 0));
++  const viewingLatest = viewIndex >= state.history.length;
++  const think = viewingLatest ? live.think : "";
++  const thinking = viewingLatest ? live.thinking : false;
++  const answer = viewingLatest ? live.answer : (state.history[viewIndex]?.a ?? "");
 +  const hasThink = think.trim().length > 0;
 +  const hasAnswer = answer.trim().length > 0;
 +  const streaming = state.phase === "streaming";
@@ -9880,14 +11290,18 @@ index 000000000..03ff0c8c1
 +  // once the answer starts arriving so the result takes over (manual
 +  // override wins)
 +  const thinkOpen = thinkForced ?? (thinking && !hasAnswer);
-+  // a finished stream without answer content is a failure too -- reasoning
-+  // models that burn their whole token budget on thinking land here
-+  const failed = state.phase === "error" || (state.phase === "done" && !hasAnswer);
++  // a finished stream with neither answer nor reasoning content is a
++  // failure; a user stop keeps the partial content without an error label
++  const failed = state.phase === "error" || (state.phase === "done" && !hasAnswer && !hasThink);
 +
 +  const markdown = useMemo(() => citeToLinks(answer), [answer]);
 +  const overviewRef = useRef<HTMLDivElement | null>(null);
 +  const [contentPx, setContentPx] = useState<number | null>(null);
 +
++  // the measured node mounts with the answer (it does not exist before the
++  // first chunk), so the observer attaches when it appears -- a mount-only
++  // effect would measure nothing on the click -> stream -> done path
++  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when the measured node mounts
 +  useEffect(() => {
 +    const el = overviewRef.current;
 +    if (!el) {
@@ -9901,10 +11315,30 @@ index 000000000..03ff0c8c1
 +    return () => {
 +      ro.disconnect();
 +    };
-+  }, []);
++  }, [hasAnswer]);
 +
 +  // content that fits the preview needs no clamp, gradient or toggle
 +  const needsClamp = state.phase === "done" && contentPx !== null && contentPx > OVERVIEW_PREVIEW_PX + 24;
++
++  // expanded: the cap rides at contentPx while the 300ms ease plays, then is
++  // lifted entirely -- late content growth (a mermaid svg that renders after
++  // the measurement, fonts, view switches) must never sit under a stale cap.
++  // collapsing re-applies the cap at the fresh contentPx first (same visual
++  // height) so the ease down to the preview interpolates instead of snapping.
++  const [expandCapless, setExpandCapless] = useState(false);
++  const toggleExpanded = () => {
++    if (overviewExpanded) {
++      setExpandCapless(false);
++      requestAnimationFrame(() => {
++        requestAnimationFrame(() => {
++          setOverviewExpanded(false);
++        });
++      });
++    } else {
++      setExpandCapless(false);
++      setOverviewExpanded(true);
++    }
++  };
 +
 +  return (
 +    <div className="animate-fade-up rounded-2xl border border-line bg-surface p-4">
@@ -9913,20 +11347,53 @@ index 000000000..03ff0c8c1
 +          <Sparkles className="size-3.5" />
 +        </span>
 +        <span className="text-[13px] font-medium text-ink">{t("ai_answer")}</span>
-+        {!streaming ? (
-+          <div className="ms-auto flex shrink-0 items-center gap-1.5">
-+            {state.phase === "done" && hasAnswer ? <CopyChip value={answer.trim()} /> : null}
++        {/* the turn switcher lives inline in the header: appearing and
++            disappearing takes only horizontal space, the card never shifts */}
++        {total > 1 ? (
++          <div className="flex items-center gap-0.5 text-xs text-ink-3">
 +            <button
-+              aria-label={t("regenerate")}
-+              className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 transition-colors hover:text-ink"
++              aria-label={t("ai_prev_answer")}
++              className="inline-flex min-h-6 items-center rounded px-1 transition-colors hover:text-ink disabled:opacity-40"
++              disabled={viewIndex <= 0}
 +              onClick={() => {
-+                state.regenerate();
++                state.go(-1);
 +              }}
-+              title={t("regenerate")}
 +              type="button"
 +            >
-+              <RefreshCw className="size-3.5" />
++              <ChevronLeft className="size-3.5" />
 +            </button>
++            <span className="min-h-6 leading-6 tabular-nums">
++              {viewIndex + 1} / {total}
++            </span>
++            <button
++              aria-label={t("ai_next_answer")}
++              className="inline-flex min-h-6 items-center rounded px-1 transition-colors hover:text-ink disabled:opacity-40"
++              disabled={viewIndex >= total - 1}
++              onClick={() => {
++                state.go(1);
++              }}
++              type="button"
++            >
++              <ChevronRight className="size-3.5" />
++            </button>
++          </div>
++        ) : null}
++        {!streaming ? (
++          <div className="ms-auto flex shrink-0 items-center gap-1.5">
++            {viewingLatest ? (
++              <button
++                aria-label={t("regenerate")}
++                className="grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 transition-colors hover:text-ink"
++                onClick={() => {
++                  state.regenerate();
++                }}
++                title={t("regenerate")}
++                type="button"
++              >
++                <RefreshCw className="size-3.5" />
++              </button>
++            ) : null}
++            {state.phase === "done" && hasAnswer ? <CopyChip value={answer.trim()} /> : null}
 +          </div>
 +        ) : null}
 +      </div>
@@ -9950,21 +11417,26 @@ index 000000000..03ff0c8c1
 +        </div>
 +      ) : null}
 +      {hasAnswer ? (
-+        <div className={hasThink ? "mt-2" : ""}>
++        <div className={`${hasThink ? "mt-2 " : ""}text-sm leading-relaxed text-ink`}>
 +          <div
 +            className="relative overflow-hidden transition-[max-height] duration-300 ease-out"
++            onTransitionEnd={(event) => {
++              if (event.propertyName === "max-height" && overviewExpanded) {
++                setExpandCapless(true);
++              }
++            }}
 +            style={{
 +              maxHeight: needsClamp
 +                ? overviewExpanded
-+                  ? (contentPx ?? OVERVIEW_PREVIEW_PX)
++                  ? expandCapless
++                    ? undefined
++                    : (contentPx ?? OVERVIEW_PREVIEW_PX)
 +                  : OVERVIEW_PREVIEW_PX
-+                : undefined,
++                : (contentPx ?? undefined),
 +            }}
 +          >
 +            <div ref={overviewRef}>
-+              <Markdown components={markdownComponents(sourceMeta, onCite)} remarkPlugins={[remarkGfm]}>
-+                {markdown}
-+              </Markdown>
++              <MarkdownAnswer markdown={markdown} meta={sourceMeta} onCite={onCite} settled={state.phase === "done"} />
 +            </div>
 +            {needsClamp ? (
 +              <div
@@ -9978,9 +11450,7 @@ index 000000000..03ff0c8c1
 +            <button
 +              aria-expanded={overviewExpanded}
 +              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[13px] font-medium text-ink-2 transition-colors hover:text-ink"
-+              onClick={() => {
-+                setOverviewExpanded(!overviewExpanded);
-+              }}
++              onClick={toggleExpanded}
 +              type="button"
 +            >
 +              {overviewExpanded ? t("collapse") : t("expand")}
@@ -9992,6 +11462,37 @@ index 000000000..03ff0c8c1
 +        <p className="mt-2 text-xs text-ink-3">{t("ai_answering")}</p>
 +      ) : null}
 +      {failed ? <p className="mt-2 text-xs text-danger">{t("ai_answer_failed")}</p> : null}
++      {state.phase === "done" && hasAnswer ? (
++        <form
++          className="mt-3 flex items-center gap-2 border-t border-line pt-3"
++          onSubmit={(event) => {
++            event.preventDefault();
++            const q = draft.trim();
++            if (!q) {
++              return;
++            }
++            state.followUp(q);
++            setDraft("");
++          }}
++        >
++          <input
++            className="h-9 min-w-0 flex-1 rounded-full border border-line bg-surface-2 px-4 text-[13px] text-ink transition-colors placeholder:text-ink-3 focus:border-accent-strong focus:outline-none"
++            onChange={(event) => {
++              setDraft(event.target.value);
++            }}
++            placeholder={t("ai_followup")}
++            value={draft}
++          />
++          <button
++            aria-label={t("send")}
++            className="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-accent-contrast transition-opacity disabled:opacity-40"
++            disabled={!draft.trim()}
++            type="submit"
++          >
++            <ArrowUp className="size-4.5" />
++          </button>
++        </form>
++      ) : null}
 +    </div>
 +  );
 +}
@@ -17239,10 +18740,10 @@ index 000000000..54f20d3c4
 +}
 diff --git a/client/zjsearch/src/lib/i18n/en.ts b/client/zjsearch/src/lib/i18n/en.ts
 new file mode 100644
-index 000000000..c75e16064
+index 000000000..a2819e4e0
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/en.ts
-@@ -0,0 +1,385 @@
+@@ -0,0 +1,389 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** English source strings. Every UI string key is defined here first;
@@ -17419,6 +18920,10 @@ index 000000000..c75e16064
 +  ai_answer_failed: "Answer failed",
 +  ai_thinking: "Thinking",
 +  regenerate: "Regenerate",
++  ai_followup: "Ask a follow-up",
++  send: "Send",
++  ai_prev_answer: "Previous answer",
++  ai_next_answer: "Next answer",
 +  open_source: "Open source",
 +
 +  homepage: "Project homepage",
@@ -17630,10 +19135,10 @@ index 000000000..c75e16064
 +export type StringKey = keyof typeof EN;
 diff --git a/client/zjsearch/src/lib/i18n/zh-CN.ts b/client/zjsearch/src/lib/i18n/zh-CN.ts
 new file mode 100644
-index 000000000..64f4c0b26
+index 000000000..13d564337
 --- /dev/null
 +++ b/client/zjsearch/src/lib/i18n/zh-CN.ts
-@@ -0,0 +1,378 @@
+@@ -0,0 +1,382 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/** Simplified Chinese — the only translation the theme ships. The
@@ -17812,6 +19317,10 @@ index 000000000..64f4c0b26
 +  ai_answer_failed: "回答失败",
 +  ai_thinking: "思考过程",
 +  regenerate: "重新生成",
++  ai_followup: "尽情提问",
++  send: "发送",
++  ai_prev_answer: "上一次回答",
++  ai_next_answer: "下一次回答",
 +  open_source: "打开来源",
 +
 +  homepage: "项目主页",
@@ -20132,13 +21641,13 @@ index 000000000..d250d0a7e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 000000000..a0b3d1a5a
+index 000000000..58d0d59eb
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
-@@ -0,0 +1,462 @@
+@@ -0,0 +1,465 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
-+import { useEffect, useMemo, useRef, useState } from "react";
++import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 +import { BackToTop } from "@/components/BackToTop.tsx";
 +import { HelpModal } from "@/components/HelpModal.tsx";
 +import { SearchBox } from "@/components/SearchBox.tsx";
@@ -20225,38 +21734,7 @@ index 000000000..a0b3d1a5a
 +  const [collapsedBlocks, setCollapsedBlocks] = useState<Record<string, boolean>>({});
 +  const [hotkeysSelected, setHotkeysSelected] = useState(-1);
 +  const listRef = useRef<HTMLDivElement | null>(null);
-+
-+  // Quick Answer citation [n] → the n-th result of the flat list the answer
-+  // context was built from; its card is found through the result link (every
-+  // card view renders one) and flashed while scrolled into view
 +  const flashTimer = useRef<number | null>(null);
-+  const jumpToAiSource = (index: number): boolean => {
-+    const result = allResults[index - 1];
-+    if (!result || !listRef.current) {
-+      return false;
-+    }
-+    // text cards anchor through their result link, grid tiles through
-+    // data-hotkey-index (the global result index) or the image tiles'
-+    // data-ai-url (present even when a thumbnail failed to load)
-+    const probe =
-+      listRef.current.querySelector(`a[href="${CSS.escape(result.url)}"]`) ??
-+      listRef.current.querySelector(`[data-hotkey-index="${index - 1}"]`) ??
-+      listRef.current.querySelector(`[data-ai-url="${CSS.escape(result.url)}"]`);
-+    const card = probe?.closest<HTMLElement>("article, [data-hotkey-index], button");
-+    if (!card) {
-+      return false;
-+    }
-+    card.scrollIntoView({ block: "start", behavior: scrollBehavior() });
-+    if (flashTimer.current !== null) {
-+      window.clearTimeout(flashTimer.current);
-+    }
-+    card.setAttribute("data-ai-flash", "");
-+    flashTimer.current = window.setTimeout(() => {
-+      card.removeAttribute("data-ai-flash");
-+      flashTimer.current = null;
-+    }, 1900);
-+    return true;
-+  };
 +  const [appended, setAppended] = useState<ResultItem[]>([]);
 +  const [appendState, setAppendState] = useState<"idle" | "loading" | "error" | "done">("idle");
 +  const appendedHref = useRef(href);
@@ -20410,7 +21888,43 @@ index 000000000..a0b3d1a5a
 +  });
 +
 +  const allResults = useMemo(() => [...data.results, ...appended], [data.results, appended]);
-+  const aiImages = collectAiImages(allResults);
++  const aiImages = useMemo(() => collectAiImages(allResults), [allResults]);
++  const aiMeta = useMemo(() => aiSourceMeta(allResults), [allResults]);
++
++  // Quick Answer citation [n] → the n-th result of the flat list the answer
++  // context was built from; its card is found through the result link (every
++  // card view renders one) and flashed while scrolled into view.
++  // useCallback keeps the identity stable for the memoized answer body.
++  const jumpToAiSource = useCallback(
++    (index: number): boolean => {
++      const result = allResults[index - 1];
++      if (!result || !listRef.current) {
++        return false;
++      }
++      // text cards anchor through their result link, grid tiles through
++      // data-hotkey-index (the global result index) or the image tiles'
++      // data-ai-url (present even when a thumbnail failed to load)
++      const probe =
++        listRef.current.querySelector(`a[href="${CSS.escape(result.url)}"]`) ??
++        listRef.current.querySelector(`[data-hotkey-index="${index - 1}"]`) ??
++        listRef.current.querySelector(`[data-ai-url="${CSS.escape(result.url)}"]`);
++      const card = probe?.closest<HTMLElement>("article, [data-hotkey-index], button");
++      if (!card) {
++        return false;
++      }
++      card.scrollIntoView({ block: "start", behavior: scrollBehavior() });
++      if (flashTimer.current !== null) {
++        window.clearTimeout(flashTimer.current);
++      }
++      card.setAttribute("data-ai-flash", "");
++      flashTimer.current = window.setTimeout(() => {
++        card.removeAttribute("data-ai-flash");
++        flashTimer.current = null;
++      }, 1900);
++      return true;
++    },
++    [allResults],
++  );
 +  const layout = useMemo(
 +    () => detectResultsLayout(data, selectedCategories, allResults),
 +    [data, selectedCategories, allResults],
@@ -20534,9 +22048,7 @@ index 000000000..a0b3d1a5a
 +              <>
 +                <Corrections data={data} onSearch={submitQuery} />
 +                <div className="mt-3 space-y-3">
-+                  {aiAnswer.open ? (
-+                    <AiAnswerCard onCite={jumpToAiSource} sourceMeta={aiSourceMeta(allResults)} state={aiAnswer} />
-+                  ) : null}
++                  {aiAnswer.open ? <AiAnswerCard onCite={jumpToAiSource} sourceMeta={aiMeta} state={aiAnswer} /> : null}
 +                  {calc ? <CalculatorAnswer calc={calc} /> : null}
 +                  <Answers answers={data.answers} query={data.q} />
 +                </div>
@@ -24026,6 +25538,19 @@ index 000000000..42fc66d45
 +
 +  plugins: [tailwindcss(), plgAssets(PATH)],
 +} satisfies import("vite").UserConfig;
+diff --git a/requirements.txt b/requirements.txt
+index 44c3e532b..e0d28245a 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -15,3 +15,8 @@ typer==0.27.2
+ isodate==0.7.2
+ whitenoise==6.12.0
+ typing-extensions==4.16.0
++
++# zjsearch theme: the AI answer SDK transports (searx/zjsearch_ai.py)
++openai==3.19.2
++anthropic==1.8.0
++google-genai==2.25.0
 diff --git a/searx/answerers/random.py b/searx/answerers/random.py
 index 4f7ed515f..c04b95243 100644
 --- a/searx/answerers/random.py
@@ -28198,7 +29723,7 @@ index eba07bb58..afcc69d01 100644
          """The hash value of field *answer* is the hash value of the
          :py:obj:`Answer` object.  :py:obj:`Answer <Result.__eq__>` objects are
 diff --git a/searx/settings.yml b/searx/settings.yml
-index 3289b5b9e..9a95274a0 100644
+index 3289b5b9e..5157154ee 100644
 --- a/searx/settings.yml
 +++ b/searx/settings.yml
 @@ -228,6 +228,9 @@ plugins:
@@ -28211,7 +29736,7 @@ index 3289b5b9e..9a95274a0 100644
    searx.plugins.unit_converter.SXNGPlugin:
      active: true
  
-@@ -3502,3 +3505,24 @@ doi_resolvers:
+@@ -3502,3 +3505,42 @@ doi_resolvers:
    sci-hub.ru: 'https://sci-hub.ru/'
  
  default_doi_resolver: 'oadoi.org'
@@ -28225,17 +29750,35 @@ index 3289b5b9e..9a95274a0 100644
 +zjsearch:
 +  ai:
 +    enabled: false
-+    url: ''
-+    key: ''
++    # the transport is the official SDK of the chosen dialect: AsyncOpenAI
++    # (chat completions / Responses API), AsyncAnthropic (Messages) or
++    # google-genai (Gemini) -- base_url is used exactly as configured (each
++    # SDK appends its own method paths; per-SDK examples live in
++    # client/zjsearch/README.rst)
++    # sdk: openai_chat_completions  # openai_chat_completions | openai_responses | anthropic | gemini
++    base_url: ''
++    api_key: ''  # falls back to the ZJSEARCH_AI_KEY env
 +    model: ''
-+    # temperature: 0.2        # opt-in: thinking models misbehave with
-+    #                         # forced non-default sampling params
-+    # answer_max_tokens: 700  # omit (the default) for unlimited
++    # the create() kwargs of the chosen SDK -- max_tokens translates to
++    # each API's own key, everything else passes through 1:1, so the
++    # thinking-intensity knobs are the SDK's own names:
++    #   openai_chat_completions -> reasoning_effort: low | medium | high
++    #   openai_responses        -> reasoning: {effort: low}
++    #   anthropic               -> thinking: {type: enabled, budget_tokens: 2048}
++    #                              (a custom temperature is incompatible
++    #                              with thinking on the Messages API)
++    #   gemini                  -> thinking_config: {thinking_budget: 1024}
++    # temperature itself is opt-in: thinking models misbehave with forced
++    # non-default sampling params
++    # params:
++    #   temperature: 0.2
++    #   max_tokens: 700      # omit for the provider default
 +    # attach image results to the answer request (vision models):
 +    # "base64" fetches + inlines each picture server-side (default),
 +    # "url" hands the references to the endpoint, "off" disables
 +    images: base64
-+    extra_body: {}
++    extra_body: {}  # merged 1:1 into the request body (provider-specific escape hatch)
++    extra_headers: {}  # extra HTTP headers, e.g. aihubmix's discount APP-Code
 diff --git a/searx/templates/zjsearch/404.html b/searx/templates/zjsearch/404.html
 new file mode 100644
 index 000000000..902020ee2
@@ -29566,17 +31109,18 @@ index da873400e..4de1df3da 100755
      run()
 diff --git a/searx/zjsearch_ai.py b/searx/zjsearch_ai.py
 new file mode 100644
-index 000000000..0d1e0d7cc
+index 000000000..4996a3bd0
 --- /dev/null
 +++ b/searx/zjsearch_ai.py
-@@ -0,0 +1,518 @@
+@@ -0,0 +1,892 @@
 +# SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
-+"""zjsearch theme: the whole-page Quick Answer.
++"""zjsearch theme: the whole-page AI Overview.
 +
 +The results meta row hosts the entry (``POST /ai/answer``): the client
 +assembles a numbered source list from the page payload it already has and
-+the model streams a cited whole-page answer.  The LLM is only called on click, so a result page loads with zero added
-+latency and the no-JS / RSS faces of the theme stay untouched.
++the model streams a cited whole-page answer.  The LLM is only called on
++click, so a result page loads with zero added latency and the no-JS / RSS
++faces of the theme stay untouched.
 +
 +Design contract:
 +
@@ -29588,6 +31132,12 @@ index 000000000..0d1e0d7cc
 +  multiple granian workers.
 +- The endpoint streams raw text (``text/plain``); errors before the first
 +  token answer as clean HTTP statuses (403 / 422 / 502).
++- Transports are the official SDKs: ``AsyncOpenAI`` drives both OpenAI
++  dialects (chat completions + Responses API), ``AsyncAnthropic`` the
++  Messages API and ``google-genai`` the Gemini API -- all async, on the
++  shared network event loop, behind the same queue bridge.  The packages
++  (openai / anthropic / google-genai in requirements.txt) are imported
++  lazily, so the feature also degrades cleanly when one is absent.
 +- Configuration lives in the ``zjsearch:`` top-level settings block
 +  (``zjsearch.ai.*``); everything ships disabled and a deployment opts in.
 +"""
@@ -29598,17 +31148,17 @@ index 000000000..0d1e0d7cc
 +import functools
 +import hashlib
 +import hmac
++import importlib.util
 +import ipaddress
-+import json
 +import logging
 +import os
 +import queue
++import re
 +import time
 +import typing as t
 +from urllib.parse import parse_qs, urljoin, urlsplit
 +
 +import flask
-+from curl_cffi.requests.exceptions import RequestException
 +
 +from searx import settings
 +from searx.extended_types import sxng_request
@@ -29618,6 +31168,8 @@ index 000000000..0d1e0d7cc
 +
 +logger = logging.getLogger("searx.zjsearch_ai")
 +
++# ----------------------------------------------------------------- constants
++
 +TOKEN_TTL = 3600.0
 +"""Lifetime of a page-data token: an hour, like the reference design."""
 +
@@ -29625,44 +31177,39 @@ index 000000000..0d1e0d7cc
 +"""HMAC key derived once from ``server.secret_key`` at import time."""
 +
 +FIRST_EVENT_TIMEOUT = 135.0
-+"""Budget for connect + first token: the transport allows connect=10
-+read=120, the gate must not give up on a healthy slow model first."""
++"""Budget for connect + first token: above the transport's connect=10 /
++read=120 guards, so the gate never gives up on a healthy slow model first."""
 +
 +IDLE_TIMEOUT = 125.0
 +"""Per-event queue budget while streaming (above the transport's stall
 +guard, so a silent upstream trips its own timeout first)."""
 +
-+# (connect, read); on a streaming request curl_cffi turns the second value
-+# into a LOW_SPEED stall guard, not a total-duration cap
-+_LLM_TIMEOUT = (10.0, 120.0)
++_SDK_CONNECT_TIMEOUT = 10.0
++_SDK_READ_TIMEOUT = 120.0
++"""Per-request SDK timeouts (``httpx2.Timeout(120, connect=10)``): on a
++streaming request the read value is a stall guard between chunks, not a
++total-duration cap."""
++
++_ANTHROPIC_DEFAULT_MAX_TOKENS = 4096
++"""The Messages API has no default for ``max_tokens`` -- fills in when
++``params.max_tokens`` is unset (reasoning models can burn it on thinking;
++raise it there or override via extra_body)."""
 +
 +_CONTEXT_MAX_CHARS = 16000
-+"""Hard cap on the client-assembled Quick Answer context (deep 5 + shallow
-+15 + infobox lands around 7k; the cap only guards abuse)."""
++"""Hard cap on the client-assembled context (deep 5 + shallow 15 + infobox
++lands around 7k; the cap only guards abuse)."""
 +
 +_IMAGE_MAX_BYTES = 2 * 1024 * 1024
 +_IMAGE_FETCH_TIMEOUT = 8.0
 +_MAX_IMAGES = 4
 +
-+_ANSWER_SYSTEM_PROMPT = """\
-+You are the "Quick Answer" feature of a search engine: answer the user's
-+question directly, grounded in the numbered sources provided.
-+Today is {today}.
-+Rules:
-+- Write the answer in {lang}.
-+- Cite sources right after the statements they support: [1] for one source,
-+  [1,3] for several. Use [*] only for common knowledge that no source covers.
-+- Structure longer answers: "## " section headings, "- " bullet lines,
-+  "1." numbered steps, **bold** for key terms. Short paragraphs. No
-+  tables, no code blocks, no links.
-+- If the sources do not answer the question, say so in one short line and
-+  answer from common knowledge marked with [*].
-+- Get to the point in the first sentence. No preamble, no closing remark."""
++_HISTORY_MAX_TURNS = 6
++_HISTORY_TURN_MAX_CHARS = 6000
++_HISTORY_Q_MAX_CHARS = 500
++"""Follow-up conversation history the client replays with each ask (the
++server stays stateless): last 6 turns, each answer capped."""
 +
-+_ANSWER_USER_PROMPT = "<q>{q}</q>\n<sources>\n{context}\n</sources>"
-+
-+
-+# --------------------------------------------------------------------- config
++# -------------------------------------------------------------- configuration
 +
 +
 +def _ai_cfg() -> dict[str, t.Any]:
@@ -29672,7 +31219,188 @@ index 000000000..0d1e0d7cc
 +    return cfg if isinstance(cfg, dict) else {}
 +
 +
-+# ---------------------------------------------------------------------- token
++def _chat_key(cfg: dict[str, t.Any]) -> str:
++    """The effective API key: the ``api_key`` setting first, then the
++    ``ZJSEARCH_AI_KEY`` environment."""
++    return str(cfg.get("api_key") or "") or os.environ.get("ZJSEARCH_AI_KEY", "")
++
++
++def _extra_headers(cfg: dict[str, t.Any]) -> dict[str, str] | None:
++    extra = cfg.get("extra_headers")
++    return {str(name): str(value) for name, value in extra.items()} if isinstance(extra, dict) else None
++
++
++def _extra_body(cfg: dict[str, t.Any]) -> dict[str, t.Any] | None:
++    return cfg.get("extra_body") if isinstance(cfg.get("extra_body"), dict) else None
++
++
++def _params(cfg: dict[str, t.Any]) -> dict[str, t.Any]:
++    params = cfg.get("params")
++    return params if isinstance(params, dict) else {}
++
++
++def _model_kwargs(params: dict[str, t.Any], kind: str) -> dict[str, t.Any]:
++    """The ``params`` entries as SDK create kwargs: ``max_tokens`` translates
++    to each API's own key (and fills the Anthropic mandatory default), the
++    rest pass through under their SDK names -- including the thinking knobs
++    (``reasoning_effort`` / ``reasoning`` / ``thinking`` /
++    ``thinking_config``, whichever the chosen SDK speaks)."""
++    max_tokens = params.get("max_tokens")
++    kwargs = {name: value for name, value in params.items() if name != "max_tokens" and value is not None}
++    if kind == "anthropic":
++        kwargs["max_tokens"] = int(max_tokens) if max_tokens else _ANTHROPIC_DEFAULT_MAX_TOKENS
++    elif kind in ("openai_responses", "gemini"):
++        if max_tokens:
++            kwargs["max_output_tokens"] = int(max_tokens)
++    elif max_tokens:
++        kwargs["max_tokens"] = int(max_tokens)
++    return kwargs
++
++
++# ------------------------------------------------------------ SDK transports
++
++_ENDPOINT_KINDS = ("openai_chat_completions", "anthropic", "openai_responses", "gemini")
++"""The ``zjsearch.ai.sdk`` values -- one official SDK per family: AsyncOpenAI
++drives both OpenAI dialects, AsyncAnthropic the Messages API, google-genai
++the Gemini API."""
++
++
++def _endpoint(cfg: dict[str, t.Any]) -> tuple[str, str]:
++    """The wire dialect (``zjsearch.ai.sdk``) and the ``base_url`` exactly as
++    configured -- no rewriting.  Each SDK appends its own method paths to
++    the base, so the value is per dialect (see the README): the openai
++    dialects take ``https://api.openai.com/v1``, anthropic the bare origin
++    (``https://api.anthropic.com``), gemini the origin or a gateway prefix
++    that already includes the API name (``https://gw.example.com/gemini``)."""
++    kind = str(cfg.get("sdk") or "openai_chat_completions")
++    if kind not in _ENDPOINT_KINDS:
++        kind = "openai_chat_completions"
++    return kind, str(cfg.get("base_url") or "")
++
++
++def _endpoint_is_local(url: str) -> bool:
++    """True for loopback LLM endpoints (LM Studio, ollama): those must not
++    go through the outgoing proxy / Tor."""
++    host = (urlsplit(url).hostname or "").lower()
++    if host == "localhost" or host.endswith((".localhost", ".local")):
++        return True
++    try:
++        return ipaddress.ip_address(host).is_loopback
++    except ValueError:
++        return False
++
++
++_sdk_http_clients: dict[bool, t.Any] = {}
++"""Shared httpx2 clients for the SDK transports, one per remote-ness.  The
++openai / anthropic SDKs speak the httpx2 dialect of httpx; the client is
++created (and cached) on the shared network loop where the pumps run.
++``using_tor_proxy`` is a curl_cffi mechanism -- SDK transports rely on
++``outgoing.proxies`` for proxying."""
++
++
++def _httpx_client(remote: bool) -> t.Any:
++    import httpx2  # pylint: disable=import-outside-toplevel
++
++    client = _sdk_http_clients.get(remote)
++    if client is None:
++        out = settings.get("outgoing", {})
++        proxies = dict(out.get("proxies") or {}) if remote else {}
++        client = httpx2.AsyncClient(mounts=proxies or None, verify=out.get("verify", True))
++        _sdk_http_clients[remote] = client
++    return client
++
++
++@functools.lru_cache(maxsize=1)
++def _sdk_timeout() -> t.Any:
++    import httpx2  # pylint: disable=import-outside-toplevel
++
++    return httpx2.Timeout(_SDK_READ_TIMEOUT, connect=_SDK_CONNECT_TIMEOUT)
++
++
++_sdk_clients: dict[tuple[str, str], t.Any] = {}
++"""SDK clients cached per family + base -- constructed on the shared network
++loop (httpx2 / anyio bind lazily) and reused across requests for the pool."""
++
++
++def _openai_client(cfg: dict[str, t.Any], base: str) -> t.Any:
++    from openai import AsyncOpenAI  # pylint: disable=import-outside-toplevel
++
++    key = ("openai", base)
++    client = _sdk_clients.get(key)
++    if client is None:
++        client = AsyncOpenAI(
++            base_url=base or None,
++            api_key=_chat_key(cfg),
++            max_retries=0,
++            http_client=_httpx_client(not _endpoint_is_local(base)),
++        )
++        _sdk_clients[key] = client
++    return client
++
++
++def _anthropic_client(cfg: dict[str, t.Any], base: str) -> t.Any:
++    from anthropic import AsyncAnthropic  # pylint: disable=import-outside-toplevel
++
++    key = ("anthropic", base)
++    client = _sdk_clients.get(key)
++    if client is None:
++        client = AsyncAnthropic(
++            base_url=base or None,
++            api_key=_chat_key(cfg),
++            max_retries=0,
++            http_client=_httpx_client(not _endpoint_is_local(base)),
++        )
++        _sdk_clients[key] = client
++    return client
++
++
++def _gemini_client(cfg: dict[str, t.Any], base: str) -> t.Any:
++    from google.genai import types  # pylint: disable=import-outside-toplevel
++    from google import genai  # pylint: disable=import-outside-toplevel
++
++    key = ("gemini", base)
++    client = _sdk_clients.get(key)
++    if client is None:
++        api_key = _chat_key(cfg)
++        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
++        out = settings.get("outgoing", {})
++        remote = not _endpoint_is_local(base or "https://generativelanguage.googleapis.com")
++        proxies = dict(out.get("proxies") or {}) if remote and out.get("proxies") else None
++        client = genai.Client(
++            api_key=api_key or None,
++            http_options=types.HttpOptions(
++                base_url=base or None,
++                headers=headers,
++                extra_body=_extra_body(cfg),
++                async_client_args={"verify": out.get("verify", True), "mounts": proxies},
++            ),
++        )
++        _sdk_clients[key] = client
++    return client
++
++
++@functools.lru_cache(maxsize=1)
++def _image_network() -> Network:
++    """Dedicated curl network for the server-side image fetches.  The default
++    network is https-only (``enable_http`` False -- an engine-hardening
++    choice); this one keeps the ``outgoing`` proxies / verify / Tor for
++    remote endpoints and goes direct for loopback ones."""
++    out = settings.get("outgoing", {})
++    remote = not _endpoint_is_local(str(_ai_cfg().get("base_url") or ""))
++    return Network(
++        enable_http=True,
++        verify=out.get("verify", True),
++        enable_http2=out.get("enable_http2", True),
++        max_connections=out.get("pool_connections", 10),
++        proxies=out.get("proxies") if remote else None,
++        using_tor_proxy=bool(out.get("using_tor_proxy", False)) and remote,
++        max_redirects=out.get("max_redirects", 30),
++        retries=0,
++        logger_name="zjsearch_ai",
++    )
++
++
++# ------------------------------------------------------------------- the gate
 +
 +
 +def issue_token() -> str:
@@ -29694,28 +31422,46 @@ index 000000000..0d1e0d7cc
 +    return hmac.compare_digest(sig, expected)
 +
 +
++def _configured(cfg: dict[str, t.Any]) -> bool:
++    """True when the feature is on and its transport is fully specified: a
++    model and a dialect -- the base_url may stay empty only for the gemini
++    dialect (the google-genai default endpoint)."""
++    if not cfg.get("enabled") or not cfg.get("model"):
++        return False
++    kind, base = _endpoint(cfg)
++    return bool(base) or kind == "gemini"
++
++
 +def capability() -> dict[str, str] | None:
 +    """The ``ai`` payload of the page-data globals (token + model label);
 +    ``None`` when the feature is off or not fully configured."""
 +    cfg = _ai_cfg()
-+    if not cfg.get("enabled") or not cfg.get("url") or not cfg.get("model"):
++    if not _configured(cfg):
 +        return None
 +    return {"tk": issue_token(), "model": str(cfg.get("model"))}
 +
 +
-+# -------------------------------------------------------------------- network
++# -------------------------------------------------------------- image results
 +
 +
-+def _endpoint_is_local(url: str) -> bool:
-+    """True for loopback LLM endpoints (LM Studio, ollama): those must not
-+    go through the outgoing proxy / Tor."""
-+    host = (urlsplit(url).hostname or "").lower()
-+    if host == "localhost" or host.endswith((".localhost", ".local")):
-+        return True
-+    try:
-+        return ipaddress.ip_address(host).is_loopback
-+    except ValueError:
-+        return False
++def _absolute_url(url: str) -> str:
++    """Same-origin relative links (``/image_proxy?url=...`` from the
++    page-data) resolve against the instance; everything absolute passes
++    through, non-http(s) results are dropped."""
++    if url.startswith(("http://", "https://")):
++        return url
++    joined = urljoin(sxng_request.host_url, url)
++    return joined if joined.startswith(("http://", "https://")) else ""
++
++
++def _proxied_original(url: str) -> str | None:
++    """The original image URL embedded in an ``/image_proxy`` link -- fetch
++    it directly (the image network applies the outgoing proxies) instead of
++    hopping through the instance's own proxy view."""
++    parsed = urlsplit(url)
++    if not parsed.path.endswith("/image_proxy"):
++        return None
++    return parse_qs(parsed.query).get("url", [None])[0]
 +
 +
 +def _check_url(url: str) -> bool:
@@ -29737,61 +31483,16 @@ index 000000000..0d1e0d7cc
 +    return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast)
 +
 +
-+@functools.lru_cache(maxsize=1)
-+def _ai_network() -> Network:
-+    """Dedicated network for the LLM call.  The default
-+    network is https-only (``enable_http`` False -- an engine-hardening
-+    choice), which would block plain-http local LLM servers; this one keeps
-+    the ``outgoing`` proxies / verify / Tor for remote endpoints and goes
-+    direct for loopback ones."""
-+    out = settings.get("outgoing", {})
-+    remote = not _endpoint_is_local(str(_ai_cfg().get("url") or ""))
-+    return Network(
-+        enable_http=True,
-+        verify=out.get("verify", True),
-+        enable_http2=out.get("enable_http2", True),
-+        max_connections=out.get("pool_connections", 10),
-+        proxies=out.get("proxies") if remote else None,
-+        using_tor_proxy=bool(out.get("using_tor_proxy", False)) and remote,
-+        max_redirects=out.get("max_redirects", 30),
-+        retries=0,
-+        logger_name="zjsearch_ai",
-+    )
-+
-+
-+# ------------------------------------------------------------ image attach
-+
-+
-+def _absolute_url(url: str) -> str:
-+    """Same-origin relative links (``/image_proxy?url=...`` from the
-+    page-data) resolve against the instance; everything absolute passes
-+    through, non-http(s) results are dropped."""
-+    if url.startswith(("http://", "https://")):
-+        return url
-+    joined = urljoin(sxng_request.host_url, url)
-+    return joined if joined.startswith(("http://", "https://")) else ""
-+
-+
-+def _proxied_original(url: str) -> str | None:
-+    """The original image URL embedded in an ``/image_proxy`` link -- fetch
-+    it directly (the AI network applies the outgoing proxies) instead of
-+    hopping through the instance's own proxy view."""
-+    parsed = urlsplit(url)
-+    if not parsed.path.endswith("/image_proxy"):
-+        return None
-+    return parse_qs(parsed.query).get("url", [None])[0]
-+
-+
 +def _fetch_image_b64(url: str, check: bool = True) -> str:
-+    """The image as an ``data:`` URL, fetched through the AI network with a
-+    size cap -- empty when it fails, is too large or is not an image.  The
++    """The image as an ``data:`` URL, fetched through the image network with
++    a size cap -- empty when it fails, is too large or is not an image.  The
 +    SSRF gate is skipped for the instance's own ``/image_proxy`` links (the
 +    proxy applies searx's own upstream validation)."""
 +    if check and not _check_url(url):
 +        logger.warning("zjsearch_ai: image URL rejected by the SSRF gate: %r", url)
 +        return ""
 +    future = asyncio.run_coroutine_threadsafe(
-+        _ai_network().request("GET", url, timeout=_IMAGE_FETCH_TIMEOUT, headers={"User-Agent": gen_useragent()}),
++        _image_network().request("GET", url, timeout=_IMAGE_FETCH_TIMEOUT, headers={"User-Agent": gen_useragent()}),
 +        get_loop(),
 +    )
 +    try:
@@ -29809,7 +31510,8 @@ index 000000000..0d1e0d7cc
 +
 +
 +def _attached_images(payload: dict[str, t.Any], cfg: dict[str, t.Any]) -> list[dict[str, t.Any]]:
-+    """``image_url`` content parts for the attached image results.  The
++    """OpenAI-shaped ``image_url`` content parts for the attached image
++    results -- every dialect pump converts them to its own block shape.  The
 +    ``images`` setting picks the transport: ``base64`` (the default) fetches
 +    each picture server-side and inlines it, ``url`` hands the reference to
 +    the endpoint, anything else disables attachments."""
@@ -29827,8 +31529,8 @@ index 000000000..0d1e0d7cc
 +            parts.append({"type": "image_url", "image_url": {"url": absolute}})
 +            continue
 +        # same-origin /image_proxy links carry the original URL as their
-+        # target -- fetch it directly through the AI network (the outgoing
-+        # proxies apply) instead of hopping through the proxy view
++        # target -- fetch it directly through the image network (the
++        # outgoing proxies apply) instead of hopping through the proxy view
 +        original = _proxied_original(absolute) if url.startswith("/") else None
 +        if original is not None:
 +            data = _fetch_image_b64(original) if _check_url(original) else ""
@@ -29839,101 +31541,247 @@ index 000000000..0d1e0d7cc
 +    return parts
 +
 +
-+# --------------------------------------------------------------- llm stream
++# ----------------------------------------------------------- dialect streams
 +
 +
-+def _chat_headers(cfg: dict[str, t.Any]) -> dict[str, str]:
-+    key = str(cfg.get("key") or "") or os.environ.get("ZJSEARCH_AI_KEY", "")
-+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
-+    if key and key.lower() != "none":
-+        headers["Authorization"] = f"Bearer {key}"
-+    return headers
++def _anthropic_image(part: dict[str, t.Any]) -> dict[str, t.Any]:
++    """OpenAI ``image_url`` content part -> Anthropic ``image`` block: the
++    Messages API takes inline base64 / a URL source instead of a data URL."""
++    url = str((part.get("image_url") or {}).get("url") or "")
++    m = re.match(r"^data:(image/[^;,]+);base64,(.*)$", url, re.DOTALL)
++    if m:
++        return {"type": "image", "source": {"type": "base64", "media_type": m.group(1), "data": m.group(2)}}
++    return {"type": "image", "source": {"type": "url", "url": url}}
 +
 +
-+def _chat_body(cfg: dict[str, t.Any], messages: list[dict[str, t.Any]], max_tokens: int | None) -> dict[str, t.Any]:
-+    body: dict[str, t.Any] = {
-+        "model": cfg.get("model"),
-+        "messages": messages,
-+        "stream": True,
-+    }
-+    # sampling params are opt-in: thinking models misbehave with forced
-+    # non-default temperature
-+    temperature = cfg.get("temperature")
-+    if temperature is not None:
-+        body["temperature"] = temperature
-+    if max_tokens:
-+        body["max_tokens"] = max_tokens
-+    extra = cfg.get("extra_body")
-+    if isinstance(extra, dict):
-+        body.update(extra)
-+    return body
++def _anthropic_message(message: dict[str, t.Any]) -> dict[str, t.Any]:
++    """One chat message in Anthropic shape -- text parts already match, only
++    image parts need the conversion."""
++    content = message.get("content")
++    if not isinstance(content, list):
++        return message
++    parts = [_anthropic_image(p) if p.get("type") == "image_url" else p for p in content]
++    return {**message, "content": parts}
 +
 +
-+def _sse_event(line: str, relay_reasoning: bool = False) -> tuple[str, str | None] | None:
-+    """One SSE line -> ("delta"/"think", text) / ("error", message) /
-+    ("end", None) / None to ignore (keep-alives, usage frames, malformed
-+    fragments).  Reasoning deltas are relayed as ("think", ...) only when
-+    ``relay_reasoning`` is set (the Quick Answer wraps them in a <think>
-+    block so the client can fold them)."""
-+    line = line.strip()
-+    if not line.startswith("data:"):
-+        return None
-+    payload = line[5:].strip()
-+    if payload == "[DONE]":
-+        return ("end", None)
++def _responses_message(message: dict[str, t.Any]) -> dict[str, t.Any]:
++    """One chat message in Responses-API input shape (``input_text`` /
++    ``input_image`` content parts); string content passes through."""
++    content = message.get("content")
++    if not isinstance(content, list):
++        return message
++    parts: list[dict[str, t.Any]] = []
++    for part in content:
++        if part.get("type") == "text":
++            parts.append({"type": "input_text", "text": part.get("text")})
++        elif part.get("type") == "image_url":
++            parts.append({"type": "input_image", "image_url": (part.get("image_url") or {}).get("url")})
++        else:
++            parts.append(part)
++    return {**message, "content": parts}
++
++
++def _gemini_messages(messages: list[dict[str, t.Any]]) -> tuple[t.Any, list[t.Any]]:
++    """(system_instruction, contents) in google-genai shape: text parts pass
++    through, inline base64 images become ``Part.from_bytes`` blocks -- the
++    Gemini API takes no remote image references on this path."""
++    from google.genai import types  # pylint: disable=import-outside-toplevel
++
++    system = "".join(str(m.get("content")) for m in messages if m.get("role") == "system")
++    contents: list[t.Any] = []
++    for message in messages:
++        if message.get("role") == "system":
++            continue
++        content = message.get("content")
++        # the Gemini API calls the assistant "model"
++        role = "model" if message.get("role") == "assistant" else "user"
++        if not isinstance(content, list):
++            contents.append(types.Content(role=role, parts=[types.Part(text=str(content))]))
++            continue
++        parts = []
++        for part in content:
++            if part.get("type") == "text":
++                parts.append(types.Part(text=str(part.get("text"))))
++            elif part.get("type") == "image_url":
++                m = re.match(
++                    r"^data:(image/[^;,]+);base64,(.*)$",
++                    str((part.get("image_url") or {}).get("url") or ""),
++                    re.DOTALL,
++                )
++                if m:
++                    parts.append(types.Part.from_bytes(data=base64.b64decode(m.group(2)), mime_type=m.group(1)))
++                else:
++                    logger.warning("zjsearch_ai: gemini dialect skips a non-inline image part")
++        if parts:
++            contents.append(types.Content(role=role, parts=parts))
++    return system or None, contents
++
++
++def _system_of(messages: list[dict[str, t.Any]]) -> str:
++    return "".join(str(m.get("content")) for m in messages if m.get("role") == "system")
++
++
++async def _pump_openai_chat(
++    cfg: dict[str, t.Any],
++    base: str,
++    messages: list[dict[str, t.Any]],
++    events: "queue.Queue[tuple[str, str | None]]",
++    relay_reasoning: bool,
++) -> None:
++    """The chat-completions dialect: relay ``delta.content``, plus the
++    deepseek-style ``reasoning_content`` / openrouter-style ``reasoning``
++    extras as think events when ``relay_reasoning`` is set."""
++    client = _openai_client(cfg, base)
++    stream = await client.chat.completions.create(
++        model=str(cfg.get("model")),
++        messages=messages,
++        stream=True,
++        timeout=_sdk_timeout(),
++        extra_headers=_extra_headers(cfg),
++        extra_body=_extra_body(cfg),
++        **_model_kwargs(_params(cfg), "openai_chat_completions"),
++    )
 +    try:
-+        chunk = json.loads(payload)
-+    except ValueError:
-+        return None
-+    error = chunk.get("error")
-+    if error:
-+        return ("error", json.dumps(error, ensure_ascii=False)[:400])
-+    choices = chunk.get("choices") or []
-+    delta = (choices[0].get("delta") or {}) if choices else {}
-+    if relay_reasoning:
-+        # deepseek-style ``reasoning_content``; openrouter-style ``reasoning``
-+        reasoning = delta.get("reasoning_content") or delta.get("reasoning")
-+        if reasoning:
-+            return ("think", str(reasoning))
-+    content = delta.get("content")
-+    return ("delta", str(content)) if content else None
++        async for chunk in stream:
++            if not chunk.choices:
++                continue
++            delta = chunk.choices[0].delta
++            if delta is None:
++                continue
++            if relay_reasoning:
++                reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
++                if reasoning:
++                    events.put(("think", str(reasoning)))
++            if delta.content:
++                events.put(("delta", str(delta.content)))
++    finally:
++        await stream.close()
++
++
++async def _pump_openai_responses(
++    cfg: dict[str, t.Any],
++    base: str,
++    messages: list[dict[str, t.Any]],
++    events: "queue.Queue[tuple[str, str | None]]",
++    relay_reasoning: bool,
++) -> None:
++    """The Responses-API dialect: relay the output text deltas, the reasoning
++    text / summary deltas as think events."""
++    client = _openai_client(cfg, base)
++    stream = await client.responses.create(
++        model=str(cfg.get("model")),
++        input=[_responses_message(m) for m in messages if m.get("role") != "system"],
++        instructions=_system_of(messages) or None,
++        stream=True,
++        timeout=_sdk_timeout(),
++        extra_headers=_extra_headers(cfg),
++        extra_body=_extra_body(cfg),
++        **_model_kwargs(_params(cfg), "openai_responses"),
++    )
++    try:
++        async for event in stream:
++            event_type = getattr(event, "type", "")
++            if event_type == "response.output_text.delta":
++                if event.delta:
++                    events.put(("delta", str(event.delta)))
++            elif relay_reasoning and event_type in (
++                "response.reasoning_text.delta",
++                "response.reasoning_summary_text.delta",
++            ):
++                if event.delta:
++                    events.put(("think", str(event.delta)))
++    finally:
++        await stream.close()
++
++
++async def _pump_anthropic(
++    cfg: dict[str, t.Any],
++    base: str,
++    messages: list[dict[str, t.Any]],
++    events: "queue.Queue[tuple[str, str | None]]",
++    relay_reasoning: bool,
++) -> None:
++    """The Messages-API dialect: relay ``text_delta`` and -- when
++    ``relay_reasoning`` is set -- ``thinking_delta`` events."""
++    client = _anthropic_client(cfg, base)
++    stream = await client.messages.create(
++        model=str(cfg.get("model")),
++        system=_system_of(messages) or None,
++        messages=[_anthropic_message(m) for m in messages if m.get("role") != "system"],
++        stream=True,
++        timeout=_sdk_timeout(),
++        extra_headers=_extra_headers(cfg),
++        extra_body=_extra_body(cfg),
++        **_model_kwargs(_params(cfg), "anthropic"),
++    )
++    try:
++        async for event in stream:
++            if event.type != "content_block_delta":
++                continue
++            delta = event.delta
++            if delta.type == "thinking_delta":
++                if relay_reasoning and delta.thinking:
++                    events.put(("think", str(delta.thinking)))
++            elif delta.text:
++                events.put(("delta", str(delta.text)))
++    finally:
++        await stream.close()
++
++
++async def _pump_gemini(
++    cfg: dict[str, t.Any],
++    base: str,
++    messages: list[dict[str, t.Any]],
++    events: "queue.Queue[tuple[str, str | None]]",
++    relay_reasoning: bool,
++) -> None:
++    """The Gemini dialect: relay chunk text; thought parts (Gemini 2.5
++    thinking) become think events."""
++    from google.genai import types  # pylint: disable=import-outside-toplevel
++
++    client = _gemini_client(cfg, base)
++    system, contents = _gemini_messages(messages)
++    config = types.GenerateContentConfig(system_instruction=system, **_model_kwargs(_params(cfg), "gemini"))
++    stream = await client.aio.models.generate_content_stream(
++        model=str(cfg.get("model")), contents=contents, config=config
++    )
++    async for chunk in stream:
++        candidates = chunk.candidates or []
++        parts = candidates[0].content.parts if candidates and candidates[0].content else []
++        for part in parts or []:
++            if not part.text:
++                continue
++            if part.thought:
++                if relay_reasoning:
++                    events.put(("think", str(part.text)))
++            else:
++                events.put(("delta", str(part.text)))
 +
 +
 +async def _llm_pump(
 +    cfg: dict[str, t.Any],
-+    headers: dict[str, str],
-+    body: dict[str, t.Any],
++    kind: str,
++    base: str,
++    messages: list[dict[str, t.Any]],
 +    events: "queue.Queue[tuple[str, str | None]]",
 +    relay_reasoning: bool = False,
 +) -> None:
-+    """POST the chat request and relay the SSE stream into ``events``; runs
-+    on the shared network event loop (see :py:class:`_LlmStream`).  The call
-+    goes through the AI network (``outgoing`` proxies apply for remote
-+    endpoints); the raw client stream sidesteps the engine retry /
-+    raise_for_status paths, the upstream status is reported as an event."""
++    """Drive the dialect's SDK stream and relay it into ``events``; runs on
++    the shared network event loop (see :py:class:`_LlmStream`).  SDK client
++    construction and request errors land as ("error", ...) events; the pump
++    always ends with ("end", None)."""
 +    try:
-+        stream_cm = await _ai_network().stream(
-+            "POST", str(cfg.get("url")), json=body, headers=headers, timeout=_LLM_TIMEOUT
-+        )
-+        async with stream_cm as resp:
-+            if resp.status_code != 200:
-+                raw = await resp.acontent()
-+                detail = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw)
-+                events.put(("error", f"HTTP {resp.status_code}: {detail[:400]}"))
-+                return
-+            async for raw_line in resp.aiter_lines():
-+                # curl_cffi yields undecoded bytes (SSE is always UTF-8)
-+                line = raw_line.decode("utf-8", "replace") if isinstance(raw_line, bytes) else raw_line
-+                event = _sse_event(line, relay_reasoning)
-+                if event is None:
-+                    continue
-+                events.put(event)
-+                if event[0] not in ("delta", "think"):
-+                    return
-+    except (RequestException, OSError, ValueError) as exc:
-+        events.put(("error", repr(exc)))
++        if kind == "anthropic":
++            await _pump_anthropic(cfg, base, messages, events, relay_reasoning)
++        elif kind == "openai_responses":
++            await _pump_openai_responses(cfg, base, messages, events, relay_reasoning)
++        elif kind == "gemini":
++            await _pump_gemini(cfg, base, messages, events, relay_reasoning)
++        else:
++            await _pump_openai_chat(cfg, base, messages, events, relay_reasoning)
 +    except Exception as exc:  # pylint: disable=broad-except
-+        events.put(("error", repr(exc)))
++        logger.warning("zjsearch_ai: LLM stream error: %s: %s", type(exc).__name__, str(exc)[:300])
++        events.put(("error", f"{type(exc).__name__}: {exc}"))
 +    finally:
 +        events.put(("end", None))
 +
@@ -29948,14 +31796,13 @@ index 000000000..0d1e0d7cc
 +        self,
 +        cfg: dict[str, t.Any],
 +        messages: list[dict[str, t.Any]],
-+        max_tokens: int | None,
 +        relay_reasoning: bool = False,
 +    ):
 +        self.events: "queue.Queue[tuple[str, str | None]]" = queue.Queue()
 +        self.loop = get_loop()
++        kind, base = _endpoint(cfg)
 +        self.task = asyncio.run_coroutine_threadsafe(
-+            _llm_pump(cfg, _chat_headers(cfg), _chat_body(cfg, messages, max_tokens), self.events, relay_reasoning),
-+            self.loop,
++            _llm_pump(cfg, kind, base, messages, self.events, relay_reasoning), self.loop
 +        )
 +
 +    def next_event(self, timeout: float) -> tuple[str, str | None]:
@@ -29975,8 +31822,57 @@ index 000000000..0d1e0d7cc
 +            self.loop.call_soon_threadsafe(self.task.cancel)
 +
 +
++# -------------------------------------------------------------- answer view
++
++_ANSWER_SYSTEM_PROMPT = """\
++You are the "AI Overview" feature of a search engine: answer the user's
++question directly, grounded in the numbered sources provided.
++Today is {today}.
++Rules:
++- Write the answer in {lang}.
++- Cite sources right after the statements they support: [1] for one source,
++  [1,3] for several. Use [*] only for common knowledge that no source covers.
++- Format freely in GitHub-flavored markdown: section headings, bullet /
++  numbered lists, **bold**, tables, fenced code blocks, links when a source
++  URL genuinely helps -- and a ```mermaid fenced block (flowchart /
++  sequence / ...) when a diagram clarifies the answer better than prose.
++  In mermaid, quote every node label that contains punctuation or
++  parentheses: A["降水(雨/雪)"] -- not A[降水(雨/雪)].
++- If the sources do not answer the question, say so in one short line and
++  answer from common knowledge marked with [*].
++- Get to the point in the first sentence. No preamble, no closing remark.
++- Earlier turns, when present, asked about the same numbered sources: a
++  short follow-up like "换成表格" or "画成流程图" restyles or extends the
++  previous answer; keep the [n] citations consistent with the source list."""
++
++_ANSWER_USER_PROMPT = "<q>{q}</q>\n<sources>\n{context}\n</sources>"
++
++
++def _history_messages(payload: dict[str, t.Any]) -> list[dict[str, t.Any]]:
++    """The follow-up conversation as user/assistant messages.  The client
++    replays its prior turns (stripped of thinking) with every ask; entries
++    are sanitized and capped, anything malformed is skipped."""
++    turns = payload.get("history")
++    if not isinstance(turns, list):
++        return []
++    messages: list[dict[str, t.Any]] = []
++    for turn in turns[-_HISTORY_MAX_TURNS:]:
++        if not isinstance(turn, dict):
++            continue
++        q = str(turn.get("q") or "").strip()[:_HISTORY_Q_MAX_CHARS]
++        a = str(turn.get("a") or "").strip()[:_HISTORY_TURN_MAX_CHARS]
++        if q and a:
++            messages.append({"role": "user", "content": q})
++            messages.append({"role": "assistant", "content": a})
++    return messages
++
++
 +def _build_answer_messages(
-+    query: str, context: str, lang: str, image_parts: list[dict[str, t.Any]]
++    query: str,
++    context: str,
++    lang: str,
++    image_parts: list[dict[str, t.Any]],
++    history: list[dict[str, t.Any]] | None = None,
 +) -> list[dict[str, t.Any]]:
 +    system = _ANSWER_SYSTEM_PROMPT.format(today=datetime.date.today().isoformat(), lang=lang)
 +    if image_parts:
@@ -29990,16 +31886,16 @@ index 000000000..0d1e0d7cc
 +        if image_parts
 +        else {"role": "user", "content": user_text}
 +    )
-+    return [{"role": "system", "content": system}, user]
++    return [{"role": "system", "content": system}, *(history or []), user]
 +
 +
 +def _answer() -> flask.Response:
-+    """Quick Answer: the client assembles the numbered source context from
-+    the page payload it already has, this view streams the answer.  Reasoning
++    """AI Overview: the client assembles the numbered source context from the
++    page payload it already has, this view streams the answer.  Reasoning
 +    deltas are relayed wrapped in ``<think>...</think>`` so the client can
 +    fold them away."""
 +    cfg = _ai_cfg()
-+    if not cfg.get("enabled") or not cfg.get("url") or not cfg.get("model"):
++    if not _configured(cfg):
 +        flask.abort(404)
 +    payload = sxng_request.get_json(silent=True) or {}
 +    if not check_token(str(payload.get("tk") or "")):
@@ -30012,14 +31908,13 @@ index 000000000..0d1e0d7cc
 +    if lang in ("", "all", "auto"):
 +        lang = "en"
 +
-+    raw_max_tokens = cfg.get("answer_max_tokens")
 +    image_parts = _attached_images(payload, cfg)
++    history = _history_messages(payload)
 +
 +    def open_stream(with_images: bool) -> _LlmStream:
 +        return _LlmStream(
 +            cfg,
-+            _build_answer_messages(q, context, lang, image_parts if with_images else []),
-+            int(raw_max_tokens) if raw_max_tokens else None,
++            _build_answer_messages(q, context, lang, image_parts if with_images else [], history),
 +            relay_reasoning=True,
 +        )
 +
@@ -30036,7 +31931,7 @@ index 000000000..0d1e0d7cc
 +            logger.warning(
 +                "zjsearch_ai: upstream produced no answer content -- reasoning-style models can spend very "
 +                "long on their thinking; disable thinking via zjsearch.ai.extra_body "
-+                "(e.g. chat_template_kwargs: {'enable_thinking': False}) or set answer_max_tokens"
++                "(e.g. chat_template_kwargs: {'enable_thinking': False}) or set params.max_tokens"
 +            )
 +        # upstream status / message is already in the server log: answer a
 +        # clean HTTP error instead of an error inside the stream
@@ -30075,15 +31970,37 @@ index 000000000..0d1e0d7cc
 +    return resp
 +
 +
++# -------------------------------------------------------------------- install
++
++_SDK_PACKAGES = {
++    "openai_chat_completions": "openai",
++    "openai_responses": "openai",
++    "anthropic": "anthropic",
++    "gemini": "google.genai",
++}
++
++
 +def install(app: flask.Flask) -> None:
 +    """Register the answer route; chained from ``zjsearch_stream.install``
 +    so webapp.py keeps its one theme entry point.  An enabled-but-incomplete
-+    configuration logs a warning and the feature stays off."""
++    configuration or a missing SDK package logs a warning and the feature
++    stays off."""
 +    cfg = _ai_cfg()
 +    if not cfg.get("enabled"):
 +        return
-+    if not cfg.get("url") or not cfg.get("model"):
-+        logger.warning("zjsearch.ai is enabled but url/model are missing -- AI answers stay off")
++    if not _configured(cfg):
++        logger.warning("zjsearch.ai is enabled but model/base_url are missing -- AI answers stay off")
++        return
++    kind = _endpoint(cfg)[0]
++    if str(cfg.get("sdk") or "") and cfg.get("sdk") not in _ENDPOINT_KINDS:
++        logger.warning("zjsearch.ai: unknown sdk %r -- treating it as openai_chat_completions", cfg.get("sdk"))
++    package = _SDK_PACKAGES[kind]
++    if importlib.util.find_spec(package) is None:
++        logger.warning(
++            "zjsearch.ai: the %r transport needs the %r package (see requirements.txt) -- AI answers stay off",
++            kind,
++            package,
++        )
 +        return
 +    if settings.get("server", {}).get("secret_key") == "ultrasecretkey":
 +        logger.warning("zjsearch.ai runs with the default server.secret_key -- answer tokens are forgeable")
