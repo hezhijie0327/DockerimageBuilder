@@ -44,8 +44,11 @@ RUN \
 WORKDIR /app/client/zjsearch
 
 RUN \
-    npm i \
-    && npm run build
+    npm i -g corepack@latest \
+    && corepack enable \
+    && corepack use $(sed -n 's/.*"packageManager": "\(.*\)".*/\1/p' package.json) \
+    && pnpm i \
+    && pnpm run build
 
 FROM python:${PYTHON_VERSION}-slim AS build_searxng
 
