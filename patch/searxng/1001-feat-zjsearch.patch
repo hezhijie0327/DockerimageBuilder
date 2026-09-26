@@ -229,10 +229,10 @@ index 000000000..2d3b19b28
 +Licensor: Zhijie He
 diff --git a/client/zjsearch/README.rst b/client/zjsearch/README.rst
 new file mode 100644
-index 000000000..8cd9d95e4
+index 000000000..d444727ed
 --- /dev/null
 +++ b/client/zjsearch/README.rst
-@@ -0,0 +1,350 @@
+@@ -0,0 +1,352 @@
 +=====
 +zjsearch
 +=====
@@ -335,9 +335,11 @@ index 000000000..8cd9d95e4
 +  concept = same icon everywhere (Search submits, X dismisses, Check
 +  confirms copy, ExternalLink leaves the site, ChevronDown discloses).
 +- **Motion** — entrance/exit animations use the ``animate-*`` theme
-+  tokens only; every JS-initiated scroll passes ``scrollBehavior()``
-+  (``lib/motion.ts``, also exports ``reducedMotion()``); the stylesheet
-+  guards ``prefers-reduced-motion`` for CSS.
++  tokens only; every JS-initiated scroll goes through ``animateScroll()`` /
++  ``scrollIntoViewAnimated()`` (``lib/motion.ts``, also exports
++  ``reducedMotion()``) — per-frame tweens of instant scrolls, because
++  native ``behavior: "smooth"`` is silently dropped by smooth-scroll-disabled
++  webviews; the stylesheet guards ``prefers-reduced-motion`` for CSS.
 +- **Accessibility** — global ``:focus-visible`` outline (never remove it
 +  without an equivalent ring); icon-only buttons always carry an
 +  ``aria-label``; modal dialogs (drawer, lightbox, help modal) mount
@@ -6759,7 +6761,7 @@ index 000000000..7c4a9e50a
 +</svg>
 diff --git a/client/zjsearch/src/components/BackToTop.tsx b/client/zjsearch/src/components/BackToTop.tsx
 new file mode 100644
-index 000000000..418f938d9
+index 000000000..ee2f78685
 --- /dev/null
 +++ b/client/zjsearch/src/components/BackToTop.tsx
 @@ -0,0 +1,35 @@
@@ -6768,7 +6770,7 @@ index 000000000..418f938d9
 +import { ArrowUp } from "lucide-react";
 +import { useEffect, useState } from "react";
 +import { useT } from "@/lib/i18n.ts";
-+import { scrollBehavior } from "@/lib/motion.ts";
++import { animateScroll } from "@/lib/motion.ts";
 +
 +export function BackToTop() {
 +  const t = useT();
@@ -6790,7 +6792,7 @@ index 000000000..418f938d9
 +      aria-label={t("back_to_top")}
 +      className="fixed bottom-6 right-6 z-40 grid size-10 place-items-center rounded-full border border-line bg-surface text-ink-2 shadow-pop transition-colors hover:text-accent animate-fade-in"
 +      onClick={() => {
-+        window.scrollTo({ top: 0, behavior: scrollBehavior() });
++        animateScroll(window, { top: 0 });
 +      }}
 +      type="button"
 +    >
@@ -8172,10 +8174,10 @@ index 000000000..9055717f0
 +}
 diff --git a/client/zjsearch/src/components/SearchControls.tsx b/client/zjsearch/src/components/SearchControls.tsx
 new file mode 100644
-index 000000000..52bf4db7b
+index 000000000..d02ee3048
 --- /dev/null
 +++ b/client/zjsearch/src/components/SearchControls.tsx
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,231 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +import { Clock, Ellipsis, Languages, Shield } from "lucide-react";
@@ -8186,7 +8188,7 @@ index 000000000..52bf4db7b
 +import { Dropdown } from "@/components/Dropdown.tsx";
 +import { categoryLabel } from "@/lib/categories.ts";
 +import { languageOptions, useT } from "@/lib/i18n.ts";
-+import { scrollBehavior } from "@/lib/motion.ts";
++import { animateScroll } from "@/lib/motion.ts";
 +import { useSettings } from "@/lib/settings.ts";
 +import { SCROLLBAR_NONE, SCROLLBAR_NONE_SM } from "@/lib/styles.ts";
 +import type { GlobalData } from "@/lib/types.ts";
@@ -8218,12 +8220,15 @@ index 000000000..52bf4db7b
 +  // "nothing selected".  Centering is a no-op while the row fits.
 +  // biome-ignore lint/correctness/useExhaustiveDependencies: re-center when the selection changes
 +  useLayoutEffect(() => {
-+    if (wrap) {
++    const strip = scrollerRef.current;
++    if (wrap || !strip) {
 +      return;
 +    }
-+    scrollerRef.current
-+      ?.querySelector('button[aria-pressed="true"]')
-+      ?.scrollIntoView({ block: "nearest", inline: "center", behavior: scrollBehavior() });
++    const tab = strip.querySelector<HTMLElement>('button[aria-pressed="true"]');
++    if (!tab) {
++      return;
++    }
++    animateScroll(strip, { left: tab.offsetLeft + tab.offsetWidth / 2 - strip.clientWidth / 2 });
 +  }, [wrap, selected]);
 +
 +  const toggle = (category: string) => {
@@ -12015,7 +12020,7 @@ index 000000000..d6b51119f
 +}
 diff --git a/client/zjsearch/src/features/results/SuggestionsBox.tsx b/client/zjsearch/src/features/results/SuggestionsBox.tsx
 new file mode 100644
-index 000000000..0bbe85e28
+index 000000000..13193cd7d
 --- /dev/null
 +++ b/client/zjsearch/src/features/results/SuggestionsBox.tsx
 @@ -0,0 +1,97 @@
@@ -12024,7 +12029,7 @@ index 000000000..0bbe85e28
 +import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 +import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 +import { useT } from "@/lib/i18n.ts";
-+import { scrollBehavior } from "@/lib/motion.ts";
++import { animateScroll } from "@/lib/motion.ts";
 +import { DISABLED, PILL, SCROLLBAR_NONE } from "@/lib/styles.ts";
 +import type { SearchPageData } from "@/lib/types.ts";
 +
@@ -12063,7 +12068,7 @@ index 000000000..0bbe85e28
 +    if (!strip) {
 +      return;
 +    }
-+    strip.scrollBy({ left: direction * strip.clientWidth * 0.8, behavior: scrollBehavior() });
++    animateScroll(strip, { left: strip.scrollLeft + direction * strip.clientWidth * 0.8 });
 +  };
 +
 +  // buttons are persistent so flipping state never shifts the chips; a
@@ -18025,24 +18030,186 @@ index 000000000..6a1409892
 +}
 diff --git a/client/zjsearch/src/lib/motion.ts b/client/zjsearch/src/lib/motion.ts
 new file mode 100644
-index 000000000..e83514a3c
+index 000000000..68bfe096d
 --- /dev/null
 +++ b/client/zjsearch/src/lib/motion.ts
-@@ -0,0 +1,15 @@
+@@ -0,0 +1,177 @@
 +// SPDX-License-Identifier: Apache-2.0 WITH Commons-Clause-1.0
 +
 +/**
-+ * Motion preferences for JS-driven behaviour.  The global stylesheet guard
++ * Motion preferences for JS-driven scrolling.  The global stylesheet guard
 + * (`prefers-reduced-motion` → transition/animation/scroll-behavior) cannot
-+ * reach JS-initiated smooth scrolling — every `scrollTo`/`scrollIntoView`/
-+ * `scrollBy` call must pass this as its `behavior`.
++ * reach JS-initiated smooth scrolling, and native `behavior: "smooth"` is
++ * not a safe primitive anyway: webviews built with smooth scrolling disabled
++ * (embedded browsers, some in-app engines) SILENTLY DROP every smooth
++ * scroll — `window.scrollTo`, `scrollIntoView` and CSS `scroll-behavior`
++ * alike no-op instead of animating or snapping, so the scroll never happens
++ * at all.  Every programmatic scroll therefore goes through `animateScroll`
++ * / `scrollIntoViewAnimated`, which tween instant scrolls per frame — they
++ * work in every engine, give one consistent easing/duration across browsers,
++ * and collapse to an instant jump under reduced motion.
 + */
++
 +export function reducedMotion(): boolean {
 +  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 +}
 +
-+export function scrollBehavior(): ScrollBehavior {
-+  return reducedMotion() ? "auto" : "smooth";
++type ScrollTarget = { top?: number; left?: number };
++
++// one active tween per scroller — a second call supersedes the first
++const active = new WeakMap<object, () => void>();
++
++function stopTween(key: object): void {
++  active.get(key)?.();
++}
++
++/** Shared per-frame tween of instant scrolls (works where native smooth
++    scrolling is disabled).  Cancels on user scroll input (wheel / touch /
++    keys) and when superseded by another tween on the same scroller. */
++function tweenScroll(
++  key: object,
++  stepAt: (eased: number) => void,
++  distance: number,
++  opts?: { durationMs?: number },
++): void {
++  stopTween(key);
++  const duration = opts?.durationMs ?? Math.min(600, Math.max(240, distance * 0.45));
++  const t0 = performance.now();
++  let raf = 0;
++  let timer = 0;
++  let stopped = false;
++  const onUserScroll = () => stop();
++  const stop = () => {
++    stopped = true;
++    cancelAnimationFrame(raf);
++    window.clearTimeout(timer);
++    window.removeEventListener("wheel", onUserScroll);
++    window.removeEventListener("touchstart", onUserScroll);
++    window.removeEventListener("keydown", onUserScroll);
++    active.delete(key);
++  };
++  const step = () => {
++    const t = Math.min(1, (performance.now() - t0) / duration);
++    stepAt(t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
++    if (t < 1) {
++      raf = requestAnimationFrame(step);
++    } else {
++      stop();
++    }
++  };
++  // a starved rAF (occluded tab, frozen pipeline) must never strand the
++  // scroll mid-way — settle at the target instead
++  timer = window.setTimeout(() => {
++    stepAt(1);
++    stop();
++  }, duration + 150);
++  // attach the cancel listeners AFTER the current dispatch completes: the
++  // initiating event (a hotkey keydown) would otherwise reach the fresh
++  // listener synchronously and cancel its own scroll
++  queueMicrotask(() => {
++    if (stopped) {
++      return;
++    }
++    window.addEventListener("wheel", onUserScroll, { passive: true });
++    window.addEventListener("touchstart", onUserScroll, { passive: true });
++    window.addEventListener("keydown", onUserScroll);
++  });
++  raf = requestAnimationFrame(step);
++  active.set(key, stop);
++}
++
++/** Animated scroll of the window towards absolute `top`/`left` coordinates
++    (undefined axis = leave unchanged). */
++export function animateScroll(
++  scroller: HTMLElement | Window,
++  target: ScrollTarget,
++  opts?: { durationMs?: number },
++): void {
++  if (!(scroller instanceof HTMLElement)) {
++    animateWindow(target, opts);
++  } else {
++    animateBox(scroller, target, opts);
++  }
++}
++
++function animateWindow(target: ScrollTarget, opts?: { durationMs?: number }): void {
++  const top = target.top;
++  const left = target.left;
++  if ((top === undefined || top === window.scrollY) && (left === undefined || left === window.scrollX)) {
++    return;
++  }
++  if (reducedMotion()) {
++    stopTween(window);
++    window.scrollTo(left ?? window.scrollX, top ?? window.scrollY);
++    return;
++  }
++  const topFrom = window.scrollY;
++  const leftFrom = window.scrollX;
++  const distance = Math.max(
++    top === undefined ? 0 : Math.abs(top - topFrom),
++    left === undefined ? 0 : Math.abs(left - leftFrom),
++  );
++  tweenScroll(
++    window,
++    (eased) => {
++      window.scrollTo(
++        left === undefined ? window.scrollX : Math.round(leftFrom + (left - leftFrom) * eased),
++        top === undefined ? window.scrollY : Math.round(topFrom + (top - topFrom) * eased),
++      );
++    },
++    distance,
++    opts,
++  );
++}
++
++function animateBox(box: HTMLElement, target: ScrollTarget, opts?: { durationMs?: number }): void {
++  const top = target.top;
++  const left = target.left;
++  if ((top === undefined || top === box.scrollTop) && (left === undefined || left === box.scrollLeft)) {
++    return;
++  }
++  const apply = (t: number | undefined, l: number | undefined) => {
++    if (t !== undefined) {
++      box.scrollTop = t;
++    }
++    if (l !== undefined) {
++      box.scrollLeft = l;
++    }
++  };
++  if (reducedMotion()) {
++    stopTween(box);
++    apply(top, left);
++    return;
++  }
++  const topFrom = box.scrollTop;
++  const leftFrom = box.scrollLeft;
++  const distance = Math.max(
++    top === undefined ? 0 : Math.abs(top - topFrom),
++    left === undefined ? 0 : Math.abs(left - leftFrom),
++  );
++  tweenScroll(
++    box,
++    (eased) => {
++      apply(
++        top === undefined ? undefined : Math.round(topFrom + (top - topFrom) * eased),
++        left === undefined ? undefined : Math.round(leftFrom + (left - leftFrom) * eased),
++      );
++    },
++    distance,
++    opts,
++  );
++}
++
++/** `scrollIntoView` semantics (block start/center against the window
++    scroller, honouring `scroll-margin-top`) driven through `animateScroll`. */
++export function scrollIntoViewAnimated(el: HTMLElement, block: "start" | "center" = "start"): void {
++  const rect = el.getBoundingClientRect();
++  const margin = Number.parseFloat(getComputedStyle(el).scrollMarginTop) || 0;
++  const top =
++    block === "start"
++      ? rect.top + window.scrollY - margin
++      : rect.top + window.scrollY - (window.innerHeight - rect.height) / 2;
++  animateScroll(window, { top });
 +}
 diff --git a/client/zjsearch/src/lib/pageData.ts b/client/zjsearch/src/lib/pageData.ts
 new file mode 100644
@@ -20140,7 +20307,7 @@ index 000000000..d250d0a7e
 +}
 diff --git a/client/zjsearch/src/pages/ResultsPage.tsx b/client/zjsearch/src/pages/ResultsPage.tsx
 new file mode 100644
-index 000000000..e0a9ea0f9
+index 000000000..efe70ba1a
 --- /dev/null
 +++ b/client/zjsearch/src/pages/ResultsPage.tsx
 @@ -0,0 +1,548 @@
@@ -20178,7 +20345,7 @@ index 000000000..e0a9ea0f9
 +import { useCopyToast } from "@/lib/clipboard.ts";
 +import { readCookie } from "@/lib/cookies.ts";
 +import { useLocale, useT } from "@/lib/i18n.ts";
-+import { scrollBehavior } from "@/lib/motion.ts";
++import { scrollIntoViewAnimated } from "@/lib/motion.ts";
 +import { useRouter } from "@/lib/router.tsx";
 +import { fetchSearchPage, parseSearchUrl, shareableSearchUrl } from "@/lib/searchParams.ts";
 +import { useHasPlugin, useSettings } from "@/lib/settings.ts";
@@ -20367,7 +20534,7 @@ index 000000000..e0a9ea0f9
 +      if (!next) {
 +        return;
 +      }
-+      next.scrollIntoView({ block: "center", behavior: scrollBehavior() });
++      scrollIntoViewAnimated(next, "center");
 +      setHotkeysSelected(Number(next.dataset.hotkeyIndex));
 +    },
 +    open: (newTab: boolean) => {
@@ -20436,7 +20603,7 @@ index 000000000..e0a9ea0f9
 +      if (!card) {
 +        return false;
 +      }
-+      card.scrollIntoView({ block: "start", behavior: scrollBehavior() });
++      scrollIntoViewAnimated(card, "start");
 +      // the dashed frame persists — the accumulating set of the results the
 +      // AI cited; the tint flash below is the one-shot locate highlight
 +      setAiMarks({ href, indices: new Set(aiCited).add(index - 1) });
