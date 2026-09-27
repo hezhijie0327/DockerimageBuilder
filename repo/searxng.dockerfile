@@ -15,13 +15,17 @@ RUN \
     && cat "${WORKDIR}/searxng.json" | jq -Sr ".patch_branch" > "${WORKDIR}/searxng.patch_branch.autobuild" \
     && cat "${WORKDIR}/searxng.json" | jq -Sr ".version" > "${WORKDIR}/searxng.version.autobuild" \
     && git clone -b $(cat "${WORKDIR}/searxng.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/searxng.source.autobuild") "${WORKDIR}/BUILDTMP/SEARXNG" \
+    && git clone -b "zjsearch" --depth=1 "https://github.com/hezhijie0327/ZJSearch.git" "${WORKDIR}/BUILDTMP/ZJSEARCH" \
     && git clone -b $(cat "${WORKDIR}/searxng.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/searxng.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
     && export SEARXNG_SHA=$(cd "${WORKDIR}/BUILDTMP/SEARXNG" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export SEARXNG_VERSION=$(date '+%Y.%m.%d') \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export SEARXNG_CUSTOM_VERSION="${SEARXNG_VERSION}-ZHIJIE-${SEARXNG_SHA}${PATCH_SHA}" \
+    && cd "${WORKDIR}/BUILDTMP/ZJSEARCH" \
+    && bash ./client/zjsearch/make-patch.sh \
     && cd "${WORKDIR}/BUILDTMP/SEARXNG" \
     && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/searxng/*.patch \
+    && git apply --reject ${WORKDIR}/BUILDTMP/ZJSEARCH/*.patch \
     && sed -i "s|ultrasecretkey|$(openssl rand -hex 32)|g;s|127.0.0.1|0.0.0.0|g" "${WORKDIR}/BUILDTMP/SEARXNG/searx/settings.yml" \
     && sed -i "s|VERSION_STRING: str = \"1.0.0\"|VERSION_STRING: str = \"${SEARXNG_CUSTOM_VERSION}\"|g;s|GIT_URL = \"unknow\"|GIT_URL = \"https://github.com/searxng/searxng\"|g" "${WORKDIR}/BUILDTMP/SEARXNG/searx/version.py"
 
