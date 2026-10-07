@@ -88,7 +88,15 @@ RUN \
         -type f -exec gzip -9 -k {} \+ -exec brotli --best {} \+ \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
-FROM python:${PYTHON_VERSION}-slim AS rebased_searxng
+# drop camoufox's bundled font library (~2.1 GB -- its fingerprint-font
+# set): the browser falls back to the system font packages the dist stage
+# installs (its own fontconfig only needs the directory to be OPTIONAL).
+# Safe here because the dist stage COPYs /app by FILE STATE -- the slimmed
+# tree is what ships.  (browserless does the same dance: curated apt font
+# packages + rm -rf of the fat noto dir + fc-cache -f.)
+RUN rm -rf /app/browser-cache/camoufox/browsers/*/fonts
+
+FROM python:${PYTHON_VERSION}-slim
 
 # the built-in browser's runtime: Xvfb (zjsearch.browser.mode: virtual) and
 # the Firefox/GTK library set with fonts -- the SAME base image the venv was
@@ -106,15 +114,17 @@ RUN \
         libxkbcommon0 libgbm1 libdrm2 \
         libfontconfig1 \
         fonts-liberation \
+        fonts-noto-cjk \
+        fonts-wqy-zenhei \
+        fonts-noto-color-emoji \
+        fonts-dejavu-core \
+        fonts-freefont-ttf \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build_searxng /app /app
 
 COPY --from=build_searxng /app/searx/settings.yml /app/searx/limiter.toml /app/searx/favicons/favicons.toml /config/
-
-FROM scratch
-
-COPY --from=rebased_searxng / /
 
 ENV \
     PYTHONPATH="/app" \
