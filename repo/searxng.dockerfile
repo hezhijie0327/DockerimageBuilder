@@ -88,27 +88,16 @@ RUN \
         -type f -exec gzip -9 -k {} \+ -exec brotli --best {} \+ \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
-# browserless-style system fonts: camoufox's bundled font library (~2.1 GB
-# of fingerprint-font sets) is deleted entirely, and its per-OS fontconfig
-# template gains /usr/share/fonts as a scan dir -- the pages then resolve
-# the apt font packages the dist stage installs.  The fingerprint is pinned
-# to linux (zjsearch.browser.os), so the system set IS the identity's font
-# list.  The template lives at fontconfig/<os>/fonts.conf; camoufox rewrites
-# its <dir prefix="cwd">fonts</dir> marker at launch -- the appended line
-# survives that rewrite.
-RUN rm -rf /app/browser-cache/camoufox/browsers/*/*/fonts \
-    && sed -i 's|<dir prefix="cwd">fonts</dir>|<dir prefix="cwd">fonts</dir><dir>/usr/share/fonts</dir>|' \
-        /app/browser-cache/camoufox/browsers/*/*/fontconfig/linux/fonts.conf
-
 FROM python:${PYTHON_VERSION}-slim AS rebased_searxng
 
 # the built-in browser's runtime: Xvfb (zjsearch.browser.mode: virtual) and
-# the Firefox/GTK library set with fonts -- the SAME base image the venv was
-# built on, so nothing needs hand-copying out of a distroless assembly
+# the Firefox/GTK library set -- the SAME base image the venv was built on,
+# so nothing needs hand-copying out of a distroless assembly.  NO system
+# font packages: camoufox ships its bundled font library as the identity's
+# font list and its runtime fontconfig isolates the browser from the
+# system's -- fonts stay at native camoufox handling.
 RUN \
-    sed -i "s|main|main contrib non-free non-free-firmware|g;s/stable/${LSBCodename:-stable}/g" "/etc/apt/sources.list.d/debian.sources" \
-    && echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | debconf-set-selections \
-    && apt update \
+    apt update \
     && apt install -qy --no-install-recommends \
         xvfb \
         libgtk-3-0 \
@@ -118,22 +107,6 @@ RUN \
         libx11-xcb1 libxcb1 \
         libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 \
         libxkbcommon0 libgbm1 libdrm2 \
-        fontconfig \
-        fonts-freefont-ttf \
-        fonts-gfs-neohellenic \
-        fonts-indic \
-        fonts-ipafont-gothic \
-        fonts-kacst-one \
-        fonts-liberation \
-        fonts-noto-cjk \
-        fonts-noto-color-emoji \
-        fonts-roboto \
-        fonts-thai-tlwg \
-        fonts-ubuntu \
-        fonts-wqy-zenhei \
-        fonts-open-sans \
-        ttf-mscorefonts-installer \
-    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build_searxng /app /app
