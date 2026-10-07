@@ -69,40 +69,53 @@ RUN \
         git \
         openssl \
         cmake gfortran libopenblas-dev pkg-config \
+        # indexed-zstd (a camoufox dependency) builds from source when the
+        # platform/python lacks a wheel -- it needs the zstd headers
+        libzstd-dev \
     && python3 -m venv /app \
     && . /app/bin/activate \
     && pip install --no-cache -r requirements.txt \
     && pip install --no-cache \
         tzdata \
+    # the built-in render engine's browser bundle (zjsearch.browser):
+    # XDG_CACHE_HOME pins the camoufox install into /app so the final
+    # stage ships it together with the venv (the runtime ENV re-exports
+    # the same path)
+    && XDG_CACHE_HOME=/app/browser-cache python3 -m searx.zjsearch.ai.browser.install \
     && python3 -m compileall -q searx \
     && find searx/static \( -name '*.html' -o -name '*.css' -o -name '*.js' \
         -o -name '*.svg' -o -name '*.ttf' -o -name '*.eot' \) \
         -type f -exec gzip -9 -k {} \+ -exec brotli --best {} \+ \
-    && mkdir -p /distroless/lib /distroless/usr/local/bin \
-    && cp /usr/local/bin/python3 /distroless/usr/local/bin/python3 \
-    && cp /usr/local/bin/python3-config /distroless/usr/local/bin/python3-config \
-    && cp -rf /usr/local/include /distroless/usr/local/include \
-    && cp -rf /usr/local/lib /distroless/usr/local/lib \
-    && cp -P /usr/lib/$(arch)-linux-gnu/*.so* /distroless/lib/ \
     && rm -rf /tmp/* /var/lib/apt/lists/* /var/tmp/*
 
-FROM busybox:latest AS rebased_searxng
+FROM python:${PYTHON_VERSION}-slim
 
-COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-
-COPY --from=build_searxng /distroless /
+# the built-in browser's runtime: Xvfb (zjsearch.browser.mode: virtual) and
+# the Firefox/GTK library set with fonts -- the SAME base image the venv was
+# built on, so nothing needs hand-copying out of a distroless assembly
+RUN \
+    apt update \
+    && apt install -qy --no-install-recommends \
+        xvfb \
+        libgtk-3-0 \
+        libdbus-glib-1-2 \
+        libxt6 \
+        libasound2 \
+        libx11-xcb1 libxcb1 \
+        libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 \
+        libxkbcommon0 libgbm1 libdrm2 \
+        libfontconfig1 \
+        fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build_searxng /app /app
 
 COPY --from=build_searxng /app/searx/settings.yml /app/searx/limiter.toml /app/searx/favicons/favicons.toml /config/
 
-FROM scratch
-
 ENV \
     PYTHONPATH="/app" \
-    SEARXNG_SETTINGS_PATH="/config/settings.yml"
-
-COPY --from=rebased_searxng / /
+    SEARXNG_SETTINGS_PATH="/config/settings.yml" \
+    XDG_CACHE_HOME="/app/browser-cache"
 
 EXPOSE 8888/tcp
 
