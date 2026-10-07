@@ -100,7 +100,7 @@ RUN rm -rf /app/browser-cache/camoufox/browsers/*/*/fonts \
     && sed -i 's|<dir prefix="cwd">fonts</dir>|<dir prefix="cwd">fonts</dir><dir>/usr/share/fonts</dir>|' \
         /app/browser-cache/camoufox/browsers/*/*/fontconfig/linux/fonts.conf
 
-FROM python:${PYTHON_VERSION}-slim
+FROM python:${PYTHON_VERSION}-slim AS rebased_searxng
 
 # the built-in browser's runtime: Xvfb (zjsearch.browser.mode: virtual) and
 # the Firefox/GTK library set with fonts -- the SAME base image the venv was
@@ -139,6 +139,10 @@ RUN \
 COPY --from=build_searxng /app /app
 
 COPY --from=build_searxng /app/searx/settings.yml /app/searx/limiter.toml /app/searx/favicons/favicons.toml /config/
+
+FROM scratch
+
+COPY --from=rebased_searxng / /
 
 ENV \
     PYTHONPATH="/app" \
