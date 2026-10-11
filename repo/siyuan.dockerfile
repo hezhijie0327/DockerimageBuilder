@@ -29,9 +29,10 @@ RUN \
 
 FROM node:${NODEJS_VERSION}-slim AS build_siyuan_app
 
-WORKDIR /siyuan
+COPY --from=get_info /tmp/BUILDTMP/SIYUAN/app /siyuan/app
+COPY --from=get_info /tmp/BUILDTMP/SIYUAN/kernel /siyuan/kernel
 
-COPY --from=get_info /tmp/BUILDTMP/SIYUAN/app /siyuan
+WORKDIR /siyuan/app
 
 RUN \
     apt update \
@@ -61,10 +62,10 @@ WORKDIR /tmp
 
 COPY --from=get_info /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-COPY --from=build_siyuan_app /siyuan/appearance /app/siyuan/appearance
-COPY --from=build_siyuan_app /siyuan/stage /app/siyuan/stage
-COPY --from=build_siyuan_app /siyuan/guide /app/siyuan/guide
-COPY --from=build_siyuan_app /siyuan/changelogs /app/siyuan/changelogs
+COPY --from=build_siyuan_app /siyuan/app/appearance /app/siyuan/appearance
+COPY --from=build_siyuan_app /siyuan/app/stage /app/siyuan/stage
+COPY --from=build_siyuan_app /siyuan/app/guide /app/siyuan/guide
+COPY --from=build_siyuan_app /siyuan/app/changelogs /app/siyuan/changelogs
 
 COPY --from=build_siyuan_kernel /siyuan/kernel /app/siyuan/kernel
 
