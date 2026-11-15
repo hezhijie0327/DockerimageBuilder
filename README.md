@@ -10,21 +10,9 @@
 
 - **多平台**：linux/amd64 + linux/arm64，按 digest 构建后合并多架构 manifest
 - **自动版本跟踪**：`versions/update.py` 从 GitHub tags 解析各组件最新版本（支持环境变量固定版本）
-- **自定义补丁**：qBittorrent DHT 节点/构建修复、思源 VIP 解锁、Xray 反向补丁等
+- **自定义补丁**：按应用维护源码补丁（`patches/<app>/`），构建时自动应用
 - **版本号定制**：产物版本嵌入源码与补丁仓库 SHA（`-ZHIJIE-<SRC><PATCH>`）
 - **双仓库发布**：Docker Hub + GitHub Container Registry
-
-## 镜像列表
-
-| 镜像 | 说明 |
-| ---- | ---- |
-| `base:alpine` | 共享基础镜像（工具链 + CA 证书 + 版本元数据） |
-| `cloudflared` | Cloudflare Tunnel 客户端 |
-| `jellyfin` | 媒体服务器（含 jellyfin-web） |
-| `qbittorrent` | qBittorrent-nox 静态构建 + VueTorrent |
-| `siyuan` | 思源笔记 |
-| `vaultwarden` | Bitwarden 兼容服务器（含 web vault） |
-| `xray` | Xray-core |
 
 ## 快速开始
 
@@ -32,10 +20,10 @@
 
 ```bash
 # GitHub Container Registry
-docker pull ghcr.io/hezhijie0327/qbittorrent:latest
+docker pull ghcr.io/hezhijie0327/<image>:latest
 
 # Docker Hub
-docker pull hezhijie0327/qbittorrent:latest
+docker pull hezhijie0327/<image>:latest
 ```
 
 ### 本地构建
@@ -48,7 +36,7 @@ cd DockerimageBuilder
 python3 versions/update.py
 
 # 构建单个镜像
-docker build -f images/repo/xray.dockerfile --platform linux/amd64 .
+docker build -f images/repo/<app>.dockerfile --platform linux/amd64 .
 ```
 
 ## 项目结构
