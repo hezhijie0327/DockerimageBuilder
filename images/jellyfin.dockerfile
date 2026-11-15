@@ -43,7 +43,8 @@ RUN \
         > "${WORKDIR}/BUILDTMP/JELLYFIN/SYS_ARCH" \
     && curl -s --connect-timeout 15 "https://repo.jellyfin.org/jellyfin_team.gpg.key" \
         | gpg --dearmor > "${WORKDIR}/BUILDTMP/JELLYFIN/jellyfin-archive-keyring.gpg" \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/ca-certificates.crt"
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" \
+    && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt"
 
 FROM node:${NODEJS_VERSION}-slim AS build_jellyfin_web
 

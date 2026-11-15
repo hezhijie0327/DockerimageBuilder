@@ -31,7 +31,8 @@ RUN \
     && sed -i \
         "s/Version_x, Version_y, Version_z/\"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 1)\", \"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 2)\", \"$(echo ${XRAY_CUSTOM_VERSION} | cut -d '.' -f 3)\"/g" \
         "${WORKDIR}/BUILDTMP/XRAY/core/core.go" \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/ca-certificates.crt"
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" \
+    && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt"
 
 FROM golang:${GOLANG_VERSION} AS build_xray
 

@@ -30,7 +30,8 @@ RUN \
     && sed -i \
         "s/\$(shell git describe --tags --always --match \"\[0-9\]\[0-9\]\[0-9\]\[0-9\].\*.\*\")/${CLOUDFLARED_CUSTOM_VERSION}/g" \
         "${WORKDIR}/BUILDTMP/CLOUDFLARED/Makefile" \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/ca-certificates.crt"
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" \
+    && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt"
 
 FROM golang:${GOLANG_VERSION} AS build_cloudflared
 

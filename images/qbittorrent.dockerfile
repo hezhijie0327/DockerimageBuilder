@@ -54,7 +54,8 @@ RUN \
         > "${WORKDIR}/patch" \
     && cd "${WORKDIR}/BUILDTMP/VUETORRENT" \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${VUETORRENT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/VUETORRENT/package.json" \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/ca-certificates.crt"
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" \
+    && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt"
 
 FROM node:${NODEJS_VERSION}-slim AS build_vuetorrent
 

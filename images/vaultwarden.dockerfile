@@ -35,7 +35,8 @@ RUN \
     && export VAULTWARDEN_CUSTOM_VERSION="${VAULTWARDEN_VERSION}-ZHIJIE-${VAULTWARDEN_SHA}${PATCH_SHA}" \
     && echo "${VAULTWARDEN_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/VAULTWARDEN/VAULTWARDEN_CUSTOM_VERSION" \
     && echo "${VAULTWARDEN_CUSTOM_VERSION}" > "${WORKDIR}/BUILDTMP/VAULTWARDEN_WEB/VAULTWARDEN_CUSTOM_VERSION" \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/ca-certificates.crt"
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" \
+    && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt"
 
 FROM node:${NODEJS_VERSION}-slim AS build_vaultwarden_web
 

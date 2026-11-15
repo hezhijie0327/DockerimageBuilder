@@ -37,7 +37,8 @@ RUN \
     && sed -i \
         "s/\= \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\= \"${SIYUAN_CUSTOM_VERSION}\"/g" \
         "${WORKDIR}/BUILDTMP/SIYUAN/kernel/util/working.go" \
-    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/ca-certificates.crt"
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/cacert.pem" \
+    && mv "/etc/ssl/certs/cacert.pem" "/etc/ssl/certs/ca-certificates.crt"
 
 FROM node:${NODEJS_VERSION}-slim AS build_siyuan_app
 
