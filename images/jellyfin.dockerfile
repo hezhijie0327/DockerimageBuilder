@@ -1,39 +1,48 @@
 ARG DOTNET_VERSION="10.0"
+ARG JELLYFIN_VERSION=""
+ARG JELLYFIN_WEB_VERSION=""
 ARG NODEJS_VERSION="24"
+ARG PATCH_SHA="0000"
 
-FROM ghcr.io/hezhijie0327/base:alpine AS get_info
+FROM alpine:latest AS get_info
+
+ARG JELLYFIN_VERSION
+ARG JELLYFIN_WEB_VERSION
+ARG PATCH_SHA
 
 WORKDIR /tmp
 
 RUN \
+    apk add --no-cache curl git gnupg jq
+
+RUN \
     export WORKDIR=$(pwd) \
-    && cat "/opt/package.json" | jq -Sr ".repo.jellyfin" > "${WORKDIR}/jellyfin.json" \
-    && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" \
-    && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source" > "${WORKDIR}/jellyfin.source.autobuild" \
-    && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".source_branch" > "${WORKDIR}/jellyfin.source_branch.autobuild" \
-    && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch" > "${WORKDIR}/jellyfin.patch.autobuild" \
-    && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".patch_branch" > "${WORKDIR}/jellyfin.patch_branch.autobuild" \
-    && cat "${WORKDIR}/jellyfin.json" | jq -Sr ".version" > "${WORKDIR}/jellyfin.version.autobuild" \
-    && cat "/opt/package.json" | jq -Sr ".repo.jellyfin_web" > "${WORKDIR}/jellyfin_web.json" \
-    && cat "${WORKDIR}/jellyfin_web.json" | jq -Sr ".version" \
-    && cat "${WORKDIR}/jellyfin_web.json" | jq -Sr ".source" > "${WORKDIR}/jellyfin_web.source.autobuild" \
-    && cat "${WORKDIR}/jellyfin_web.json" | jq -Sr ".source_branch" > "${WORKDIR}/jellyfin_web.source_branch.autobuild" \
-    && cat "${WORKDIR}/jellyfin_web.json" | jq -Sr ".patch" > "${WORKDIR}/jellyfin_web.patch.autobuild" \
-    && cat "${WORKDIR}/jellyfin_web.json" | jq -Sr ".patch_branch" > "${WORKDIR}/jellyfin_web.patch_branch.autobuild" \
-    && cat "${WORKDIR}/jellyfin_web.json" | jq -Sr ".version" > "${WORKDIR}/jellyfin_web.version.autobuild" \
-    && git clone -b $(cat "${WORKDIR}/jellyfin.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN" \
-    && git clone -b $(cat "${WORKDIR}/jellyfin.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
-    && git clone -b $(cat "${WORKDIR}/jellyfin_web.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/jellyfin_web.source.autobuild") "${WORKDIR}/BUILDTMP/JELLYFIN_WEB" \
+    && export JELLYFIN_VERSION=${JELLYFIN_VERSION:-$( \
+        curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" \
+        | jq -r '[.[].ref | select(test("^refs/tags/v(?!.*-)"))] | last // "" | sub("^refs/tags/v"; "")' \
+    )} \
+    && export JELLYFIN_WEB_VERSION=${JELLYFIN_WEB_VERSION:-$( \
+        curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-web/git/matching-refs/tags" \
+        | jq -r '[.[].ref | select(test("^refs/tags/v(?!.*-)"))] | last // "" | sub("^refs/tags/v"; "")' \
+    )} \
+    && [ -n "${JELLYFIN_VERSION}" ] && [ -n "${JELLYFIN_WEB_VERSION}" ] \
+    && echo "JELLYFIN_VERSION=${JELLYFIN_VERSION}" \
+    && echo "JELLYFIN_WEB_VERSION=${JELLYFIN_WEB_VERSION}" \
+    && git clone -b "master" --depth=1 "https://github.com/jellyfin/jellyfin.git" "${WORKDIR}/BUILDTMP/JELLYFIN" \
+    && git clone -b "master" --depth=1 "https://github.com/jellyfin/jellyfin-web.git" "${WORKDIR}/BUILDTMP/JELLYFIN_WEB" \
     && export JELLYFIN_SHA=$(cd "${WORKDIR}/BUILDTMP/JELLYFIN" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
-    && export JELLYFIN_VERSION=$(cat "${WORKDIR}/jellyfin.version.autobuild") \
-    && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export JELLYFIN_CUSTOM_VERSION="${JELLYFIN_VERSION}-ZHIJIE-${JELLYFIN_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/JELLYFIN" \
-    && git submodule update --init \
+    && git submodule update --init --depth=1 \
     && cd "${WORKDIR}/BUILDTMP/JELLYFIN_WEB" \
-    && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${JELLYFIN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/JELLYFIN_WEB/package.json" \
-    && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") > "${WORKDIR}/BUILDTMP/JELLYFIN/SYS_ARCH" \
-    && curl -s --connect-timeout 15 "https://repo.jellyfin.org/jellyfin_team.gpg.key" | gpg --dearmor > "${WORKDIR}/BUILDTMP/JELLYFIN/jellyfin-archive-keyring.gpg"
+    && sed -i \
+        "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${JELLYFIN_CUSTOM_VERSION}\"/g" \
+        "${WORKDIR}/BUILDTMP/JELLYFIN_WEB/package.json" \
+    && echo $(uname -m | sed "s/x86_64/x64/g;s/x86-64/x64/g;s/amd64/x64/g;s/aarch64/arm64/g") \
+        > "${WORKDIR}/BUILDTMP/JELLYFIN/SYS_ARCH" \
+    && curl -s --connect-timeout 15 "https://repo.jellyfin.org/jellyfin_team.gpg.key" \
+        | gpg --dearmor > "${WORKDIR}/BUILDTMP/JELLYFIN/jellyfin-archive-keyring.gpg" \
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/ca-certificates.crt"
 
 FROM node:${NODEJS_VERSION}-slim AS build_jellyfin_web
 

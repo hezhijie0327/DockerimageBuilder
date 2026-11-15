@@ -1,31 +1,42 @@
 ARG GOLANG_VERSION="1"
 ARG NODEJS_VERSION="24"
+ARG PATCH_SHA="0000"
+ARG SIYUAN_VERSION=""
 
-FROM ghcr.io/hezhijie0327/base:alpine AS get_info
+FROM alpine:latest AS get_info
+
+ARG PATCH_SHA
+ARG SIYUAN_VERSION
 
 WORKDIR /tmp
 
+COPY patches/siyuan /tmp/patches
+
+RUN \
+    apk add --no-cache curl git jq
+
 RUN \
     export WORKDIR=$(pwd) \
-    && cat "/opt/package.json" | jq -Sr ".repo.siyuan" > "${WORKDIR}/siyuan.json" \
-    && cat "${WORKDIR}/siyuan.json" | jq -Sr ".version" \
-    && cat "${WORKDIR}/siyuan.json" | jq -Sr ".source" > "${WORKDIR}/siyuan.source.autobuild" \
-    && cat "${WORKDIR}/siyuan.json" | jq -Sr ".source_branch" > "${WORKDIR}/siyuan.source_branch.autobuild" \
-    && cat "${WORKDIR}/siyuan.json" | jq -Sr ".patch" > "${WORKDIR}/siyuan.patch.autobuild" \
-    && cat "${WORKDIR}/siyuan.json" | jq -Sr ".patch_branch" > "${WORKDIR}/siyuan.patch_branch.autobuild" \
-    && cat "${WORKDIR}/siyuan.json" | jq -Sr ".version" > "${WORKDIR}/siyuan.version.autobuild" \
-    && git clone -b $(cat "${WORKDIR}/siyuan.source_branch.autobuild") --depth=1 $(cat "${WORKDIR}/siyuan.source.autobuild") "${WORKDIR}/BUILDTMP/SIYUAN" \
-    && git clone -b $(cat "${WORKDIR}/siyuan.patch_branch.autobuild") --depth=1 $(cat "${WORKDIR}/siyuan.patch.autobuild") "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" \
+    && export SIYUAN_VERSION=${SIYUAN_VERSION:-$( \
+        curl -s --connect-timeout 15 "https://api.github.com/repos/siyuan-note/siyuan/git/matching-refs/tags" \
+        | jq -r '[.[].ref | select(test("^refs/tags/v(?!.*-dev)"))] | last // "" | sub("^refs/tags/v"; "")' \
+    )} \
+    && [ -n "${SIYUAN_VERSION}" ] \
+    && echo "SIYUAN_VERSION=${SIYUAN_VERSION}" \
+    && git clone -b "dev" --depth=1 "https://github.com/siyuan-note/siyuan.git" "${WORKDIR}/BUILDTMP/SIYUAN" \
     && export SIYUAN_SHA=$(cd "${WORKDIR}/BUILDTMP/SIYUAN" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
-    && export SIYUAN_VERSION=$(cat "${WORKDIR}/siyuan.version.autobuild") \
-    && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export SIYUAN_CUSTOM_VERSION="${SIYUAN_VERSION}-ZHIJIE-${SIYUAN_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN" \
-    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patches/siyuan/*.patch \
+    && git apply --reject ${WORKDIR}/patches/*.patch \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN/app" \
-    && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${SIYUAN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/SIYUAN/app/package.json" \
+    && sed -i \
+        "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${SIYUAN_CUSTOM_VERSION}\"/g" \
+        "${WORKDIR}/BUILDTMP/SIYUAN/app/package.json" \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN/kernel" \
-    && sed -i "s/\=\ \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\=\ \"${SIYUAN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/SIYUAN/kernel/util/working.go"
+    && sed -i \
+        "s/\= \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\= \"${SIYUAN_CUSTOM_VERSION}\"/g" \
+        "${WORKDIR}/BUILDTMP/SIYUAN/kernel/util/working.go" \
+    && curl -s --connect-timeout 15 "https://curl.se/ca/cacert.pem" > "/etc/ssl/certs/ca-certificates.crt"
 
 FROM node:${NODEJS_VERSION}-slim AS build_siyuan_app
 

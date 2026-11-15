@@ -49,6 +49,7 @@ jobs:
           platform=${{ matrix.platform }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
           echo "PACKAGE_NAME=${{ matrix.package }}" >> $GITHUB_ENV
+          echo "PATCH_SHA=$(echo ${GITHUB_SHA:0:4} | tr 'a-z' 'A-Z')" >> $GITHUB_ENV
 
       - uses: docker/setup-buildx-action@v4
 
@@ -68,8 +69,10 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./images/repo/${{ matrix.package }}.dockerfile
+          file: ./images/${{ matrix.package }}.dockerfile
           platforms: ${{ matrix.platform }}
+          build-args: |
+            PATCH_SHA=${{ env.PATCH_SHA }}
           labels: |
             org.opencontainers.image.title=${{ env.PACKAGE_NAME }}
           outputs: type=image,name=${{ env.GHCR_NAMESPACE }}/${{ env.PACKAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
