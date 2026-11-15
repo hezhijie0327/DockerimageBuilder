@@ -1,5 +1,8 @@
 # DockerimageBuilder
 
+[![License](https://img.shields.io/badge/License-Apache%202.0--Commons%20Clause-blue)](LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+
 DockerimageBuilder 是一个多平台Docker镜像构建项目，为各种开源应用程序创建自定义Docker镜像。项目使用GitHub Actions工作流自动构建和发布镜像到Docker Hub和GitHub Container Registry。编码代理指南见 [AGENTS.md](AGENTS.md)。
 
 ## 特性
