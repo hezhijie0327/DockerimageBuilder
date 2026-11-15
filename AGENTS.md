@@ -162,9 +162,29 @@ There is no release/version-update script: each Dockerfile's `get_info` stage re
 4. **Comments**: Add section headers with `##` for major sections
 
 ### Version Resolution
-1. **Build-time lookup**: `get_info` queries `https://api.github.com/repos/<owner>/<repo>/git/matching-refs/tags` and picks the last tag matching the component's filter (jq `test()` regex)
-2. **Pinning**: each component version is an ARG (e.g., `XRAY_VERSION`); empty default means resolve latest, a passed value pins it
-3. **PATCH_SHA**: ARG defaulting to `0000`; CI passes the first 4 chars of `GITHUB_SHA` uppercased
+1. **Build-time lookup via the git protocol**: `get_info` resolves the latest tag with `git ls-remote`, not the REST API. `api.github.com` is rate-limited to 60 req/h per IP and the shared runners exhaust it; the git protocol is not, so no token is needed. Canonical pipeline:
+   ```bash
+   git ls-remote --tags --sort=-v:refname "https://github.com/<owner>/<repo>.git" \
+     | awk '{print $2}' | grep -v '\^{}' \
+     | jq -Rr 'select(test("<filter>"))' | head -n1 | sed 's|^<prefix>||'
+   ```
+   `--sort=-v:refname` orders by version so `head -n1` is the true latest; `grep -v '\^{}'` drops peeled annotated-tag refs; `<filter>` is a jq `test()` regex (Oniguruma, supports lookahead).
+2. **Pinning**: each component version is an ARG (e.g., `XRAY_VERSION`); an empty default resolves latest, a passed value pins it (`${XRAY_VERSION:-$(...)}` short-circuits the lookup when set).
+3. **Source vs label**: clone the branch HEAD for source (patches target the branch); the resolved tag is only the version label.
+4. **PATCH_SHA**: ARG defaulting to `0000`; CI passes the first 4 chars of `GITHUB_SHA` uppercased.
+
+### Self-Contained Build Pattern
+New app Dockerfiles follow the same shape (see `images/xray.dockerfile`):
+1. `ARG <APP>_VERSION=""` and `ARG PATCH_SHA="0000"` at the top, re-declared in `get_info`.
+2. `get_info` based on `alpine:latest`; install tools (`apk add --no-cache curl git jq`, plus `gnupg` when needed) in their own RUN layer.
+3. Resolve the version (pipeline above), guard with `[ -n "${<APP>_VERSION}" ]`, clone the source branch, compute the source SHA, build the `-ZHIJIE-<SRC><PATCH>` custom version.
+4. `COPY patches/<app> /tmp/patches` from the build context and `git apply` them.
+5. Fetch the CA bundle to a separate file, then `mv` it to `/etc/ssl/certs/ca-certificates.crt`; final stages `COPY --from=get_info` that bundle.
+
+### Gotchas
+- **Never redirect a download into the live CA bundle**: `curl ... > /etc/ssl/certs/ca-certificates.crt` truncates the bundle before curl reads it as its own CAfile, failing with exit 77 (`SSL_CACERT_BADFILE`). Download to a separate file then `mv` (or COPY into the final image).
+- **Version sort, not alphabetical**: `--sort=-v:refname` + `head -n1` picks the true latest tag; an alphabetical `last` under-reports (e.g. vaultwarden `1.9.1` vs `1.37.5`).
+- **Wrap long RUN lines**: break command substitutions and sed script/target args across continuation lines rather than one oversized line.
 
 ## Workflow Processes
 
@@ -192,7 +212,7 @@ There is no release/version-update script: each Dockerfile's `get_info` stage re
 
 2. **Version filters**:
    - Tag filter regexes live in each Dockerfile's `get_info` stage
-   - Verify the jq expression against the live GitHub API before committing
+   - Verify the `git ls-remote` pipeline resolves the expected tag before committing
 
 3. **Modifying existing builds**:
    - Update patch files as needed
