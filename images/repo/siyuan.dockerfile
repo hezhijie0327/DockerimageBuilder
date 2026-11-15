@@ -21,7 +21,7 @@ RUN \
     && export PATCH_SHA=$(cd "${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER" && git rev-parse --short HEAD | cut -c 1-4 | tr "a-z" "A-Z") \
     && export SIYUAN_CUSTOM_VERSION="${SIYUAN_VERSION}-ZHIJIE-${SIYUAN_SHA}${PATCH_SHA}" \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN" \
-    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/siyuan/*.patch \
+    && git apply --reject ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patches/siyuan/*.patch \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN/app" \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${SIYUAN_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/SIYUAN/app/package.json" \
     && cd "${WORKDIR}/BUILDTMP/SIYUAN/kernel" \

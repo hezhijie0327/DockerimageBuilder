@@ -38,7 +38,7 @@ RUN \
     && git add . \
     && git commit -m "Update qBittorrent version to ${QBITTORRENT_CUSTOM_VERSION}" \
     && git format-patch -1 -o "${WORKDIR}/BUILDTMP" \
-    && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patch/qbittorrent/*.patch > "${WORKDIR}/patch" \
+    && cat ${WORKDIR}/BUILDTMP/0001-Update-qBittorrent-version-to-*.patch ${WORKDIR}/BUILDTMP/DOCKERIMAGEBUILDER/patches/qbittorrent/*.patch > "${WORKDIR}/patch" \
     && cd "${WORKDIR}/BUILDTMP/VUETORRENT" \
     && sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${VUETORRENT_CUSTOM_VERSION}\"/g" "${WORKDIR}/BUILDTMP/VUETORRENT/package.json"
 
