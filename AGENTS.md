@@ -113,38 +113,28 @@ DockerimageBuilder is a multi-platform Docker image building project that create
 
 ### Local Testing
 ```bash
-# Test a specific module build
-docker build -f module/alpine.dockerfile --platform linux/amd64 .
+# Test a specific package build (versions resolve to latest at build time)
+docker build -f images/xray.dockerfile --platform linux/amd64 .
 
-# Test a specific package build
-docker build -f repo/browserless.dockerfile --platform linux/amd64 .
+# Pin a component version
+docker build -f images/xray.dockerfile --build-arg XRAY_VERSION=26.9.9 .
 
 # Build for multiple platforms
-docker buildx build -f module/alpine.dockerfile --platform linux/amd64,linux/arm64 .
+docker buildx build -f images/xray.dockerfile --platform linux/amd64,linux/arm64 .
 ```
 
-### Release Management
-```bash
-# Update package versions (runs automatically via GitHub Actions)
-bash ./patch/release.sh
-
-# This script:
-# 1. Fetches latest versions from GitHub APIs
-# 2. Generates a new package.json with updated versions
-# 3. Prepares for automated builds
-```
+There is no release/version-update script: each Dockerfile's `get_info` stage resolves the latest upstream tag from the GitHub API at build time.
 
 ## Project structure
 
 ```text
-├── module/          # Base module Dockerfiles (alpine, openssl)
-├── repo/           # Application-specific Dockerfiles
-├── patch/          # Source patches and version management
-│   ├── browserless/
-│   ├── lobehub/
-│   └── ...
+├── images/         # Application-specific Dockerfiles (self-contained)
+├── patches/        # Source patches, one directory per application
+│   ├── qbittorrent/
+│   ├── siyuan/
+│   └── xray/
 ├── .github/
-│   └── workflows/  # CI/CD pipelines
+│   └── workflows/  # CI/CD pipelines (repo.yml)
 └── LICENSE
 ```
 
@@ -158,7 +148,7 @@ bash ./patch/release.sh
    - Use descriptive names that indicate the stage's purpose
 4. **Base images**: 
    - Use specific version tags when possible (e.g., `node:24-slim`)
-   - Reference custom modules using ghcr.io path
+   - Use upstream images directly (`alpine:latest` for `get_info`); no custom base images
 5. **Environment variables**: Use uppercase with underscores: `DEBIAN_FRONTEND`, `WORKDIR`
 6. **Directory structure**: 
    - WORKDIR should be set appropriately for each stage
@@ -171,47 +161,38 @@ bash ./patch/release.sh
 3. **Error handling**: Check for errors after critical operations
 4. **Comments**: Add section headers with `##` for major sections
 
-### JSON Configuration
-1. **Version tracking**: All package versions managed in patch/package.json
-2. **Structure**: 
-   - Top-level: `module` and `repo` sections
-   - Each entry: `source`, `patch`, `version`, and branch information
-3. **Updates**: Version updates handled by release.sh script
+### Version Resolution
+1. **Build-time lookup**: `get_info` queries `https://api.github.com/repos/<owner>/<repo>/git/matching-refs/tags` and picks the last tag matching the component's filter (jq `test()` regex)
+2. **Pinning**: each component version is an ARG (e.g., `XRAY_VERSION`); empty default means resolve latest, a passed value pins it
+3. **PATCH_SHA**: ARG defaulting to `0000`; CI passes the first 4 chars of `GITHUB_SHA` uppercased
 
 ## Workflow Processes
 
-### Module Build Process
-1. `module.yml` workflow triggers on schedule or manual dispatch
-2. Updates package.json via release.sh
-3. Builds modules (alpine, openssl) for both amd64 and arm64
-4. Pushes to both Docker Hub and GHCR
-5. Creates multi-platform manifests
-
 ### Package Build Process
-1. `package.yml` workflow triggers on schedule or manual dispatch
-2. Builds each application package in parallel
-3. Uses patches from corresponding directories
-4. Applies version customization
-5. Creates multi-platform manifests
+1. `repo.yml` workflow triggers on schedule or manual dispatch
+2. Builds each application package in parallel (matrix in the workflow)
+3. Each Dockerfile resolves versions, clones sources, and applies patches from `patches/<app>/` via build context
+4. Applies version customization (`-ZHIJIE-<SRC><PATCH>` suffix)
+5. Pushes to both Docker Hub and GHCR, creates multi-platform manifests
 
 ## Patch Management
 
 1. **Patch structure**: Each application has its own patch directory
 2. **Patch naming**: Use numerical prefix with descriptive name: `1001-feat-startServer.patch`
-3. **Patch application**: Patches applied during build process via `git apply`
+3. **Patch application**: Patches are `COPY`ed from the build context into `get_info` and applied via `git apply`
 4. **Version customization**: Application versions are modified to include build SHA values
 
 ## Development Guidelines
 
 1. **Testing new packages**:
-   - Create new Dockerfile in `repo/` directory
-   - Add package entry to `patch/template.json`
+   - Create new Dockerfile in `images/` directory
+   - Add the package to both matrices (build and merge) in `repo.yml`
    - Create patch directory if modifications needed
    - Test locally with docker build before committing
 
-2. **Version updates**:
-   - Modify version fetching in `release.sh` if API changes
-   - Test release script locally before running in CI
+2. **Version filters**:
+   - Tag filter regexes live in each Dockerfile's `get_info` stage
+   - Verify the jq expression against the live GitHub API before committing
 
 3. **Modifying existing builds**:
    - Update patch files as needed
