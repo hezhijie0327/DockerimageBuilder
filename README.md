@@ -1,14 +1,14 @@
 # DockerimageBuilder
 
-DockerimageBuilder 是一个多平台Docker镜像构建项目，为各种开源应用程序创建自定义Docker镜像。项目使用GitHub Actions工作流自动构建和发布镜像到Docker Hub和GitHub Container Registry。
+DockerimageBuilder 是一个多平台Docker镜像构建项目，为各种开源应用程序创建自定义Docker镜像。项目使用GitHub Actions工作流自动构建和发布镜像到Docker Hub和GitHub Container Registry。编码代理指南见 [AGENTS.md](AGENTS.md)。
 
 ## 特性
 
-- 🐳 多平台支持（linux/amd64, linux/arm64）
-- 🔄 自动化版本更新和发布
-- 📦 多种开源应用程序镜像
-- 🛠️ 自定义补丁和构建配置
-- 🚀 CI/CD自动化构建流程
+- 多平台支持（linux/amd64, linux/arm64）
+- 自动化版本更新和发布
+- 多种开源应用程序镜像
+- 自定义补丁和构建配置
+- CI/CD自动化构建流程
 
 ## 快速开始
 
@@ -24,7 +24,7 @@ docker pull hezhijie0327/[image-name]:latest
 
 ## 项目结构
 
-```
+```text
 DockerimageBuilder/
 ├── module/          # 基础模块Dockerfile
 ├── repo/           # 应用程序Dockerfile
@@ -34,6 +34,6 @@ DockerimageBuilder/
 └── AGENTS.md       # 开发者指南
 ```
 
-## 许可证
+## License
 
-本项目采用Apache License 2.0 with Commons Clause v1.0许可证 - 详见[LICENSE](LICENSE)文件
+[Apache License 2.0 with Commons Clause v1.0](LICENSE)
