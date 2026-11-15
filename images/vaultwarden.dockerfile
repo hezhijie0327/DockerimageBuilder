@@ -19,12 +19,14 @@ RUN \
 RUN \
     export WORKDIR=$(pwd) \
     && export VAULTWARDEN_VERSION=${VAULTWARDEN_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/dani-garcia/vaultwarden/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/"))] | last // "" | sub("^refs/tags/"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/dani-garcia/vaultwarden.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/"))' | head -n1 | sed 's|^refs/tags/||' \
     )} \
     && export VAULTWARDEN_WEB_VERSION=${VAULTWARDEN_WEB_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/dani-garcia/bw_web_builds/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/v"))] | last // "" | sub("^refs/tags/v"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/dani-garcia/bw_web_builds.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/v"))' | head -n1 | sed 's|^refs/tags/v||' \
     )} \
     && [ -n "${VAULTWARDEN_VERSION}" ] && [ -n "${VAULTWARDEN_WEB_VERSION}" ] \
     && echo "VAULTWARDEN_VERSION=${VAULTWARDEN_VERSION}" \

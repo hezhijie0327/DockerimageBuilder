@@ -18,8 +18,9 @@ RUN \
 RUN \
     export WORKDIR=$(pwd) \
     && export XRAY_VERSION=${XRAY_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/XTLS/Xray-core/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/v(?!.*-)"))] | last // "" | sub("^refs/tags/v"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/XTLS/Xray-core.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/v(?!.*-)"))' | head -n1 | sed 's|^refs/tags/v||' \
     )} \
     && [ -n "${XRAY_VERSION}" ] \
     && echo "XRAY_VERSION=${XRAY_VERSION}" \

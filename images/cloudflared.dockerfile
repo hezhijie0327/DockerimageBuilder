@@ -16,8 +16,9 @@ RUN \
 RUN \
     export WORKDIR=$(pwd) \
     && export CLOUDFLARED_VERSION=${CLOUDFLARED_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/cloudflare/cloudflared/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/"))] | last // "" | sub("^refs/tags/"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/cloudflare/cloudflared.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/"))' | head -n1 | sed 's|^refs/tags/||' \
     )} \
     && [ -n "${CLOUDFLARED_VERSION}" ] \
     && echo "CLOUDFLARED_VERSION=${CLOUDFLARED_VERSION}" \

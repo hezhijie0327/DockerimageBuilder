@@ -19,12 +19,14 @@ RUN \
 RUN \
     export WORKDIR=$(pwd) \
     && export JELLYFIN_VERSION=${JELLYFIN_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/v(?!.*-)"))] | last // "" | sub("^refs/tags/v"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/jellyfin/jellyfin.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/v(?!.*-)"))' | head -n1 | sed 's|^refs/tags/v||' \
     )} \
     && export JELLYFIN_WEB_VERSION=${JELLYFIN_WEB_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/jellyfin/jellyfin-web/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/v(?!.*-)"))] | last // "" | sub("^refs/tags/v"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/jellyfin/jellyfin-web.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/v(?!.*-)"))' | head -n1 | sed 's|^refs/tags/v||' \
     )} \
     && [ -n "${JELLYFIN_VERSION}" ] && [ -n "${JELLYFIN_WEB_VERSION}" ] \
     && echo "JELLYFIN_VERSION=${JELLYFIN_VERSION}" \

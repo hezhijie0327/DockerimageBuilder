@@ -20,12 +20,14 @@ RUN \
 RUN \
     export WORKDIR=$(pwd) \
     && export QBITTORRENT_VERSION=${QBITTORRENT_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/qbittorrent/qBittorrent/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/release-(?!.*(?:alpha|beta|rc))"))] | last // "" | sub("^refs/tags/release-"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/qbittorrent/qBittorrent.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/release-(?!.*(?:alpha|beta|rc))"))' | head -n1 | sed 's|^refs/tags/release-||' \
     )} \
     && export VUETORRENT_VERSION=${VUETORRENT_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/VueTorrent/VueTorrent/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/v"))] | last // "" | sub("^refs/tags/v"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/VueTorrent/VueTorrent.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/v"))' | head -n1 | sed 's|^refs/tags/v||' \
     )} \
     && [ -n "${QBITTORRENT_VERSION}" ] && [ -n "${VUETORRENT_VERSION}" ] \
     && echo "QBITTORRENT_VERSION=${QBITTORRENT_VERSION}" \

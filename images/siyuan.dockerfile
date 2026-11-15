@@ -19,8 +19,9 @@ RUN \
 RUN \
     export WORKDIR=$(pwd) \
     && export SIYUAN_VERSION=${SIYUAN_VERSION:-$( \
-        curl -s --connect-timeout 15 "https://api.github.com/repos/siyuan-note/siyuan/git/matching-refs/tags" \
-        | jq -r '[.[].ref | select(test("^refs/tags/v(?!.*-dev)"))] | last // "" | sub("^refs/tags/v"; "")' \
+        git ls-remote --tags --sort=-v:refname "https://github.com/siyuan-note/siyuan.git" \
+        | awk '{print $2}' | grep -v '\^{}' \
+        | jq -Rr 'select(test("^refs/tags/v(?!.*-dev)"))' | head -n1 | sed 's|^refs/tags/v||' \
     )} \
     && [ -n "${SIYUAN_VERSION}" ] \
     && echo "SIYUAN_VERSION=${SIYUAN_VERSION}" \
